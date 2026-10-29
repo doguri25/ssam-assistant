@@ -3,6 +3,8 @@ import { onEnter } from '../../core/shell.js';
 import { THEMES, getTheme, setTheme } from '../../core/theme.js';
 import { getSchool, setSchool, getPurchaseLimit, setPurchaseLimit } from '../../core/settings.js';
 import * as ai from '../../core/ai.js';
+import { readTable } from '../../core/sheet.js';
+import { parseRoster } from '../../core/roster.js';
 
 const SSAM = () => window.SSAM || {};
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -27,7 +29,10 @@ const card = (title, body) => `<section class="set-card"><h3>${title}</h3>${body
 
 const VIEWS = {
   roster: () => page('학급 명단', '창의적 체험활동·행동특성·평가지 채점이 같은 명단을 써요.',
-    card('학생 수와 예외 번호', SSAM().rosterHTML ? SSAM().rosterHTML() : '')),
+    card('학생 수와 예외 번호', (SSAM().rosterHTML ? SSAM().rosterHTML() : '')
+      + `<div class="row"><button class="btn" type="button" data-set="rosterFile">엑셀·CSV에서 가져오기</button>
+        <span class="muted">나이스 학생 명렬표처럼 「번호」 칸이 있는 파일. 번호만 읽고 이름은 저장하지 않아요.</span></div>
+        <input type="file" id="rosterFile" accept=".xlsx,.csv,.xls" hidden>`)),
   ai: () => {
     const ready = SSAM().ai && SSAM().ai.engineReady();
     return page('AI', 'Claude·Gemini·GPT·업스테이지 중 하나의 키를 넣어 써요. 키는 이 컴퓨터에만 저장돼요.',
@@ -95,6 +100,25 @@ async function testAi() {
   if (curTab === 'ai') again();
 }
 
+/* 명렬표 엑셀·CSV → 미리 보기 → 넣기 (번호만) */
+async function importRoster(file) {
+  if (/\.xls$/i.test(file.name)) { toast('엑셀에서 .xlsx로 다시 저장해 주세요', 5000); return; }
+  let r = null;
+  try { r = parseRoster(await readTable(file.name, new Uint8Array(await file.arrayBuffer()))); }
+  catch (e) { toast('파일을 읽지 못했어요. 엑셀(.xlsx)이나 CSV 파일인지 확인해 주세요', 5000); return; }
+  if (!r) { toast('번호 칸을 찾지 못했어요. 첫 줄에 「번호」가 있는 명렬표인지 확인해 주세요', 6000); return; }
+  SSAM().openSheet(`<h3>이 명단으로 바꿀까요?</h3>
+    <p class="set-big">학생 ${r.count}명${r.except.length ? ` · 예외 번호 ${r.except.join(', ')}` : ''}</p>
+    <p class="muted" style="margin:0">「${esc(file.name)}」에서 번호만 읽었어요. 예외 번호는 전출 등으로 나이스에 칸이 없는 번호예요. 창체·행특·평가지 채점이 같은 명단을 써요.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="rosterOk">넣기</button></div>`,
+  sh => sh.querySelector('#rosterOk').addEventListener('click', () => {
+    SSAM().closeSheet();
+    if (SSAM().setClass) SSAM().setClass(r.count, r.except);
+    if (curTab === 'roster') again();
+    toast(`학생 ${r.count}명으로 정했어요${r.except.length ? ` · ${r.except.join(', ')}번 제외` : ''}`);
+  }));
+}
+
 /* 화면의 방학 칸을 school.breaks로 읽어 옴 (저장 전 편집 상태 유지) */
 function readBreaks() {
   const rows = [];
@@ -112,6 +136,7 @@ document.addEventListener('click', e => {
     const a = b.dataset.set;
     if (a === 'openAi') { aiMsg = null; SSAM().ai.openSettings(); }
     else if (a === 'testAi') testAi();
+    else if (a === 'rosterFile') box.querySelector('#rosterFile').click();
     else if (a === 'addBreak') { school = { ...readSchool(), breaks: [...readBreaks(), { label: '', from: '', to: '' }] }; again(); }
     else if (a === 'delBreak') { const br = readBreaks(); br.splice(+b.dataset.i, 1); school = { ...readSchool(), breaks: br }; again(); }
     else if (a === 'saveSchool') {
@@ -133,6 +158,12 @@ document.addEventListener('click', e => {
     setTheme(pick.dataset.themePick);
     box.querySelectorAll('[data-theme-pick] input').forEach(i => { i.checked = i.value === pick.dataset.themePick; });
   }
+});
+
+document.addEventListener('change', e => {
+  if (!box || !box.contains(e.target) || e.target.id !== 'rosterFile') return;
+  const f = e.target.files[0]; e.target.value = '';
+  if (f) importRoster(f);
 });
 
 // AI 창(평어 쓰는 방식)을 닫으면 설정 › AI의 요약을 다시 그림

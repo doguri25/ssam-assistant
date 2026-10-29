@@ -5255,6 +5255,8 @@ window.SSAM = {
   onModeChange: fn => { modeHooks.push(fn); },
   ai: { generate, engineReady, engineName, providerName: () => E.engine === 'account' ? 'Claude 계정' : (PROVIDERS[E.engine] ? PROVIDERS[E.engine].name : ''), errMsg, openSettings },
   rosterHTML, toast, openSheet, closeSheet, esc, copyText,
+  // 설정 › 학급 명단 엑셀 가져오기
+  setClass: (count, except) => setClass(count, except, 'roster'),
   // 새 메뉴(품의 등)가 쓰는 파일 읽기: 한글 파일 글, PDF·사진 → AI에 보낼 그림
   files: {
     readHwpxText: async u8 => blocksToText(await parseHWPX(u8, DOMParser)),
