@@ -178,3 +178,29 @@ test('마지막 백업 시각(backupAt)은 학년도마다 따로가 아니라 �
   const { isYearKey } = await import('../../web/core/years.js');
   assert.equal(isYearKey('backupAt'), false);
 });
+
+test('새 학년도에 학급 준비도 가져가기(고르면): 명단·학급 정보·시간표·진도표(진도 위치는 처음부터), 체크·주간학습안내는 비움', () => {
+  const ls = seed();
+  ls.setItem('ssam:class', J({ count: 25, except: [7] }));
+  ls.setItem('ssam:class:info', J({ grade: 4, room: 2 }));
+  ls.setItem('ssam:class:timetable', J({ periods: 6, days: [] }));
+  ls.setItem('ssam:class:subjects', J([{ id: 'a', name: '국어', start: '2027-02-20', offset: 3, lessons: [{ no: '1/8', title: '첫 차시' }] }]));
+  ls.setItem('ssam:class:weekly:2027-02-22', J({ x: 1 }));
+  const plain = carryOver(snapshot(ls), 2027);
+  assert.ok(!('class' in plain) && !('class:subjects' in plain), '고르지 않았는데 가져감');
+  const c = carryOver(snapshot(ls), 2027, { classSetup: true });
+  assert.deepEqual(JSON.parse(c.class), { count: 25, except: [7] });
+  assert.deepEqual(JSON.parse(c['class:info']), { grade: 4, room: 2 });
+  assert.ok(c['class:timetable']);
+  const sub = JSON.parse(c['class:subjects'])[0];
+  assert.equal(sub.offset, 0); assert.equal(sub.start, ''); assert.equal(sub.lessons.length, 1);
+  assert.ok(!('class:log' in c) && !Object.keys(c).some(k => k.startsWith('class:weekly:')));
+});
+
+test('1·2월에 지난 학년도에서 학급 준비를 하면 새 학년도를 먼저 시작하라고 알릴 학년도', async () => {
+  const { prepYear } = await import('../../web/core/years.js');
+  assert.equal(prepYear('2027-02-20', 2026), 2027);
+  assert.equal(prepYear('2027-01-05', 2026), 2027);
+  assert.equal(prepYear('2027-02-20', 2027), 0); // 이미 새 학년도
+  assert.equal(prepYear('2026-10-29', 2026), 0); // 학기 중
+});

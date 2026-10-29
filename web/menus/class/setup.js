@@ -1,6 +1,7 @@
 /* 학급 › 진도표·시수 아래 「준비」: 학급, 시간표, 교과 진도표 목록·고치기, 예시 (스펙 2장).
    저장하면 'class:changed'를 보내고, 다른 학급 화면은 그것을 듣고 다시 그림 */
-import { onEnter } from '../../core/shell.js';
+import { onEnter, go } from '../../core/shell.js';
+import { getYears, prepYear } from '../../core/years.js';
 import { toast } from '../../core/ui.js';
 import * as ai from '../../core/ai.js';
 import { readText, fileMessage } from '../../core/files.js';
@@ -49,12 +50,20 @@ function subHTML(ctx, s) {
     <button class="btn text" type="button" data-c="delSub" data-id="${esc(s.id)}">삭제</button>
   </li>`;
 }
+/* 1·2월에 지난 학년도에서 준비하면: 새 학년도를 먼저 시작하라고 알림 (지금 넣은 것은 새 학년도를 시작할 때 가져갈 수 있음) */
+function prepNote() {
+  let cur = 0;
+  try { cur = getYears(window.localStorage).current; } catch (e) { return ''; }
+  const next = prepYear(today(), cur);
+  return next ? `<div class="banner warn"><span class="grow">${next}학년도 준비라면 설정 › 학년도에서 새 학년도를 먼저 시작해 주세요. 지금 넣으면 ${cur}학년도 자료에 들어가요. (새 학년도를 시작할 때 학급 준비를 가져갈 수도 있어요)</span><button class="btn" type="button" data-c="toYears">학년도로 가기</button></div>` : '';
+}
 function render() {
   if (!box) return;
   const info = getInfo(), tt = getTimetable(), subs = listSubjects(), ctx = makeCtx();
   const names = [...new Set([...subs.map(s => s.name), ...NAMES])];
   box.innerHTML = `<div class="m-page cls-page cls-setup-page">
     <div class="m-head"><h2 class="cls-h2">준비</h2><p class="muted">학급, 시간표, 교과 진도표를 넣어요. 학교에서 받은 한글 파일을 그대로 올려도 돼요.</p></div>
+    ${prepNote()}
     <div class="yp-card">
       <h3>학급</h3>
       <div class="row cls-class">
@@ -364,7 +373,8 @@ document.addEventListener('click', e => {
   const b = e.target.closest('[data-c]');
   if (!b) return;
   const c = b.dataset.c;
-  if (c === 'sample') askSample();
+  if (c === 'toYears') go('settings', 'years');
+  else if (c === 'sample') askSample();
   else if (c === 'delSub') askDelete(b.dataset.id);
   else if (c === 'editSub') { const s = listSubjects().find(x => x.id === b.dataset.id); if (s) openEditor(s); }
   else if (c === 'addSub') openAdd();

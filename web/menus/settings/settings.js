@@ -6,7 +6,7 @@ import * as ai from '../../core/ai.js';
 import { readTable } from '../../core/sheet.js';
 import { parseRoster } from '../../core/roster.js';
 import { saveFile } from '../../core/ui.js';
-import { getYears, snapshot, carryOver, makeBackup, parseBackup } from '../../core/years.js';
+import { getYears, snapshot, carryOver, makeBackup, parseBackup, prepYear } from '../../core/years.js';
 import { switchYear, switchError, getArchive, safeLS } from '../../core/year-switch.js';
 import { FULL_MSG, usage, get as sget, set as sset } from '../../core/store.js';
 
@@ -39,7 +39,7 @@ const card = (title, body) => `<section class="set-card"><h3>${title}</h3>${body
 
 const VIEWS = {
   roster: () => page('학급 명단', '창의적 체험활동·행동특성·평가지 채점이 같은 명단을 써요.',
-    card('학생 수와 예외 번호', (SSAM().rosterHTML ? SSAM().rosterHTML() : '')
+    card('학생 수와 예외 번호', prepNote() + (SSAM().rosterHTML ? SSAM().rosterHTML() : '')
       + `<div class="row"><button class="btn" type="button" data-set="rosterFile">엑셀·CSV에서 가져오기</button>
         <span class="muted">나이스 학생 명렬표처럼 「번호」 칸이 있는 파일. 번호만 읽고 이름은 저장하지 않아요.</span></div>
         <input type="file" id="rosterFile" accept=".xlsx,.csv,.xls" hidden>`)),
@@ -129,6 +129,12 @@ async function testAi() {
 }
 
 /* ---------- 학년도 ---------- */
+/* 1·2월에 지난 학년도에서 명단을 넣으면 새 학년도를 먼저 시작하라고 알림 */
+function prepNote() {
+  const d = new Date(), today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const cur = curYear(), next = prepYear(today, cur);
+  return next ? `<p class="banner warn" style="margin:0 0 8px">${next}학년도 명단이라면 설정 › 학년도에서 새 학년도를 먼저 시작해 주세요. 지금 넣으면 ${cur}학년도 자료에 들어가요. (새 학년도를 시작할 때 「학급 준비도 가져가기」로 옮길 수도 있어요)</p>` : '';
+}
 /* 이 컴퓨터 저장 공간(사이트마다 약 5MB) 사용량, 70%가 넘으면 경고 */
 const usagePct = () => Math.round(usage(safeLS()).ratio * 100);
 const usageLine = () => `이 컴퓨터 저장 공간 ${usagePct()}% 사용 (약 5MB 중)`;
@@ -189,8 +195,12 @@ async function askNewYear() {
     <p class="muted" style="margin:0">${cur}학년도 자료는 보관함에 그대로 남고, 언제든 돌아올 수 있어요. 백업 파일도 만들어 두면 좋아요.</p>
     <ul class="yr-sum"><li><b>가져가는 것</b> 연간계획·행사계획(내년 계획의 작년 자료로), 학사일정 중 ${next}학년도(3월 1일부터) 날짜, 학교명·학급 수·학생 수, 평어·행특·채점·나이스 입력 설정, 품의 기준 금액</li>
       <li><b>비우는 것</b> 학급 명단, 평가 자료(평가계획·평어·창체·행특·채점 결과), 학급 메뉴(시간표·진도표·체크·주간학습안내), 작성 중인 품의</li></ul>
+    <label class="switch"><input type="checkbox" id="yrClassToo">학급 준비도 가져가기: 학급 명단·학년 반·시간표·진도표 (2월에 ${next}학년도 준비를 미리 넣었을 때. 진도는 처음부터, 체크는 비워요)</label>
     ${keyNote()}${sheetBtns('yrNewOk', `${next}학년도 시작하기`, '<button class="btn" type="button" data-sheet="backup">백업 파일 만들기</button>')}`,
-  onOk('yrNewOk', () => { SSAM().closeSheet(); go(next, carryOver(snapshot(safeLS()), next)); }));
+  sh => sh.querySelector('#yrNewOk').addEventListener('click', () => {
+    const classSetup = sh.querySelector('#yrClassToo').checked;
+    SSAM().closeSheet(); go(next, carryOver(snapshot(safeLS()), next, { classSetup }));
+  }));
 }
 function askGo(y) {
   SSAM().openSheet(`<h3>${y}학년도로 갈까요?</h3><p class="muted" style="margin:0">지금(${curYear()}학년도) 자료는 보관함에 남아요. 앱을 다시 열어요.</p>${keyNote()}${sheetBtns('yrGoOk', `${y}학년도로 가기`)}`,
