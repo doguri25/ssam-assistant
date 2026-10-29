@@ -17,6 +17,9 @@ body{background:var(--page)}
 .side-btn:hover{background:var(--frame-active)}
 .side-btn[aria-current="page"]{background:var(--frame-active);color:var(--frame-active-ink);font-weight:700}
 .side-btn[aria-current="page"] svg{color:var(--frame-icon-active)}
+.side-year{display:flex;align-items:baseline;justify-content:space-between;gap:6px;width:100%;padding:8px 14px;margin-bottom:6px;border:1px solid var(--frame-line);border-radius:10px;background:transparent;text-align:left}
+.side-year small{font-size:12px;color:var(--frame-ink2)}
+.side-year b{font-size:13.5px;font-weight:600;color:var(--frame-strong)}
 .side-ai{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%;padding:12px 14px;border:0;border-radius:10px;background:var(--frame-box);text-align:left}
 .side-ai small{font-size:12px;color:var(--frame-ink2)}
 .side-ai b{font-size:13.5px;font-weight:600;color:var(--frame-strong)}
@@ -47,7 +50,7 @@ section[data-menu="evaluate"][hidden]{display:none}
   .logo-mark{width:34px;height:34px;font-size:16px;border-radius:10px}
   .logo-name{display:none}
   .side-menus,.side-foot{flex-direction:row;flex-wrap:wrap;padding:0 6px;margin:0;gap:2px}
-  .side-ai{display:none}
+  .side-ai,.side-year{display:none}
   .side-btn{flex:none;width:auto;min-height:44px;padding:0 10px;gap:6px;font-size:14px;white-space:nowrap}
   /* 헤더: 첫 줄 제목·버튼, 둘째 줄 가로 메뉴 */
   .app-top{height:auto;flex-wrap:wrap;padding:0 12px;gap:0 12px}

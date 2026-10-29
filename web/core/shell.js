@@ -2,6 +2,7 @@
    평가 메뉴의 가로 메뉴는 기존 앱의 화면(mode)과 같음: window.SSAM.setMode로 바꿈 */
 import { icon } from './icons.js';
 import { renderPlaceholder } from '../menus/placeholder.js';
+import { getYears } from './years.js';
 
 export const MENUS = [
   { id: 'evaluate', label: '평가', tabs: [['pyeongeo', '교과 평어'], ['cc', '창의적 체험활동'], ['hk', '행동특성'], ['gr', '평가지 채점']] },
@@ -9,7 +10,7 @@ export const MENUS = [
   { id: 'plan', label: '계획', tabs: [['year', '연간계획'], ['event', '행사계획']] },
   { id: 'class', label: '학급', tabs: [['today', '오늘 수업'], ['progress', '진도표·시수'], ['weekly', '주간학습안내']] },
   { id: 'purchase', label: '품의', tabs: [['new', '새 품의'], ['templates', '저장한 템플릿'], ['recent', '최근 작성']] },
-  { id: 'settings', label: '설정', tabs: [['roster', '학급 명단'], ['ai', 'AI'], ['screen', '화면'], ['school', '학교 정보'], ['purchase', '품의 기준']] }
+  { id: 'settings', label: '설정', tabs: [['roster', '학급 명단'], ['ai', 'AI'], ['screen', '화면'], ['school', '학교 정보'], ['years', '학년도'], ['purchase', '품의 기준']] }
 ].map(m => ({ ...m, icon: m.id, tabs: m.tabs.map(([id, label]) => ({ id, label })) }));
 
 const NAV_KEY = 'ssam:nav';
@@ -77,6 +78,12 @@ function drawSide() {
   $('#sideSettings').innerHTML = btn(find('settings'));
 }
 
+/* 세로 메뉴 아래 「2026학년도」 (누르면 설정 › 학년도) */
+function drawYear() {
+  const el = $('#sideYear');
+  if (el) el.innerHTML = `<small>학년도</small><b>${getYears(localStorage).current}학년도</b>`;
+}
+
 /* 세로 메뉴 아래 「사용 중인 AI」 */
 function drawAi() {
   const name = SSAM().ai && SSAM().ai.engineReady && SSAM().ai.engineReady() ? SSAM().ai.engineName() : '';
@@ -85,10 +92,12 @@ function drawAi() {
 
 function init() {
   drawSide();
+  drawYear();
   document.addEventListener('click', e => {
     const g = e.target.closest('[data-menu-go]'); if (g) { go(g.dataset.menuGo); return; }
     const t = e.target.closest('#menuTabs [data-tab]'); if (t) { go(cur.menu, t.dataset.tab); return; }
     if (e.target.closest('#sideAi')) { go('settings', 'ai'); return; }
+    if (e.target.closest('#sideYear')) { go('settings', 'years'); return; }
     // ⋮ 메뉴의 평가계획 일(새로 넣기·저장된 계획·대명사 줄이기)은 평가 화면에서 보이게 함
     const a = e.target.closest('#menu [data-act]');
     if (a && EVAL_ACTS.includes(a.dataset.act) && cur && cur.menu !== 'evaluate') go('evaluate');

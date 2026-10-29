@@ -5257,6 +5257,8 @@ window.SSAM = {
   rosterHTML, toast, openSheet, closeSheet, esc, copyText,
   // 설정 › 학급 명단 엑셀 가져오기
   setClass: (count, except) => setClass(count, except, 'roster'),
+  // 학년도를 옮기는 동안 평가 메뉴의 저장도 멈춤
+  freeze: on => { S.wiping = !!on; },
   // 새 메뉴(품의 등)가 쓰는 파일 읽기: 한글 파일 글, PDF·사진 → AI에 보낼 그림
   files: {
     readHwpxText: async u8 => blocksToText(await parseHWPX(u8, DOMParser)),
