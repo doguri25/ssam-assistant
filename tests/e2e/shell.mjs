@@ -112,6 +112,15 @@ await run('shell', [
     assert(await page.isVisible('section[data-menu="evaluate"]'), '평가 화면이 안 보임');
     await page.keyboard.press('Escape');
   }],
+  ['단원평가·창체·평가지 채점 탭에서 ⋮ → 새 평가계획 넣기를 누르면 교과 평어의 넣기 화면이 보임', async () => {
+    for (const tab of ['unit', 'cc', 'gr']) {
+      await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click(`#menuTabs [data-tab="${tab}"]`);
+      await page.click('#menuBtn'); await page.click('#menu [data-act="new"]');
+      await page.waitForTimeout(150);
+      assert(await page.getAttribute('#menuTabs [data-tab="pyeongeo"]', 'aria-current') === 'page', tab + ': 탭이 그대로');
+      assert(await page.isVisible('#importView'), tab + ': 넣기 화면이 안 보임');
+    }
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();

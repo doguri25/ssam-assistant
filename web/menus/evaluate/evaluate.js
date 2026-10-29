@@ -1959,7 +1959,8 @@ function doAct(act, el) {
     case 'resume': resumeGen(); break;
     case 'regenSubj': confirmRegenSubject(S.subject); break;
     case 'perms': if (cap.perms && cap.perms.manage) cap.perms.manage().catch(() => toast('권한 창을 열지 못했어요. 이 페이지의 권한 메뉴를 이용해 주세요.')); break;
-    case 'new': $('#menu').hidden = true; S.plan = null; S.planId = null; stopAll(); renderAll(); noteEngine(); break;
+    // 다른 평가 탭(단원평가·창체·평가지 채점)에서 눌러도 넣기 화면이 보이게 교과 평어로 감
+    case 'new': $('#menu').hidden = true; S.plan = null; S.planId = null; stopAll(); setMode('pyeongeo'); noteEngine(); break;
     case 'plans': $('#menu').hidden = true; openPlans(); break;
     case 'settings': $('#menu').hidden = true; openSettings(); break;
     case 'keys': openSettings(); break;
