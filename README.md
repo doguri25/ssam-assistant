@@ -60,3 +60,7 @@ npm run tauri build -- --bundles nsis   # Windows 앱 (Windows에서)
 
 - **Windows 앱**: Actions → 「Windows 앱 빌드·릴리즈 (쌤비서)」를 「릴리즈 만들기」를 켜고 실행하면 `package.json` 버전으로 릴리즈를 만들고 설치 파일·`latest.json`을 올려요. 바뀐 점은 `.github/RELEASE_NOTES.md`의 `whats-new` 사이에 적어요.
 - **웹판**: main에 올릴 때마다 `web/` 폴더가 GitHub Pages로 배포돼요.
+
+## 함께 쓴 공개 소프트웨어
+
+- [pdf.js](https://github.com/mozilla/pdf.js) 3.11.174 (Apache License 2.0): PDF 읽기. 앱 안 `web/vendor/pdfjs/`에 그대로 넣어 인터넷이 막혀도 동작해요.

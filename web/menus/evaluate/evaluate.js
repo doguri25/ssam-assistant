@@ -3118,7 +3118,8 @@ function loadScript(src) {
 function loadPdfJs() {
   if (window.pdfjsLib && window.pdfjsWorker) return Promise.resolve(window.pdfjsLib);
   if (pdfP) return pdfP;
-  const bases = ['https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/', 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/'];
+  // 앱 안의 파일(vendor/pdfjs)을 먼저: 학교망·인터넷이 막혀도 PDF를 읽게. 없으면 같은 판을 CDN에서
+  const bases = ['vendor/pdfjs/', 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/', 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/'];
   pdfP = (async () => {
     for (const b of bases) {
       try {
