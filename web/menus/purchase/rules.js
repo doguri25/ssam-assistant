@@ -98,3 +98,21 @@ export function composeReason({ intro, purpose, date, target, place }) {
     .filter(([, , v]) => !blank(v)).map(([k, l, v]) => `${k}. ${l}: ${String(v).trim()}`);
   return `${String(intro || '').trim()}\n\n${lines.join('\n')}`;
 }
+
+/* 한글 파일(.hwpx)로 내보낼 문서: 제목, 1. 품의 사유, 2. 산출 내역 표, 예산 과목 */
+export function purchaseDoc(form, draft) {
+  const f = form || {}, d = draft || {};
+  const items = cleanItems(f.items);
+  const rows = [['품명', '규격', '수량', '단가', '금액'],
+    ...items.map(it => [it.name, it.spec, String(toNumber(it.qty)), won(toNumber(it.price)), won(itemAmount(it))]),
+    ['합계', '', '', '', won(sumItems(f.items))]];
+  const budget = f.budgetUnknown || blank(f.budget) ? '행정실 확인 필요' : String(f.budget).trim();
+  return {
+    title: String(d.title || f.project || '품의').trim(),
+    blocks: [
+      { type: 'h', text: '1. 품의 사유' }, { type: 'p', text: d.reason || '' },
+      { type: 'h', text: '2. 산출 내역' }, { type: 'table', head: true, rows },
+      { type: 'p', text: `예산 과목: ${budget}` }
+    ]
+  };
+}

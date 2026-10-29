@@ -8,7 +8,8 @@
     "web": "node scripts/copy-web.mjs",
     "test": "node --test tests/unit/*.test.mjs",
     "e2e": "node tests/e2e/run-all.mjs",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "samples": "node scripts/make-samples.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.12.1",

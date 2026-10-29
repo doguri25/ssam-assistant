@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod ai_proxy;
+mod files;
 mod neis;
 mod updater;
 
@@ -299,7 +300,8 @@ fn main() {
             install_update,
             neis::neis_arm,
             neis::neis_disarm,
-            ai_proxy::ai_proxy
+            ai_proxy::ai_proxy,
+            files::save_download
         ])
         .run(tauri::generate_context!())
         .expect("쌤비서를 실행하지 못했어요");

@@ -1,7 +1,7 @@
 // 품의 계산·점검 규칙 (PRD 5.2 P-1·P-4~P-7)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TYPES, emptyForm, toNumber, itemAmount, cleanItems, sumItems, findPersonal, checkPurchase, itemsTSV, composeReason } from '../../web/menus/purchase/rules.js';
+import { TYPES, emptyForm, toNumber, itemAmount, cleanItems, sumItems, findPersonal, checkPurchase, itemsTSV, composeReason, purchaseDoc } from '../../web/menus/purchase/rules.js';
 
 test('품의 종류 4개', () => {
   assert.deepEqual(TYPES.map(t => [t.id, t.label]), [['goods', '물품 구입'], ['lecturer', '강사 수당'], ['event', '행사 운영'], ['meeting', '협의회']]);
@@ -55,4 +55,17 @@ test('표 복사와 품의 사유', () => {
   assert.equal(composeReason({ intro: '실험 재료를 구입하고자 합니다.', purpose: '실험', date: '11월 10일', target: '5학년', place: '' }),
     '실험 재료를 구입하고자 합니다.\n\n가. 목적: 실험\n나. 일시: 11월 10일\n다. 대상: 5학년');
   assert.equal(composeReason({ intro: 'A', purpose: 'p', date: 'd', target: 't', place: '과학실' }).split('\n').pop(), '라. 장소: 과학실');
+});
+
+test('한글 파일용 문서: 제목·사유·산출 내역 표(쉼표 금액, 합계 줄)', () => {
+  const d = purchaseDoc({ ...ok, budget: '운영비' }, { title: '실험 재료 구입', reason: '사유 첫 줄\n\n가. 목적: 실험' });
+  assert.equal(d.title, '실험 재료 구입');
+  assert.deepEqual(d.blocks.map(b => b.type), ['h', 'p', 'h', 'table', 'p']);
+  const t = d.blocks[3];
+  assert.equal(t.head, true);
+  assert.deepEqual(t.rows[0], ['품명', '규격', '수량', '단가', '금액']);
+  assert.deepEqual(t.rows[1], ['비커', '500ml', '2', '3,000', '6,000']);
+  assert.deepEqual(t.rows.at(-1), ['합계', '', '', '', '6,000']);
+  assert.equal(d.blocks[4].text, '예산 과목: 운영비');
+  assert.equal(purchaseDoc({ ...ok, budgetUnknown: true }, { title: 't', reason: 'r' }).blocks[4].text, '예산 과목: 행정실 확인 필요');
 });
