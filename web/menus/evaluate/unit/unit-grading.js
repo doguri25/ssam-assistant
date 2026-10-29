@@ -123,7 +123,13 @@ async function gradeOne(id, i) {
   } catch (e) {
     if (ctrl.signal.aborted) return;
     const t = getTest(id), st = t && t.students[i];
-    if (st && st.no === no) { st.status = 'error'; st.err = e && e.code === 'no_scan' ? '스캔이 없어요. 답안 스캔을 다시 올려 주세요' : e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요' : ai.errorMessage(e && e.code, e); saveOrWarn(t); }
+    const why = e && e.code === 'no_scan' ? '스캔이 없어요. 답안 스캔을 다시 올려 주세요' : e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요' : ai.errorMessage(e && e.code, e);
+    if (st && st.no === no) { st.status = 'error'; st.err = why; saveOrWarn(t); }
+    // 키가 틀리거나 한도에 걸리면 남은 학생도 똑같이 실패하므로 멈추고 까닭을 한 번 알림
+    if (e && ['auth', 'quota', 'rate_limited'].includes(e.code) && G.run && G.run.id === id && !G.run.stop) {
+      G.run.stop = true; G.run.queue = [];
+      toast(`채점을 멈췄어요. ${why} 남은 학생은 [채점 시작]으로 이어서 해요.`, 9000);
+    }
   } finally { G.running.delete(i); refresh(id); }
 }
 async function runQueue(id, list) {

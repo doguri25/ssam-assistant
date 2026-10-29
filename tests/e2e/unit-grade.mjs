@@ -278,6 +278,25 @@ await run('unit-grade', [
     assert(a.key.items.at(-1).no === 10 && a.students.every(s => !s.items[10]), JSON.stringify(a.students.map(s => s.items[10])));
     await page.click(`${V} [data-un="back"]`);
   }],
+  ['검토 고침: AI 키가 틀리면(401) 남은 학생은 부르지 않고 멈춘 까닭을 알림', async () => {
+    let calls = 0;
+    const deny = async route => { calls++; await new Promise(r => setTimeout(r, 200)); await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }) }); };
+    await page.route('https://api.anthropic.com/**', deny);
+    await page.click(`${V} [data-un-open="${A}"]`);
+    await page.click(`${V} .steps [data-step="2"]`);
+    await page.setInputFiles(`${V} #unAnsFile`, files);
+    await page.waitForFunction(() => document.querySelectorAll('.unit-box [data-st]').length === 3);
+    await page.click(`${V} [data-un="toGrade"]`);
+    await page.click(`${V} [data-un="grade"]`);
+    if (await page.locator('#sheetRoot #unRegradeOk').count()) await page.click('#sheetRoot #unRegradeOk');
+    if (await page.locator('#sheetRoot #unNoMaskOk').count()) await page.click('#sheetRoot #unNoMaskOk');
+    await page.waitForTimeout(1500);
+    await page.unroute('https://api.anthropic.com/**', deny);
+    for (let k = errors.length - 1; k >= 0; k--) if (errors[k].includes('401')) errors.splice(k, 1); // 일부러 낸 401
+    assert(calls === 2, `부른 수 ${calls}`);
+    assert((await page.textContent('#toast')).includes('채점을 멈췄어요'), await page.textContent('#toast'));
+    await page.click(`${V} [data-un="back"]`);
+  }],
   ['업스테이지면 손글씨 안내', async () => {
     await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'upstage', keys: { upstage: 'up-test' }, remember: true })));
     await page.reload(); await page.waitForTimeout(500);
