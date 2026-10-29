@@ -33,6 +33,15 @@ test('망가진 저장 값', () => {
   store.set('yearplans', [null, { id: 1 }, { id: 'a', name: '독서' }]);
   const l = listPlans();
   assert.equal(l.length, 1); assert.equal(l[0].name, '독서'); assert.equal(l[0].status, 'draft'); assert.deepEqual(l[0].sources, { lastPlan: '', lastResult: '', guide: '' });
+  assert.equal(l[0].step, 1); assert.equal(l[0].maxStep, 1);
+});
+
+test('단계 기억: 1~5만, maxStep은 step보다 작지 않음', () => {
+  store.useStorage(mem());
+  const p = savePlan({ ...newPlan(), name: 'a', step: 3, maxStep: 2 });
+  assert.equal(getPlan(p.id).step, 3); assert.equal(getPlan(p.id).maxStep, 3);
+  const q = savePlan({ ...newPlan(), name: 'b', step: 9, maxStep: 'x' });
+  assert.equal(getPlan(q.id).step, 1); assert.equal(getPlan(q.id).maxStep, 1);
 });
 
 test('AI 답 다듬기', () => {

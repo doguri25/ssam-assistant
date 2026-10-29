@@ -1,0 +1,47 @@
+/* 계획 메뉴(연간계획·행사계획) 공통 */
+.yp-grid{display:grid;grid-template-columns:220px minmax(0,1fr);gap:20px;align-items:start;margin-top:16px}
+.yp-side{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m);padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.yp-side-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.yp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.yp-item{width:100%;text-align:left;border:0;background:transparent;border-radius:var(--r-s);padding:8px 10px;display:flex;flex-direction:column;gap:2px;color:var(--ink);font:inherit;cursor:pointer;min-height:44px}
+.yp-item:hover{background:var(--surface2)}
+.yp-item[aria-current="true"]{background:var(--accent-soft);color:var(--accent-ink)}
+.yp-item .muted{font-size:12.5px}
+.yp-none{padding:4px 2px;font-size:13.5px}
+.yp-main{display:flex;flex-direction:column;gap:16px;min-width:0}
+.yp-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m);padding:20px 22px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.yp-card h3{margin:0;font:700 16px/1.3 var(--f-display)}
+.yp-fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.yp-f{display:flex;flex-direction:column;gap:6px;min-width:0}
+.yp-f.wide{grid-column:1/-1}
+.yp-f .field,.yp-src .field{width:100%;box-sizing:border-box;min-width:0}
+.yp-school{margin:0;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+.yp-src{display:flex;flex-direction:column;gap:6px}
+.yp-src + .yp-src{padding-top:14px;border-top:1px solid var(--line)}
+.yp-src-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.yp-src p{margin:0}
+.yp-files:empty{display:none}
+.yp-nav{align-items:center}
+.yp-review{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.yp-review section{display:flex;flex-direction:column;gap:8px;min-width:0}
+.yp-ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.yp-bad{display:flex;flex-direction:column;gap:6px;padding:10px 12px;background:var(--surface2);border-radius:var(--r-s)}
+.yp-bad + .yp-bad{margin-top:6px}
+.yp-bad p{margin:0}
+.yp-bad-t{font-weight:600}
+.req{color:var(--err);font-weight:700}
+.field.bad{border-color:var(--err);box-shadow:0 0 0 1px var(--err)}
+/* 단계 표시 */
+.steps{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.steps li{display:flex}
+.steps-in{display:flex;align-items:center;gap:8px;padding:6px 14px 6px 6px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink3);font:500 14px/1.2 var(--f-body);min-height:40px;box-sizing:border-box}
+button.steps-in{cursor:pointer;color:var(--ink2)}
+button.steps-in:hover{background:var(--surface2)}
+.steps-n{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--surface2);font-size:12.5px;font-weight:700}
+.steps li.cur .steps-in{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+.steps li.cur .steps-n{background:rgba(255,255,255,.22);color:var(--on-accent)}
+.steps li.done .steps-n{background:var(--accent-soft);color:var(--accent-ink)}
+.yp-idea{display:flex;align-items:flex-start;gap:8px;font-size:14.5px;line-height:1.45;cursor:pointer;min-height:28px}
+.yp-idea input{width:18px;height:18px;margin:1px 0 0;flex:none;accent-color:var(--accent)}
+@media (max-width:900px){ .yp-grid{grid-template-columns:minmax(0,1fr)} .yp-review{grid-template-columns:minmax(0,1fr)} }
+@media (max-width:600px){ .yp-fields{grid-template-columns:minmax(0,1fr)} .yp-card{padding:16px} .steps-t{font-size:13px} }

@@ -22,7 +22,7 @@ export function newPlan() {
     id: 'yp' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     name: '', year: getSchool().year, goal: '', owner: '', budget: '',
     sources: { lastPlan: '', lastResult: '', guide: '' }, sourceNames: { lastPlan: [], lastResult: [], guide: [] },
-    review: null, guide: null, draft: null, status: 'draft', updatedAt: 0
+    review: null, guide: null, draft: null, status: 'draft', step: 1, maxStep: 1, updatedAt: 0
   };
 }
 
@@ -40,6 +40,10 @@ function normPlan(v) {
   p.guide = v.guide == null ? null : normGuide(v.guide);
   p.draft = normDraft(v.draft);
   p.status = v.status === 'final' ? 'final' : 'draft';
+  // 화면 단계(1~5)와 가 본 가장 먼 단계
+  const st = n => (Number.isInteger(n) && n >= 1 && n <= 5 ? n : 1);
+  p.step = st(v.step);
+  p.maxStep = Math.max(p.step, st(v.maxStep));
   p.updatedAt = Number.isFinite(v.updatedAt) ? v.updatedAt : 0;
   return p;
 }
