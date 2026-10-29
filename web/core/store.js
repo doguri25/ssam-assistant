@@ -29,6 +29,11 @@ export function set(key, value) {
   catch (e) { for (const fn of failHooks) { try { fn(key, e); } catch (er) {} } return false; }
 }
 
+/* 미뤄 둔 저장(글을 칠 때 잠깐 기다렸다 쓰는 것)을 지금 쓰게 하는 함수들: 창을 닫거나 학년도를 옮기기 전에 부름 */
+const flushHooks = new Set();
+export function onFlush(fn) { flushHooks.add(fn); return () => flushHooks.delete(fn); }
+export function flushAll() { for (const fn of flushHooks) { try { fn(); } catch (e) {} } }
+
 export function remove(key) {
   if (frozen) return;
   try { if (storage) storage.removeItem(PREFIX + key); } catch (e) {}

@@ -19,6 +19,7 @@ await mockClaude(page, async ({ prompt }) => {
 const V = 'section[data-menu="plan"]';
 const go = async () => { await page.click('nav.app-side [data-menu-go="plan"]'); await page.click('#menuTabs [data-tab="event"]'); };
 const seed = (evs, cur) => page.evaluate(async ([evs, cur]) => {
+  (await import('./core/store.js')).flushAll(); // 화면이 미뤄 둔 저장이 나중에 덮지 않게
   localStorage.removeItem('ssam:events');
   const m = await import('./menus/plan/event-model.js');
   const ids = evs.map(e => m.saveEvent({ ...m.newEvent(), ...e }).id);

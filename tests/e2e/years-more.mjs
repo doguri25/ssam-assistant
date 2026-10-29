@@ -118,6 +118,27 @@ await run('years-more', [
     await c2.close();
     assert(r.list.length === 1 && r.list[0].year === 2024 && r.list[0].size === 7 && r.got.hk === '"x"', JSON.stringify(r));
   }],
+  ['연간계획에 쓰자마자 학년도를 옮겨도 친 글이 지난 학년도에 남음', async () => {
+    await page.reload(); await page.waitForTimeout(400);
+    await page.click('nav.app-side [data-menu-go="plan"]'); await page.click('#menuTabs [data-tab="year"]');
+    await page.click('section[data-menu="plan"] #ypName');
+    await page.keyboard.type('쓰자마자 계획');
+    const [from, to] = await page.evaluate(async () => {
+      const y = (await import('./core/years.js')).getYears(localStorage), have = (await (await import('./core/archive.js')).openArchive().list()).map(x => x.year);
+      let to = y.current + 1; while (have.includes(to)) to++;
+      return [y.current, to];
+    });
+    await Promise.all([
+      page.waitForEvent('load'),
+      page.evaluate(async to => {
+        const y = await import('./core/years.js'), s = await import('./core/year-switch.js');
+        s.switchYear(to, y.carryOver(y.snapshot(localStorage), to));
+      }, to)
+    ]);
+    await page.waitForTimeout(500);
+    const a = await archiveGet(from);
+    assert(a && String(a.yearplans).includes('쓰자마자 계획'), String(a && a.yearplans).slice(0, 120));
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();

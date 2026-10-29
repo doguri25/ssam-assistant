@@ -1,5 +1,6 @@
 /* 계획 › 행사계획: 1 행사 정보 → 2 구성안 → 3 문서 → 4 설문·결과 (PRD 5.4).
    연간계획(year.js)과 같은 틀: 지난 행사 목록 + 단계. AI 답은 시작할 때의 행사 id에 저장 */
+import { onFlush } from '../../core/store.js';
 import { onEnter } from '../../core/shell.js';
 import * as ai from '../../core/ai.js';
 import { readText, fileMessage } from '../../core/files.js';
@@ -44,7 +45,14 @@ function unconfirm() {
   removeEvents('event:' + ev.id);
 }
 
+/* 글을 칠 때는 잠깐 멈춘 뒤 한 번만 저장 (치는 글자마다 목록 전체를 다시 쓰지 않게). 다른 일을 하기 전에는 flushSave */
+let saveT = 0;
+function persistSoon() { clearTimeout(saveT); saveT = setTimeout(persist, 400); }
+function flushSave() { if (saveT) persist(); }
+onFlush(flushSave);
+document.addEventListener('menu:go', flushSave); // 다른 메뉴로 갈 때
 function persist() {
+  clearTimeout(saveT); saveT = 0;
   if (!saved && !ev.name.trim()) return;
   const s = saveEvent(ev);
   if (!s) { if (!warnedFull) { warnedFull = true; toast('저장 공간이 모자라 저장하지 못했어요. 쓰지 않는 행사를 지우거나 긴 자료를 줄여 주세요.', 8000); } return; }
@@ -55,6 +63,7 @@ function persist() {
   renderList();
 }
 function apply(id, fn) {
+  flushSave(); // 친 글을 먼저 저장해야 아래에서 다시 읽어도 남음
   const e = getEvent(id);
   if (!e) return;
   fn(e);
@@ -98,13 +107,16 @@ function render() {
   renderMain();
 }
 
+/* 목록이 그대로면 다시 그리지 않음 (저장할 때마다 단추를 바꾸면 누르는 중인 단추가 사라짐) */
+const listShown = new WeakMap();
 function renderList() {
   const ul = box && box.querySelector('#evList');
   if (!ul) return;
   const list = listEventPlans();
-  ul.innerHTML = list.length ? list.map(e => `<li><button type="button" class="yp-item" data-ev="${esc(e.id)}" ${e.id === ev.id ? 'aria-current="true"' : ''}>
+  const html = list.length ? list.map(e => `<li><button type="button" class="yp-item" data-ev="${esc(e.id)}" ${e.id === ev.id ? 'aria-current="true"' : ''}>
       <b>${esc(e.name || '이름 없는 행사')}</b><span class="muted">${esc(kindName(e.kind))}${e.date ? ' · ' + e.date : ''} · ${e.status === 'final' ? '확정' : '작성 중'}</span></button></li>`).join('')
     : '<li class="muted yp-none">아직 없어요.</li>';
+  if (listShown.get(ul) !== html) { ul.innerHTML = html; listShown.set(ul, html); }
 }
 
 function renderMain() {
@@ -567,7 +579,7 @@ document.addEventListener('input', e => {
     box.querySelectorAll('#evRoles tr[data-role]').forEach(tr => { const x = ev.docs.roles[+tr.dataset.role]; tr.classList.toggle('ev-over', !!x && over.includes(x.name)); });
   } else return;
   if (el.dataset.docf || el.dataset.rf || el.id === 'evRain') unconfirm();
-  persist();
+  persistSoon();
 });
 document.addEventListener('change', e => {
   if (!box || !box.contains(e.target) || curTab !== 'event') return;
@@ -612,6 +624,7 @@ document.addEventListener('change', e => {
 });
 document.addEventListener('click', e => {
   if (!box || !box.contains(e.target) || curTab !== 'event') return;
+  flushSave();
   const item = e.target.closest('[data-ev]');
   if (item) { const x = getEvent(item.dataset.ev); if (x) { ev = x; saved = true; setCurrentEvent(x.id); render(); } return; }
   const st = e.target.closest('[data-step]');
@@ -690,5 +703,6 @@ onEnter('plan', (tab, section) => {
   if (!box || !section.contains(box)) { box = document.createElement('div'); box.className = 'ev-box'; section.append(box); }
   curTab = tab;
   box.hidden = tab !== 'event';
+  flushSave();
   if (tab === 'event') { const x = getEvent(ev.id); if (x) ev = x; render(); }
 });

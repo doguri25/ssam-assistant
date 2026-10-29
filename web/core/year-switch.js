@@ -1,7 +1,7 @@
 /* 학년도 옮기기를 화면에서 부르는 곳: 저장 멈춤(쌤비서 저장 + 평가 메뉴) → 옮기기 → 다시 열기 */
 import { moveTo } from './years.js';
 import { openArchive } from './archive.js';
-import { freeze, unfreeze } from './store.js';
+import { freeze, unfreeze, flushAll } from './store.js';
 import { busyCount } from './ai.js';
 
 const S = () => window.SSAM || {};
@@ -12,6 +12,7 @@ export const getArchive = () => archive || (archive = openArchive());
 export async function switchYear(target, data = null) {
   // AI가 쓰는 중이면 옮기지 않음 (다시 열면 그 글을 잃으므로). 평가 메뉴의 미뤄 둔 저장은 먼저 씀
   if (busyCount() > 0 || (S().busy && S().busy())) return { ok: false, code: 'BUSY' };
+  flushAll();
   if (S().flush) { try { await S().flush(); } catch (e) {} }
   const r = await moveTo(target, {
     ls: localStorage, archive: getArchive(), data,

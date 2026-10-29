@@ -14,8 +14,9 @@ await mockClaude(page, async () => {
 });
 const Y = 'section[data-menu="plan"]';
 const go = async () => { await page.click('nav.app-side [data-menu-go="plan"]'); await page.click('#menuTabs [data-tab="year"]'); };
-// 계획을 바로 저장해 두고 그 계획을 엶
+// 계획을 바로 저장해 두고 그 계획을 엶 (화면이 미뤄 둔 저장을 먼저 써서 나중에 덮지 않게)
 const seed = (plans, cur) => page.evaluate(async ([plans, cur]) => {
+  (await import('./core/store.js')).flushAll();
   const m = await import('./menus/plan/year-model.js');
   const ids = plans.map(p => m.savePlan({ ...m.newPlan(), ...p }).id);
   m.setCurrent(ids[cur]);
@@ -72,6 +73,7 @@ await run('year-plan-fixes', [
     await page.click(`${Y} #ypOwner`);
     await page.keyboard.type('ABCDEFGHIJ', { delay: 220 });
     slow = 0;
+    await page.waitForTimeout(500); // 치기를 멈추면 저장
     assert(await page.inputValue(`${Y} #ypOwner`) === 'ABCDEFGHIJ', '값: ' + await page.inputValue(`${Y} #ypOwner`));
     const p = await page.evaluate(async id => (await import('./menus/plan/year-model.js')).getPlan(id), id);
     assert(p.owner === 'ABCDEFGHIJ' && p.draft && p.draft.purpose === '목적', JSON.stringify({ owner: p.owner, draft: !!p.draft }));
@@ -85,6 +87,43 @@ await run('year-plan-fixes', [
     await page.click('#sheetRoot [data-y="deleteYes"]');
     assert(!(await page.textContent(`${Y} #ypList`)).includes('지울 계획'), '목록에 남음');
     assert(!(await page.evaluate(id => JSON.parse(localStorage.getItem('ssam:calendar') || '[]').some(e => e.source === 'year:' + id), id)), '학사일정에 남음');
+  }],
+  ['글자를 칠 때마다 계획 목록 전체를 다시 쓰지 않고, 멈추면 한 번 저장', async () => {
+    const big = 'ㄱ'.repeat(40000);
+    await seed(Array.from({ length: 6 }, (_, i) => ({ name: '긴 계획 ' + i, goal: 'g', sources: { last: big, guide: big }, step: 1, maxStep: 1 })), 0);
+    await page.reload(); await page.waitForTimeout(400); await go();
+    await page.evaluate(() => { window.__n = 0; const o = Storage.prototype.setItem; window.__o = o; Storage.prototype.setItem = function (k, v) { if (k === 'ssam:yearplans') window.__n++; return o.call(this, k, v); }; });
+    await page.click(`${Y} #ypGoal`); await page.keyboard.press('End');
+    await page.keyboard.type('를 이룬다', { delay: 30 });
+    const during = await page.evaluate(() => window.__n);
+    await page.waitForTimeout(700);
+    const after = await page.evaluate(() => window.__n);
+    const goal = await page.evaluate(async () => { const m = await import('./menus/plan/year-model.js'); return m.getPlan(m.currentId()).goal; });
+    assert(during <= 1 && after >= 1 && goal === 'g를 이룬다', `치는 동안 ${during}번, 뒤 ${after}번, 저장 「${goal}」`);
+  }],
+  ['치자마자 다른 메뉴로 가거나 창을 다시 열어도 친 글이 남음', async () => {
+    await page.click(`${Y} #ypGoal`); await page.keyboard.press('End'); await page.keyboard.type(' 꼭');
+    await page.click('nav.app-side [data-menu-go="class"]');
+    let goal = await page.evaluate(async () => { const m = await import('./menus/plan/year-model.js'); return m.getPlan(m.currentId()).goal; });
+    assert(goal.endsWith(' 꼭'), '메뉴: ' + goal);
+    await go();
+    await page.click(`${Y} #ypGoal`); await page.keyboard.press('End'); await page.keyboard.type('!');
+    await page.reload(); await page.waitForTimeout(400);
+    goal = await page.evaluate(async () => { const m = await import('./menus/plan/year-model.js'); return m.getPlan(m.currentId()).goal; });
+    assert(goal.endsWith(' 꼭!'), '다시 열기: ' + goal);
+  }],
+  ['행사계획도 글자마다 목록 전체를 다시 쓰지 않음', async () => {
+    await page.click('nav.app-side [data-menu-go="plan"]'); await page.click('#menuTabs [data-tab="event"]');
+    await page.fill('section[data-menu="plan"] #evName', '운동회');
+    await page.waitForTimeout(600);
+    await page.evaluate(() => { window.__n = 0; const o = window.__o || Storage.prototype.setItem; window.__o = o; Storage.prototype.setItem = function (k, v) { if (k === 'ssam:events') window.__n++; return o.call(this, k, v); }; });
+    await page.click('section[data-menu="plan"] #evPurpose');
+    await page.keyboard.type('협동심 기르기', { delay: 30 });
+    const during = await page.evaluate(() => window.__n);
+    await page.waitForTimeout(700);
+    const p = await page.evaluate(async () => { const m = await import('./menus/plan/event-model.js'); return m.getEvent(m.currentEventId()).purpose; });
+    assert(during <= 1 && p === '협동심 기르기', `치는 동안 ${during}번, 저장 「${p}」`);
+    await page.evaluate(() => { Storage.prototype.setItem = window.__o; });
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

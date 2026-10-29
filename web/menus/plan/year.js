@@ -1,5 +1,6 @@
 /* 계획 › 연간계획: 1 자료 넣기 → 2 작년 평가 → 3 지침 점검 → 4 초안 → 5 일정 (PRD 5.3).
    AI 답은 시작할 때의 계획 id에 저장해서, 그사이 다른 계획·메뉴로 가도 섞이지 않음 */
+import { onFlush } from '../../core/store.js';
 import { onEnter, go as goMenu } from '../../core/shell.js';
 import * as ai from '../../core/ai.js';
 import { readText, fileMessage } from '../../core/files.js';
@@ -31,7 +32,14 @@ let warnedFull = false;
 let showPrev = false; // 1단계 「지난 계획에서 불러오기」 목록
 
 /* 이름을 넣었거나 이미 저장된 계획이면 저장하고 목록을 고침 */
+/* 글을 칠 때는 잠깐 멈춘 뒤 한 번만 저장 (치는 글자마다 목록 전체를 다시 쓰지 않게). 다른 일을 하기 전에는 flushSave */
+let saveT = 0;
+function persistSoon() { clearTimeout(saveT); saveT = setTimeout(persist, 400); }
+function flushSave() { if (saveT) persist(); }
+onFlush(flushSave);
+document.addEventListener('menu:go', flushSave); // 다른 메뉴로 갈 때
 function persist() {
+  clearTimeout(saveT); saveT = 0;
   if (!saved && !plan.name.trim()) return;
   // 화면에서 고치는 값(빈 예산 줄 등)은 그대로 두고 저장 시각만 받음
   const s = savePlan(plan);
@@ -44,6 +52,7 @@ function persist() {
 }
 /* AI 답 등을 그 계획(id)에 반영. 보고 있는 계획이면 화면 값도 바꿈 */
 function apply(id, fn) {
+  flushSave(); // 친 글을 먼저 저장해야 아래에서 다시 읽어도 남음
   const p = getPlan(id);
   if (!p) return;
   fn(p);
@@ -80,13 +89,16 @@ function render() {
   renderMain();
 }
 
+/* 목록이 그대로면 다시 그리지 않음 (저장할 때마다 단추를 바꾸면 누르는 중인 단추가 사라짐) */
+const listShown = new WeakMap();
 function renderList() {
   const ul = box && box.querySelector('#ypList');
   if (!ul) return;
   const list = listPlans();
-  ul.innerHTML = list.length ? list.map(p => `<li><button type="button" class="yp-item" data-yp="${esc(p.id)}" ${p.id === plan.id ? 'aria-current="true"' : ''}>
+  const html = list.length ? list.map(p => `<li><button type="button" class="yp-item" data-yp="${esc(p.id)}" ${p.id === plan.id ? 'aria-current="true"' : ''}>
       <b>${esc(p.name || '이름 없는 계획')}</b><span class="muted">${p.year}학년도 · ${p.status === 'final' ? '확정' : '작성 중'}</span></button></li>`).join('')
     : '<li class="muted yp-none">아직 없어요.</li>';
+  if (listShown.get(ul) !== html) { ul.innerHTML = html; listShown.set(ul, html); }
 }
 
 function renderMain() {
@@ -456,7 +468,7 @@ document.addEventListener('input', e => {
     if (sum) sum.textContent = won(plan.draft.budget.reduce((s, x) => s + x.amount, 0));
   } else return;
   if (plan.status === 'final' && (el.dataset.sec || el.dataset.bud != null)) plan.status = 'draft';
-  persist();
+  persistSoon();
 });
 document.addEventListener('change', e => {
   if (!box || !box.contains(e.target) || curTab !== 'year') return;
@@ -472,6 +484,7 @@ document.addEventListener('change', e => {
 });
 document.addEventListener('click', e => {
   if (!box || !box.contains(e.target) || curTab !== 'year') return;
+  flushSave();
   const item = e.target.closest('[data-yp]');
   if (item) { const p = getPlan(item.dataset.yp); if (p) { plan = p; saved = true; setCurrent(p.id); render(); } return; }
   const st = e.target.closest('[data-step]');
@@ -526,5 +539,6 @@ onEnter('plan', (tab, section) => {
   curTab = tab;
   // 행사계획 탭은 event.js가 그림
   box.hidden = tab !== 'year';
+  flushSave();
   if (tab === 'year') { const p = getPlan(plan.id); if (p) plan = p; render(); }
 });

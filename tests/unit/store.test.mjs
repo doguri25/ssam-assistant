@@ -65,3 +65,12 @@ test('저장이 실패하면(저장 공간 꽉 참) 알림 함수를 부름, 멈
   store.set('big', 3);
   assert.deepEqual(seen, ['big']);
 });
+
+test('미뤄 둔 저장: flushAll이 등록한 함수를 모두 부르고, 뺀 함수는 부르지 않음', () => {
+  const seen = [];
+  const a = store.onFlush(() => seen.push('a'));
+  store.onFlush(() => seen.push('b'));
+  a();
+  store.flushAll();
+  assert.deepEqual(seen, ['b']);
+});
