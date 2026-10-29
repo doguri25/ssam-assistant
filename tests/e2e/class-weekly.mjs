@@ -39,8 +39,12 @@ await run('class-weekly', [
     assert(want.index === want.offset + 2, `차시 ${want.index}, 보정값 ${want.offset}`); // 목 국어(자)·금 국어 2시간
     assert(await page.inputValue(`${V} textarea[data-wc="0-1"]`) === want.text, '칸 글');
   }],
-  ['학사일정 줄에 그 주 일정', async () => {
+  ['학사일정 줄에 그 주 일정, 비우면 비운 채로', async () => {
     assert((await page.inputValue(`${V} textarea[data-wn="2-events"]`)).includes('현장체험학습'), '수요일 학사일정');
+    await page.fill(`${V} textarea[data-wn="2-events"]`, '');
+    await tab('today'); await tab('weekly');
+    assert(await page.inputValue(`${V} textarea[data-wn="2-events"]`) === '', '비운 칸에 자동 일정이 돌아옴');
+    await page.fill(`${V} textarea[data-wn="2-events"]`, '현장체험학습');
   }],
   ['칸을 고치면 저장되고, 다시 채우기로 지워짐', async () => {
     await page.fill(`${V} textarea[data-wc="1-1"]`, '수학 · 고친 칸');

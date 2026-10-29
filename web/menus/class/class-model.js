@@ -18,19 +18,22 @@ export function getInfo() {
 }
 export const setInfo = v => set('class:info', { grade: intIn(+v.grade, 1, 6), room: intIn(+v.room, 1, 30) });
 
+/* 칸은 늘 7교시까지 저장(교시 수를 줄였다가 늘려도 남게), 보이는 줄은 periods */
 export function normTimetable(v) {
   const periods = intIn(v && v.periods, 4, 7) || 6;
   const rows = isObj(v) && Array.isArray(v.cells) ? v.cells : [];
-  return { periods, cells: Array.from({ length: 5 }, (_, d) => Array.from({ length: periods }, (_, p) => (Array.isArray(rows[d]) ? normName(str(rows[d][p])) : ''))) };
+  return { periods, cells: Array.from({ length: 5 }, (_, d) => Array.from({ length: 7 }, (_, p) => (Array.isArray(rows[d]) ? normName(str(rows[d][p])) : ''))) };
 }
 export const getTimetable = () => normTimetable(get('class:timetable', null));
 export const setTimetable = t => set('class:timetable', normTimetable(t));
 
+/* 진도표의 단원 안 차시 「5/14」 (없으면 '') */
+const noOf = v => { const t = str(v).replace(/\s+/g, ''); return /^\d+\/\d+$/.test(t) ? t : ''; };
 function normLesson(l) {
   if (!isObj(l) || !str(l.title).trim()) return null;
   return {
     week: Number.isInteger(l.week) ? l.week : null, period: str(l.period).trim(), from: isDate(l.from) ? l.from : '',
-    unit: str(l.unit).trim(), title: str(l.title).trim(), pages: str(l.pages).trim(), memo: str(l.memo).trim()
+    unit: str(l.unit).trim(), title: str(l.title).trim(), no: noOf(l.no), pages: str(l.pages).trim(), memo: str(l.memo).trim()
   };
 }
 function normSubject(v) {
@@ -94,7 +97,8 @@ export function normWeekly(v) {
   const notes = {};
   for (let d = 0; d < 5; d++) {
     const n = isObj(w.notes) && isObj(w.notes[d]) ? w.notes[d] : {};
-    notes[d] = Object.fromEntries(NOTE_KEYS.map(k => [k, str(n[k])]));
+    // 학사일정 칸: null = 그 주 학사일정을 자동으로, 글('' 포함) = 고쳐 쓴 것
+    notes[d] = Object.fromEntries(NOTE_KEYS.map(k => [k, k === 'events' ? (typeof n.events === 'string' ? n.events : null) : str(n[k])]));
   }
   return { title: str(w.title), cells, notes };
 }
@@ -132,7 +136,7 @@ export const makeCtx = (t = today()) => ({ tt: getTimetable(), subjects: listSub
 
 export function slotsOn(ctx, date) {
   if (noClass(date, ctx.breaks)) return [];
-  const row = ctx.tt.cells[weekday(date) - 1] || [];
+  const row = (ctx.tt.cells[weekday(date) - 1] || []).slice(0, ctx.tt.periods);
   return row.map((subject, i) => ({ period: i + 1, subject })).filter(s => s.subject);
 }
 
@@ -179,6 +183,17 @@ export function dayView(ctx, date) {
     return { ...s, sub, index, lesson: sub.lessons[index] || null, finished: index >= sub.lessons.length, status };
   });
   return { date, off, slots };
+}
+
+/* 단원 안 몇 번째 차시인지: 진도표의 차시 칸, 없으면 같은 단원이 이어지는 줄에서 셈 */
+export function unitPos(sub, i) {
+  const l = sub.lessons[i];
+  const m = /^(\d+)\/(\d+)$/.exec((l && l.no) || '');
+  if (m) return { n: +m[1], of: +m[2] };
+  let a = i, b = i;
+  while (a > 0 && sub.lessons[a - 1].unit === l.unit) a--;
+  while (b < sub.lessons.length - 1 && sub.lessons[b + 1].unit === l.unit) b++;
+  return { n: i - a + 1, of: b - a + 1 };
 }
 
 /* 시수(스펙 3.5) */
@@ -268,7 +283,7 @@ export function normLessons(list, year) {
   return (Array.isArray(list) ? list : []).map(l => {
     if (!isObj(l) || !text(l.title)) return null;
     const period = text(l.period);
-    return { week: Number.isInteger(l.week) ? l.week : null, period, from: periodStart(period, year), unit: text(l.unit), title: text(l.title), pages: text(l.pages), memo: text(l.memo) };
+    return { week: Number.isInteger(l.week) ? l.week : null, period, from: periodStart(period, year), unit: text(l.unit), title: text(l.title), no: '', pages: text(l.pages), memo: text(l.memo) };
   }).filter(Boolean);
 }
 export function normTimetableAI(v) {

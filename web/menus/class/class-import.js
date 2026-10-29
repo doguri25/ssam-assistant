@@ -54,7 +54,7 @@ export function parseJindo(text, { today } = {}) {
       else if (PERIOD.test(x)) period = x;
       else unit = x;
     }
-    cur.lessons.push({ week, period, from: periodStart(period, year), unit, title, pages: c[k + 1] || '', memo: c[k + 2] || '' });
+    cur.lessons.push({ week, period, from: periodStart(period, year), unit, title, no: c[k].replace(/\s+/g, ''), pages: c[k + 1] || '', memo: c[k + 2] || '' });
   }
   return { year, subjects: subjects.filter(s => s.lessons.length) };
 }

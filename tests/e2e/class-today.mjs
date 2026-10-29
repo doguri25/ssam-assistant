@@ -24,7 +24,10 @@ await run('class-today', [
     assert((await page.textContent(`${V} .cls-today .cls-day`)).includes('10월 29일 (목)'), '날짜');
     assert(await page.locator(`${V} .cls-today li[data-p]`).count() === 6, '교시 수');
     const ko = await line(2).textContent();
-    assert(ko.includes('국어(자)') && /\d+\/85차시/.test(ko) && ko.includes('쪽'), '국어 줄: ' + ko);
+    assert(ko.includes('국어(자)') && /\d+\/\d+차시/.test(ko) && ko.includes('쪽'), '국어 줄: ' + ko);
+    const sub = (await stored('class:subjects')).find(x => x.name === '국어');
+    const i = +(await line(2).getAttribute('data-index'));
+    assert(ko.includes(sub.lessons[i].no + '차시'), `단원 안 차시 ${sub.lessons[i].no}: ` + ko);
   }],
   ['완료 → 눌린 모양, 시수 +1, 다시 누르면 지워짐', async () => {
     const before = (await stored('class:subjects')).find(s => s.name === '수학');
@@ -42,7 +45,7 @@ await run('class-today', [
   ['같은 날 같은 교과 두 시간: 앞 시간 완료 → 뒤 시간 다음 차시, 일부 진행이면 그대로', async () => {
     await page.evaluate(() => { const k = 'ssam:class:timetable'; const t = JSON.parse(localStorage.getItem(k)); t.cells[3][2] = '국어'; localStorage.setItem(k, JSON.stringify(t)); });
     await tab('progress'); await tab('today');
-    const n = async p => +(/(\d+)\/\d+차시/.exec(await line(p).textContent())[1]);
+    const n = async p => +(await line(p).getAttribute('data-index'));
     const a = await n(2), b = await n(3);
     assert(b === a + 1, `기록 없음 ${a} ${b}`);
     await line(2).locator('[data-mark="part"]').click();

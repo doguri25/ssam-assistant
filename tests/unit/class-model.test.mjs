@@ -5,8 +5,9 @@ import * as store from '../../web/core/store.js';
 import {
   getInfo, setInfo, getTimetable, setTimetable, listSubjects, saveSubject, removeSubject, getLog, setMark, getWeekly, saveWeekly,
   mondayOf, fmtDay, fmtShort, noClass, sameSubject, findSubject, slotsOn, lessonAt, dayView, hours, setNext,
-  lessonMonday, progressOf, summary, alignToPlan, missingDays, defaultWeek, weekView, normLessons, normTimetableAI, normNotes, weeklyTitle, cellText, weeklyDoc
+  lessonMonday, progressOf, summary, alignToPlan, missingDays, defaultWeek, weekView, normLessons, normTimetableAI, normNotes, weeklyTitle, cellText, weeklyDoc, unitPos
 } from '../../web/menus/class/class-model.js';
+import { sampleData } from '../../web/menus/class/class-sample.js';
 
 function mem() {
   const m = new Map();
@@ -29,7 +30,7 @@ test('학급·시간표 저장, 칸 띄어쓰기 붙이기, 망가진 값은 기
   assert.deepEqual(getInfo(), { grade: null, room: null });
   setInfo({ grade: 3, room: 2 }); assert.deepEqual(getInfo(), { grade: 3, room: 2 });
   const t = getTimetable();
-  assert.equal(t.periods, 6); assert.equal(t.cells.length, 5); assert.deepEqual(t.cells[0], ['', '', '', '', '', '']);
+  assert.equal(t.periods, 6); assert.equal(t.cells.length, 5); assert.deepEqual(t.cells[0], ['', '', '', '', '', '', '']);
   const c = empty(7); c[0][0] = '수 학'; c[4][6] = ' 국어(자) ';
   assert.equal(setTimetable({ periods: 7, cells: c }), true);
   assert.equal(getTimetable().cells[0][0], '수학'); assert.equal(getTimetable().cells[4][6], '국어(자)'); assert.equal(getTimetable().periods, 7);
@@ -64,7 +65,7 @@ test('체크 기록·지우기, 주간학습안내 저장, 망가진 값', () =>
   store.set('class:log', { 'x': {}, '2026-10-28': { 1: { subject: '국어', status: 'bad' }, 2: { subject: '수학', status: 'skip' } } });
   assert.deepEqual(getLog(), { '2026-10-28': { 2: { subject: '수학', status: 'skip' } } });
   const w = getWeekly('2026-11-02');
-  assert.equal(w.title, ''); assert.deepEqual(w.cells, {}); assert.deepEqual(w.notes[0], { events: '', prep: '', homework: '', notice: '', safety: '' });
+  assert.equal(w.title, ''); assert.deepEqual(w.cells, {}); assert.deepEqual(w.notes[0], { events: null, prep: '', homework: '', notice: '', safety: '' });
   saveWeekly('2026-11-02', { title: '3학년 2반', cells: { '0-1': '국어', '9-9': 'x' }, notes: { 2: { prep: '색연필', safety: 3 } } });
   const g = getWeekly('2026-11-02');
   assert.deepEqual(g.cells, { '0-1': '국어' }); assert.equal(g.notes[2].prep, '색연필'); assert.equal(g.notes[2].safety, '');
@@ -250,11 +251,11 @@ test('기본 주와 주간 예상', () => {
 test('AI 답 다듬기: 차시·시간표·알림', () => {
   const ls = normLessons([{ title: '분수', week: '3', period: '9.7~9.11', pages: 48 }, { week: 1 }, 'x', { title: ' 시 ', week: 2, period: '1.4~1.9' }], 2026);
   assert.equal(ls.length, 2);
-  assert.deepEqual(ls[0], { week: null, period: '9.7~9.11', from: '2026-09-07', unit: '', title: '분수', pages: '48', memo: '' });
+  assert.deepEqual(ls[0], { week: null, period: '9.7~9.11', from: '2026-09-07', unit: '', title: '분수', no: '', pages: '48', memo: '' });
   assert.equal(ls[1].from, '2027-01-04'); assert.equal(ls[1].week, 2); assert.equal(ls[1].title, '시');
   assert.deepEqual(normLessons(null, 2026), []);
   const t = normTimetableAI({ cells: [['국어', '수 학'], [], [], [], []] });
-  assert.equal(t.periods, 4); assert.deepEqual(t.cells[0], ['국어', '수학', '', '']);
+  assert.equal(t.periods, 4); assert.deepEqual(t.cells[0].slice(0, 4), ['국어', '수학', '', '']);
   assert.equal(normTimetableAI({ periods: 6, cells: [[], [], [], [], []] }), null);
   assert.equal(normTimetableAI({}), null);
   const n = normNotes([{ prep: '색연필', safety: 1 }, null]);
@@ -298,4 +299,44 @@ test('검토 고침: 수업 없는 교시 칸에 쓴 글도 한글 문서에 들
   const t1 = doc.blocks.find(b => b.type === 'table');
   assert.equal(t1.rows.length, 7);
   assert.equal(t1.rows[6][0], '6교시'); assert.equal(t1.rows[6][1], '방과후 교실');
+});
+
+test('다듬기: 단원 안 차시 — 진도표의 차시 칸, 없으면 단원이 이어지는 줄로', () => {
+  const sub = { lessons: [
+    { unit: '1. 가', no: '12/13', title: 'a' }, { unit: '1. 가', no: '13/13', title: 'b' },
+    { unit: '2. 나', no: '', title: 'c' }, { unit: '2. 나', no: '', title: 'd' }, { unit: '2. 나', no: '', title: 'e' }, { unit: '3. 다', no: '', title: 'f' }] };
+  assert.deepEqual(unitPos(sub, 0), { n: 12, of: 13 });
+  assert.deepEqual(unitPos(sub, 3), { n: 2, of: 3 });
+  assert.deepEqual(unitPos(sub, 5), { n: 1, of: 1 });
+  store.useStorage(mem());
+  const a = saveSubject({ name: '국어', lessons: [{ title: 'x', no: '3/14' }, { title: 'y', no: '이상' }] });
+  assert.equal(listSubjects()[0].lessons[0].no, '3/14'); assert.equal(listSubjects()[0].lessons[1].no, '');
+  assert.equal(normLessons([{ title: 'z' }], 2026)[0].no, '');
+  assert.ok(a);
+});
+
+test('다듬기: 교시 수를 줄였다가 늘려도 칸이 남음', () => {
+  store.useStorage(mem());
+  const c = empty(6); c[0][4] = '음악'; c[0][5] = '미술';
+  setTimetable({ periods: 6, cells: c });
+  setTimetable({ ...getTimetable(), periods: 4 });
+  assert.equal(getTimetable().periods, 4);
+  const ctx = { tt: getTimetable(), subjects: [], log: {}, breaks: [], today: '2026-10-29' };
+  assert.equal(slotsOn(ctx, '2026-10-26').length, 0);
+  setTimetable({ ...getTimetable(), periods: 6 });
+  assert.equal(getTimetable().cells[0][4], '음악'); assert.equal(getTimetable().cells[0][5], '미술');
+});
+
+test('다듬기: 주간학습안내 학사일정 칸은 비운 것도 저장', () => {
+  store.useStorage(mem());
+  saveWeekly('2026-11-02', { notes: { 2: { events: '' } } });
+  assert.equal(getWeekly('2026-11-02').notes[2].events, '');
+  assert.equal(getWeekly('2026-11-02').notes[1].events, null);
+});
+
+test('다듬기: 예시 자료는 오늘이 든 학기', () => {
+  assert.equal(sampleData('2026-10-29').subjects[0].lessons[0].from, '2026-08-24');
+  const spring = sampleData('2027-04-15');
+  assert.equal(spring.subjects[0].lessons[0].from, '2027-03-01');
+  assert.ok(spring.subjects[0].lessons[0].no);
 });

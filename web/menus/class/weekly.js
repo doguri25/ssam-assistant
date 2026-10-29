@@ -26,7 +26,7 @@ function sheet(mon) {
   const days = weekView(makeCtx(), mon);
   const w = getWeekly(mon);
   const notes = {};
-  days.forEach((d, i) => { notes[i] = { ...w.notes[i], events: w.notes[i].events || autoEvents(d.date) }; });
+  days.forEach((d, i) => { notes[i] = { ...w.notes[i], events: w.notes[i].events == null ? autoEvents(d.date) : w.notes[i].events }; });
   return { days, w, notes, title: w.title || weeklyTitle(getInfo()) };
 }
 const save = (mon, w) => { if (!saveWeekly(mon, w)) toast(FULL, 6000); };

@@ -2,7 +2,7 @@
 import { onEnter, go } from '../../core/shell.js';
 import { toast } from '../../core/ui.js';
 import { listEvents, addDays, isDate } from '../../core/calendar.js';
-import { makeCtx, dayView, setMark, missingDays, fmtDay, fmtShort, today } from './class-model.js';
+import { makeCtx, dayView, setMark, missingDays, fmtDay, fmtShort, today, unitPos } from './class-model.js';
 import { askSample } from './setup.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -16,13 +16,13 @@ function slotHTML(s) {
   if (!s.sub) body = '<span class="muted">진도표 없음</span>';
   else if (!s.lesson) body = '<span class="muted">진도표의 차시를 모두 마쳤어요</span>';
   else {
-    const l = s.lesson;
-    body = `${l.unit ? `<span class="muted cls-l-unit">${esc(l.unit)}</span>` : ''}<span class="cls-l-n">${s.index + 1}/${s.sub.lessons.length}차시</span>
+    const l = s.lesson, pos = unitPos(s.sub, s.index);
+    body = `${l.unit ? `<span class="muted cls-l-unit">${esc(l.unit)}</span>` : ''}<span class="cls-l-n">${pos.n}/${pos.of}차시</span>
       <span class="cls-l-t">${esc(l.title)}</span>${l.pages ? `<span class="muted">${esc(pagesText(l.pages))}</span>` : ''}${l.memo ? `<span class="cls-tag">${esc(l.memo)}</span>` : ''}`;
   }
   const marks = s.sub ? `<div class="seg cls-marks" role="group" aria-label="${s.period}교시 ${esc(s.subject)} 체크">${MARKS.map(([k, label]) =>
     `<button type="button" data-mark="${k}" data-p="${s.period}" aria-pressed="${s.status === k}">${label}</button>`).join('')}</div>` : '';
-  return `<li class="cls-lesson${s.status ? ' marked' : ''}" data-p="${s.period}">
+  return `<li class="cls-lesson${s.status ? ' marked' : ''}" data-p="${s.period}"${s.index != null ? ` data-index="${s.index}"` : ''}>
     <span class="cls-l-p">${s.period}교시</span>
     <div class="cls-l-main"><b class="cls-l-s">${esc(s.subject)}</b>${body}</div>${marks}</li>`;
 }

@@ -35,7 +35,8 @@ test('진도표: 교과 나누기·이름·고를지·총 시수', () => {
 
 test('진도표: 7·6·5·4칸 줄과 위 줄 이어 쓰기', () => {
   const k = parseJindo(J, { today: '2026-10-29' }).subjects[0].lessons;
-  assert.deepEqual(k[0], { week: 1, period: '8.24~8.29', from: '2026-08-24', unit: '1. 마음을 나누는 글', title: '단원 열기', pages: '10~13', memo: '' });
+  assert.deepEqual(k[0], { week: 1, period: '8.24~8.29', from: '2026-08-24', unit: '1. 마음을 나누는 글', title: '단원 열기', no: '1/6', pages: '10~13', memo: '' });
+  assert.equal(k[3].no, '1/2'); assert.equal(k[5].no, '4/6');
   // 4칸 줄: 주·기간·단원은 위 줄 것
   assert.equal(k[1].title, '글쓴이의 마음 짐작하기 -1-');
   assert.equal(k[1].week, 1); assert.equal(k[1].period, '8.24~8.29'); assert.equal(k[1].unit, '1. 마음을 나누는 글');

@@ -1,9 +1,14 @@
 /* 학급 예시 자료 (심사·시연용, 모두 지어낸 것). 실제 학교 진도표·시간표와 같은 칸 모양으로 만듦.
-   국어·수학·사회는 주·기간이 있는 진도표, 과학은 주 없는 진도표. 2026-08-24(월)부터 18주 */
-import { addDays } from '../../core/calendar.js';
-import { slotsOn, alignToPlan, sameSubject } from './class-model.js';
+   국어·수학·사회는 주·기간이 있는 진도표, 과학은 주 없는 진도표. 오늘이 든 학기(1학기 3월 / 2학기 8월 넷째 주)부터 18주 */
+import { addDays, schoolYearOf } from '../../core/calendar.js';
+import { slotsOn, alignToPlan, sameSubject, mondayOf } from './class-model.js';
 
-const START = '2026-08-24', WEEKS = 18;
+const WEEKS = 18;
+/* 오늘이 든 학기의 시작 월요일과 이름: 3~7월이면 1학기, 그 밖은 2학기 */
+function semesterOf(today) {
+  const y = schoolYearOf(today), m = +String(today).slice(5, 7);
+  return m >= 3 && m <= 7 ? { start: mondayOf(`${y}-03-02`), label: `${y}학년도 1학기` } : { start: mondayOf(`${y}-08-24`), label: `${y}학년도 2학기` };
+}
 const TT = [
   ['국어', '수학', '사회', '과학', '체육', ''],
   ['수학', '국어', '과학', '체육', '창체', ''],
@@ -60,7 +65,17 @@ function unitTitles(topics, n) {
   return ['배울 내용 살펴보기', ...body, '배운 내용 마무리하기'].slice(0, n);
 }
 
-function buildSubject(name) {
+/* 단원이 이어지는 줄마다 「k/n」 (진도표의 차시 칸) */
+function numbered(lessons) {
+  let a = 0;
+  return lessons.map((l, i) => {
+    if (i && l.unit !== lessons[i - 1].unit) a = i;
+    let b = i; while (b + 1 < lessons.length && lessons[b + 1].unit === l.unit) b++;
+    return { ...l, no: `${i - a + 1}/${b - a + 1}` };
+  });
+}
+
+function buildSubject(name, START) {
   const ctx = { tt: { periods: 6, cells: TT }, subjects: [], log: {}, breaks: [], today: START };
   const weeks = [];
   for (let w = 0; w < WEEKS; w++) {
@@ -77,13 +92,13 @@ function buildSubject(name) {
   const lessons = titles.map((t, i) => {
     const w = WEEKLY.includes(name) ? weekOf[i] : null;
     const pages = `${page}~${page + 1}`; page += 2;
-    return { week: w ? w.week : null, period: w ? w.period : '', from: w ? w.from : '', unit: t.unit, title: t.title, pages, memo: '' };
+    return { week: w ? w.week : null, period: w ? w.period : '', from: w ? w.from : '', unit: t.unit, title: t.title, no: '', pages, memo: '' };
   });
   if (name === '국어') { // 행사 시간 한 줄(실제 진도표의 ◈ 줄 모양)
     const k = lessons.findIndex(l => l.week === 7);
     if (k >= 0) lessons[k] = { ...lessons[k], unit: '◈독서의 날 행사', title: '좋아하는 책 소개하기', pages: '', memo: '◈독서의 날 행사' };
   }
-  return { id: ID[name], name, start: START, offset: 0, total: lessons.length, lessons };
+  return { id: ID[name], name, start: START, offset: 0, total: lessons.length, lessons: numbered(lessons) };
 }
 
 const NAMES = ['국어', '수학', '사회', '과학'];
@@ -91,7 +106,8 @@ const NAMES = ['국어', '수학', '사회', '과학'];
 /* 예시 자료: 오늘 기준으로 진도 차이가 국어 −2, 수학 +1, 사회 0, 과학 −1이 되게 맞춤 */
 export function sampleData(today, breaks = []) {
   const timetable = { periods: 6, cells: TT.map(r => r.slice()) };
-  const subjects = NAMES.map(buildSubject);
+  const { start } = semesterOf(today);
+  const subjects = NAMES.map(n => buildSubject(n, start));
   const ctx = { tt: timetable, subjects, log: {}, breaks, today };
   return {
     info: { grade: 3, room: 1 },
@@ -102,15 +118,10 @@ export function sampleData(today, breaks = []) {
 
 const HEAD = ['주', '기간', '단원명', '학습 주제', '차시', '쪽수', '비고'];
 function jindoRows(lessons) {
-  const runs = [];
-  lessons.forEach((l, i) => { if (!i || l.unit !== lessons[i - 1].unit) runs.push({ unit: l.unit, n: 0 }); runs[runs.length - 1].n++; });
-  let r = 0, k = 0;
   return lessons.map((l, i) => {
-    if (i && l.unit !== lessons[i - 1].unit) { r++; k = 0; }
-    k++;
     const newWeek = l.week != null && (!i || l.week !== lessons[i - 1].week);
     const newUnit = !i || l.unit !== lessons[i - 1].unit;
-    return [newWeek ? String(l.week) : '', newWeek ? l.period : '', newUnit ? l.unit : '', l.title, `${k}/${runs[r].n}`, l.pages, l.memo];
+    return [newWeek ? String(l.week) : '', newWeek ? l.period : '', newUnit ? l.unit : '', l.title, l.no, l.pages, l.memo];
   });
 }
 const CC = [
@@ -122,12 +133,12 @@ const CC = [
 ];
 
 /* samples/진도표-예시.hwpx: 교과 연간지도계획 표들 + 창체(합계·동아리 따로) */
-export function sampleJindoDoc() {
-  const blocks = [];
+export function sampleJindoDoc(today = '2026-10-29') {
+  const blocks = [], sem = semesterOf(today);
   const section = (source, head, rows, total) => blocks.push(
-    { type: 'p', text: `${source} 교육과정 연간지도계획` }, { type: 'p', text: '2026학년도 2학기 · 3학년 1반' },
+    { type: 'p', text: `${source} 교육과정 연간지도계획` }, { type: 'p', text: `${sem.label} · 3학년 1반` },
     { type: 'table', head: true, rows: [head, ...rows] }, { type: 'p', text: `▶ 2학기 총 시수: ${total}시간` });
-  for (const name of NAMES) { const s = buildSubject(name); section(name, HEAD, jindoRows(s.lessons), s.lessons.length); }
+  for (const name of NAMES) { const s = buildSubject(name, sem.start); section(name, HEAD, jindoRows(s.lessons), s.lessons.length); }
   const ccHead = HEAD.slice(); ccHead[5] = '영역';
   section('창의적 체험활동', ccHead, CC, CC.length);
   const club = CC.filter(r => r[5] === '동아리').map(r => [r[0] || '2', r[1] || '8.31~9.5', r[2], r[3], r[4], '', r[6]]);
