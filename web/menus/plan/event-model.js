@@ -2,6 +2,7 @@
    행사 목록은 ssam:events, 보고 있는 행사는 ssam:event:current. 학사일정 출처는 'event:<id>' */
 import { get, set } from '../../core/store.js';
 import { isDate } from '../../core/calendar.js';
+import { personalColumn } from '../../core/survey.js';
 
 const LIST_KEY = 'events', CUR_KEY = 'event:current';
 
@@ -85,7 +86,11 @@ export const normRefNotes = v => (Array.isArray(v) ? v : []).filter(x => typeof 
 const MAX_ANSWERS = 300;
 function normResult(v) {
   if (!isObj(v) || !Number.isInteger(v.n) || !Array.isArray(v.questions)) return null;
-  const questions = v.questions.filter(q => isObj(q) && str(q.q).trim()).map(q => {
+  // 예전 판에서 저장한 개인정보 열은 읽을 때 뺌
+  const excluded = (Array.isArray(v.excluded) ? v.excluded : []).filter(x => typeof x === 'string');
+  const personal = q => personalColumn(q.q, Array.isArray(q.answers) ? q.answers : []);
+  for (const q of v.questions) if (isObj(q) && personal(q)) excluded.push(str(q.q));
+  const questions = v.questions.filter(q => isObj(q) && str(q.q).trim() && !personal(q)).map(q => {
     if (q.type === 'scale') {
       const ok = Array.isArray(q.counts) && q.counts.length === 5 && q.counts.every(c => Number.isInteger(c) && c >= 0) && Number.isFinite(q.mean);
       return ok ? { q: str(q.q), type: 'scale', counts: q.counts.slice(), mean: q.mean } : null;
@@ -96,7 +101,7 @@ function normResult(v) {
     }
     return null;
   }).filter(Boolean);
-  return { n: v.n, questions, few: v.n < 10 };
+  return { n: v.n, questions, few: v.n < 10, excluded };
 }
 
 function normSurvey(v) {

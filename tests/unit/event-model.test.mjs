@@ -137,3 +137,12 @@ test('참고 반영 메모 다듬기와 저장', () => {
   store.set('events', [{ ...newEvent(), id: 'z', name: 'z', refs: 'x', refNotes: 3 }]);
   assert.deepEqual(getEvent('z').refs, []); assert.deepEqual(getEvent('z').refNotes, { options: [], docs: [], stale: false });
 });
+
+test('예전에 저장한 설문 결과에 개인정보 열이 있으면 읽을 때 뺌', async () => {
+  const { saveEvent, getEvent, newEvent } = await import('../../web/menus/plan/event-model.js');
+  const e = newEvent();
+  e.name = '운동회';
+  e.survey = { target: 'student', items: [], formUrl: '', textSummary: '', report: '', nextMemo: '', result: { n: 2, few: true, questions: [{ q: '이름을 적어 주세요', type: 'text', answers: ['김하나', '이두리'] }, { q: '좋았던 점', type: 'text', answers: ['재미'] }] } };
+  const saved = saveEvent(e);
+  assert.deepEqual(getEvent(saved.id).survey.result.questions.map(q => q.q), ['좋았던 점']);
+});

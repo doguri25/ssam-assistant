@@ -355,7 +355,8 @@ function resultHTML(r) {
         <div class="ev-bars">${q.counts.map((c, i) => `<div class="ev-bar-row"><span class="ev-bar-l">${i + 1}</span><span class="ev-bar" style="width:${r.n ? Math.round((c / r.n) * 100) : 0}%"></span><span class="ev-bar-n">${c}</span></div>`).join('')}</div></div>`
     : `<div class="ev-q"><b>${esc(q.q)}</b> <span class="muted">서술형 ${q.count ?? q.answers.length}개</span>
         <ul class="yp-ul">${q.answers.slice(0, 5).map(a => `<li>${esc(a)}</li>`).join('')}${(q.count ?? q.answers.length) > 5 ? `<li class="muted">외 ${(q.count ?? q.answers.length) - 5}개</li>` : ''}</ul></div>`).join('');
-  return `<div id="evResult" class="ev-result"><p><b>응답 ${r.n}명</b>${r.few ? ` · <span class="ev-few">${FEW(r.n)}</span>` : ''}</p>${qs}
+  const ex = (r.excluded || []).length ? `<p class="hint">개인정보로 보이는 열은 빼고 읽었어요: ${esc(r.excluded.join(', '))}</p>` : '';
+  return `<div id="evResult" class="ev-result"><p><b>응답 ${r.n}명</b>${r.few ? ` · <span class="ev-few">${FEW(r.n)}</span>` : ''}</p>${ex}${qs}
     ${survey().textSummary ? `<p class="ev-sumtext"><b>서술형 요약</b><br>${esc(survey().textSummary)}</p>` : ''}</div>`;
 }
 
@@ -398,6 +399,7 @@ async function addCsv(file) {
   catch (err) { toast('CSV를 읽지 못했어요. 구글 폼 응답의 「CSV 다운로드」 파일인지 확인해 주세요.', 6000); return; }
   if (!r.n || !r.questions.length) { toast('응답을 찾지 못했어요. 첫 줄이 문항 제목인 CSV인지 확인해 주세요.', 6000); return; }
   apply(id, e => { e.survey = { ...blankSurvey(), ...(e.survey || {}), result: r, textSummary: '', report: r.few ? FEW(r.n) : '', nextMemo: '' }; });
+  if (r.excluded.length) toast(`개인정보로 보이는 열 ${r.excluded.length}개(${r.excluded.join(', ')})는 빼고 읽었어요. 저장하지도 AI로 보내지도 않아요.`, 7000);
   if (ev.id === id && visible()) renderMain();
   const target = getEvent(id); // 그사이 다른 행사로 갔어도 프롬프트는 이 행사
   if (!target) return;

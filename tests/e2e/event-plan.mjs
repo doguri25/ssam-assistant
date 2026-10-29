@@ -1,5 +1,7 @@
 // 계획 › 행사계획: 1 행사 정보 → 2 구성안 → 3 문서 → 4 설문·결과 (PRD 5.4)
 import { join } from 'node:path';
+import { writeFileSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { open, run, assert, mockClaude, FIXTURES } from './helpers.mjs';
 
 const t = await open();
@@ -176,6 +178,21 @@ await run('event-plan', [
     await up('survey-4.csv');
     await page.waitForFunction(s => { const el = document.querySelector(`${s} textarea#evReport`); return el && el.value.startsWith('응답이 적어요(4명)'); }, V, { timeout: 8000 });
     assert((await page.inputValue(`${V} textarea#evReport`)).startsWith('응답이 적어요(4명). 결과를 일반화하기 어려워요'), '적은 응답 문장');
+  }],
+  ['개인정보 열(이름·연락처)은 빼고 읽고 AI에도 보내지 않으며, 뺀 열을 알려 줌', async () => {
+    const f = join(mkdtempSync(join(tmpdir(), 'ev-csv-')), 'personal.csv');
+    writeFileSync(f, '타임스탬프,이름을 적어 주세요,보호자 연락처,행사가 즐거웠나요?,좋았던 점은?\n' + ['가나다', '라마바', '사아자'].map((n, i) => `t,${n},010-1234-567${i},5,줄다리기`).join('\n'));
+    const before = prompts.length;
+    const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click(`${V} [data-e="csv"]`)]);
+    await fc.setFiles(f);
+    await page.waitForFunction(s => (document.querySelector(`${s} #evResult`) || {}).textContent?.includes('3명'), V, { timeout: 8000 });
+    assert((await page.textContent('#toast')).includes('개인정보로 보이는 열 2개'), await page.textContent('#toast'));
+    assert((await page.textContent(`${V} #evResult`)).includes('이름을 적어 주세요, 보호자 연락처'), '결과에 뺀 열 안내 없음');
+    await page.waitForTimeout(300);
+    const p = prompts.slice(before).join('\n');
+    assert(p.includes('행사가 즐거웠나요?') && !p.includes('가나다') && !p.includes('010-1234') && !p.includes('이름을 적어'), p.slice(0, 300));
+    const saved = await page.evaluate(() => JSON.stringify(Object.entries(localStorage)));
+    assert(!saved.includes('가나다') && !saved.includes('010-1234'), '저장에 개인정보');
   }],
   ['같은 종류 새 행사에서 지난 행사 개선 메모를 작년 설문으로 불러옴', async () => {
     await page.click(`${V} [data-e="new"]`);

@@ -12,21 +12,36 @@ export function scaleValue(v) {
   return WORDS[s] || null;
 }
 
-const SKIP = /타임스탬프|timestamp|이메일|e-?mail/i;
-// 이름·학번·학년·반·번호·연락처 열은 문항이 아님 (개인정보는 AI로 보내지 않음)
-const PERSONAL = /^(학생\s*)?(이름|성명|학번|학년|반|번호|학년\s*반|학년\/반|연락처|전화\s*번호|휴대\s*폰(\s*번호)?|보호자(\s*이름)?)(\s*\(.*\))?$/;
+const SKIP = /타임스탬프|timestamp/i;
+// 개인정보 열은 문항이 아님: 저장하지도 AI로 보내지도 않음. 머리 글에 낱말이 들어 있거나, 학년·반·번호만 있거나, 답이 이름·전화번호·전자 우편·학번 모양
+const PERSONAL_WORD = /이름|성명|성함|학번|연락처|전화|휴대|핸드폰|폰\s*번호|이메일|메일\s*주소|e-?mail|\bname\b|주소|생년월일/i;
+const ONLY_CLASS = h => /학년|반|번호/.test(h) && !h.replace(/학생|학년|반|번호|및|[\s\d/·,.:()\-]/g, '');
+const SURNAME = new Set('김이박최정강조윤장임한오서신권황안송전홍유류고문양손배백허남심노하곽성차주우구민진나지엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예봉경'.split(''));
+const share = (a, f) => a.filter(f).length / a.length;
+export function personalColumn(head, answers = []) {
+  const h = String(head || '').replace(/\s+/g, ' ').trim();
+  if (PERSONAL_WORD.test(h) || ONLY_CLASS(h)) return true;
+  const a = answers.map(x => String(x == null ? '' : x).trim()).filter(Boolean);
+  if (a.length < 2) return false;
+  if (share(a, x => /^0\d{1,2}-?\d{3,4}-?\d{4}$/.test(x)) >= 0.5) return true;
+  if (share(a, x => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x)) >= 0.5) return true;
+  const distinct = new Set(a).size / a.length >= 0.8;
+  if (distinct && share(a, x => /^\d{4,6}$/.test(x)) >= 0.8) return true;
+  return a.length >= 3 && distinct && share(a, x => /^[가-힣]{2,4}$/.test(x) && SURNAME.has(x[0])) >= 0.8;
+}
 const round2 = n => Math.round(n * 100) / 100;
 
 /* rows: 첫 줄은 머리. 답의 80% 이상이 척도로 읽히면 척도 문항 */
 export function summarize(rows) {
   const list = Array.isArray(rows) ? rows : [];
-  if (list.length < 2) return { n: 0, questions: [], few: true };
+  if (list.length < 2) return { n: 0, questions: [], few: true, excluded: [] };
   const head = list[0].map(h => String(h || '').trim());
   const body = list.slice(1).filter(r => Array.isArray(r) && r.some(c => String(c || '').trim()));
-  const questions = [];
+  const questions = [], excluded = [];
   head.forEach((q, i) => {
-    if (!q || SKIP.test(q) || PERSONAL.test(q.replace(/\s+/g, ' ').trim())) return;
+    if (!q || SKIP.test(q)) return;
     const answers = body.map(r => String(r[i] == null ? '' : r[i]).trim()).filter(Boolean);
+    if (personalColumn(q, answers)) { excluded.push(q); return; }
     const vals = answers.map(scaleValue);
     const ok = vals.filter(v => v != null);
     if (answers.length && ok.length / answers.length >= 0.8) {
@@ -35,7 +50,7 @@ export function summarize(rows) {
       questions.push({ q, type: 'scale', counts, mean: round2(ok.reduce((s, v) => s + v, 0) / ok.length) });
     } else questions.push({ q, type: 'text', answers });
   });
-  return { n: body.length, questions, few: body.length < 10 };
+  return { n: body.length, questions, few: body.length < 10, excluded };
 }
 
 export function formText(items) {
