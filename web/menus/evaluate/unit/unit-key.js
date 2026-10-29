@@ -40,17 +40,17 @@ export function parseKey(text) {
   const head = cells(lines[h]);
   const next = lines[h + 1] ? cells(lines[h + 1]) : [];
   let col, domains = [], start = h + 1;
-  const pi = next.findIndex(c => c === '배점');
+  const pi = next.findIndex(c => /^(배\s*점|점\s*수)/.test(c));
   if (pi >= 0 && !/^\d+$/.test(next[0])) {
     start = h + 2;
-    if (next[0]) {
+    if (next[0] && next.length < head.length) {
       // 칸을 합친 머리(한글 파일 그대로): 둘째 머리 줄에서 「배점」 앞 칸이 행동 영역 이름
       domains = next.slice(0, pi).filter(Boolean);
       const D = pi;
       col = { dom: Array.from({ length: D }, (_, j) => 2 + j), answer: 2 + D, points: 3 + D, criteria: 4 + D, pages: 5 + D };
     } else {
-      // 칸을 합치지 않은 머리: 둘째 머리 줄의 칸 자리가 곧 열 자리
-      const dom = next.map((c, i) => (c && i < pi && !/정답|채점/.test(c) ? i : -1)).filter(i => i >= 0);
+      // 칸을 합치지 않았거나 합친 칸을 풀어 쓴 머리: 둘째 머리 줄의 칸 자리가 곧 열 자리
+      const dom = next.map((c, i) => (c && i < pi && c !== head[i] && !/정답|채점|문항|내용|쪽/.test(c) ? i : -1)).filter(i => i >= 0);
       domains = dom.map(i => next[i]);
       col = { dom, answer: head.findIndex(c => /정답/.test(c)), points: pi, criteria: next.findIndex(c => /채점/.test(c)), pages: head.findIndex(c => /쪽/.test(c)) };
     }
@@ -73,7 +73,8 @@ export function parseKey(text) {
       for (const k of ['answer', 'criteria', 'pages']) { const v = get(k); if (v) last[k] = (last[k] ? last[k] + ' ' : '') + v; }
     }
   }
-  if (!items.length) return null;
+  // 정답이나 배점이 빈 문항이 절반을 넘으면 표 모양을 잘못 읽은 것: AI로 읽게 null
+  if (!items.length || items.filter(i => !i.answer || !i.points).length > items.length / 2) return null;
   items.forEach(it => { it.type = itemType(it.answer, it.criteria); });
   return { meta: keyMeta(lines.slice(0, h)), domains, items };
 }

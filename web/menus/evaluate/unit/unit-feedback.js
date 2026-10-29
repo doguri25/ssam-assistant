@@ -61,7 +61,11 @@ async function writeFeedback(only) {
       const res = normFeedback(await ai.generateJSON(feedbackPrompt(t, chunk), { valid: v => Object.keys(normFeedback(v)).length > 0 }));
       const t2 = getTest(id);
       if (!t2) break;
-      for (const s of t2.students) if (nos.has(s.no) && res[s.no]) { s.good = res[s.no].good || s.good; s.cheer = res[s.no].cheer || s.cheer; }
+      // 다시 쓰기(only)는 두 칸 모두, 아니면 빈 칸만 채움 (선생님이 쓴 글은 그대로)
+      for (const s of t2.students) if (nos.has(s.no) && res[s.no]) {
+        if (only != null || !s.good) s.good = res[s.no].good || s.good;
+        if (only != null || !s.cheer) s.cheer = res[s.no].cheer || s.cheer;
+      }
       saveOrWarn(t2);
     }
   } catch (e) {

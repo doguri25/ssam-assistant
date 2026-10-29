@@ -111,3 +111,27 @@ test('시연 자료: 정답지·평가지 한글 파일 글이 그대로 읽힘(
   assert.equal(p.meta.unitName, '중요한 내용을 적어요');
   assert.equal(Object.keys(p.questions).length, 10);
 });
+
+test('검토 고침: 합친 칸을 풀어 쓴 표(둘째 머리 줄이 머리 이름을 되풀이)도 읽음', () => {
+  const text = [
+    '2학기 단원평가 문항 이원 분류 및 모범 답안 ( 3 )학년 ( 국어 )과 1단원 (1회)',
+    '문항번호 | 평가 내용 | 행동 영역 | 행동 영역 | 정답 | 배점 및 채점 기준 | 배점 및 채점 기준 | 교과서 관련 쪽수',
+    '문항번호 | 평가 내용 | 지식 | 이해 | 정답 | 배점 | 채점 기준 | 교과서 관련 쪽수',
+    '1 | 시의 내용 파악 |  | ○ | ③ | 5 |  | <국어> 36~41쪽',
+    '2 | 시의 내용 파악 | ○ |  | ㉯ | 5 |  | <국어> 36~41쪽'
+  ].join('\n');
+  const k = parseKey(text);
+  assert.deepEqual(k.domains, ['지식', '이해']);
+  assert.deepEqual(k.items[1], { no: 2, content: '시의 내용 파악', domain: '지식', type: 'symbol', answer: '㉯', points: 5, criteria: '', pages: '<국어> 36~41쪽' });
+});
+
+test('검토 고침: 「배 점」·「배점(점)」·「점수」 머리도 읽고, 엉뚱하게 읽히면 null(AI로 넘김)', () => {
+  const mk = h => ['( 3 )학년 ( 국어 )과 1단원 (1회)', '문항번호 | 평가 내용 | 행동 영역 | 정답 | 배점 및 채점 기준 | 교과서 관련 쪽수', `지식 | 이해 | ${h} | 채점 기준`,
+    '1 | 시 읽기 |  | ○ | ③ | 5 |  | <국어> 36쪽', '2 | 낱말 | ○ |  | ㉯ | 5 |  | <국어> 40쪽'].join('\n');
+  for (const h of ['배 점', '배점(점)', '점수']) {
+    const k = parseKey(mk(h));
+    assert.ok(k, h);
+    assert.deepEqual(k.items.map(i => [i.answer, i.points]), [['③', 5], ['㉯', 5]], h);
+  }
+  assert.equal(parseKey(mk('채 점 표')), null);
+});

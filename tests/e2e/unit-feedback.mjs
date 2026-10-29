@@ -105,6 +105,20 @@ await run('unit-feedback', [
     assert((await T('sample-2')).students[3].good === '', 'sample-2에 들어감');
     assert(await page.inputValue(`${V} textarea[data-fb="4-good"]`) === '', '보는 평가 칸이 채워짐');
   }],
+  ['검토 고침: 인쇄할 때 학생 칸이 잘리지 않음', async () => {
+    await page.emulateMedia({ media: 'print' });
+    const ov = await page.evaluate(() => getComputedStyle(document.querySelector('.un-print .un-ps')).overflow);
+    await page.emulateMedia({ media: 'screen' });
+    assert(ov !== 'hidden', ov);
+  }],
+  ['검토 고침: 선생님이 쓴 잘한 점은 격려만 비어도 덮지 않음', async () => {
+    await page.evaluate(() => { const k = 'ssam:unit:t:sample-1', x = JSON.parse(localStorage.getItem(k)); x.students[5].good = '선생님 글'; x.students[5].cheer = ''; localStorage.setItem(k, JSON.stringify(x)); });
+    await open1('sample-1');
+    await page.click(`${V} [data-un="fbAI"]`);
+    await page.waitForFunction(() => document.querySelector('textarea[data-fb="6-cheer"]') && document.querySelector('textarea[data-fb="6-cheer"]').value === 'C6');
+    const s = (await T('sample-1')).students[5];
+    assert(s.good === '선생님 글' && s.cheer === 'C6', JSON.stringify([s.good, s.cheer]));
+  }],
   ['좁은 화면(360px) 가로 스크롤 없음', async () => {
     await page.setViewportSize({ width: 360, height: 800 });
     await page.waitForTimeout(150);

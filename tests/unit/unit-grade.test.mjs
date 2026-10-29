@@ -51,7 +51,7 @@ test('칸 만들기: 앱 판단이 이기고, 다르면 노란 칸', () => {
   c = gradeCell(it('short', '마을 도서관', 4), { read: '동네 도서관', points: 4, sure: true, why: '같은 뜻' });
   assert.equal(c.pts, 4); assert.equal(c.flag, 'similar'); assert.equal(c.why, '같은 뜻');
   c = gradeCell(it('short', '마을 도서관', 4), { read: '학교', points: 0, sure: true });
-  assert.equal(c.pts, 0); assert.equal(c.flag, '');
+  assert.equal(c.pts, 0); assert.equal(c.flag, 'similar');
   c = gradeCell(it('essay', '(예) …', 8), { read: '친구와 이야기함', points: 12, sure: true });
   assert.equal(c.pts, 8); assert.equal(c.flag, 'essay');
   assert.equal(gradeCell(it('essay', '(예) …', 8), { read: '글', points: -1 }).pts, 0);
@@ -60,7 +60,7 @@ test('칸 만들기: 앱 판단이 이기고, 다르면 노란 칸', () => {
 });
 
 test('칸 만들기: 빈 답, AI가 빠뜨린 문항, 긴 글', () => {
-  assert.deepEqual(gradeCell(it('choice', '③'), { read: '  ', points: 10, sure: true }), { read: '', pts: 0, ai: 10, flag: '', why: '', ok: false, manual: false });
+  assert.deepEqual(gradeCell(it('choice', '③'), { read: '  ', points: 0, sure: true }), { read: '', pts: 0, ai: 0, flag: '', why: '', ok: false, manual: false });
   assert.deepEqual(gradeCell(it('choice', '③'), undefined), { read: '', pts: 0, ai: 0, flag: 'low', why: '', ok: false, manual: false });
   const c = gradeCell(it('essay', '(예)'), { read: '가'.repeat(300), points: 3, why: '나'.repeat(200) });
   assert.equal(c.read.length, 120); assert.equal(c.why.length, 80);
@@ -82,4 +82,45 @@ test('학생 점수: 문항 합·만점·100점 환산', () => {
   const st = { no: 1, items: { 1: { pts: 4 }, 2: { pts: 3 } } };
   assert.deepEqual(studentTotal(t, st), { score: 7, total: 15, pct: 46.7 });
   assert.deepEqual(studentTotal({ key: { items: [] } }, { items: {} }), { score: 0, total: 0, pct: 0 });
+});
+
+test('검토 고침: 빈 답이어도 AI가 확신하지 못했거나 맞다고 했으면 노란 칸', () => {
+  assert.equal(gradeCell(it('choice', '③'), { read: '', points: 0, sure: false }).flag, 'low');
+  const c = gradeCell(it('choice', '③'), { read: '', points: 10, sure: true });
+  assert.equal(c.pts, 0); assert.equal(c.flag, 'differ');
+  assert.equal(gradeCell(it('choice', '③'), { read: '', points: 0, sure: true }).flag, '');
+});
+
+test('검토 고침: 단답이 글자가 다르면 AI가 틀리다고 해도 노란 칸', () => {
+  const c = gradeCell(it('short', '마을 도서관', 4), { read: '학교', points: 0, sure: true });
+  assert.equal(c.pts, 0); assert.equal(c.flag, 'similar');
+});
+
+test('검토 고침: 붙여 쓴 동그라미 숫자도 따로 읽음', () => {
+  assert.deepEqual(choiceSet('③⑤'), ['3', '5']);
+  assert.deepEqual(choiceSet('①⑩'), ['1', '10']);
+  assert.equal(autoJudge(it('choice', '③⑤'), '③, ⑤'), 10);
+});
+
+test('검토 고침: 정답표를 고치면 채점한 칸을 다시 맞춤(고친 칸은 배점 안으로만)', async () => {
+  const { rescoreItem } = await import('../../web/menus/evaluate/unit/unit-grade.js');
+  const key = [it('choice', '③', 10, { no: 1 }), it('short', '마을 도서관', 10, { no: 2 }), it('essay', '(예)', 10, { no: 3 })];
+  const cellOf = (read, pts, extra = {}) => ({ read, pts, ai: pts, flag: '', why: '', ok: true, manual: false, ...extra });
+  const t = { key: { items: key }, students: [
+    { no: 1, skip: false, status: 'done', items: { 1: cellOf('③', 10), 2: cellOf('학교', 0), 3: cellOf('글', 8) } },
+    { no: 2, skip: false, status: 'done', items: { 1: cellOf('②', 10, { manual: true }), 2: cellOf('마을 도서관', 10), 3: cellOf('글', 6) } },
+    { no: 3, skip: false, status: 'idle', items: {} }
+  ] };
+  key[0].points = 5;
+  rescoreItem(t, 1, 'points');
+  assert.equal(t.students[0].items[1].pts, 5);
+  assert.equal(t.students[1].items[1].pts, 5); assert.equal(t.students[1].items[1].manual, true);
+  key[1].answer = '학교';
+  rescoreItem(t, 2, 'answer');
+  assert.equal(t.students[0].items[2].pts, 10); assert.equal(t.students[0].items[2].flag, '');
+  assert.equal(t.students[1].items[2].pts, 0); assert.equal(t.students[1].items[2].flag, 'similar');
+  key[2].points = 5;
+  rescoreItem(t, 3, 'points');
+  assert.equal(t.students[0].items[3].pts, 5); assert.equal(t.students[0].items[3].flag, 'essay'); assert.equal(t.students[0].items[3].ok, false);
+  assert.deepEqual(t.students[2].items, {});
 });

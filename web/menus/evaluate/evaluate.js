@@ -156,6 +156,23 @@ function blocksToText(blocks) {
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+/* 블록 → 글, 합친 칸을 풀어 같은 글을 되풀이 (칸 자리를 지킴) — 단원평가 정답지(이원 분류표)처럼 열 자리로 읽는 표 */
+function blocksToGridText(blocks) {
+  const out = [];
+  for (const b of blocks) {
+    if (b.type === 'p') { const t = b.text.replace(/[ \t]+\n/g, '\n').trim(); if (t) out.push(t); continue; }
+    const g = [];
+    for (const c of b.cells) {
+      const t = c.text.replace(/\s*\n\s*/g, ' ').trim();
+      for (let r = c.r; r < c.r + (c.rs || 1); r++) for (let k = c.c; k < c.c + (c.cs || 1); k++) (g[r] = g[r] || [])[k] = t;
+    }
+    const rows = g.filter(Boolean), w = Math.max(0, ...rows.map(r => r.length));
+    const lines = rows.map(r => Array.from({ length: w }, (_, k) => r[k] || '').join(' | ')).filter(l => l.replace(/[|\s]/g, ''));
+    if (lines.length) out.push(lines.join('\n'));
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function readRecords(u8) {
   const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
   const recs = []; let p = 0;
@@ -5266,6 +5283,8 @@ window.SSAM = {
     readHwpxText: async u8 => blocksToText(await parseHWPX(u8, DOMParser)),
     // .hwp·.hwpx → 글 (CFB면 hwp, 아니면 hwpx)
     readHwpText: async u8 => blocksToText(u8[0] === 0xD0 && u8[1] === 0xCF ? await parseHWP(u8) : await parseHWPX(u8, DOMParser)),
+    // 단원평가 정답지: 합친 칸을 풀어 쓴 표 글
+    readHwpGridText: async u8 => blocksToGridText(u8[0] === 0xD0 && u8[1] === 0xCF ? await parseHWP(u8) : await parseHWPX(u8, DOMParser)),
     // PDF의 글자 층 → 글 (쪽 사이는 빈 줄)
     async pdfText(u8) {
       const lib = await loadPdfJs();

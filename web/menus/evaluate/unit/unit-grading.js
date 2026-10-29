@@ -9,11 +9,12 @@ import { gradePrompt, normGrade, validGrade } from './unit-ai.js';
 import { esc, SS, AI_KEY, registerStep, inStep, cur, curId, commit, saveOrWarn, refresh, render, goStep, getBox } from './unit.js';
 
 const TYPE = Object.fromEntries(ITEM_TYPES);
-/* 세션 상태: 올린 스캔은 한 평가에만 붙음 */
-const G = { testId: null, pages: [], idx: [], msg: '', queue: [], running: new Map(), runId: null, stop: false };
+/* 세션 상태: 올린 스캔은 한 평가에만 붙음. 채점은 한 번에 한 평가만(run: 그 평가의 차례·멈춤) */
+const G = { testId: null, pages: [], idx: [], msg: '', running: new Map(), run: null };
 const pagesOf = (id, i) => (G.testId === id && G.idx[i]) || [];
 const hasPages = id => G.testId === id && G.pages.length > 0;
-const busy = id => G.runId === id && (G.queue.length > 0 || G.running.size > 0);
+const busy = id => !!G.run && G.run.id === id && (G.run.queue.length > 0 || G.running.size > 0);
+const busyOther = id => !!G.run && G.run.id !== id && busy(G.run.id);
 
 /* ---------- 2단계: 답안 올리기 ---------- */
 function split(t, pageCount, per) {
@@ -26,6 +27,9 @@ function split(t, pageCount, per) {
 async function loadAnswers(fileList) {
   const t0 = cur(), id = t0.id, per = Math.max(1, getSet().pagesPer | 0);
   const say = m => { G.msg = m; const el = getBox() && getBox().querySelector('#unAnsMsg'); if (el) el.textContent = m; };
+  // 채점하는 동안 스캔을 바꾸면 채점 중인 학생에게 다른 쪽이 붙음: 끝나거나 멈춘 뒤에
+  if (busyOther(id)) { say('다른 평가를 채점하는 중이에요. 그 채점이 끝나거나 멈춘 뒤에 올려 주세요.'); return; }
+  if (busy(id)) { say('채점하는 중이에요. 끝나거나 멈춘 뒤에 다시 올려 주세요.'); return; }
   let r;
   try { r = await SS().files.readPages(fileList, say); }
   catch (e) { say(e && e.message === 'PDFJS' ? 'PDF를 읽는 도구를 불러오지 못했어요. 인터넷 연결을 확인하거나 사진으로 올려 주세요.' : '파일을 읽지 못했어요.'); return; }
@@ -39,6 +43,7 @@ async function loadAnswers(fileList) {
     G.msg = `${r.pages.length}쪽 · 학생 ${t.students.length}명${r.skipped.length ? ` · 읽지 못한 파일 ${r.skipped.length}개` : ''}`;
     commit(t); refresh(id);
   };
+  if (G.run && busy(G.run.id)) { say('채점하는 중이에요. 끝나거나 멈춘 뒤에 다시 올려 주세요.'); return; }
   if (t.students.length && t.students.length !== n && t.students.some(s => s.status === 'done')) {
     SS().openSheet(`<h3>학생 수가 달라요</h3><p class="muted" style="margin:0">채점한 학생은 ${t.students.length}명인데 새 스캔은 ${n}명이에요. 새로 나누면 채점한 결과가 지워져요.</p>
       <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="unRedoOk">새로 나누기</button></div>`,
@@ -97,6 +102,8 @@ async function gradeOne(id, i) {
   G.running.set(i, ctrl); refresh(id);
   try {
     const images = await imagesFor(id, i);
+    // 스캔이 없으면 AI를 부르지 않음 (이미지 없이 채점하면 0점이 그대로 저장됨)
+    if (!images.length) throw { code: 'no_scan' };
     const v = await ai.generateJSON(gradePrompt(t0, no), { images, signal: ctrl.signal, valid: validGrade });
     const res = normGrade(v, t0.key.items);
     const t = getTest(id), st = t && t.students[i];
@@ -107,32 +114,45 @@ async function gradeOne(id, i) {
   } catch (e) {
     if (ctrl.signal.aborted) return;
     const t = getTest(id), st = t && t.students[i];
-    if (st && st.no === no) { st.status = 'error'; st.err = e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요' : ai.errorMessage(e && e.code, e); saveOrWarn(t); }
+    if (st && st.no === no) { st.status = 'error'; st.err = e && e.code === 'no_scan' ? '스캔이 없어요. 답안 스캔을 다시 올려 주세요' : e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요' : ai.errorMessage(e && e.code, e); saveOrWarn(t); }
   } finally { G.running.delete(i); refresh(id); }
 }
 async function runQueue(id, list) {
-  G.runId = id; G.stop = false; G.queue = list.slice();
-  const worker = async () => { while (G.queue.length && !G.stop) await gradeOne(id, G.queue.shift()); };
+  const run = { id, queue: list.slice(), stop: false };
+  G.run = run;
+  const worker = async () => { while (run.queue.length && !run.stop) await gradeOne(id, run.queue.shift()); };
   refresh(id);
   await Promise.all([worker(), worker()]);
   refresh(id);
+}
+/* 이름 칸을 정하지 않았으면 먼저 물어봄 (기본은 가리고 보내기) */
+function askMask(go) {
+  const set = getSet();
+  if (!set.maskOn || set.mask.length) { go(); return; }
+  SS().openSheet(`<h3>이름 칸을 아직 정하지 않았어요</h3><p class="muted" style="margin:0">정하지 않으면 학생 이름이 그대로 AI 회사로 보내져요. 2단계에서 [이름 칸 정하기]로 이름이 적힌 곳을 상자로 표시해 주세요.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn" type="button" id="unNoMaskOk">가리지 않고 채점</button><button class="btn primary" type="button" id="unMaskGo">이름 칸 정하기</button></div>`,
+  sh => {
+    sh.querySelector('#unNoMaskOk').addEventListener('click', () => { SS().closeSheet(); go(); });
+    sh.querySelector('#unMaskGo').addEventListener('click', () => { SS().closeSheet(); goStep(2); openMask(cur()); });
+  });
 }
 function startGrading(only) {
   const id = curId(), t = getTest(id);
   if (!t) return;
   if (!ai.ready()) { toast(AI_KEY, 5000); return; }
   if (busy(id)) return;
+  if (busyOther(id)) { toast('다른 평가를 채점하는 중이에요. 끝나거나 멈춘 뒤에 채점해 주세요.', 5000); return; }
   if (!hasPages(id)) { toast('답안 스캔을 먼저 올려 주세요(2단계)', 5000); return; }
   const all = t.students.map((s, i) => ({ s, i })).filter(x => !x.s.skip && pagesOf(id, x.i).length);
-  if (only != null) { const x = all.find(y => y.s.no === only); if (x) runQueue(id, [x.i]); return; }
+  if (only != null) { const x = all.find(y => y.s.no === only); if (x) askMask(() => runQueue(id, [x.i])); return; }
   const todo = all.filter(x => x.s.status !== 'done');
-  if (todo.length) { runQueue(id, todo.map(x => x.i)); return; }
+  if (todo.length) { askMask(() => runQueue(id, todo.map(x => x.i))); return; }
   SS().openSheet(`<h3>모두 다시 채점할까요?</h3><p class="muted" style="margin:0">학생 ${all.length}명을 다시 채점해요. 선생님이 고친 칸은 그대로 둬요.</p>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="unRegradeOk">다시 채점</button></div>`,
   sh => sh.querySelector('#unRegradeOk').addEventListener('click', () => { SS().closeSheet(); runQueue(id, all.map(x => x.i)); }));
 }
 function stopGrading() {
-  G.stop = true; G.queue = [];
+  if (G.run) { G.run.stop = true; G.run.queue = []; }
   for (const c of G.running.values()) c.abort();
 }
 
@@ -165,12 +185,12 @@ function step3HTML(t) {
       <div class="row">${run ? `<span class="spin"></span><b>채점하는 중 · ${done}/${total}명</b><button class="btn" type="button" data-un="stop">멈추기</button>` : `<button class="btn primary" type="button" data-un="grade">채점 시작</button><span class="muted">${done}/${total}명 채점함</span>`}</div>
       ${up}${scanNote}
       <div class="row"><b id="unPending">확인할 칸 ${pending(t)}개</b><button class="btn text" type="button" data-un="nextChk">다음 확인할 칸</button><span class="grow"></span><button class="btn primary" type="button" data-un="finish">채점 마치기</button></div>
-      <p class="muted cls-note">노란 칸은 확인할 칸이에요: AI가 확신하지 못했거나, 앱과 AI의 판단이 다르거나, 단답을 뜻으로 맞다고 봤거나, 서술형이에요. 문항 번호를 누르면 반 전체 답을 모아 봐요.</p>
+      <p class="muted cls-note">노란 칸은 확인할 칸이에요: AI가 확신하지 못했거나, 앱과 AI의 판단이 다르거나, 단답이 정답과 글자가 다르거나, 서술형이에요. 문항 번호를 누르면 반 전체 답을 모아 봐요.</p>
     </div>
     <div class="yp-card un-grid-card"><div class="un-grid-wrap"><table class="un-grid"><thead>${head}</thead><tbody>${rows}</tbody></table></div></div>`;
 }
 
-const FLAG = { low: 'AI가 확신하지 못했어요.', differ: '앱과 AI의 판단이 달라요. 앱은 정답표와 글자로 맞춰 봤어요.', similar: '정답과 글자가 달라 AI가 뜻으로 맞다고 봤어요.', essay: '서술형이라 AI가 점수를 제안했어요.' };
+const FLAG = { low: 'AI가 확신하지 못했어요.', differ: '앱과 AI의 판단이 달라요. 앱은 정답표와 글자로 맞춰 봤어요.', similar: '정답과 글자가 달라 AI가 뜻을 보고 판단했어요.', essay: '서술형이라 AI가 점수를 제안했어요.' };
 function openCell(no, itemNo) {
   const t = cur(), si = t.students.findIndex(s => s.no === no), s = t.students[si], it = t.key.items.find(x => x.no === itemNo);
   if (!s || !it) return;
@@ -213,7 +233,7 @@ function openItem(itemNo) {
   SS().openSheet(`<h3>${itemNo}번 문항 모아 보기 <span class="muted">${TYPE[it.type] || ''}</span></h3>
     <p class="muted" style="margin:0">${esc(it.content)} · 정답: <b>${esc(it.answer)}</b>${it.criteria ? ` · 채점 기준: ${esc(it.criteria)}` : ''}</p>
     <ul class="un-items">${rows || '<li class="muted">채점한 학생이 없어요</li>'}</ul>
-    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>닫기</button><button class="btn primary" type="button" data-un="itemOk">AI 점수로 모두 확인</button></div>`,
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>닫기</button><button class="btn primary" type="button" data-un="itemOk">지금 점수로 모두 확인</button></div>`,
   sh => {
     sh.classList.add('wide');
     const save = fn => { const t2 = getTest(t.id); if (!t2) return; for (const s of t2.students) if (!s.skip && s.status === 'done' && s.items[itemNo]) fn(s, s.items[itemNo]); saveOrWarn(t2); render(); };

@@ -62,7 +62,8 @@ section[data-menu="evaluate"].ev-new > :not(.unit-box){display:none !important}
   body *{visibility:hidden !important}
   .un-print,.un-print *{visibility:visible !important}
   .un-print{display:block !important;position:absolute;left:0;top:0;width:100%;color:#000}
-  .un-ps{box-sizing:border-box;height:48vh;overflow:hidden;padding:4mm 2mm;border-bottom:1px dashed #999;break-inside:avoid}
+  /* 한 쪽에 2명: 칸은 반 쪽 이상, 틀린 문항이 많으면 늘어나고 잘리지 않음 */
+  .un-ps{box-sizing:border-box;min-height:48vh;overflow:visible;padding:4mm 2mm;border-bottom:1px dashed #999}
   .un-ps:nth-child(2n){border-bottom:0;break-after:page}
   .un-ps h2{font-size:15px;margin:0 0 4px}
   .un-ps p{margin:4px 0;font-size:12.5px}

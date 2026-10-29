@@ -7,7 +7,7 @@ import * as ai from '../../../core/ai.js';
 import { readText, fileMessage } from '../../../core/files.js';
 import { stepsHTML } from '../../../core/steps.js';
 import { parseKey, parsePaper, keyTotal } from './unit-key.js';
-import { ITEM_TYPES } from './unit-grade.js';
+import { ITEM_TYPES, rescoreItem } from './unit-grade.js';
 import { listTests, getTest, saveTest, removeTest, newTest, makeTitle, graded } from './unit-model.js';
 import { keyPrompt, normKeyAI } from './unit-ai.js';
 import { sampleTests } from './unit-sample.js';
@@ -139,13 +139,20 @@ const setMsg = (id, k, text) => { if (U.msg.id !== id) U.msg = { id, key: '', pa
 const testOf = (id, t0) => (curId() === id ? cur() : getTest(id) || null) || (U.draft === t0 ? t0 : null);
 const fill = (meta, from, keys) => { for (const k of keys) if ((meta[k] == null || meta[k] === '') && from[k] != null && from[k] !== '') meta[k] = from[k]; };
 const isImage = f => /^image\//.test(f.type || '') || /\.(png|jpe?g|webp|bmp|gif)$/i.test(f.name || '');
+/* 정답지 한글 파일은 합친 칸을 풀어 읽음(칸 자리를 지킴). 안 되면 보통 글 읽기(오류 안내도 그쪽에서) */
+async function readKeyText(file) {
+  if (/\.hwpx?$/i.test(file.name || '') && SS().files && SS().files.readHwpGridText) {
+    try { return String(await SS().files.readHwpGridText(new Uint8Array(await file.arrayBuffer()))).replace(/\r\n?/g, '\n').trim(); } catch (e) { /* 아래로 */ }
+  }
+  return readText(file);
+}
 
 async function loadKey(file) {
   const t0 = cur(), id = t0.id;
   setMsg(id, 'key', `「${file.name}」 읽는 중…`);
   let k = null, text = '';
   if (!isImage(file)) {
-    try { text = await readText(file); }
+    try { text = await readKeyText(file); }
     catch (e) { if (!(e && e.code === 'PDF_NO_TEXT')) { setMsg(id, 'key', fileMessage(e && e.code)); return; } }
     if (text) k = parseKey(text);
   }
@@ -163,6 +170,8 @@ async function loadKey(file) {
   const t = testOf(id, t0);
   if (!t) return;
   t.key = { domains: k.domains, items: k.items };
+  // 이미 채점한 평가에 정답지를 다시 넣으면 읽은 답으로 다시 맞춤
+  for (const it of t.key.items) rescoreItem(t, it.no, 'answer');
   fill(t.meta, k.meta, ['subject', 'grade', 'term', 'unitNo', 'round']);
   U.msg = { ...U.msg, id, key: `「${file.name}」에서 ${k.items.length}문항을 읽었어요` };
   commit(t);
@@ -193,6 +202,8 @@ function editItem(el) {
   const it = t.key.items.find(i => i.no === Number(no));
   if (!it) return;
   it[f] = f === 'points' ? Math.max(0, Number(el.value) || 0) : el.value.trim();
+  // 정답·유형·배점·채점 기준을 고치면 채점한 칸을 다시 맞춤 (선생님이 고친 칸은 배점 안으로만)
+  if (['answer', 'type', 'points', 'criteria'].includes(f)) rescoreItem(t, it.no, f);
   commit(t); render();
 }
 

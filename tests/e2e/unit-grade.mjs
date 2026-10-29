@@ -62,6 +62,16 @@ await run('unit-grade', [
     assert(nos.join(',') === '1,3,4', nos.join(','));
     assert((await T(A)).students.map(s => s.no).join(',') === '1,3,4', '저장');
   }],
+  ['검토 고침: 이름 칸을 정하지 않고 채점하면 먼저 물어봄(AI 안 부름)', async () => {
+    await page.click(`${V} [data-un="toGrade"]`);
+    await page.click(`${V} [data-un="grade"]`);
+    await page.waitForSelector('#sheetRoot #unNoMaskOk');
+    assert((await page.textContent('#sheetRoot')).includes('학생 이름이 그대로 AI'), '안내 글');
+    await page.click('#sheetRoot [data-close]');
+    await page.waitForTimeout(200);
+    assert(grades().length === 0, 'AI를 부름');
+    await page.click(`${V} .steps [data-step="2"]`);
+  }],
   ['이름 칸 상자를 그리면 unit:set에 저장', async () => {
     await page.click(`${V} [data-un="mask"]`);
     const b = await page.locator('#sheetRoot #mkStage').boundingBox();
@@ -107,6 +117,7 @@ await run('unit-grade', [
   ['문항 모아 보기: AI 점수로 모두 확인', async () => {
     await page.click(`${V} [data-item="9"]`);
     await page.waitForSelector('#sheetRoot [data-un="itemOk"]');
+    assert((await page.textContent('#sheetRoot [data-un="itemOk"]')).includes('지금 점수로 모두 확인'), '단추 이름');
     assert((await page.textContent('#sheetRoot')).includes('도서관에서 잔치가 열린다.'), '반 전체 답');
     await page.click('#sheetRoot [data-un="itemOk"]');
     await page.waitForTimeout(100);
@@ -145,6 +156,23 @@ await run('unit-grade', [
     assert((await T(A)).students[1].items[1].read === '(2)', 'A에 새 결과가 없음');
     assert((await page.textContent(`${V} .un-title`)).includes('(2회)'), '보는 평가가 바뀜');
   }],
+  ['검토 고침: A를 채점하는 동안 B에 답안을 올리면 막고, A는 모두 이미지와 함께', async () => {
+    const n = grades().length;
+    await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} [data-un-open="${A}"]`);
+    slow = 900;
+    await page.click(`${V} [data-un="grade"]`);
+    await page.click('#sheetRoot #unRegradeOk');
+    await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} [data-un-open="${B}"]`);
+    await page.setInputFiles(`${V} #unAnsFile`, files);
+    await page.waitForTimeout(300);
+    assert((await page.textContent(`${V} #unAnsMsg`)).includes('다른 평가를 채점하는 중'), '안내 없음');
+    assert((await T(B)).students.length === 0, 'B에 학생이 생김');
+    await until(() => grades().length === n + 3, 8000);
+    await page.waitForTimeout(300); slow = 0;
+    assert(grades().slice(n).every(p => p.images === 1), JSON.stringify(grades().slice(n).map(p => p.images)));
+  }],
   ['채점 마치기 → 확인 창 → 마침, 목록에 반 평균', async () => {
     await page.click(`${V} [data-un="back"]`);
     await page.click(`${V} [data-un-open="${A}"]`);
@@ -157,6 +185,16 @@ await run('unit-grade', [
     await page.click(`${V} [data-un="back"]`);
     const card = await page.textContent(`${V} [data-un-open="${A}"]`);
     assert(card.includes('마침') && card.includes('반 평균') && card.includes('학생 3명'), card);
+  }],
+  ['검토 고침: 정답표를 고치면 채점한 칸을 다시 맞춤', async () => {
+    await page.click(`${V} [data-un-open="${A}"]`);
+    await page.click(`${V} .steps [data-step="1"]`);
+    await page.fill(`${V} [data-k="2-points"]`, '5'); await page.dispatchEvent(`${V} [data-k="2-points"]`, 'change');
+    assert((await T(A)).students[0].items[2].pts === 5, '고친 칸이 배점보다 큼');
+    await page.fill(`${V} [data-k="7-answer"]`, '도서관'); await page.dispatchEvent(`${V} [data-k="7-answer"]`, 'change');
+    const a = await T(A), s3 = a.students[1].items[7], s1 = a.students[0].items[7];
+    assert(s3.pts === 10 && s3.flag === '' && s1.pts === 0 && s1.flag === 'similar', JSON.stringify([s3, s1]));
+    await page.click(`${V} [data-un="back"]`);
   }],
   ['업스테이지면 손글씨 안내', async () => {
     await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'upstage', keys: { upstage: 'up-test' }, remember: true })));

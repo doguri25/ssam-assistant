@@ -1,6 +1,19 @@
 // 평가 › 단원평가: 탭 끼우기, 평가 목록, 1단계(정답지·평가지 넣기, 정답표 고치기), 사진 정답지는 AI, 예시로 채우기, 다시 열기
 import { join } from 'node:path';
 import { open, run, assert, mockClaude, ROOT } from './helpers.mjs';
+import { zipStore } from '../../web/core/zip.js';
+
+// 합친 칸이 있는 정답지(한글 파일): 평가 내용은 1~2번, 교과서 쪽수는 1~3번이 한 칸
+const NSP = 'http://www.hancom.co.kr/hwpml/2011/paragraph', NSS = 'http://www.hancom.co.kr/hwpml/2011/section';
+const tc = (r, c, text, rs = 1, cs = 1) => `<hp:tc><hp:subList><hp:p><hp:run><hp:t>${text}</hp:t></hp:run></hp:p></hp:subList><hp:cellAddr colAddr="${c}" rowAddr="${r}"/><hp:cellSpan colSpan="${cs}" rowSpan="${rs}"/></hp:tc>`;
+const MERGED = [
+  [tc(0, 0, '문항번호', 2), tc(0, 1, '평가 내용', 2), tc(0, 2, '행동 영역', 1, 2), tc(0, 4, '정답', 2), tc(0, 5, '배점 및 채점 기준', 1, 2), tc(0, 7, '교과서 관련 쪽수', 2)],
+  [tc(1, 2, '지식'), tc(1, 3, '이해'), tc(1, 5, '배점'), tc(1, 6, '채점 기준')],
+  [tc(2, 0, '1'), tc(2, 1, '시의 내용 파악', 2), tc(2, 2, ''), tc(2, 3, '○'), tc(2, 4, '③'), tc(2, 5, '5'), tc(2, 6, ''), tc(2, 7, '&lt;국어&gt; 36~41쪽', 3)],
+  [tc(3, 0, '2'), tc(3, 2, '○'), tc(3, 3, ''), tc(3, 4, '㉯'), tc(3, 5, '5'), tc(3, 6, '')],
+  [tc(4, 0, '3'), tc(4, 1, '인물 말하기'), tc(4, 2, ''), tc(4, 3, '○'), tc(4, 4, '준호'), tc(4, 5, '5'), tc(4, 6, '')]
+];
+const mergedHwpx = Buffer.from(zipStore([{ name: 'mimetype', data: 'application/hwp+zip' }, { name: 'Contents/section0.xml', data: `<?xml version="1.0" encoding="UTF-8"?><hs:sec xmlns:hs="${NSS}" xmlns:hp="${NSP}"><hp:p><hp:run><hp:t>2학기 단원평가 문항 이원 분류 및 모범 답안 ( 3 )학년 ( 국어 )과 1단원 (1회)</hp:t></hp:run></hp:p><hp:p><hp:run><hp:tbl rowCnt="5" colCnt="8">${MERGED.map(r => `<hp:tr>${r.join('')}</hp:tr>`).join('')}</hp:tbl></hp:run></hp:p></hs:sec>` }]));
 
 const t = await open();
 const { page, url, errors } = t;
@@ -84,12 +97,22 @@ await run('unit-key', [
     await page.click(`${B} [data-un="back"]`);
     assert(await cards() === 2, '카드 수 ' + await cards());
   }],
+  ['검토 고침: 합친 칸이 있는 정답지도 문항마다 바르게', async () => {
+    await page.click(`${B} #unNew`);
+    await page.setInputFiles(`${B} #unKeyFile`, { name: '합친칸.hwpx', mimeType: 'application/octet-stream', buffer: mergedHwpx });
+    await page.waitForFunction(() => (document.querySelector('.unit-box .un-sum') || {}).textContent?.includes('3문항 · 15점'));
+    assert(await page.inputValue(`${B} [data-k="2-content"]`) === '시의 내용 파악', '2번 평가 내용');
+    assert(await page.inputValue(`${B} [data-k="2-answer"]`) === '㉯' && await page.inputValue(`${B} [data-k="2-type"]`) === 'symbol', '2번 정답·유형');
+    assert(await page.inputValue(`${B} [data-k="2-points"]`) === '5', '2번 배점');
+    assert(await page.inputValue(`${B} [data-k="3-pages"]`) === '<국어> 36~41쪽', '3번 쪽수');
+    await page.click(`${B} [data-un="back"]`);
+  }],
   ['예시로 채우기 → 카드 2개 더, 다시 하면 바꿈', async () => {
     await page.click(`${B} [data-un="sample"]`);
-    await page.waitForFunction(() => document.querySelectorAll('.unit-box [data-un-open]').length === 4);
+    await page.waitForFunction(() => document.querySelectorAll('.unit-box [data-un-open]').length === 5);
     await page.click(`${B} [data-un="sample"]`);
     await page.waitForTimeout(150);
-    assert(await cards() === 4, '예시가 겹침');
+    assert(await cards() === 5, '예시가 겹침');
     assert((await page.textContent(`${B} .un-list`)).includes('마침'), '마침 표시');
   }],
   ['지우기(확인 창)', async () => {
@@ -97,13 +120,13 @@ await run('unit-key', [
     await page.click(`${B} [data-un="del"][data-id="${id}"]`);
     await page.click('#sheetRoot #unDelOk');
     await page.waitForTimeout(100);
-    assert(await cards() === 3, '안 지워짐');
+    assert(await cards() === 4, '안 지워짐');
   }],
   ['다시 열어도 남고, 단원평가 탭으로 다시 열림', async () => {
     await page.reload(); await page.waitForTimeout(500);
     assert(await page.locator('#menuTabs [data-tab="unit"][aria-current="page"]').count() === 1, '탭');
     assert(await page.isVisible(B), '화면');
-    assert(await cards() === 3, '카드');
+    assert(await cards() === 4, '카드');
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
