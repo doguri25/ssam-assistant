@@ -1,5 +1,6 @@
 // 계획 › 행사계획: 1 행사 정보 → 2 구성안 → 3 문서 → 4 설문·결과 (PRD 5.4)
-import { open, run, assert, mockClaude } from './helpers.mjs';
+import { join } from 'node:path';
+import { open, run, assert, mockClaude, FIXTURES } from './helpers.mjs';
 
 const t = await open();
 const { page, ctx, url, errors } = t;
@@ -19,6 +20,10 @@ await mockClaude(page, ({ prompt }) => {
     plan: '1. 운영 방침\n학년별로 나누어 운영한다.', safety: '- 응급 처치 인원 배치\n- 그늘막 설치', letter: '가을 운동회 안내\n일시: 2027년 5월 6일\n준비물: 물병\n복장: 체육복', rain: '',
     roles: [{ name: '김교사', roles: ['사회', '음향', '안전', '기록', '시상'] }, { name: '이교사', roles: ['안전'] }, { name: '박교사', roles: ['기록'] }, { name: '없는 교사', roles: ['x'] }]
   });
+  if (prompt.startsWith('[설문 문항]')) return JSON.stringify({ items: [
+    { type: 'scale', q: '행사가 즐거웠나요?' }, { type: 'scale', q: '안전하게 진행되었나요?' }, { type: 'scale', q: '시간 운영이 알맞았나요?' },
+    { type: 'scale', q: '내년에도 참여하고 싶나요?' }, { type: 'scale', q: '준비물 안내가 충분했나요?' }, { type: 'text', q: '좋았던 점은?' }, { type: 'text', q: '바라는 점은?' }] });
+  if (prompt.startsWith('[설문 결과]')) return JSON.stringify({ textSummary: '줄다리기와 친구와 함께한 활동이 좋았다는 답이 많음', report: '가을 운동회 결과 보고\n만족도 평균 4.0점', nextMemo: '그늘막을 늘리기' });
   return '{}';
 });
 const V = 'section[data-menu="plan"]';
@@ -125,7 +130,67 @@ await run('event-plan', [
     assert(await page.inputValue(`${P} [data-item="0"][data-f="name"]`) === '상품' && await page.inputValue(`${P} [data-item="0"][data-f="price"]`) === '300000', '품목');
     await go();
   }],
-  // (Task 6 시험이 여기 이어짐)
+  ['4단계 확정: 야외인데 우천 일정이 없으면 막고, 넣으면 확정·학사일정', async () => {
+    await page.click(`${V} [data-e="next"]`);
+    await page.click(`${V} [data-e="final"]`);
+    assert((await page.locator(`${V} #evBlockers li`).allInnerTexts()).some(x => x.includes('우천 시 대체 일정')), '막는 이유 없음');
+    await page.click(`${V} ol.steps [data-step="3"]`);
+    await page.click(`${V} [data-doc="safety"]`);
+    await page.fill(`${V} textarea#evRain`, '비가 오면 강당에서 학년별로 나누어 운영');
+    await page.click(`${V} [data-e="next"]`);
+    await page.click(`${V} [data-e="final"]`);
+    assert((await page.textContent(`${V} #evList [aria-current="true"]`)).includes('확정'), '확정 표시 없음');
+    const cal = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:calendar') || '[]').filter(e => e.source.startsWith('event:')));
+    assert(cal.length === 1 && cal[0].date === '2027-05-06', JSON.stringify(cal));
+  }],
+  ['설문 문항 7개, 구글 폼용 복사', async () => {
+    await page.click(`${V} [data-e="items"]`);
+    await page.waitForSelector(`${V} #evItems li`, { timeout: 8000 });
+    assert(await page.locator(`${V} #evItems li`).count() === 7, '문항 수');
+    await page.click(`${V} [data-e="formCopy"]`);
+    await page.waitForTimeout(150);
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    assert(clip.startsWith('1. 행사가 즐거웠나요? (5점 척도: 전혀 그렇지 않다 ~ 매우 그렇다)') && clip.includes('7. 바라는 점은? (서술형)'), clip.slice(0, 80));
+  }],
+  ['폼 링크 → QR 그림·내려받기·가정통신문에 넣기', async () => {
+    await page.fill(`${V} #evForm`, 'https://forms.gle/abc123');
+    await page.waitForSelector(`${V} #evQr img`, { timeout: 5000 });
+    assert((await page.getAttribute(`${V} #evQr img`, 'src')).startsWith('data:image/png'), 'PNG 아님');
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click(`${V} [data-e="qrDown"]`)]);
+    assert(dl.suggestedFilename().endsWith('.png'), dl.suggestedFilename());
+    await page.click(`${V} [data-e="qrLetter"]`);
+    const letter = await page.evaluate(async () => { const m = await import('./menus/plan/event-model.js'); return m.getEvent(m.currentEventId()).docs.letter; });
+    assert(letter.trim().endsWith('설문 참여: https://forms.gle/abc123 (QR)'), letter.slice(-60));
+  }],
+  ['응답 CSV(12명) → 문항별 결과·보고서·내년 메모, 4명이면 적다고 표시', async () => {
+    const up = async f => { const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click(`${V} [data-e="csv"]`)]); await fc.setFiles(join(FIXTURES, f)); };
+    await up('survey-12.csv');
+    await page.waitForFunction(s => (document.querySelector(`${s} textarea#evReport`) || {}).value, V, { timeout: 8000 });
+    assert(await page.locator(`${V} #evResult .ev-q`).count() === 7, '문항 결과 수');
+    assert(await page.locator(`${V} #evResult .ev-bar`).count() === 25, '막대 수');
+    assert((await page.textContent(`${V} #evResult`)).includes('12명'), '응답 수');
+    const rep12 = await page.inputValue(`${V} textarea#evReport`);
+    assert(rep12.includes('만족도 평균 4.0점') && !rep12.includes('응답이 적어요'), rep12.slice(0, 80));
+    assert((await page.inputValue(`${V} textarea#evNext`)).includes('그늘막'), '내년 메모');
+    assert(prompts.at(-1).startsWith('[설문 결과]') && prompts.at(-1).includes('행사가 즐거웠나요?'), '프롬프트');
+    await up('survey-4.csv');
+    await page.waitForFunction(s => document.querySelector(`${s} textarea#evReport`).value.startsWith('응답이 적어요(4명)'), V, { timeout: 8000 });
+    assert((await page.inputValue(`${V} textarea#evReport`)).startsWith('응답이 적어요(4명). 결과를 일반화하기 어려워요'), '적은 응답 문장');
+  }],
+  ['같은 종류 새 행사에서 지난 행사 개선 메모를 작년 설문으로 불러옴', async () => {
+    await page.click(`${V} [data-e="new"]`);
+    await page.click(`${V} [data-e="importMemo"]`);
+    await page.click(`${V} #evMemos [data-memo]`);
+    assert((await page.inputValue(`${V} textarea#evLast`)).includes('그늘막을 늘리기'), '메모가 안 들어감');
+  }],
+  ['390px 폭에서 본문이 가로로 넘치지 않음', async () => {
+    await page.click(`${V} #evList [data-ev]:has-text("가을 운동회")`);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(200);
+    const w = await page.evaluate(() => [document.querySelector('#app').scrollWidth, document.querySelector('#app').clientWidth]);
+    assert(w[0] <= w[1], '넘침: ' + w);
+    await page.setViewportSize({ width: 1280, height: 860 });
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();
