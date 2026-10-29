@@ -13,3 +13,7 @@
 .cp-sec h4{margin:12px 0 6px}
 .cp-sec-l1{margin:16px 0 4px;font-size:15px}
 .cp-guide-sec{font-size:12px}
+.cp-attach li select{width:auto}
+.cp-eval input{min-width:90px}
+.cp-buim{margin:8px 0}
+.cp-buim ol{margin:4px 0 0;padding-left:22px}

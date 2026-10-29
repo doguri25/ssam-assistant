@@ -4,7 +4,7 @@ import { get, set } from '../../core/store.js';
 import { getSchool } from '../../core/settings.js';
 
 const LIST_KEY = 'classplans', CUR_KEY = 'classplan:current';
-export const MAX_SRC = 60000, MAX_BODY = 1500;
+export const MAX_SRC = 60000, MAX_BODY = 1500, MAX_EVAL = 20000;
 export const KIND_NAME = { jindo: '진도표', eval: '평가계획', other: '첨부' };
 const ROMAN = 'ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ';
 
@@ -125,7 +125,8 @@ function normAttach(v) {
     const kind = KIND_NAME[x.kind] ? x.kind : 'other';
     const subjects = isObj(x.summary) && Array.isArray(x.summary.subjects)
       ? x.summary.subjects.filter(s => isObj(s) && str(s.name)).map(s => ({ name: str(s.name), hours: Math.max(0, Math.round(Number(s.hours) || 0)) })) : [];
-    return { id: str(x.id) || newId(), name: str(x.name), kind, summary: { subjects } };
+    // 평가계획은 AI로 다시 읽을 수 있게 글(이름 줄 뺀 것)을 2만 자까지 지님
+    return { id: str(x.id) || newId(), name: str(x.name), kind, text: kind === 'eval' ? str(x.text).slice(0, MAX_EVAL) : '', summary: { subjects } };
   });
 }
 function normPlan(v) {
@@ -243,8 +244,8 @@ export function planDoc(plan) {
   }
   return { title: planTitle(plan), blocks };
 }
-/* 지난 계획을 글로: 다음 해 「작년 계획서」 칸에 넣음 (표는 칸을 ' | '로) */
+/* 지난 계획을 글로: 다음 해 「작년 계획서」 칸에 넣음 (표는 칸을 ' | '로). 붙임 목록은 목차로 읽히지 않게 뺌 */
 export function planText(plan) {
-  const doc = planDoc(plan);
-  return [doc.title, ...doc.blocks.filter(b => b.text !== '붙임').map(b => (b.type === 'table' ? b.rows.map(r => r.join(' | ')).join('\n') : b.text))].join('\n');
+  const doc = planDoc({ ...plan, attach: [] });
+  return [doc.title, ...doc.blocks.map(b => (b.type === 'table' ? b.rows.map(r => r.join(' | ')).join('\n') : b.text))].join('\n');
 }

@@ -9,7 +9,7 @@ import { getSchool } from '../../core/settings.js';
 import { normName, periodStart, schoolYearOf, parseJindo, parseTimetable } from './class-import.js';
 import {
   getInfo, setInfo, getTimetable, setTimetable, listSubjects, saveSubject, removeSubject, setSubjects, resetRecords,
-  makeCtx, progressOf, setNext, alignToPlan, today, normLessons, normTimetableAI, hasTimetable
+  makeCtx, progressOf, setNext, alignToPlan, today, normLessons, normTimetableAI, hasTimetable, importSubjects
 } from './class-model.js';
 import { sampleData } from './class-sample.js';
 
@@ -167,13 +167,7 @@ function openPick(r, fileName) {
   sh => sh.querySelector('[data-c="pickOk"]').addEventListener('click', () => {
     const picked = [...sh.querySelectorAll('[data-jpick]')].filter(c => c.checked).map(c => r.subjects[+c.dataset.jpick]);
     if (!picked.length) { toast('교과를 하나 이상 골라 주세요'); return; }
-    let ok = true;
-    for (const s of picked) {
-      const old = listSubjects().find(h => h.name === s.name);
-      if (old) { ok = !!saveSubject({ ...old, total: s.total, lessons: s.lessons }) && ok; continue; }
-      const neu = saveSubject({ name: s.name, start: today(), offset: 0, total: s.total, lessons: s.lessons });
-      ok = !!(neu && saveSubject(alignToPlan(makeCtx(), neu))) && ok;
-    }
+    const ok = importSubjects(picked);
     S().closeSheet();
     if (saved(ok)) { changed('import'); toast(`교과 ${picked.length}개를 넣었어요. 「다음 차시」를 실제 위치로 고쳐 주세요`, 6000); }
   }));

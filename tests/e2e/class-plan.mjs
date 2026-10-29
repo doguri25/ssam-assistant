@@ -1,5 +1,6 @@
 // 계획 › 학급운영계획: 1 자료 넣기 → 2 목차 → 3 초안 → 4 첨부·내보내기
 import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { open, run, assert, mockClaude, FIXTURES } from './helpers.mjs';
 
 const t = await open();
@@ -141,6 +142,85 @@ await run('class-plan', [
     assert(prompts.length === n, 'AI를 부름');
     await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true })));
     await page.reload(); await page.waitForTimeout(400); await go();
+  }],
+  ['첨부파일 넣기: 진도표는 종류를 짐작하고 교과별 시수를 읽음(창체 영역별 표는 빼고)', async () => {
+    await page.click(`${V} ol.steps [data-step="1"]`);
+    await upload(`${V} [data-file="attach"]`, join(FIXTURES, 'jindo-sample.txt'));
+    await page.waitForSelector(`${V} #cpAttach li[data-att]`);
+    const li = page.locator(`${V} #cpAttach li[data-att]`).first();
+    assert(await li.locator('select[data-akind]').inputValue() === 'jindo', '종류');
+    assert((await li.textContent()).includes('교과 3개 · 23시간'), await li.textContent());
+    const a = (await cur()).attach[0];
+    assert(a.kind === 'jindo' && JSON.stringify(a.summary.subjects) === JSON.stringify([{ name: '국어', hours: 12 }, { name: '수학', hours: 8 }, { name: '창체', hours: 3 }]), JSON.stringify(a));
+  }],
+  ['4단계 시수표, [학급 › 진도표·시수에도 넣기]로 학급 메뉴 교과에 넣음', async () => {
+    await page.click(`${V} ol.steps [data-step="3"]`); await page.click(`${V} [data-c="next"]`);
+    await page.waitForSelector(`${V} #cpHours`);
+    const rows = await page.locator(`${V} #cpHours tbody tr`).allInnerTexts();
+    assert(rows.length === 4 && rows[0].includes('국어') && rows[0].includes('12') && rows[3].includes('합계') && rows[3].includes('23'), rows.join('|'));
+    await page.click(`${V} [data-toclass]`);
+    await page.waitForSelector('#sheetRoot [data-cpj]');
+    assert(await page.locator('#sheetRoot [data-cpj]').count() === 4 && !(await page.locator('#sheetRoot [data-cpj]').nth(3).isChecked()), '고르기');
+    await page.click('#sheetRoot [data-cpok]');
+    const subs = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:class:subjects') || '[]'));
+    assert(subs.map(x => x.name).join() === '국어,수학,창체' && subs[0].lessons.length === 12 && subs[0].total === 12, JSON.stringify(subs.map(x => [x.name, x.lessons.length])));
+  }],
+  ['연간지도계획 표가 없는 진도표는 시수 대신 안내, 학급 메뉴로 넣기 없음 · 종류 바꾸기 · 빼기', async () => {
+    await upload(`${V} [data-file="attach"]`, { name: '진도표-음악.txt', mimeType: 'text/plain', buffer: Buffer.from('음악 진도 메모\n3월 노래 부르기\n') });
+    await page.waitForFunction(s => document.querySelectorAll(`${s} #cpAttach li[data-att]`).length === 2, V);
+    const li = () => page.locator(`${V} #cpAttach li[data-att]`).nth(1);
+    assert((await li().textContent()).includes('연간지도계획 표를 찾지 못했어요'), await li().textContent());
+    assert(await page.locator(`${V} [data-toclass]`).count() === 1, '버튼 수');
+    await li().locator('select[data-akind]').selectOption('other');
+    await page.waitForTimeout(100);
+    assert((await cur()).attach[1].kind === 'other' && !(await li().textContent()).includes('찾지 못했어요'), '종류 바꾸기');
+    await li().locator('[data-adel]').click();
+    assert((await cur()).attach.length === 1 && await page.locator(`${V} #cpAttach li[data-att]`).count() === 1, '빼기');
+  }],
+  ['평가계획 첨부 → AI로 평가 표(이름 줄은 저장·전송 안 함), 칸 고치기·줄 빼기', async () => {
+    const txt = '2027학년도 3학년 평가계획\n평가 담당 | 김가람 | 이나래 | 박다솜\n교과 | 영역 | 성취기준 | 평가 방법 | 시기\n국어 | 읽기 | [4국02-01] 중심 생각 찾기 | 서술형 | 4월\n';
+    await upload(`${V} [data-file="attach"]`, { name: '3학년 평가계획.txt', mimeType: 'text/plain', buffer: Buffer.from(txt) });
+    await page.waitForFunction(s => document.querySelectorAll(`${s} #cpAttach li[data-att]`).length === 2, V);
+    assert(await page.locator(`${V} #cpAttach li[data-att]`).nth(1).locator('select[data-akind]').inputValue() === 'eval', '종류');
+    const at = (await cur()).attach[1];
+    assert(at.text.includes('[4국02-01]') && !at.text.includes('김가람'), at.text);
+    const n0 = prompts.length;
+    await page.click(`${V} [data-c="evalRead"]`);
+    await page.waitForSelector(`${V} #cpEval tbody tr input`);
+    const ps = prompts.slice(n0);
+    assert(ps.length === 1 && ps[0].startsWith('[평가계획 읽기]') && ps[0].includes('[4국02-01]') && !ps[0].includes('김가람'), ps.map(x => x.slice(0, 40)).join(','));
+    assert(await page.locator(`${V} #cpEval tbody tr`).count() === 2, '줄 수');
+    await page.fill(`${V} #cpEval input[data-ev="1"][data-ek="method"]`, '관찰');
+    await page.waitForTimeout(600);
+    assert((await cur()).evalRows[1].method === '관찰', JSON.stringify((await cur()).evalRows));
+    await page.click(`${V} #cpEval [data-evdel="0"]`);
+    const r = (await cur()).evalRows;
+    assert(r.length === 1 && r[0].subject === '수학' && r[0].method === '관찰', JSON.stringify(r));
+  }],
+  ['한글 파일: 제목, 시수표·평가 표, 끝에 붙임 목록', async () => {
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click(`${V} [data-c="hwpx"]`)]);
+    assert(dl.suggestedFilename() === '2027학년도 3학년 2반 학급 교육과정 운영 계획.hwpx', dl.suggestedFilename());
+    const b64 = readFileSync(await dl.path()).toString('base64');
+    const txt = await page.evaluate(async b => {
+      const { readText } = await import('./core/files.js');
+      return readText(new File([Uint8Array.from(atob(b), c => c.charCodeAt(0))], 'x.hwpx'));
+    }, b64);
+    assert(txt.includes('2027학년도 3학년 2반 학급 교육과정 운영 계획') && /국어\s*\|\s*12/.test(txt) && txt.includes('관찰'), txt.slice(0, 300));
+    assert(txt.includes('1. 진도표(jindo-sample.txt) 1부.') && txt.includes('2. 평가계획(3학년 평가계획.txt) 1부.'), txt.slice(-300));
+  }],
+  ['확정하면 「확정」, 새 계획에서 지난 학급운영계획을 작년 계획서로 불러오면 목차가 그대로', async () => {
+    await page.click(`${V} [data-c="final"]`);
+    assert((await page.textContent(`${V} #cpList [aria-current="true"]`)).includes('확정'), '확정 표시');
+    const A = await cur();
+    assert(A.status === 'final', A.status);
+    await page.click(`${V} [data-c="new"]`);
+    await page.click(`${V} [data-c="importPrev"]`);
+    await page.click(`${V} [data-prev="${A.id}"]`);
+    const v = await page.inputValue(`${V} textarea[data-src="lastPlan"]`);
+    assert(v.includes('2027학년도 3학년 2반 학급 교육과정 운영 계획') && !v.includes('1부.'), v.slice(0, 200));
+    await page.click(`${V} [data-c="next"]`);
+    await page.waitForSelector(`${V} #cpOutline`);
+    assert(await page.locator(`${V} #cpOutline li`).count() === A.outline.length, `${await page.locator(`${V} #cpOutline li`).count()} / ${A.outline.length}`);
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

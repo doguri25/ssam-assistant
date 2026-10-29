@@ -5,15 +5,18 @@ import { onFlush } from '../../core/store.js';
 import { onEnter } from '../../core/shell.js';
 import * as ai from '../../core/ai.js';
 import { readText, fileMessage } from '../../core/files.js';
-import { toast } from '../../core/ui.js';
+import { toast, saveFile } from '../../core/ui.js';
+import { makeHwpx } from '../../core/hwpx.js';
 import { stepsHTML } from '../../core/steps.js';
 import { stripNames } from '../../core/privacy.js';
 import {
-  STANDARD, MAX_SRC, parseOutline, withRoles, leaves, sectionBodies, newId, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent,
-  normSections, normMonthly, normGuide, guideStatus, insertSentence, draftText, hoursRows, planTitle, planText
+  STANDARD, MAX_SRC, KIND_NAME, parseOutline, withRoles, leaves, sectionBodies, attachKind, newId, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent,
+  normSections, normMonthly, normEvalRows, normGuide, guideStatus, insertSentence, draftText, hoursRows, planTitle, planDoc, planText
 } from './classplan-model.js';
 import { overlap } from './year-model.js';
-import { guidePrompt, draftPrompt } from './classplan-ai.js';
+import { guidePrompt, draftPrompt, evalPrompt } from './classplan-ai.js';
+import { parseJindo } from '../class/class-import.js';
+import { listSubjects, importSubjects, today } from '../class/class-model.js';
 
 const STEPS = ['자료 넣기', '목차', '초안', '첨부·내보내기'];
 const SRC = [
@@ -28,7 +31,9 @@ const S = () => window.SSAM || {};
 let box = null, curTab = '';
 let plan = getPlan(currentId()) || newPlan();
 let saved = !!getPlan(plan.id);
-const busy = {}, errs = {}, reading = {};
+const busy = {}, errs = {}, reading = {}, readingAtt = {};
+/* 첨부 id → { text: 이름 줄 뺀 글, jindo: 진도표 읽은 것 } — 차시 목록은 저장하지 않으므로(크기) 넣은 그 자리에서만 학급 메뉴로 보냄 */
+const attMem = {};
 let warnedFull = false, showPrev = false;
 const visible = () => curTab === 'class' && box && box.isConnected && !box.closest('[hidden]');
 
@@ -127,7 +132,55 @@ function step1() {
         <div class="yp-files muted">${plan.sourceNames[k].length ? '넣은 파일: ' + plan.sourceNames[k].map(esc).join(', ') : ''}</div>
         <textarea class="field" data-src="${k}" rows="4" placeholder="여기에 붙여넣어도 돼요" aria-label="${label}">${esc(plan.sources[k])}</textarea>
       </div>`).join('')}
+    </div>${attachHTML()}`;
+}
+/* 첨부파일 (1단계·4단계에 같이 보임) */
+const jindoSubjects = r => (r ? r.subjects.filter(s => s.pick).map(s => ({ name: s.name, hours: s.total != null ? s.total : s.lessons.length })) : []);
+function attInfo(a) {
+  if (a.kind === 'jindo') {
+    const s = a.summary.subjects;
+    return s.length ? `교과 ${s.length}개 · ${s.reduce((n, x) => n + x.hours, 0)}시간` : '연간지도계획 표를 찾지 못했어요. 시수표 없이 붙임 목록에만 들어가요.';
+  }
+  if (a.kind === 'eval') return a.text ? '4단계에서 AI로 평가 표를 읽어요.' : '글을 읽지 못해 붙임 목록에만 들어가요.';
+  return '붙임 목록에만 들어가요.';
+}
+function attachHTML() {
+  return `<div class="yp-card">
+      <div class="yp-src-h"><h3>첨부파일</h3><button class="btn" type="button" data-file="attach">첨부파일 넣기</button></div>
+      <p class="muted">스쿨마스터 등에서 받은 진도표·평가계획을 넣으면 읽어서 시수표·평가 표로 넣고, 계획서 끝 붙임 목록에 적어요. 여러 개 넣을 수 있어요.</p>
+      ${readingAtt[plan.id] ? `<p class="muted"><span class="spin"></span> ${esc(readingAtt[plan.id])}</p>` : ''}
+      <ul class="cp-attach" id="cpAttach">${plan.attach.map(a => `<li data-att="${esc(a.id)}">
+        <span class="grow"><b>${esc(a.name)}</b> <span class="muted">${esc(attInfo(a))}</span></span>
+        <select class="field" data-akind="${esc(a.id)}" aria-label="「${esc(a.name)}」 종류">${Object.entries(KIND_NAME).map(([k, n]) => `<option value="${k}"${a.kind === k ? ' selected' : ''}>${k === 'other' ? '기타' : n}</option>`).join('')}</select>
+        <button class="icon-btn" type="button" data-adel="${esc(a.id)}" aria-label="「${esc(a.name)}」 빼기">×</button></li>`).join('')}</ul>
     </div>`;
+}
+/* 첨부 읽기: 종류 짐작, 진도표는 교과별 시수, 평가계획은 이름 줄 뺀 글을 지님 */
+async function addAttach(files) {
+  const id = plan.id;
+  if (!saved) persist();
+  const here = () => visible() && plan.id === id && (plan.step === 1 || plan.step === 4);
+  for (const f of files) {
+    readingAtt[id] = `「${f.name}」 읽는 중…`;
+    if (here()) renderMain();
+    try {
+      const raw = await readText(f), r = stripNames(raw), kind = attachKind(f.name, raw), aid = newId();
+      const j = parseJindo(raw, { today: today() });
+      attMem[aid] = { text: r.text, jindo: j.subjects.length ? j : null };
+      apply(id, p => { p.attach = [...p.attach, { id: aid, name: f.name, kind, text: kind === 'eval' ? r.text : '', summary: { subjects: kind === 'jindo' ? jindoSubjects(attMem[aid].jindo) : [] } }]; });
+      if (kind === 'eval' && r.dropped) toast(`이름·전화번호가 적힌 줄 ${r.dropped}개는 빼고 넣었어요(학생 이름은 저장하지도 AI로 보내지도 않아요).`, 7000);
+    } catch (e) { toast(fileMessage(e && e.code), 5000); }
+  }
+  delete readingAtt[id];
+  if (here()) renderMain();
+}
+function setKind(aid, kind) {
+  const a = plan.attach.find(x => x.id === aid), m = attMem[aid];
+  if (!a || !KIND_NAME[kind]) return;
+  a.kind = kind;
+  if (kind === 'eval' && !a.text && m) a.text = m.text;
+  if (kind === 'jindo' && m) a.summary = { subjects: jindoSubjects(m.jindo) };
+  persist(); renderMain();
 }
 function prevHTML() {
   const list = listPlans().filter(p => p.status === 'final' && p.id !== plan.id);
@@ -217,7 +270,7 @@ function monthlyHTML() {
   return `<div class="yp-tbl-wrap"><table class="yp-tbl" id="cpMonthly"><thead><tr><th>월</th><th>주요 활동</th></tr></thead><tbody>${m.map((x, i) => `<tr>
     <td class="num">${x.month}월</td><td><input class="field" data-mon="${i}" value="${esc(x.text)}" aria-label="${x.month}월 주요 활동"></td></tr>`).join('')}</tbody></table></div>`;
 }
-const HINT = { hours: '4단계에서 첨부한 진도표의 교과별 시수표가 이 칸 뒤에 붙어요.', eval: '4단계에서 첨부한 평가계획의 평가 표가 이 칸 뒤에 붙어요.', monthly: '' };
+const HINT = { hours: '첨부한 진도표의 교과별 시수표가 이 칸 뒤에 붙어요(4단계에서 확인).', eval: '첨부한 평가계획에서 읽은 평가 표가 이 칸 뒤에 붙어요(4단계에서 확인).', monthly: '' };
 function step3() {
   const b = busy[plan.id];
   if (b === 'guide' || b === 'draft') return `<div class="yp-card"><p class="muted"><span class="spin"></span> ${b === 'guide' ? '올해 지침에서 꼭 넣을 항목을 찾고 있어요…' : '칸마다 올해 초안을 쓰고 있어요. 다른 메뉴로 가도 계속 써요…'}</p></div>`;
@@ -239,16 +292,17 @@ function step3() {
     <div class="yp-card" id="cpDraft">${secs}
       <div class="row"><button class="btn text" type="button" data-c="draft">AI로 다시 쓰기 (고친 내용은 사라져요)</button></div></div>`;
 }
-/* AI 일이 끝나면: 그 계획의 3단계를 보고 있을 때만 다시 그림 */
-function finish(id) {
+/* AI 일이 끝나면: 그 계획의 그 단계(초안 3, 평가 표 4)를 보고 있을 때만 다시 그림 */
+function finish(id, step) {
   delete busy[id];
   if (!visible() || plan.id !== id) return;
-  if (plan.step === 3) renderMain();
+  if (plan.step === step) renderMain();
   else if (errs[id]) toast(errs[id], 6000);
 }
+const BUSY_MSG = 'AI가 이 계획의 다른 일을 하고 있어요. 끝나면 다시 눌러 주세요.';
 async function runDraft() {
   const id = plan.id;
-  if (busy[id]) return;
+  if (busy[id]) { toast(BUSY_MSG); return; }
   if (!ai.ready()) { errs[id] = '초안을 쓸 AI를 먼저 정해 주세요. 왼쪽 아래 AI에서 정할 수 있어요.'; renderMain(); return; }
   if (!saved) persist();
   delete errs[id];
@@ -271,7 +325,7 @@ async function runDraft() {
       if (p.status === 'final') p.status = 'draft';
     });
   } catch (e) { errs[id] = ai.errorMessage(e && e.code, e); }
-  finish(id);
+  finish(id, 3);
 }
 let ovT = null;
 function refreshOverlap() {
@@ -279,8 +333,93 @@ function refreshOverlap() {
   ovT = setTimeout(() => { const b = box && box.querySelector('#cpOverlapBox'); if (b) b.innerHTML = overlapHTML(); }, 250);
 }
 
-/* ---------- 4단계 ---------- */
-function step4() { return '<div class="yp-card"><p class="muted">첨부·내보내기 단계는 준비 중이에요.</p></div>'; }
+/* ---------- 4단계: 첨부·시수표·평가 표·내보내기 ---------- */
+const EVAL_COLS = [['subject', '교과'], ['unit', '단원(영역)'], ['standard', '성취기준'], ['method', '평가 방법'], ['when', '시기']];
+const noSec = role => !plan.outline.some(x => x.role === role);
+function step4() {
+  const hours = hoursRows(plan.attach);
+  const jin = plan.attach.filter(a => a.kind === 'jindo');
+  const live = jin.filter(a => attMem[a.id] && attMem[a.id].jindo);
+  return attachHTML()
+    + `<div class="yp-card"><h3>교과별 시수표</h3>
+      ${hours.length ? `<div class="yp-tbl-wrap"><table class="yp-tbl" id="cpHours"><thead><tr><th>교과</th><th>시수</th></tr></thead><tbody>${hours.map(r => `<tr><td>${esc(r[0])}</td><td class="num">${esc(r[1])}</td></tr>`).join('')}</tbody></table></div>`
+        : '<p class="muted">연간지도계획 표가 있는 진도표를 첨부하면 교과별 시수를 읽어 표로 넣어요.</p>'}
+      ${hours.length && noSec('hours') ? '<p class="muted">목차에 「시간 배당」·「시수」 칸이 없어 한글 파일에는 들어가지 않아요. 2단계에서 칸을 더해 주세요.</p>' : ''}
+      ${live.length ? `<div class="row">${live.map(a => `<button class="btn tonal" type="button" data-toclass="${esc(a.id)}">학급 › 진도표·시수에도 넣기${live.length > 1 ? ` (${esc(a.name)})` : ''}</button>`).join('')}</div>` : ''}
+      ${jin.some(a => a.summary.subjects.length && !live.includes(a)) ? '<p class="muted">학급 메뉴로 넣으려면 진도표를 다시 넣어 주세요(차시 목록은 저장하지 않아요).</p>' : ''}
+    </div>`
+    + evalHTML() + exportHTML();
+}
+function evalHTML() {
+  const b = busy[plan.id] === 'eval', rows = plan.evalRows;
+  const has = plan.attach.some(a => a.kind === 'eval' && a.text);
+  return `<div class="yp-card"><h3>평가 표</h3>
+      <p class="muted">${has ? '첨부한 평가계획을 AI로 읽어 교과·단원·성취기준·평가 방법·시기 표로 넣어요. 학생 이름은 보내지 않아요.' : '평가계획을 첨부하면 AI로 읽어 평가 표를 만들어요. 줄을 더해 직접 써도 돼요.'}</p>
+      ${b ? '<p class="muted"><span class="spin"></span> 평가계획에서 평가 표를 읽고 있어요…</p>' : ''}
+      ${rows.length ? `<div class="yp-tbl-wrap"><table class="yp-tbl cp-eval" id="cpEval"><thead><tr>${EVAL_COLS.map(c => `<th>${c[1]}</th>`).join('')}<th></th></tr></thead><tbody>${rows.map((r, i) => `<tr>
+        ${EVAL_COLS.map(([k, n]) => `<td><input class="field" data-ev="${i}" data-ek="${k}" value="${esc(r[k])}" aria-label="${i + 1}번째 줄 ${n}"></td>`).join('')}
+        <td><button class="icon-btn" type="button" data-evdel="${i}" aria-label="${i + 1}번째 줄 빼기">×</button></td></tr>`).join('')}</tbody></table></div>` : ''}
+      ${rows.length && noSec('eval') ? '<p class="muted">목차에 「평가 계획」 칸이 없어 한글 파일에는 들어가지 않아요. 2단계에서 칸을 더해 주세요.</p>' : ''}
+      <div class="row">${has && !b ? `<button class="btn tonal" type="button" data-c="evalRead">${rows.length ? 'AI로 다시 읽기 (고친 내용은 사라져요)' : 'AI로 평가 표 읽기'}</button>` : ''}<button class="btn text" type="button" data-c="evalAdd">+ 줄 더하기</button></div>
+    </div>`;
+}
+function exportHTML() {
+  const fin = plan.status === 'final', d = !!plan.draft;
+  return `<div class="yp-card"><h3>내보내기와 확정</h3>
+      <p class="muted">한글 파일은 목차 그대로 제목과 칸 글을 쓰고, 시수표·평가 표·월별 표는 그 칸 뒤에, 첨부파일은 끝 「붙임」에 적어요. 확정한 계획은 다음 해 「지난 학급운영계획에서 불러오기」로 쓸 수 있어요.</p>
+      ${plan.attach.length ? `<div class="cp-buim"><b>붙임</b><ol id="cpBuim">${plan.attach.map(a => `<li>${esc(KIND_NAME[a.kind] || '첨부')}(${esc(a.name)}) 1부.</li>`).join('')}</ol></div>` : ''}
+      ${!d ? '<p class="banner warn"><span class="grow">3단계에서 초안을 먼저 써 주세요.</span></p>' : fin ? '<p class="banner ok"><span class="grow">확정한 계획이에요. 고치면 다시 「작성 중」이 돼요.</span></p>' : ''}
+      <div class="row yp-out"><button class="btn" type="button" data-c="hwpx"${d ? '' : ' disabled'}>한글 파일로 내려받기</button><span class="grow"></span>
+        <button class="btn primary" type="button" data-c="final"${d ? '' : ' disabled'}>${fin ? '다시 확정' : '확정'}</button></div>
+    </div>`;
+}
+async function runEval() {
+  const id = plan.id;
+  if (busy[id]) { toast(BUSY_MSG); return; }
+  if (!ai.ready()) { errs[id] = '평가계획을 읽을 AI를 먼저 정해 주세요. 왼쪽 아래 AI에서 정할 수 있어요.'; renderMain(); return; }
+  const text = plan.attach.filter(a => a.kind === 'eval' && a.text).map(a => a.text).join('\n\n');
+  if (!text.trim()) return;
+  if (!saved) persist();
+  delete errs[id];
+  busy[id] = 'eval'; renderMain();
+  try {
+    const v = await ai.generateJSON(evalPrompt(text), { valid: x => normEvalRows(x).length > 0 });
+    apply(id, p => { p.evalRows = normEvalRows(v); if (p.status === 'final') p.status = 'draft'; });
+  } catch (e) { errs[id] = ai.errorMessage(e && e.code, e); }
+  finish(id, 4);
+}
+/* 진도표 교과를 학급 메뉴(진도표·시수)에 넣기: 고르기 창 */
+function toClass(aid) {
+  const a = plan.attach.find(x => x.id === aid), r = attMem[aid] && attMem[aid].jindo;
+  if (!a || !r || !S().openSheet) return;
+  const have = listSubjects();
+  S().openSheet(`<h3>학급 › 진도표·시수에 넣을 교과</h3>
+    <p class="muted" style="margin:0">「${esc(a.name)}」에서 읽은 교과예요. 이미 있는 교과는 차시 목록만 바꾸고 체크 기록은 그대로 둬요. 창체는 영역별 표 대신 합계 표를 골라 두었어요.</p>
+    <ul class="cls-pick">${r.subjects.map((s, i) => `<li><label><input type="checkbox" data-cpj="${i}"${s.pick ? ' checked' : ''}> <b>${esc(s.name)}</b>
+      <span class="muted">${s.lessons.length}차시</span></label>${have.some(h => h.name === s.name) ? '<span class="cls-tag">이미 있어요 — 바꿔요</span>' : ''}</li>`).join('')}</ul>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" data-cpok>넣기</button></div>`,
+  sh => sh.querySelector('[data-cpok]').addEventListener('click', () => {
+    const picked = [...sh.querySelectorAll('[data-cpj]')].filter(c => c.checked).map(c => r.subjects[+c.dataset.cpj]);
+    if (!picked.length) { toast('교과를 하나 이상 골라 주세요'); return; }
+    const ok = importSubjects(picked);
+    S().closeSheet();
+    toast(ok ? `학급 › 진도표·시수에 교과 ${picked.length}개를 넣었어요. 학급 메뉴에서 「다음 차시」를 확인해 주세요.` : '저장 공간이 모자라 교과를 다 넣지 못했어요.', 6000);
+  }));
+}
+async function downloadHwpx() {
+  if (!plan.draft) return;
+  const name = `${planTitle(plan).replace(/[\\/:*?"<>|]/g, '_')}.hwpx`;
+  try {
+    const where = await saveFile(name, makeHwpx(planDoc(plan)), 'application/hwp+zip');
+    toast(window.__TAURI__ ? `다운로드 폴더에 저장했어요: ${String(where).split(/[\\/]/).pop()}` : '한글 파일을 내려받았어요');
+  } catch (e) { toast('한글 파일을 저장하지 못했어요'); }
+}
+function confirmPlan() {
+  if (!plan.draft) return;
+  plan.status = 'final';
+  persist(); renderMain();
+  toast('확정했어요. 다음 해 「지난 학급운영계획에서 불러오기」로 쓸 수 있어요.');
+}
 
 /* ---------- 단계 옮기기 ---------- */
 function goStep(n) {
@@ -326,15 +465,25 @@ document.addEventListener('input', e => {
     const x = m[+el.dataset.mon];
     if (!x) return;
     x.text = el.value; plan.monthly = m;
+  } else if (el.dataset.ev != null) {
+    const r = plan.evalRows[+el.dataset.ev];
+    if (!r || !EVAL_COLS.some(c => c[0] === el.dataset.ek)) return;
+    r[el.dataset.ek] = el.value;
   } else return;
-  if (plan.status === 'final' && (el.dataset.sec || el.dataset.mon != null)) plan.status = 'draft';
+  if (plan.status === 'final' && (el.dataset.sec || el.dataset.mon != null || el.dataset.ev != null)) plan.status = 'draft';
   persistSoon();
 });
 document.addEventListener('change', e => {
   if (!box || !box.contains(e.target) || !visible()) return;
   const el = e.target;
-  if (el.id === 'cpFile') { const t = el.dataset.target; const files = [...el.files]; el.value = ''; if (t && files.length) addFiles(t, files); return; }
+  if (el.id === 'cpFile') {
+    const t = el.dataset.target, files = [...el.files];
+    el.value = '';
+    if (files.length) { if (t === 'attach') addAttach(files); else if (t) addFiles(t, files); }
+    return;
+  }
   if (el.id === 'cpGrade') { plan.grade = el.value ? +el.value : null; persist(); return; }
+  if (el.dataset.akind) { setKind(el.dataset.akind, el.value); return; }
   if (el.dataset.ot != null) {
     const x = plan.outline.find(o => o.id === el.dataset.ot);
     if (x && el.value.trim()) { x.title = el.value.trim().slice(0, 60); setOutline(plan.outline); }
@@ -367,6 +516,12 @@ document.addEventListener('click', e => {
     if (g) { plan.draft = insertSentence(plan.draft, g.section, g.sentence); if (plan.status === 'final') plan.status = 'draft'; persist(); renderMain(); toast('초안에 넣었어요'); }
     return;
   }
+  const ad = e.target.closest('[data-adel]');
+  if (ad) { plan.attach = plan.attach.filter(x => x.id !== ad.dataset.adel); delete attMem[ad.dataset.adel]; persist(); renderMain(); return; }
+  const tc = e.target.closest('[data-toclass]');
+  if (tc) { toClass(tc.dataset.toclass); return; }
+  const ed = e.target.closest('[data-evdel]');
+  if (ed) { plan.evalRows.splice(+ed.dataset.evdel, 1); if (plan.status === 'final') plan.status = 'draft'; persist(); renderMain(); return; }
   const o = plan.outline, idx = k => +e.target.closest(`[${k}]`).getAttribute(k);
   if (e.target.closest('[data-oup]')) { const i = idx('data-oup'); setOutline(move(o, i, i - 1)); return; }
   if (e.target.closest('[data-odown]')) { const i = idx('data-odown'); setOutline(move(o, i, i + 1)); return; }
@@ -380,6 +535,10 @@ document.addEventListener('click', e => {
   else if (a === 'prev') goStep(Math.max(1, plan.step - 1));
   else if (a === 'importPrev') { showPrev = !showPrev; renderMain(); }
   else if (a === 'draft') runDraft();
+  else if (a === 'evalRead') runEval();
+  else if (a === 'evalAdd') { plan.evalRows = [...plan.evalRows, { subject: '', unit: '', standard: '', method: '', when: '' }]; renderMain(); const f = box.querySelector(`#cpEval input[data-ev="${plan.evalRows.length - 1}"]`); if (f) f.focus(); }
+  else if (a === 'hwpx') downloadHwpx();
+  else if (a === 'final') confirmPlan();
   else if (a === 'blank') { plan.draft = {}; persist(); renderMain(); }
   else if (a === 'oAdd') { setOutline([...o, { id: newId(), title: '새 칸', level: 2 }]); const ins = box.querySelectorAll('#cpOutline input[data-ot]'); if (ins.length) { ins[ins.length - 1].focus(); ins[ins.length - 1].select(); } }
   else if (a === 'oLast') { const p = parseOutline(plan.sources.lastPlan); if (p.length) setOutline(p, `작년 계획서 목차 그대로예요(${p.length}칸).`); else toast('작년 계획서에서 목차를 찾지 못했어요'); }

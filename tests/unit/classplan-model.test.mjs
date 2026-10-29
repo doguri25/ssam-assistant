@@ -131,6 +131,22 @@ test('한글 문서: 제목, 목차 번호, 칸 글, 시수표·평가 표·월�
 test('지난 계획을 글로 내면 다시 목차로 읽힘 (다음 해 「작년 계획서」)', () => {
   const plan = { ...newPlan(), year: 2027, grade: 3, room: 2, outline: STANDARD.map(x => ({ ...x })), draft: {} };
   assert.deepEqual(titles(parseOutline(planText(plan))), titles(STANDARD));
+  // 붙임 목록(「1. 진도표(…) 1부.」)은 목차로 읽히지 않게 글에서 뺌
+  const att = { ...plan, attach: [{ kind: 'jindo', name: '진도표.hwp', summary: { subjects: [] } }, { kind: 'eval', name: '평가.hwp', summary: {} }] };
+  assert.deepEqual(titles(parseOutline(planText(att))), titles(STANDARD));
+  assert.ok(!planText(att).includes('1부.'));
+});
+
+test('첨부 저장: 평가계획은 AI로 다시 읽을 글을 2만 자까지 지니고, 다른 첨부는 글을 지니지 않음', () => {
+  const long = '가'.repeat(25000);
+  const p = savePlan({ ...newPlan(), attach: [
+    { id: 'a1', kind: 'eval', name: '평가계획.hwp', text: long, summary: {} },
+    { id: 'a2', kind: 'jindo', name: '진도표.hwp', text: '국어 교육과정 연간지도계획', summary: { subjects: [{ name: '국어', hours: 12 }] } }
+  ] });
+  const q = getPlan(p.id);
+  assert.equal(q.attach[0].text.length, 20000);
+  assert.equal(q.attach[1].text, '');
+  assert.deepEqual(q.attach[1].summary.subjects, [{ name: '국어', hours: 12 }]);
 });
 
 test('새 학년도에 학급운영계획을 가져감 (내년 「작년 계획서」로)', () => {

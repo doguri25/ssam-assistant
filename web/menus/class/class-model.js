@@ -268,6 +268,17 @@ export function progressOf(ctx, sub) {
 export const summary = ctx => ctx.subjects.map(s => progressOf(ctx, s));
 /* 진도표대로라면 지금 할 차시를 다음 차시로 */
 export const alignToPlan = (ctx, sub) => setNext(ctx, sub, progressOf(ctx, sub).expected + 1);
+/* 진도표에서 고른 교과 넣기: 있는 교과는 차시 목록만 바꾸고(체크 기록 그대로), 새 교과는 계획 진도에 맞춤. 하나라도 저장하지 못하면 false */
+export function importSubjects(picked) {
+  let ok = true;
+  for (const s of picked) {
+    const old = listSubjects().find(h => h.name === s.name);
+    if (old) { ok = !!saveSubject({ ...old, total: s.total, lessons: s.lessons }) && ok; continue; }
+    const neu = saveSubject({ name: s.name, start: today(), offset: 0, total: s.total, lessons: s.lessons });
+    ok = !!(neu && saveSubject(alignToPlan(makeCtx(), neu))) && ok;
+  }
+  return ok;
+}
 
 /* 체크하지 않은 날: 처음 체크한 날부터, 오늘 앞 수업일 n일 안에서 진도표 있는 교과 수업이 있는데 기록이 없는 날(오래된 순) */
 export function missingDays(ctx, n = 10) {
