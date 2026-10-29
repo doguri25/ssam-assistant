@@ -146,3 +146,28 @@ test('일람표 문서·CSV', () => {
   const d = tableDoc('성적 일람표', tb);
   assert.equal(d.blocks[0].type, 'table'); assert.equal(d.blocks[0].rows[0][0], '번호');
 });
+
+test('결석 번호: 글에서 번호 읽기, 학생 번호를 명단 예외·결석을 건너뛰어 다시 매김(답안 차례·결과는 그대로)', async () => {
+  const { parseNos, renumber } = await import('../../web/menus/evaluate/unit/unit-model.js');
+  assert.deepEqual(parseNos('5, 12 ·3번 5 x 0 100'), [3, 5, 12]);
+  assert.deepEqual(parseNos(''), []);
+  const t = newTest();
+  t.students = [1, 3, 4, 5].map(no => ({ no, skip: false, status: 'done', items: { 1: { read: 'r' + no } } }));
+  t.absent = [3];
+  renumber(t, [2]);
+  assert.deepEqual(t.students.map(s => s.no), [1, 4, 5, 6]);
+  assert.deepEqual(t.students.map(s => s.items[1].read), ['r1', 'r3', 'r4', 'r5']);
+  t.absent = [];
+  renumber(t, [2]);
+  assert.deepEqual(t.students.map(s => s.no), [1, 3, 4, 5]);
+});
+
+test('이름 칸 가림은 평가마다 따로 (정하지 않은 평가는 null, 지난 가림은 따로 기억)', async () => {
+  const { maskOf } = await import('../../web/menus/evaluate/unit/unit-model.js');
+  const t = newTest();
+  assert.equal(maskOf(t), null);
+  t.mask = [{ x: 0.6, y: 0, w: 0.3, h: 0.1 }]; t.maskAll = true;
+  assert.deepEqual(maskOf(t), { mask: t.mask, all: true });
+  t.mask = [];
+  assert.deepEqual(maskOf(t), { mask: [], all: true });
+});

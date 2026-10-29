@@ -4,7 +4,7 @@ import { toast } from '../../../core/ui.js';
 import * as ai from '../../../core/ai.js';
 import * as store from '../../../core/store.js';
 import { ITEM_TYPES, autoJudge, gradeCell, mergeCells, needsCheck, studentTotal } from './unit-grade.js';
-import { getTest, getSet, saveSet, numbersFor } from './unit-model.js';
+import { getTest, getSet, saveSet, numbersFor, parseNos, renumber, maskOf } from './unit-model.js';
 import { gradePrompt, normGrade, validGrade } from './unit-ai.js';
 import { esc, SS, AI_KEY, registerStep, inStep, cur, curId, commit, saveOrWarn, refresh, render, goStep, getBox } from './unit.js';
 
@@ -21,9 +21,9 @@ function split(t, pageCount, per) {
   const n = Math.ceil(pageCount / per);
   G.idx = Array.from({ length: n }, (_, i) => Array.from({ length: Math.min(per, pageCount - i * per) }, (_, j) => i * per + j));
   if (t.students.length === n) return; // 이미 나눈 학생에 차례대로 다시 붙임
-  const roster = store.get('class', null) || {};
-  t.students = numbersFor(n, roster.except || []).map(no => ({ no, skip: false, status: 'idle', items: {}, good: '', cheer: '' }));
+  t.students = numbersFor(n, [...rosterExcept(), ...(t.absent || [])]).map(no => ({ no, skip: false, status: 'idle', items: {}, good: '', cheer: '' }));
 }
+const rosterExcept = () => (store.get('class', null) || {}).except || [];
 async function loadAnswers(fileList) {
   const t0 = cur(), id = t0.id, per = Math.max(1, getSet().pagesPer | 0);
   const say = m => { G.msg = m; const el = getBox() && getBox().querySelector('#unAnsMsg'); if (el) el.textContent = m; };
@@ -62,36 +62,44 @@ function stuRow(t, s, i) {
     <span class="grow"></span><button class="btn text" type="button" data-un="skip" data-i="${i}">${s.skip ? '채점하기' : '채점 안 함'}</button></li>`;
 }
 function step2HTML(t) {
-  const set = getSet();
+  const set = getSet(), m = maskOf(t);
   const note = t.students.length && !hasPages(t.id) ? '<p class="banner warn" style="margin:8px 0 0">스캔 이미지는 저장하지 않아요. 다시 채점하려면 답안 스캔을 다시 올려 주세요.</p>' : '';
   return `<div class="yp-card">
       <h3>답안 올리기</h3>
-      <p class="muted cls-note">반 전체 답안을 스캔한 PDF나 사진을 올려요. 학생마다 장 수가 같아야 차례대로 나눠져요. 번호는 학급 명단의 예외 번호를 건너뛰어 매겨요.</p>
+      <p class="muted cls-note">반 전체 답안을 스캔한 PDF나 사진을 올려요. 학생마다 장 수가 같아야 차례대로 나눠져요. 번호는 학급 명단의 예외 번호와 결석 번호를 건너뛰어 매겨요.</p>
       <div class="row"><button class="btn primary" type="button" data-un="ansFile">답안 스캔 올리기</button>
         <label class="cls-inline">학생 한 명 <input class="field num" type="number" id="unPagesPer" min="1" max="8" value="${set.pagesPer}"> 쪽</label>
         <span class="muted" id="unAnsMsg">${esc(G.testId === t.id ? G.msg : '')}</span></div>
       <input type="file" id="unAnsFile" accept=".pdf,.png,.jpg,.jpeg,.webp" multiple hidden>
+      <div class="row"><label class="cls-inline">결석 번호 <input class="field" id="unAbsent" value="${esc((t.absent || []).join(', '))}" placeholder="예: 5, 12" aria-describedby="unAbsentNote"></label>
+        <span class="muted" id="unAbsentNote">시험을 보지 않은 학생 번호를 적으면 뒤 번호가 한 칸씩 밀려요.</span></div>
       <div class="row"><label class="switch"><input type="checkbox" id="unMaskOn"${set.maskOn ? ' checked' : ''}>이름 칸을 가리고 보내기</label>
         <button class="btn" type="button" data-un="mask"${hasPages(t.id) ? '' : ' disabled'}>이름 칸 정하기</button>
-        <span class="muted">${set.mask.length ? `가릴 곳 ${set.mask.length}개${set.maskAll ? ' · 모든 쪽' : ' · 첫 쪽'}` : '가릴 곳을 아직 정하지 않았어요'}</span></div>
+        <span class="muted">${m && m.mask.length ? `가릴 곳 ${m.mask.length}개${m.all ? ' · 모든 쪽' : ' · 첫 쪽'}` : '가릴 곳을 아직 정하지 않았어요'}</span></div>
       ${note}
     </div>
     ${t.students.length ? `<div class="yp-card"><h3>학생 ${t.students.filter(s => !s.skip).length}명</h3><ul class="un-stus">${t.students.map((s, i) => stuRow(t, s, i)).join('')}</ul></div>` : ''}
     <div class="row un-next"><button class="btn primary" type="button" data-un="toGrade"${t.students.length ? '' : ' disabled'}>다음: 채점</button></div>`;
 }
+/* 이름 칸은 평가지마다 자리가 달라 평가마다 따로 둠. 정하지 않은 평가는 지난 평가에서 정한 곳을 먼저 보여 줌 */
 function openMask(t) {
-  const set = getSet();
+  const set = getSet(), m = maskOf(t) || { mask: set.mask, all: set.maskAll };
   const shots = t.students.map((s, i) => ({ s, pg: pagesOf(t.id, i) })).filter(x => !x.s.skip && x.pg.length).map(x => ({ url: G.pages[x.pg[0]].url, label: `${x.s.no}번 첫 쪽` }));
   if (!shots.length || !SS().openMaskEditor) return;
-  SS().openMaskEditor({ shots, mask: set.mask, all: set.maskAll, what: '평가지', save: (mask, all) => { saveSet({ ...getSet(), mask, maskAll: all }); render(); } });
+  SS().openMaskEditor({ shots, mask: m.mask, all: m.all, what: '평가지', save: (mask, all) => {
+    const t2 = getTest(t.id) || t;
+    t2.mask = mask; t2.maskAll = all; commit(t2);
+    saveSet({ ...getSet(), mask, maskAll: all });
+    render();
+  } });
 }
 
 /* ---------- 3단계: 채점 ---------- */
 async function imagesFor(id, i) {
-  const set = getSet(), out = [], pg = pagesOf(id, i);
+  const set = getSet(), m = maskOf(getTest(id)), out = [], pg = pagesOf(id, i);
   for (let j = 0; j < pg.length; j++) {
-    const masked = set.maskOn && set.mask.length && (set.maskAll || j === 0);
-    out.push(await SS().files.pageImage(G.pages[pg[j]], masked ? set.mask : null));
+    const masked = set.maskOn && m && m.mask.length && (m.all || j === 0);
+    out.push(await SS().files.pageImage(G.pages[pg[j]], masked ? m.mask : null));
   }
   return out;
 }
@@ -126,11 +134,12 @@ async function runQueue(id, list) {
   await Promise.all([worker(), worker()]);
   refresh(id);
 }
-/* 이름 칸을 정하지 않았으면 먼저 물어봄 (기본은 가리고 보내기) */
+/* 이 평가의 이름 칸을 정하지 않았으면 먼저 물어봄 (기본은 가리고 보내기) */
 function askMask(go) {
-  const set = getSet();
-  if (!set.maskOn || set.mask.length) { go(); return; }
-  SS().openSheet(`<h3>이름 칸을 아직 정하지 않았어요</h3><p class="muted" style="margin:0">정하지 않으면 학생 이름이 그대로 AI 회사로 보내져요. 2단계에서 [이름 칸 정하기]로 이름이 적힌 곳을 상자로 표시해 주세요.</p>
+  const set = getSet(), m = maskOf(cur());
+  if (!set.maskOn || (m && m.mask.length)) { go(); return; }
+  const last = set.mask.length ? ' 지난 평가에서 정한 곳을 먼저 보여 드려요. 이 평가지에서도 이름이 가려지는지 확인해 주세요.' : '';
+  SS().openSheet(`<h3>이 평가의 이름 칸을 아직 정하지 않았어요</h3><p class="muted" style="margin:0">정하지 않으면 학생 이름이 그대로 AI 회사로 보내져요. [이름 칸 정하기]로 이름이 적힌 곳을 상자로 표시해 주세요.${last}</p>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn" type="button" id="unNoMaskOk">가리지 않고 채점</button><button class="btn primary" type="button" id="unMaskGo">이름 칸 정하기</button></div>`,
   sh => {
     sh.querySelector('#unNoMaskOk').addEventListener('click', () => { SS().closeSheet(); go(); });
@@ -296,6 +305,12 @@ document.addEventListener('change', e => {
     else if (t.students.some(s => s.status === 'done')) toast('이미 채점한 학생이 있어서 지금 나눈 것은 그대로예요. 답안 스캔을 다시 올리면 새 쪽 수로 나눠요.', 6000);
     render();
   } else if (el.id === 'unMaskOn') { saveSet({ ...getSet(), maskOn: el.checked }); render(); }
+  else if (el.id === 'unAbsent') {
+    // 답안 차례(채점 결과)는 그대로 두고 번호만 다시 매김
+    t.absent = parseNos(el.value);
+    if (t.students.length) renumber(t, rosterExcept());
+    commit(t); render();
+  }
   else if (el.dataset.stno != null) {
     const i = Number(el.dataset.stno), v = Math.round(Number(el.value));
     if (!(v >= 1 && v <= 99) || t.students.some((s, j) => j !== i && s.no === v)) { toast('번호가 비었거나 겹쳐요'); render(); return; }

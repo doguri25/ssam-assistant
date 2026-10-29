@@ -74,6 +74,16 @@ export function numbersFor(n, except = [], start = 1) {
   for (let no = Math.max(1, start | 0); out.length < n; no++) if (!ex.has(no)) out.push(no);
   return out;
 }
+/* 결석 번호 글(「5, 12」)에서 1~99 번호 */
+export const parseNos = text => [...new Set((String(text || '').match(/\d+/g) || []).map(Number).filter(n => n >= 1 && n <= 99))].sort((a, b) => a - b);
+/* 답안 차례는 그대로 두고 번호만 다시: 명단 예외와 이 평가의 결석 번호를 건너뜀 */
+export function renumber(test, except = []) {
+  const nos = numbersFor(test.students.length, [...except, ...(test.absent || [])]);
+  test.students.forEach((s, i) => { s.no = nos[i]; });
+  return test;
+}
+/* 이 평가의 이름 칸 가림 (정하지 않았으면 null) */
+export const maskOf = t => (t && Array.isArray(t.mask) ? { mask: t.mask, all: !!t.maskAll } : null);
 export const termOf = date => { const m = Number(String(date || '').slice(5, 7)); return m >= 3 && m <= 8 ? 1 : 2; };
 export const filterTests = (list, { subject = '', term = 0 } = {}) =>
   list.filter(s => (!subject || s.subject === subject) && (!term || termOf(s.date) === Number(term)));

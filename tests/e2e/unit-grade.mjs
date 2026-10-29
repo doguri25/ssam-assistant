@@ -72,7 +72,7 @@ await run('unit-grade', [
     assert(grades().length === 0, 'AI를 부름');
     await page.click(`${V} .steps [data-step="2"]`);
   }],
-  ['이름 칸 상자를 그리면 unit:set에 저장', async () => {
+  ['이름 칸 상자를 그리면 이 평가에 저장(다음 평가용으로 unit:set에도)', async () => {
     await page.click(`${V} [data-un="mask"]`);
     const b = await page.locator('#sheetRoot #mkStage').boundingBox();
     await page.mouse.move(b.x + b.width * 0.6, b.y + 10); await page.mouse.down();
@@ -80,6 +80,7 @@ await run('unit-grade', [
     await page.click('#sheetRoot #mkOk');
     const set = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:unit:set')));
     assert(set.mask.length === 1 && set.pagesPer === 1, JSON.stringify(set));
+    assert((await T(A)).mask.length === 1, '평가에 없음');
   }],
   ['채점 시작 → 학생마다 AI 한 번, 이미지 1장', async () => {
     await page.click(`${V} [data-un="toGrade"]`);
@@ -229,6 +230,41 @@ await run('unit-grade', [
     await page.waitForTimeout(100);
     assert((await page.textContent('#toast')).includes('이미 채점한 학생이 있어'), await page.textContent('#toast'));
     await page.fill(`${V} #unPagesPer`, '1'); await page.dispatchEvent(`${V} #unPagesPer`, 'change');
+    await page.click(`${V} [data-un="back"]`);
+  }],
+  ['검토 고침: 결석 번호를 적으면 뒤 번호가 밀리고 채점 결과는 그 답안에 그대로', async () => {
+    await page.click(`${V} [data-un-open="${A}"]`);
+    await page.click(`${V} .steps [data-step="2"]`);
+    const before = (await T(A)).students.map(s => s.items[1].read);
+    await page.fill(`${V} #unAbsent`, '3'); await page.dispatchEvent(`${V} #unAbsent`, 'change');
+    await page.waitForTimeout(100);
+    let a = await T(A);
+    assert(a.students.map(s => s.no).join(',') === '1,4,5' && JSON.stringify(a.absent) === '[3]', a.students.map(s => s.no).join(','));
+    assert(JSON.stringify(a.students.map(s => s.items[1].read)) === JSON.stringify(before), '결과가 다른 답안으로 감');
+    assert((await page.$$eval(`${V} input[data-stno]`, els => els.map(e => e.value))).join(',') === '1,4,5', '화면 번호');
+    await page.fill(`${V} #unAbsent`, ''); await page.dispatchEvent(`${V} #unAbsent`, 'change');
+    a = await T(A);
+    assert(a.students.map(s => s.no).join(',') === '1,3,4', '되돌리기');
+    await page.click(`${V} [data-un="back"]`);
+  }],
+  ['검토 고침: 이름 칸은 평가마다 따로, 새 평가는 지난 평가의 가림을 보여 주고 확인받은 뒤에 보냄', async () => {
+    const n = grades().length;
+    await page.click(`${V} [data-un-open="${B}"]`);
+    await page.setInputFiles(`${V} #unAnsFile`, files);
+    await page.waitForFunction(() => document.querySelectorAll('.unit-box [data-st]').length === 3);
+    assert((await page.textContent(V)).includes('가릴 곳을 아직 정하지 않았어요'), 'A의 가림이 B에 그대로');
+    await page.click(`${V} [data-un="toGrade"]`);
+    await page.click(`${V} [data-un="grade"]`);
+    await page.waitForSelector('#sheetRoot #unMaskGo');
+    assert((await page.textContent('#sheetRoot')).includes('지난 평가에서 정한 곳'), await page.textContent('#sheetRoot'));
+    await page.click('#sheetRoot #unMaskGo');
+    await page.waitForSelector('#sheetRoot #mkStage');
+    assert(await page.locator('#sheetRoot #mkBoxes .mk').count() === 1, '지난 가림을 보여 주지 않음');
+    await page.click('#sheetRoot #mkOk');
+    await page.waitForTimeout(100);
+    assert(grades().length === n, 'AI를 부름');
+    const b = await T(B);
+    assert(Array.isArray(b.mask) && b.mask.length === 1, JSON.stringify(b.mask));
     await page.click(`${V} [data-un="back"]`);
   }],
   ['업스테이지면 손글씨 안내', async () => {
