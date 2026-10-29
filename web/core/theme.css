@@ -1,0 +1,59 @@
+/* 테마 5개. 틀 값(--frame…)은 core/shell.css가, 평가 화면 값(--accent·--surface…)은 menus/evaluate/evaluate.css가 씀.
+   html[data-theme]가 :root보다 우선하므로 여기 값이 기본값을 덮음 */
+html[data-theme="dark-nav"]{
+  --frame:#15171c; --frame-line:#262932; --frame-ink:#c3c7d0; --frame-ink2:#9ea3ad; --frame-strong:#ffffff;
+  --frame-active:#2a2d36; --frame-active-ink:#ffffff; --frame-icon-active:#a5b4fc; --frame-box:#1f2229;
+  --page:#f5f6f8; --top-line:#dfe1e7; --logo:#4f46e5; --on-logo:#ffffff;
+  --bg:#f5f6f8; --surface:#ffffff; --surface2:#f2f3f6; --surface3:#e8eaef;
+  --ink:#16181d; --ink2:#3f4350; --ink3:#5c6170; --line:#e4e6eb; --line2:#eef0f3;
+  --accent:#4f46e5; --accent-soft:#eef0ff; --on-accent:#ffffff; --accent-ink:#3730a3;
+  --f-display:'Gothic A1','Noto Sans KR','Malgun Gothic',sans-serif; --f-body:'Gothic A1','Noto Sans KR','Malgun Gothic',sans-serif;
+}
+html[data-theme="mono"]{
+  --frame:#ffffff; --frame-line:#ebebeb; --frame-ink:#555555; --frame-ink2:#666666; --frame-strong:#111111;
+  --frame-active:#f2f2f2; --frame-active-ink:#111111; --frame-icon-active:#111111; --frame-box:#f5f5f5;
+  --page:#fafafa; --top-line:#e3e3e3; --logo:#111111; --on-logo:#ffffff;
+  --bg:#fafafa; --surface:#ffffff; --surface2:#f4f4f4; --surface3:#ebebeb;
+  --ink:#111111; --ink2:#444444; --ink3:#666666; --line:#e3e3e3; --line2:#f0f0f0;
+  --accent:#111111; --accent-soft:#eeeeee; --on-accent:#ffffff; --accent-ink:#111111;
+  --f-display:'IBM Plex Sans KR','Malgun Gothic',sans-serif; --f-body:'IBM Plex Sans KR','Malgun Gothic',sans-serif;
+}
+html[data-theme="soft"]{
+  --frame:#ffffff; --frame-line:#eceef1; --frame-ink:#4e5968; --frame-ink2:#4e5968; --frame-strong:#191f28;
+  --frame-active:#e8efff; --frame-active-ink:#1d4ed8; --frame-icon-active:#2563eb; --frame-box:#f2f4f6;
+  --page:#f2f4f6; --top-line:#e3e6ea; --logo:#2563eb; --on-logo:#ffffff;
+  --bg:#f2f4f6; --surface:#ffffff; --surface2:#f2f4f6; --surface3:#e5e8eb;
+  --ink:#191f28; --ink2:#333d4b; --ink3:#4e5968; --line:#e5e8eb; --line2:#f2f4f6;
+  --accent:#2563eb; --accent-soft:#e8efff; --on-accent:#ffffff; --accent-ink:#1d4ed8;
+  --f-display:'Noto Sans KR','Malgun Gothic',sans-serif; --f-body:'Noto Sans KR','Malgun Gothic',sans-serif;
+  --r-s:10px; --r-m:16px; --r-l:22px;
+}
+html[data-theme="paper"]{
+  --frame:#efebe2; --frame-line:#ddd7ca; --frame-ink:#4f4b43; --frame-ink2:#4f4b43; --frame-strong:#1c1b19;
+  --frame-active:#e3ded1; --frame-active-ink:#1c1b19; --frame-icon-active:#1f3a5f; --frame-box:#e6e1d5;
+  --page:#f7f5f0; --top-line:#ddd7ca; --logo:#1f3a5f; --on-logo:#ffffff;
+  --bg:#f7f5f0; --surface:#fffefb; --surface2:#f3f0e8; --surface3:#ebe6da;
+  --ink:#1c1b19; --ink2:#3d3a34; --ink3:#5f5a50; --line:#e2ded3; --line2:#ece8de;
+  --accent:#1f3a5f; --accent-soft:#e4e9f0; --on-accent:#ffffff; --accent-ink:#1f3a5f;
+  --f-display:'Noto Serif KR','Malgun Gothic',serif; --f-body:'Noto Sans KR','Malgun Gothic',sans-serif;
+  --r-s:4px; --r-m:6px; --r-l:8px;
+}
+html[data-theme="rail"]{
+  --frame:#eef3f2; --frame-line:#dde5e3; --frame-ink:#3c4744; --frame-ink2:#4a5653; --frame-strong:#17201e;
+  --frame-active:#d9efeb; --frame-active-ink:#0b4f4a; --frame-icon-active:#0f766e; --frame-box:#e3ebe9;
+  --page:#ffffff; --top-line:#dde5e3; --logo:#0f766e; --on-logo:#ffffff;
+  --bg:#ffffff; --surface:#ffffff; --surface2:#f3f6f5; --surface3:#e7ecea;
+  --ink:#17201e; --ink2:#3c4744; --ink3:#4a5653; --line:#e3e9e7; --line2:#eef1f0;
+  --accent:#0f766e; --accent-soft:#e6f4f1; --on-accent:#ffffff; --accent-ink:#0b4f4a;
+  --f-display:'Noto Sans KR','Malgun Gothic',sans-serif; --f-body:'Noto Sans KR','Malgun Gothic',sans-serif;
+  --side-w:96px;
+}
+/* 아이콘 레일: 세로 메뉴는 아이콘 위·글자 아래, 로고는 마크만 (넓은 화면에서만) */
+@media (min-width:761px){
+  html[data-theme="rail"] .app-side .app-logo{justify-content:center;padding:0}
+  html[data-theme="rail"] .logo-mark{width:48px;height:48px;font-size:21px;border-radius:14px}
+  html[data-theme="rail"] .logo-name{display:none}
+  html[data-theme="rail"] .side-menus,html[data-theme="rail"] .side-foot{padding-left:10px;padding-right:10px}
+  html[data-theme="rail"] .side-btn{flex-direction:column;justify-content:center;gap:5px;min-height:64px;padding:6px 2px;font-size:12.5px;text-align:center}
+  html[data-theme="rail"] .side-ai{display:none}
+}
