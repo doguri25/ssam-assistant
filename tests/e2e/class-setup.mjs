@@ -90,6 +90,21 @@ await run('class-setup', [
     await page.setViewportSize({ width: 1280, height: 860 });
     assert(ok, '가로 스크롤');
   }],
+  ['주 번호만 있는 진도표(기간 없음)에도 「1주 시작일」 칸', async () => {
+    await page.evaluate(() => {
+      const L = Array.from({ length: 10 }, (_, i) => ({ week: 1 + Math.floor(i / 5), period: '', from: '', unit: '1. 생명', title: '차시 ' + (i + 1), pages: '', memo: '' }));
+      const subs = JSON.parse(localStorage.getItem('ssam:class:subjects'));
+      subs.push({ id: 'wk1', name: '도덕', start: '2026-10-29', offset: 0, total: null, lessons: L });
+      localStorage.setItem('ssam:class:subjects', JSON.stringify(subs));
+    });
+    await page.click('#menuTabs [data-tab="today"]'); await page.click('#menuTabs [data-tab="progress"]');
+    const f = page.locator(`${V} input[data-start="wk1"]`);
+    assert(await f.count() === 1, '시작일 칸이 없음');
+    assert((await f.locator('xpath=..').textContent()).includes('1주 시작일'), '이름');
+    await f.fill('2026-08-24'); await f.press('Tab');
+    assert((await stored('class:subjects')).find(s => s.id === 'wk1').start === '2026-08-24', '저장');
+    assert(await page.locator(`${V} input[data-start="smp-ko"]`).count() === 0, '기간 있는 진도표에도 보임');
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();

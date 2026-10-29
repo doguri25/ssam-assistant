@@ -43,7 +43,7 @@ function subHTML(ctx, s) {
   return `<li class="cls-sub" data-sub="${esc(s.id)}">
     <b>${esc(s.name)}</b><span class="muted">${s.lessons.length}차시${more}</span>
     <label>다음 차시 <input type="number" class="field num" data-next="${esc(s.id)}" min="1" max="${s.lessons.length + 1}" value="${p.next}"></label>
-    ${p.mode === 'slot' ? `<label>시작일 <input type="date" class="field" data-start="${esc(s.id)}" value="${esc(s.start)}"></label>` : ''}
+    ${s.lessons.some(l => l.from) ? '' : `<label title="${p.mode === 'week' ? '진도표 1주(가장 작은 주)가 시작한 날' : '이 날부터 시간표대로 진도를 셈해요'}">${p.mode === 'week' ? '1주 시작일' : '시작일'} <input type="date" class="field" data-start="${esc(s.id)}" value="${esc(s.start)}"></label>`}
     <span class="grow"></span>
     <button class="btn text" type="button" data-c="editSub" data-id="${esc(s.id)}">진도표 고치기</button>
     <button class="btn text" type="button" data-c="delSub" data-id="${esc(s.id)}">삭제</button>
@@ -147,7 +147,7 @@ function openPick(r, fileName) {
     const n = s.lessons.length, first = s.lessons[0].period, lastP = s.lessons[n - 1].period;
     const warn = s.total != null && s.total !== n ? `<span class="cls-warn">파일에는 ${s.total}시간인데 ${n}줄을 읽었어요</span>` : '';
     const dup = have.some(h => h.name === s.name) ? '<span class="cls-tag">이미 있어요 — 바꿀까요? 체크 기록은 그대로</span>' : '';
-    return `<li><label><input type="checkbox" data-pick="${i}"${s.pick ? ' checked' : ''}>
+    return `<li><label><input type="checkbox" data-jpick="${i}"${s.pick ? ' checked' : ''}>
       <b>${esc(s.name)}</b>${s.source !== s.name ? ` <span class="muted">(${esc(s.source)})</span>` : ''}
       <span class="muted">${n}차시${first && lastP ? ` · ${esc(first)} ~ ${esc(lastP)}` : ''}</span></label>${warn}${dup}</li>`;
   }).join('');
@@ -156,7 +156,7 @@ function openPick(r, fileName) {
     <ul class="cls-pick">${items}</ul>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" data-c="pickOk">넣기</button></div>`,
   sh => sh.querySelector('[data-c="pickOk"]').addEventListener('click', () => {
-    const picked = [...sh.querySelectorAll('[data-pick]')].filter(c => c.checked).map(c => r.subjects[+c.dataset.pick]);
+    const picked = [...sh.querySelectorAll('[data-jpick]')].filter(c => c.checked).map(c => r.subjects[+c.dataset.jpick]);
     if (!picked.length) { toast('교과를 하나 이상 골라 주세요'); return; }
     let ok = true;
     for (const s of picked) {

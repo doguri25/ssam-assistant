@@ -278,3 +278,24 @@ test('주간학습안내 문서', () => {
   assert.deepEqual(t2.rows.map(r => r[0]), ['구분', '학사일정', '준비물', '과제', '안내장', '안전']);
   assert.equal(t2.rows[1][2], '현장체험학습'); assert.equal(t2.rows[2][2], '도시락');
 });
+
+test('검토 고침: 주말에 시작하는 기간은 다음 월요일 주', () => {
+  const sub = { id: 'ko', name: '국어', start: '', offset: 0, total: null, lessons: [{ week: 1, period: '8.23~8.29', from: '2026-08-23', unit: '', title: 'a', pages: '', memo: '' }, { week: 1, period: '8.22~8.28', from: '2026-08-22', unit: '', title: 'b', pages: '', memo: '' }] };
+  const c = { ...ctxOf({}, sub), subjects: [sub] };
+  assert.equal(lessonMonday(c, sub, 0), '2026-08-24');
+  assert.equal(lessonMonday(c, sub, 1), '2026-08-24');
+});
+
+test('검토 고침: 기간이 일부 줄에만 있으면 그 줄로 주 번호를 맞춤', () => {
+  const sub = { id: 'ko', name: '국어', start: '', offset: 0, total: null, lessons: [{ week: 1, period: '', from: '', unit: '', title: 'a', pages: '', memo: '' }, { week: 2, period: '8.31~9.5', from: '2026-08-31', unit: '', title: 'b', pages: '', memo: '' }] };
+  const c = { ...ctxOf({}, sub), subjects: [sub] };
+  assert.equal(lessonMonday(c, sub, 0), '2026-08-24');
+});
+
+test('검토 고침: 수업 없는 교시 칸에 쓴 글도 한글 문서에 들어감', () => {
+  const days = weekView(ctxOf(), '2026-11-02');
+  const doc = weeklyDoc(days, { title: 't', cells: { '0-6': '방과후 교실' }, notes: {} });
+  const t1 = doc.blocks.find(b => b.type === 'table');
+  assert.equal(t1.rows.length, 7);
+  assert.equal(t1.rows[6][0], '6교시'); assert.equal(t1.rows[6][1], '방과후 교실');
+});

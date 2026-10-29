@@ -6,7 +6,7 @@ import { toast, copyText, saveFile } from '../../core/ui.js';
 import { makeHwpx } from '../../core/hwpx.js';
 import { listEvents, addDays } from '../../core/calendar.js';
 import {
-  makeCtx, getInfo, getWeekly, saveWeekly, weekView, defaultWeek, weeklyTitle, weekCell, weeklyDoc, normNotes, NOTE_ROWS, fmtDay, today
+  makeCtx, getInfo, getWeekly, saveWeekly, weekView, defaultWeek, weeklyTitle, weekCell, weeklyDoc, weekPeriods, normNotes, NOTE_ROWS, fmtDay, today
 } from './class-model.js';
 import { askSample } from './setup.js';
 
@@ -125,7 +125,7 @@ async function downloadHwpx() {
 function plainText() {
   const { days, title, w, notes } = docOf();
   const out = [`${title} (${fmtDay(days[0].date)} ~ ${fmtDay(days[4].date)})`];
-  const P = Math.max(0, ...days.flatMap(d => d.slots.map(s => s.period)));
+  const P = weekPeriods(days, w);
   days.forEach((d, i) => {
     out.push('', `[${WD[i]} ${md(d.date)}]`);
     if (d.off) out.push(d.off);

@@ -56,7 +56,8 @@ await run('year-plan-fixes', [
     assert(await page.inputValue(`${Y} textarea[data-src="lastPlan"]`) === '', '보고 있는 나 화면에 보임');
   }],
   ['아주 긴 글을 붙여넣으면 6만 자까지만 받고 알려 줌', async () => {
-    await page.fill(`${Y} textarea[data-src="lastResult"]`, '가나다라마 '.repeat(14000));
+    // 7만 자 붙여넣기는 3초쯤 걸려서, 컴퓨터가 바쁠 때 기본 8초를 넘기지 않게 넉넉히
+    await page.fill(`${Y} textarea[data-src="lastResult"]`, '가나다라마 '.repeat(14000), { timeout: 30000 });
     await page.waitForTimeout(200);
     const len = (await page.inputValue(`${Y} textarea[data-src="lastResult"]`)).length;
     assert(len === 60000, '길이 ' + len);

@@ -65,8 +65,8 @@ await run('class-import', [
   ['진도표 파일 → 교과 고르기(동아리 활동만 꺼짐) → 넣기, AI 없음', async () => {
     calls = 0;
     await upload('jindoFile', '진도표-예시.hwpx');
-    await page.waitForSelector('#sheetRoot [data-pick]');
-    const picks = await page.$$eval('#sheetRoot [data-pick]', els => els.map(e => [e.closest('li').querySelector('b').textContent, e.checked]));
+    await page.waitForSelector('#sheetRoot [data-jpick]');
+    const picks = await page.$$eval('#sheetRoot [data-jpick]', els => els.map(e => [e.closest('li').querySelector('b').textContent, e.checked]));
     assert(JSON.stringify(picks) === JSON.stringify([['국어', true], ['수학', true], ['사회', true], ['과학', true], ['창체', true], ['동아리활동', false]]), JSON.stringify(picks));
     await page.click('#sheetRoot [data-c="pickOk"]');
     await page.waitForSelector(`${V} .cls-sum tbody tr`);
@@ -79,7 +79,7 @@ await run('class-import', [
     await page.evaluate(() => localStorage.setItem('ssam:class:log', JSON.stringify({ '2026-10-28': { 1: { subject: '국어', status: 'done' } } })));
     const id = (await stored('class:subjects')).find(s => s.name === '국어').id;
     await upload('jindoFile', '진도표-예시.hwpx');
-    await page.waitForSelector('#sheetRoot [data-pick]');
+    await page.waitForSelector('#sheetRoot [data-jpick]');
     assert((await page.textContent('#sheetRoot .sheet')).includes('바꿀까요'), '바꿀까요 표시');
     await page.click('#sheetRoot [data-c="pickOk"]');
     await page.waitForTimeout(150);

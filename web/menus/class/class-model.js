@@ -193,11 +193,16 @@ export const setNext = (ctx, sub, n) => ({ ...sub, offset: n - 1 - records(ctx, 
 
 /* ---------- 진도 차이 (스펙 3.6) ---------- */
 /* i번째 차시가 든 주의 월요일: 기간 날짜 → 주 번호(시작일이 든 주 = 가장 작은 주) → '' */
+/* 기간이 주말에 시작하면(일~토 표기) 다음 월요일의 주 */
+const weekOf = d => (weekday(d) === 0 ? addDays(d, 1) : weekday(d) === 6 ? addDays(d, 2) : mondayOf(d));
 export function lessonMonday(ctx, sub, i) {
   const l = sub.lessons[i];
   if (!l) return '';
-  if (l.from) return mondayOf(l.from);
+  if (l.from) return weekOf(l.from);
   if (l.week == null) return '';
+  // 기간이 있는 다른 줄이 있으면 그 줄로 주 번호를 맞추고, 없으면 시작일이 든 주 = 가장 작은 주
+  const ref = sub.lessons.find(x => x.from && x.week != null);
+  if (ref) return addDays(weekOf(ref.from), 7 * (l.week - ref.week));
   const min = Math.min(...sub.lessons.map(x => x.week).filter(w => w != null));
   return addDays(mondayOf(isDate(sub.start) ? sub.start : ctx.today), 7 * (l.week - min));
 }
@@ -290,8 +295,11 @@ export function weekCell(days, weekly, d, p) {
   const slot = day.slots.find(s => s.period === p);
   return slot ? cellText(slot) : '';
 }
+/* 문서·복사에 넣을 교시 수: 수업이 있는 마지막 교시와, 글을 쓴 마지막 교시 중 큰 것 */
+export const weekPeriods = (days, weekly) => Math.max(1, ...days.flatMap(d => d.slots.map(s => s.period)),
+  ...Object.entries((weekly && weekly.cells) || {}).filter(([, t]) => String(t).trim()).map(([k]) => +k.split('-')[1]));
 export function weeklyDoc(days, weekly) {
-  const P = Math.max(1, ...days.flatMap(d => d.slots.map(s => s.period)));
+  const P = weekPeriods(days, weekly);
   const head = ['교시', ...days.map((d, i) => `${WD[i]} ${md(d.date)}`)];
   const rows = Array.from({ length: P }, (_, i) => [`${i + 1}교시`, ...days.map((d, j) => weekCell(days, weekly, j, i + 1))]);
   const notes = NOTE_ROWS.map(([k, label]) => [label, ...days.map((d, j) => ((weekly.notes || {})[j] || {})[k] || '')]);

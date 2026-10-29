@@ -2858,8 +2858,10 @@ function renderHKEditor() {
 }
 
 /* ---------- 이벤트 ---------- */
+/* 쌤비서: 평가 화면이 숨겨져 있으면(다른 메뉴) 행특·채점 손잡이는 쉼 — 다른 메뉴의 data-pick 등을 잡지 않게 */
+function evalShown() { const s = document.querySelector('section[data-menu="evaluate"]'); return !s || !s.hidden; }
 document.addEventListener('click', e => {
-  if (S.mode !== 'hk') return;
+  if (S.mode !== 'hk' || !evalShown()) return;
   const t = e.target;
   const stu = t.closest('[data-hkstu]');
   if (stu) { HK.sel = stu.dataset.hkstu; HK.showEditor = true; $('#hkView').classList.add('show-pane'); renderHKList(); renderHKEditor(); return; }
@@ -2940,7 +2942,7 @@ document.addEventListener('click', e => {
   }
 });
 document.addEventListener('input', e => {
-  if (S.mode !== 'hk') return;
+  if (S.mode !== 'hk' || !evalShown()) return;
   const s = hkStudent(HK.sel);
   if (e.target.id === 'hkMemo' && s) { s.memo = e.target.value; HKStore.save(); clearTimeout(HK.lt); HK.lt = setTimeout(renderHKList, 400); }
   const ed = e.target.closest && e.target.closest('[data-edit]');
@@ -2951,7 +2953,7 @@ document.addEventListener('input', e => {
   if (e.target.id === 'hkLabel' && s) { s.label = e.target.value.trim(); HKStore.save(); clearTimeout(HK.lt); HK.lt = setTimeout(renderHKList, 400); }
 });
 document.addEventListener('change', e => {
-  if (S.mode !== 'hk') return;
+  if (S.mode !== 'hk' || !evalShown()) return;
   const id = e.target.id;
   if (id === 'hkMin' || id === 'hkMax') {
     let mn = Math.max(20, +$('#hkMin').value || 0), mx = Math.max(40, +$('#hkMax').value || 0);
@@ -2961,7 +2963,7 @@ document.addEventListener('change', e => {
   if (id === 'hkGrade') { HK.settings.grade = +e.target.value; HKStore.save(); }
 });
 document.addEventListener('keydown', e => {
-  if (S.mode !== 'hk') return;
+  if (S.mode !== 'hk' || !evalShown()) return;
   const p = e.target.closest && e.target.closest('[data-pick]');
   if (p && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); p.click(); }
 });
@@ -3989,7 +3991,7 @@ async function grOpenHistory(id) {
   renderGR();
 }
 document.addEventListener('click', async e => {
-  if (S.mode !== 'gr') return;
+  if (S.mode !== 'gr' || !evalShown()) return;
   const t = e.target;
   const b = t.closest('[data-gr]');
   if (b && !b.disabled) {
@@ -4058,18 +4060,18 @@ document.addEventListener('click', async e => {
   if (dz && dz.getAttribute('aria-disabled') !== 'true') { const fs = await grPickFiles('.pdf,image/*', true); grAddPages(fs); }
 });
 document.addEventListener('keydown', e => {
-  if (S.mode !== 'gr') return;
+  if (S.mode !== 'gr' || !evalShown()) return;
   const el = e.target;
   if ((e.key === 'Enter' || e.key === ' ') && el.matches && (el.matches('[data-grcopy]') || el.matches('#grDrop'))) { e.preventDefault(); el.click(); }
 });
 document.addEventListener('input', e => {
-  if (S.mode !== 'gr') return;
+  if (S.mode !== 'gr' || !evalShown()) return;
   const id = e.target.id;
   if (id === 'grTitle') { GR.title = e.target.value; GRStore.save(); }
   if (id === 'grCrit') { GR.criteria = e.target.value; GRStore.save(); }
 });
 document.addEventListener('change', e => {
-  if (S.mode !== 'gr') return;
+  if (S.mode !== 'gr' || !evalShown()) return;
   const el = e.target, id = el.id;
   if (id === 'grUnit') { GR.unitId = el.value; renderGRSetup(); renderGRResults(); GRStore.save(); }
   else if (id === 'grPer' || id === 'grStartNo') {
@@ -4307,13 +4309,13 @@ document.addEventListener('change', e => {
 });
 const grDropZone = t => t && t.closest && (t.closest('#grDrop') || t.closest('#grCritBox'));
 ['dragenter', 'dragover'].forEach(ev => document.addEventListener(ev, e => {
-  if (S.mode !== 'gr') return;
+  if (S.mode !== 'gr' || !evalShown()) return;
   const dz = grDropZone(e.target); if (!dz) return;
   e.preventDefault(); dz.classList.add('on');
 }));
 document.addEventListener('dragleave', e => { const dz = grDropZone(e.target); if (dz && !dz.contains(e.relatedTarget)) dz.classList.remove('on'); });
 document.addEventListener('drop', e => {
-  if (S.mode !== 'gr') return;
+  if (S.mode !== 'gr' || !evalShown()) return;
   const dz = grDropZone(e.target); if (!dz) return;
   e.preventDefault(); dz.classList.remove('on');
   if (!(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length)) return;
