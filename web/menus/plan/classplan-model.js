@@ -1,5 +1,6 @@
 /* 학급운영계획 자료와 계산 (화면 없음 — Node 시험에서도 씀).
    목록은 ssam:classplans, 보고 있는 계획은 ssam:classplan:current. 올린 파일은 저장하지 않고 읽은 글·요약만 저장 */
+import { stripNames } from '../../core/privacy.js';
 import { get, set } from '../../core/store.js';
 import { getSchool } from '../../core/settings.js';
 
@@ -38,24 +39,29 @@ export function withRoles(list) {
 export const leaves = outline => (outline || []).filter((x, i, a) => x.level === 2 || !(a[i + 1] && a[i + 1].level === 2));
 
 const L1 = new RegExp(`^([${ROMAN}])\\.\\s*(\\S.*)$`), NUM = /^(\d{1,2})\.\s*(\S.*)$/, GA = /^([가-하])\.\s*(\S.*)$/;
-/* 글에서 머리 줄 찾기: [{ line, level, title }]. 표 줄(|)·차례 줄(쪽수 탭)·41자 넘는 줄은 빼고, 같은 이름은 처음 것만 */
+const PAGE = /(\s*[.·…‥ㆍ]{2,}\s*|\s{2,})\d{1,3}$/, LESSON = /\d{1,2}\s*\/\s*\d{1,2}/, GA_ORDER = '가나다라마바사아자차카타파하';
+/* 글에서 머리 줄 찾기: [{ line, level, title }]. 표 줄(|)·차례 줄(쪽수 탭)·차시 줄(1/12)·41자 넘는 줄은 빼고,
+   번호는 차례에 맞는 것만(앞 번호와 같거나 하나·둘 큰 것 — 표 안 단원 번호·본문 번호 목록 거르기). 차례가 먼저 나오면 본문이 다시 시작할 때 차례 것은 버림 */
 function headings(src) {
   const lines = String(src || '').split('\n');
   const roman = lines.some(l => L1.test(l.trim()) && !l.includes('|'));
-  const out = [], seen = new Set();
-  let inTop = false;
+  let out = [], seen = new Set(), inTop = false, prev1 = 0, prev2 = 0;
   lines.forEach((raw, i) => {
-    const l = raw.trim();
-    if (!l || l.includes('|') || l.includes('\t') || l.length > 41) return;
-    let m, level = 0;
+    const l = raw.trim().replace(PAGE, '');
+    if (!l || l.includes('|') || l.includes('\t') || l.length > 41 || LESSON.test(l)) return;
+    let m, level = 0, n = 0;
     if (roman) {
-      if ((m = L1.exec(l))) level = 1;
-      else if ((m = NUM.exec(l)) && inTop) level = 2;
-    } else if ((m = NUM.exec(l))) level = 1;
-    else if ((m = GA.exec(l)) && inTop) level = 2;
+      if ((m = L1.exec(l))) { level = 1; n = ROMAN.indexOf(m[1]) + 1; }
+      else if ((m = NUM.exec(l)) && inTop) { level = 2; n = +m[1]; }
+    } else if ((m = NUM.exec(l))) { level = 1; n = +m[1]; }
+    else if ((m = GA.exec(l)) && inTop) { level = 2; n = GA_ORDER.indexOf(m[1]) + 1; }
     if (!level) return;
-    const title = m[2].trim(), key = level + norm(title);
-    if (level === 1) inTop = true;
+    const title = m[2].trim();
+    if (level === 1 && n === 1 && out.length && norm(title) === norm(out[0].title)) { out = []; seen = new Set(); prev1 = 0; }
+    const ok = prev => n >= Math.max(1, prev) && n <= prev + 2; // 같은 번호 거듭·하나 건너뜀은 잘못 매긴 번호로 봄
+    if (level === 2 ? !ok(prev2) : !roman && !ok(prev1)) return;
+    if (level === 1) { inTop = true; prev1 = n; prev2 = 0; } else prev2 = n;
+    const key = level + norm(title);
     if (seen.has(key)) return;
     seen.add(key);
     out.push({ line: i, level, title });
@@ -161,6 +167,8 @@ export const getPlan = id => listPlans().find(p => p.id === id) || null;
 export function savePlan(plan) {
   const p = normPlan(plan);
   if (!p) return null;
+  // 붙여넣은 글도 명단 줄·전화번호는 빼고 이름 칸은 가려서 저장 (파일은 넣을 때 이미 거침)
+  for (const k of ['lastPlan', 'guide']) p.sources[k] = stripNames(p.sources[k]).text;
   const list = listPlans();
   p.updatedAt = Math.max(Date.now(), ...list.map(x => x.updatedAt + 1));
   if (!set(LIST_KEY, [p, ...list.filter(x => x.id !== p.id)])) return null;

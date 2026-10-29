@@ -11,15 +11,52 @@ export const looksLikeName = s => /^[가-힣]{2,4}$/.test(s) && SURNAME.has(s[0]
 const ENDING = /[을를의에과와한할해요고며로도만적형께]$/;
 const nameish = t => (/^[가-힣]{3}$/.test(t) && SURNAME.has(t[0]) && !COMMON.has(t) && !ENDING.test(t)) || DOUBLE.test(t);
 
-/* 명단·담임 표처럼 이름이 늘어선 줄(이름 셋 이상, 한글 낱말의 60% 이상)과 전화번호가 든 줄을 뺌 → { text, dropped } */
+/* 표 칸·직책 옆의 이름: 칸 전체가 세 글자 이름 모양 (조사·어미로 끝나면 낱말. 이름 끝에 흔한 「한·형·도」는 이름으로 봄) */
+const PART = /[을를의에과와할해요고며로만적께]$/;
+const cellName = c => (/^[가-힣]{3}$/.test(c) && SURNAME.has(c[0]) && !COMMON.has(c) && !PART.test(c)) || DOUBLE.test(c);
+const ROLE = '부?담임|부?회장|부?반장|서기|총무|학생|교사|전담|대표|교감|교장';
+const ROLE_NAME = new RegExp(`((?:${ROLE})(?:\\s*[:：|]\\s*|\\s+))([가-힣]{3,4})(?![가-힣])`, 'g');
+const CUE = new RegExp(`^(\\d{1,2}|남|여|남자|여자|${ROLE})$`), HEAD = /^(이름|성명|성 명|학생명|학생 이름)$/;
+const NUMBERED = /^(\s*\d{1,2}[.)]?\s+)([가-힣]{3})(?=\s|$)/;
+const numName = l => { const m = NUMBERED.exec(l); return !!m && cellName(m[2]); };
+export const MASK = '○○○';
+
+/* 명단·담임 표처럼 이름이 늘어선 줄과 전화번호 줄은 빼고, 한 줄에 하나씩 적힌 이름(임원·학생 명단 표, 직책 옆 이름, 번호 명단)은 ○○○로 가림
+   → { text, dropped(뺀 줄), masked(가린 이름) } */
 export function stripNames(text) {
   const src = String(text || '');
-  if (!src) return { text: '', dropped: 0 };
-  let dropped = 0;
-  const kept = src.split('\n').filter(line => {
+  if (!src) return { text: '', dropped: 0, masked: 0 };
+  let dropped = 0, masked = 0;
+  const ls = src.split('\n').filter(line => {
     const words = line.split(/[\s|,·/()]+/).filter(t => /^[가-힣]+$/.test(t)), names = words.filter(nameish).length;
-    if ((names >= 3 && names / words.length >= 0.6) || PHONE.test(line)) { dropped++; return false; }
+    const cells = line.includes('|') ? line.split('|').map(c => c.trim()).filter(Boolean) : [], cn = cells.filter(cellName).length;
+    if ((names >= 3 && names / words.length >= 0.6) || (cn >= 3 && cn / cells.length >= 0.5) || PHONE.test(line)) { dropped++; return false; }
     return true;
   });
-  return { text: kept.join('\n'), dropped };
+  // 직책 옆 이름 (「회장 김가람」, 「담임: 김준형」, 「회장 | 이나래」)
+  for (let i = 0; i < ls.length; i++) ls[i] = ls[i].replace(ROLE_NAME, (m, pre, n) => (cellName(n) ? (masked++, pre + MASK) : m));
+  // 표: 「이름」 머리 칸 아래, 또는 번호·남녀·직책 옆에 이름이 세 줄 이상 있는 칸
+  for (let a = 0; a < ls.length;) {
+    if (!ls[a].includes('|')) { a++; continue; }
+    let b = a;
+    while (b < ls.length && ls[b].includes('|')) b++;
+    const rows = ls.slice(a, b).map(l => l.split('|')), width = Math.max(...rows.map(r => r.length));
+    for (let j = 0; j < width; j++) {
+      const cell = r => (r[j] || '').trim(), hits = rows.filter(r => cellName(cell(r)));
+      const head = rows.some(r => HEAD.test(cell(r)));
+      const cued = hits.filter(r => CUE.test((r[j - 1] || '').trim()) || CUE.test((r[j + 1] || '').trim())).length;
+      if (!(head && hits.length) && !(hits.length >= 3 && cued >= 3)) continue;
+      for (const r of hits) { r[j] = r[j].replace(cell(r), MASK); masked++; }
+    }
+    rows.forEach((r, k) => { ls[a + k] = r.join('|'); });
+    a = b;
+  }
+  // 번호 명단 (PDF처럼 칸 구분 없이 「1 김가람 남」이 세 줄 이상 이어짐)
+  for (let a = 0; a < ls.length;) {
+    let b = a;
+    while (b < ls.length && numName(ls[b])) b++;
+    if (b - a >= 3) for (let k = a; k < b; k++) { ls[k] = ls[k].replace(NUMBERED, (m, pre) => pre + MASK); masked++; }
+    a = Math.max(b, a + 1);
+  }
+  return { text: ls.join('\n'), dropped, masked };
 }

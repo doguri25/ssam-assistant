@@ -32,7 +32,7 @@ const S = () => window.SSAM || {};
 let box = null, curTab = '';
 let plan = getPlan(currentId()) || newPlan();
 let saved = !!getPlan(plan.id);
-const busy = {}, errs = {}, reading = {}, readingAtt = {};
+const busy = {}, errs = {}, notes = {}, reading = {}, readingAtt = {};
 /* 첨부 id → { text: 이름 줄 뺀 글, jindo: 진도표 읽은 것 } — 차시 목록은 저장하지 않으므로(크기) 넣은 그 자리에서만 학급 메뉴로 보냄 */
 const attMem = {};
 let warnedFull = false, showPrev = false;
@@ -102,6 +102,7 @@ function renderMain() {
   const body = step === 1 ? step1() : step === 2 ? step2() : step === 3 ? step3() : step4();
   main.innerHTML = stepsHTML(STEPS, step, plan.maxStep)
     + (errs[plan.id] ? `<div class="banner err" role="alert"><span class="grow">${esc(errs[plan.id])}</span></div>` : '')
+    + (notes[plan.id] && step === 3 ? `<div class="banner warn" role="status"><span class="grow">${esc(notes[plan.id])}</span></div>` : '')
     + body
     + `<div class="row yp-nav">${step > 1 ? '<button class="btn" type="button" data-c="prev">이전</button>' : ''}<span class="grow"></span>${step < 4 ? '<button class="btn primary" type="button" data-c="next">다음</button>' : ''}</div>`
     + (saved ? `<div class="row yp-del"><button class="btn text yp-danger" type="button" data-c="delete">이 계획 지우기</button></div>` : '');
@@ -157,14 +158,14 @@ function attachHTML() {
         <button class="icon-btn" type="button" data-adel="${esc(a.id)}" aria-label="「${esc(a.name)}」 빼기">×</button></li>`).join('')}</ul>
     </div>`;
 }
-/* 첨부 읽기: 종류 짐작, 진도표는 교과별 시수, 평가계획은 이름 줄 뺀 글을 지님 → { att, dropped } */
+/* 첨부 읽기: 종류 짐작, 진도표는 교과별 시수, 평가계획은 이름 줄 뺀 글을 지님 → { att, privacy(평가계획만) } */
 function attachFrom(name, raw) {
   const r = stripNames(raw), kind = attachKind(name, raw), id = newId();
   const j = parseJindo(raw, { today: today() });
   attMem[id] = { text: r.text, jindo: j.subjects.length ? j : null };
-  return { att: { id, name, kind, text: kind === 'eval' ? r.text : '', summary: { subjects: kind === 'jindo' ? jindoSubjects(attMem[id].jindo) : [] } }, dropped: kind === 'eval' ? r.dropped : 0 };
+  return { att: { id, name, kind, text: kind === 'eval' ? r.text : '', summary: { subjects: kind === 'jindo' ? jindoSubjects(attMem[id].jindo) : [] } }, privacy: kind === 'eval' ? r : null };
 }
-const droppedMsg = n => `이름·전화번호가 적힌 줄 ${n}개는 빼고 넣었어요(학생 이름은 저장하지도 AI로 보내지도 않아요).`;
+const privacyMsg = r => `${[r.dropped ? `이름·전화번호가 적힌 줄 ${r.dropped}개는 빼고` : '', r.masked ? `이름 ${r.masked}개는 ○○○로 가려` : ''].filter(Boolean).join(', ')} 넣었어요(학생 이름은 저장하지도 AI로 보내지도 않아요).`;
 async function addAttach(files) {
   const id = plan.id;
   if (!saved) persist();
@@ -173,9 +174,9 @@ async function addAttach(files) {
     readingAtt[id] = `「${f.name}」 읽는 중…`;
     if (here()) renderMain();
     try {
-      const { att, dropped } = attachFrom(f.name, await readText(f));
+      const { att, privacy } = attachFrom(f.name, await readText(f));
       apply(id, p => { p.attach = [...p.attach, att]; });
-      if (dropped) toast(droppedMsg(dropped), 7000);
+      if (privacy && (privacy.dropped || privacy.masked)) toast(privacyMsg(privacy), 7000);
     } catch (e) { toast(fileMessage(e && e.code), 5000); }
   }
   delete readingAtt[id];
@@ -208,8 +209,9 @@ async function addFiles(target, files) {
         const prev = p.sources[target].trim();
         p.sources[target] = cap((prev ? prev + '\n\n' : '') + r.text);
         p.sourceNames[target] = [...p.sourceNames[target], f.name];
+        if (target === 'guide') p.guide = null; // 지침이 늘면 지침 항목을 다시 뽑음
       });
-      if (r.dropped) toast(droppedMsg(r.dropped), 7000);
+      if (r.dropped || r.masked) toast(privacyMsg(r), 7000);
     } catch (e) { toast(fileMessage(e && e.code), 5000); }
   }
   delete reading[id];
@@ -245,9 +247,20 @@ function step2() {
       <p class="muted">시수표·평가 표·월별 표는 4단계에서 첨부한 진도표·평가계획을 읽어 그 칸 뒤에 넣어요.</p>
     </div>`;
 }
-/* 칸 역할(시수표 등)은 이름·순서가 바뀔 때마다 다시 정함. 빠진 칸의 초안 글도 뺌 */
+/* 이름만 바꾸면 다시 그리지 않고 역할 표시만 고침 (다음 누르기·Tab이 끊기지 않게) */
+function refreshRoles() {
+  box.querySelectorAll('#cpOutline li').forEach((li, i) => {
+    const r = plan.outline[i] && plan.outline[i].role;
+    let tag = li.querySelector('.cp-role');
+    if (!r) { if (tag) tag.remove(); return; }
+    if (!tag) { tag = document.createElement('span'); tag.className = 'cp-role'; li.querySelector('input[data-ot]').after(tag); }
+    tag.textContent = ROLE[r];
+  });
+}
+/* 칸 역할(시수표 등)은 이름·순서가 바뀔 때마다 다시 정함. 빠진 칸의 초안 글도 빼고, 지침 항목은 남은 칸으로 */
 function setOutline(o, note) {
   plan.outline = withRoles(o);
+  if (plan.guide) plan.guide = normGuide(plan.guide, plan.outline);
   if (plan.draft) plan.draft = Object.fromEntries(Object.entries(plan.draft).filter(([k]) => plan.outline.some(x => x.id === k)));
   outlineNote = note || '';
   persist(); renderMain();
@@ -263,6 +276,7 @@ function overlapHTML() {
     ${hi ? `<ul class="yp-same-list">${r.same.slice(0, 12).map(x => `<li class="yp-same">${esc(x)}</li>`).join('')}</ul>` : ''}</span></div>`;
 }
 function guideHTML() {
+  if (plan.guide && !plan.guide.length && plan.sources.guide.trim()) return '<div class="yp-card"><h3>올해 지침 점검</h3><p class="muted cp-guide-none">올해 지침에서 계획서에 따로 넣을 항목을 찾지 못했어요.</p></div>';
   if (!plan.guide || !plan.guide.length) return '';
   const name = Object.fromEntries(plan.outline.map(x => [x.id, x.title]));
   const st = guideStatus(plan.guide, plan.draft);
@@ -272,10 +286,12 @@ function guideHTML() {
       ${!g.included && g.sentence ? `<div class="yp-guide-s"><span class="muted cp-guide-sec">「${esc(name[g.section] || '')}」에 넣을 문장: </span>${esc(g.sentence)}
         <button class="btn tonal" type="button" data-insert="${i}">넣기</button></div>` : ''}</li>`).join('')}</ul></div>`;
 }
+/* 월별 표는 늘 3월~다음 해 2월 12줄 (AI가 빠뜨리거나 비운 달도 다시 쓸 수 있게) */
+const MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
+const monthRows = () => MONTHS.map(month => ({ month, text: (plan.monthly.find(x => x.month === month) || {}).text || '' }));
 function monthlyHTML() {
-  const m = plan.monthly.length ? plan.monthly : [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2].map(month => ({ month, text: '' }));
-  return `<div class="yp-tbl-wrap"><table class="yp-tbl" id="cpMonthly"><thead><tr><th>월</th><th>주요 활동</th></tr></thead><tbody>${m.map((x, i) => `<tr>
-    <td class="num">${x.month}월</td><td><input class="field" data-mon="${i}" value="${esc(x.text)}" aria-label="${x.month}월 주요 활동"></td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="yp-tbl-wrap"><table class="yp-tbl" id="cpMonthly"><thead><tr><th>월</th><th>주요 활동</th></tr></thead><tbody>${monthRows().map(x => `<tr>
+    <td class="num">${x.month}월</td><td><input class="field" data-mon="${x.month}" value="${esc(x.text)}" aria-label="${x.month}월 주요 활동"></td></tr>`).join('')}</tbody></table></div>`;
 }
 const HINT = { hours: '첨부한 진도표의 교과별 시수표가 이 칸 뒤에 붙어요(4단계에서 확인).', eval: '첨부한 평가계획에서 읽은 평가 표가 이 칸 뒤에 붙어요(4단계에서 확인).', monthly: '' };
 function step3() {
@@ -290,9 +306,11 @@ function step3() {
     if (x.level === 1) { a++; n = 0; }
     else n++;
     const head = x.level === 1 ? `${ROMAN[a - 1] || a}. ${x.title}` : `${n}. ${x.title}`;
-    if (!leafIds.has(x.id)) return `<h3 class="cp-sec-l1">${esc(head)}</h3>`;
-    return `<section class="yp-sec cp-sec"><h4>${esc(head)}</h4>
-      ${x.role === 'monthly' ? monthlyHTML() : `<textarea class="field" data-sec="${esc(x.id)}" rows="4" aria-label="${esc(x.title)}">${esc(d[x.id] || '')}</textarea>`}
+    // 한글 파일에 들어가는 글은 모두 보이고 고칠 수 있게: 글 쓰는 칸, 글이 남은 상위 칸
+    const ta = `<textarea class="field" data-sec="${esc(x.id)}" rows="4" aria-label="${esc(x.title)}">${esc(d[x.id] || '')}</textarea>`;
+    if (!leafIds.has(x.id)) return `<h3 class="cp-sec-l1">${esc(head)}</h3>${String(d[x.id] || '').trim() ? ta : ''}`;
+    return `<section class="yp-sec cp-sec"><h4>${esc(head)}</h4>${ta}
+      ${x.role === 'monthly' ? monthlyHTML() : ''}
       ${HINT[x.role] ? `<p class="muted">${HINT[x.role]}</p>` : ''}</section>`;
   }).join('');
   return `<div id="cpOverlapBox">${overlapHTML()}</div>${guideHTML()}
@@ -312,13 +330,15 @@ async function runDraft() {
   if (busy[id]) { toast(BUSY_MSG); return; }
   if (!ai.ready()) { errs[id] = '초안을 쓸 AI를 먼저 정해 주세요. 왼쪽 아래 AI에서 정할 수 있어요.'; renderMain(); return; }
   if (!saved) persist();
-  delete errs[id];
+  delete errs[id]; delete notes[id];
   try {
+    // 지침 항목을 찾지 못하거나 지침 읽기가 실패해도 초안은 씀 (실패면 다음에 다시 찾음)
     if (plan.sources.guide.trim() && !plan.guide) {
       busy[id] = 'guide'; renderMain();
-      const outline = plan.outline;
-      const v = await ai.generateJSON(guidePrompt(plan), { valid: x => Array.isArray(x) && normGuide(x, outline).length > 0 });
-      apply(id, p => { p.guide = normGuide(v, p.outline); });
+      try {
+        const v = await ai.generateJSON(guidePrompt(plan), { valid: x => Array.isArray(x) });
+        apply(id, p => { p.guide = normGuide(v, p.outline); });
+      } catch (e) { notes[id] = `올해 지침에서 항목을 찾지 못해 지침 점검 없이 초안을 썼어요(${ai.errorMessage(e && e.code, e)}). [AI로 다시 쓰기]를 누르면 지침부터 다시 찾아요.`; }
     }
     const target = getPlan(id);
     if (!target) return;
@@ -446,7 +466,7 @@ function fillSample() {
   p.attach = s.attach.map(f => attachFrom(f.name, f.text).att);
   plan = p; saved = false; showPrev = false; outlineNote = '';
   persist(); render();
-  toast(`예시를 채웠어요. ${droppedMsg(last.dropped)}`, 7000);
+  toast(`예시를 채웠어요. ${privacyMsg(last)}`, 7000);
 }
 
 function askDelete() {
@@ -480,8 +500,7 @@ document.addEventListener('input', e => {
     if (el.dataset.src === 'guide') plan.guide = null;
   } else if (el.dataset.sec && plan.draft) { plan.draft = { ...plan.draft, [el.dataset.sec]: el.value }; refreshOverlap(); }
   else if (el.dataset.mon != null) {
-    const m = plan.monthly.length ? plan.monthly : [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2].map(month => ({ month, text: '' }));
-    const x = m[+el.dataset.mon];
+    const m = monthRows(), x = m.find(r => r.month === +el.dataset.mon);
     if (!x) return;
     x.text = el.value; plan.monthly = m;
   } else if (el.dataset.ev != null) {
@@ -503,9 +522,20 @@ document.addEventListener('change', e => {
   }
   if (el.id === 'cpGrade') { plan.grade = el.value ? +el.value : null; persist(); return; }
   if (el.dataset.akind) { setKind(el.dataset.akind, el.value); return; }
+  // 붙여넣은 작년 계획서·지침: 칸을 벗어나면 명단 줄·전화번호는 빼고 이름 칸은 가림 (저장은 모델이 늘 거침)
+  if (el.dataset.src) {
+    const r = stripNames(el.value);
+    if (r.dropped || r.masked) { el.value = r.text; plan.sources[el.dataset.src] = r.text; persist(); toast(privacyMsg(r), 7000); }
+    return;
+  }
   if (el.dataset.ot != null) {
     const x = plan.outline.find(o => o.id === el.dataset.ot);
-    if (x && el.value.trim()) { x.title = el.value.trim().slice(0, 60); setOutline(plan.outline); }
+    if (!x) return;
+    if (!el.value.trim()) { el.value = x.title; return; }
+    x.title = el.value.trim().slice(0, 60);
+    plan.outline = withRoles(plan.outline);
+    persist();
+    refreshRoles();
   }
 });
 const move = (a, i, j) => { if (j < 0 || j >= a.length) return a; const b = a.slice(); [b[i], b[j]] = [b[j], b[i]]; return b; };

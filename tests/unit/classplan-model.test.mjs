@@ -153,3 +153,35 @@ test('새 학년도에 학급운영계획을 가져감 (내년 「작년 계획�
   const c = carryOver({ classplans: '[{"id":"x"}]', 'classplan:current': '"x"' }, 2028);
   assert.equal(c.classplans, '[{"id":"x"}]'); assert.equal(c['classplan:current'], '"x"');
 });
+
+test('저장할 때 작년 계획서·지침 글의 명단 줄·전화번호 줄은 빼고 이름 칸은 가림 (붙여넣은 글도)', () => {
+  const p = savePlan({ ...newPlan(), sources: { lastPlan: '1. 학급 실태\n담임 | 김가람 | 이나래 | 박다솜 | 최하늘\n회장 | 정다온', guide: '연락: 010-1234-5678\n기초학력 진단' } });
+  const q = getPlan(p.id);
+  assert.ok(!/김가람|정다온/.test(q.sources.lastPlan) && q.sources.lastPlan.includes('1. 학급 실태') && q.sources.lastPlan.includes('회장 | ○○○'), q.sources.lastPlan);
+  assert.equal(q.sources.guide, '기초학력 진단');
+});
+
+test('차례가 먼저 나와도(점선·쪽수, 또는 쪽수 없이) 목차는 한 번만, 칸 글은 본문에서', () => {
+  const body = ['Ⅰ. 학급 현황', '1. 학급 실태', '우리 반은 24명이다.', '2. 학급 조직', '1인 1역을 한다.', 'Ⅱ. 학급 교육 목표', '1. 급훈', '서로 돕는 반'];
+  const want = ['1:학급 현황', '2:학급 실태', '2:학급 조직', '1:학급 교육 목표', '2:급훈'];
+  for (const toc of [
+    ['차례', 'Ⅰ. 학급 현황 ······· 3', '1. 학급 실태 ······ 3', '2. 학급 조직 ······ 4', 'Ⅱ. 학급 교육 목표 ···· 5', '1. 급훈 ····· 5'],
+    ['차례', 'Ⅰ. 학급 현황', '1. 학급 실태', '2. 학급 조직', 'Ⅱ. 학급 교육 목표', '1. 급훈']
+  ]) {
+    const src = [...toc, ...body].join('\n'), o = parseOutline(src);
+    assert.deepEqual(titles(o), want);
+    const b = sectionBodies(src, o);
+    assert.ok(b[o[1].id].includes('24명') && b[o[2].id].includes('1인 1역') && b[o[4].id] === '서로 돕는 반', JSON.stringify(b));
+  }
+});
+
+test('PDF에서 읽은 표 줄(칸 구분 없음)·차시 줄·순서가 어긋난 번호는 목차가 아님', () => {
+  const src = ['Ⅰ. 학급 교육과정', '1. 편성 방향', '2022 개정 교육과정을 따른다.', '2. 진도 계획',
+    '1 3.2~3.6 1. 생생하게 표현해요 배울 내용 1/13', '2. 또박또박 말해요 배울 내용 1/12', '5. 마음을 전해요', '3. 학급 특색 교육'].join('\n');
+  assert.deepEqual(titles(parseOutline(src)), ['1:학급 교육과정', '2:편성 방향', '2:진도 계획', '2:학급 특색 교육']);
+});
+
+test('번호를 잘못 매긴 머리(같은 번호 거듭·하나 건너뜀)도 목차로 읽음', () => {
+  const src = ['Ⅰ. 평가 계획', '1. 창체 평가 계획', '글', '2. 행동발달 평가 계획', '글', '2. 교육과정 평가 계획', '글', 'Ⅱ. 월별 계획', '2. 월별 활동', '글'].join('\n');
+  assert.deepEqual(titles(parseOutline(src)), ['1:평가 계획', '2:창체 평가 계획', '2:행동발달 평가 계획', '2:교육과정 평가 계획', '1:월별 계획', '2:월별 활동']);
+});

@@ -15,6 +15,8 @@ await mockClaude(page, async ({ prompt }) => {
   prompts.push(prompt);
   if (slow) await new Promise(r => setTimeout(r, slow));
   if (prompt.startsWith('[학급운영계획 지침]')) {
+    if (prompt.includes('관련 없는 지침')) return '[]';
+    if (prompt.includes('오류 지침')) return '지침을 읽을 수 없어요';
     const id = (/^(\S+): 교과 평가 계획$/m.exec(prompt) || /^(\S+): /m.exec(prompt.split('계획서 칸')[1]))[1];
     return JSON.stringify([{ item: '기초학력 진단', keywords: ['기초학력', '진단'], sentence: '3월에 기초학력 진단을 실시한다.', section: id }]);
   }
@@ -52,6 +54,17 @@ await run('class-plan', [
     const p = await cur();
     assert(p.boys === 13 && p.girls === 12 && p.sourceNames.lastPlan[0] === 'classplan-last.txt', JSON.stringify([p.boys, p.girls, p.sourceNames]));
   }],
+  ['붙여넣은 글도 명단 줄·이름 칸은 저장하지 않고, 칸을 벗어나면 빼고 알려 줌', async () => {
+    const g = `${V} textarea[data-src="guide"]`;
+    await page.fill(g, '기초학력 진단\n회장 | 김가람\n담임 | 김준형 | 이태한 | 박서연 | 최지우');
+    await page.waitForTimeout(600);
+    assert(!/김가람|김준형|최지우/.test((await cur()).sources.guide), (await cur()).sources.guide);
+    await page.dispatchEvent(g, 'change');
+    const v = await page.inputValue(g);
+    assert(!/김가람|김준형/.test(v) && v.includes('회장 | ○○○'), v);
+    assert(/줄 1개.*이름 1개/.test(await page.textContent('#toast')), await page.textContent('#toast'));
+    await page.fill(g, ''); await page.dispatchEvent(g, 'change');
+  }],
   ['2단계 목차: 작년 계획서 목차 그대로, 시수표·평가 표 칸 표시', async () => {
     await page.click(`${V} [data-c="next"]`);
     await page.waitForSelector(`${V} #cpOutline`);
@@ -71,6 +84,18 @@ await run('class-plan', [
     await page.waitForTimeout(150);
     const o = (await cur()).outline;
     assert(o[1].title === '학급 실태와 특성' && !o.some(x => x.title === '학급 조직') && o.at(-2).title === '학급 안전 지도' && o.length === 13, JSON.stringify(o.map(x => x.title)));
+  }],
+  ['칸 이름을 고친 뒤 Tab은 다음 칸으로, [다음]은 한 번에 넘어감', async () => {
+    const inp = page.locator(`${V} #cpOutline li`).nth(2).locator('input[data-ot]');
+    await inp.fill('학급 조직과 역할');
+    await inp.press('Tab');
+    assert(await page.evaluate(() => !!document.activeElement.closest('#cpOutline')), '포커스가 사라짐');
+    await page.locator(`${V} #cpOutline li`).nth(1).locator('input[data-ot]').fill('학급의 실태와 특성');
+    await page.click(`${V} [data-c="next"]`);
+    await page.waitForSelector(`${V} ol.steps li.cur:has-text("초안")`, { timeout: 3000 });
+    const o = (await cur()).outline;
+    assert(o[1].title === '학급의 실태와 특성' && o[2].title === '학급 조직과 역할', JSON.stringify(o.slice(0, 3)));
+    await page.click(`${V} ol.steps [data-step="2"]`);
   }],
   ['작년 계획서가 없는 새 계획은 표준 목차로 시작', async () => {
     await page.click(`${V} [data-c="new"]`);
@@ -113,11 +138,14 @@ await run('class-plan', [
     await page.click(`${V} ol.steps [data-step="3"]`);
     const ta = page.locator(`${V} textarea[data-sec]`).first();
     await ta.fill('고친 학급 실태 글이다.');
-    const m = page.locator(`${V} input[data-mon="0"]`);
-    await m.fill('학급 세우기와 규칙 정하기');
+    const mid = (await cur()).outline.find(x => x.role === 'monthly').id;
+    assert(await page.locator(`${V} textarea[data-sec="${mid}"]`).count() === 1, '월별 칸 글 칸이 없음');
+    assert(await page.locator(`${V} #cpMonthly tbody tr`).count() === 12, '12달');
+    await page.locator(`${V} input[data-mon="3"]`).fill('학급 세우기와 규칙 정하기');
+    await page.locator(`${V} input[data-mon="8"]`).fill('2학기 준비');
     await page.waitForTimeout(600);
-    const p = await cur();
-    assert(Object.values(p.draft).includes('고친 학급 실태 글이다.') && p.monthly[0].text === '학급 세우기와 규칙 정하기', JSON.stringify(p.monthly));
+    const p = await cur(), mon = k => (p.monthly.find(x => x.month === k) || {}).text;
+    assert(Object.values(p.draft).includes('고친 학급 실태 글이다.') && mon(3) === '학급 세우기와 규칙 정하기' && mon(8) === '2학기 준비' && mon(4) === '학부모 상담', JSON.stringify(p.monthly));
   }],
   ['초안을 쓰는 동안 다른 계획으로 가도 결과는 시작한 계획에', async () => {
     const A = (await cur()).id;
@@ -129,6 +157,48 @@ await run('class-plan', [
     const r = await page.evaluate(async ([a, b]) => { const m = await import('./menus/plan/classplan-model.js'); return [m.getPlan(a).draft, m.getPlan(b).draft]; }, [A, B]);
     assert(r[0] && Object.keys(r[0]).length > 0 && !r[1], JSON.stringify(r).slice(0, 200));
     await page.click(`${V} [data-cp="${A}"]`);
+  }],
+  ['지침에서 넣을 항목이 없거나 지침 읽기가 실패해도 초안은 써짐', async () => {
+    const B = await page.evaluate(async () => (await import('./menus/plan/classplan-model.js')).listPlans().find(p => !p.sourceNames.lastPlan.length).id);
+    await page.click(`${V} [data-cp="${B}"]`);
+    await page.click(`${V} ol.steps [data-step="1"]`);
+    await page.fill(`${V} textarea[data-src="guide"]`, '관련 없는 지침이에요.');
+    await page.click(`${V} [data-c="next"]`); await page.click(`${V} [data-c="next"]`);
+    let n0 = prompts.length;
+    await page.click(`${V} [data-c="draft"]`);
+    await page.waitForSelector(`${V} textarea[data-sec]`, { timeout: 8000 });
+    assert(prompts.slice(n0).some(x => x.startsWith('[학급운영계획 초안]')), '초안을 부르지 않음');
+    assert((await page.textContent(`${V} .cp-guide-none`)).includes('찾지 못했어요'), '지침 없음 안내');
+    await page.click(`${V} ol.steps [data-step="1"]`);
+    await page.fill(`${V} textarea[data-src="guide"]`, '오류 지침이에요.');
+    await page.click(`${V} ol.steps [data-step="3"]`);
+    n0 = prompts.length;
+    await page.click(`${V} [data-c="draft"]`);
+    await page.waitForFunction(s => !document.querySelector(`${s} .spin`), V, { timeout: 15000 });
+    assert(prompts.slice(n0).some(x => x.startsWith('[학급운영계획 초안]')), '지침 오류 뒤 초안을 부르지 않음');
+    assert((await page.textContent(`${V} .banner.warn`)).includes('지침'), '지침 오류 안내');
+  }],
+  ['목차에서 지침 항목의 칸을 빼면 남은 칸으로 [넣기], 상위 칸 글도 보이고, 지침 파일을 더 넣으면 다시 뽑음', async () => {
+    await page.click(`${V} ol.steps [data-step="1"]`);
+    await page.fill(`${V} textarea[data-src="guide"]`, '기초학력 진단을 3월에 실시한다.');
+    await page.click(`${V} ol.steps [data-step="3"]`);
+    await page.click(`${V} [data-c="draft"]`);
+    await page.waitForSelector(`${V} #cpGuide`, { timeout: 8000 });
+    await page.click(`${V} ol.steps [data-step="2"]`);
+    await page.locator(`${V} #cpOutline li:has(input[value="교과 평가 계획"]) [data-odel]`).click();
+    await page.locator(`${V} #cpOutline li`).nth(1).locator('[data-olv]').click();
+    await page.click(`${V} ol.steps [data-step="3"]`);
+    const p0 = await cur(), first = p0.outline[1];
+    assert(first.level === 1 && await page.locator(`${V} textarea[data-sec="${first.id}"]`).count() === 1, '상위 칸 글 칸이 없음');
+    await page.click(`${V} [data-insert="0"]`);
+    const p = await cur(), sec = p.guide[0].section;
+    assert(p.outline.some(x => x.id === sec) && (p.draft[sec] || '').includes('3월에 기초학력 진단을 실시한다.'), JSON.stringify([sec, p.draft[sec]]));
+    assert((await page.inputValue(`${V} textarea[data-sec="${sec}"]`)).includes('기초학력'), '넣은 글이 안 보임');
+    await page.click(`${V} ol.steps [data-step="1"]`);
+    await upload(`${V} [data-file="guide"]`, { name: '추가 지침.txt', mimeType: 'text/plain', buffer: Buffer.from('생태 전환 교육을 한다.') });
+    await page.waitForFunction(s => (document.querySelector(`${s} textarea[data-src="guide"]`) || {}).value?.includes('생태'), V);
+    assert((await cur()).guide === null, '지침 항목을 다시 뽑지 않음');
+    await page.click(`${V} [data-cp="${(await page.evaluate(async () => (await import('./menus/plan/classplan-model.js')).listPlans().find(p => p.sourceNames.lastPlan.length).id))}"]`);
   }],
   ['AI를 정하지 않았으면 초안을 부르지 않고 안내', async () => {
     await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: {}, remember: true })));
