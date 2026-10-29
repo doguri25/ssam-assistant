@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as store from '../../web/core/store.js';
-import { SECTIONS, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent, normReview, normGuide, normDraft, draftText, sentences, overlap, guideStatus, insertSentence, planDoc } from '../../web/menus/plan/year-model.js';
+import { SECTIONS, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent, normReview, normGuide, normDraft, draftText, sentences, overlap, guideStatus, insertSentence, planDoc, planText } from '../../web/menus/plan/year-model.js';
 
 function mem() {
   const m = new Map();
@@ -98,4 +98,12 @@ test('한글 문서', () => {
   assert.deepEqual(tables[0].rows[2], ['3월', '협의회']);
   assert.deepEqual(tables[1].rows.at(-1), ['합계', '1,200,000', '']);
   assert.deepEqual(doc.blocks.filter(b => b.type === 'h').map(b => b.text), ['1. 목적', '2. 방침', '3. 세부 추진 계획', '4. 월별 추진 일정', '5. 예산', '6. 평가 계획']);
+});
+
+test('지난 계획을 글로 (다음 해 작년 계획서)', () => {
+  const t = planText({ ...newPlan(), name: '독서교육', year: 2027, draft: D({ purpose: '목적 글', schedule: [{ title: '발표회', date: '2027-10-15', month: 10 }], budget: [{ name: '도서 구입', amount: 1200000, note: '' }] }) });
+  assert.ok(t.startsWith('2027학년도 독서교육 운영 계획\n'));
+  assert.ok(t.includes('1. 목적\n목적 글'));
+  assert.ok(t.includes('2027-10-15 | 발표회'));
+  assert.ok(t.includes('합계 | 1,200,000 |'));
 });

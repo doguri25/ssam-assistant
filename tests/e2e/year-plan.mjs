@@ -123,7 +123,72 @@ await run('year-plan', [
     assert(prompts.length === n, 'AI를 부름');
     await page.click(`${Y} #ypList [data-yp]:has-text("독서교육")`);
   }],
-  // (Task 6 시험이 여기 이어짐)
+  ['5단계 일정: 겹친 날은 빨갛고 이유·추천 2개, 추천을 누르면 바뀜', async () => {
+    assert((await page.textContent(`${Y} ol.steps [aria-current="step"]`)).includes('초안'), '4단계가 아님');
+    await page.click(`${Y} [data-y="next"]`);
+    assert(await page.locator(`${Y} #ypDays tr[data-i]`).count() === 3, '일정 줄 수');
+    const row = `${Y} #ypDays tr[data-i="1"]`;
+    assert(await page.locator(`${row}.yp-bad`).count() === 1, '빨간 줄 아님');
+    assert((await page.textContent(`${row} .yp-why`)).includes('일요일 · 공휴일(개천절)'), '이유: ' + await page.textContent(`${row} .yp-why`));
+    const sug = await page.locator(`${row} button[data-suggest]`).evaluateAll(bs => bs.map(b => b.dataset.suggest));
+    assert(sug.join(',') === '2027-10-05,2027-10-01', '추천: ' + sug.join(','));
+    await page.click(`${row} button[data-suggest="2027-10-05"]`);
+    assert(await page.inputValue(`${row} input[data-date]`) === '2027-10-05', '날짜가 안 바뀜');
+    assert(await page.locator(`${row}.yp-bad`).count() === 0, '여전히 빨감');
+  }],
+  ['설정의 여름방학 안 날짜는 「여름방학」으로 빨감', async () => {
+    await page.evaluate(async () => (await import('./core/settings.js')).setSchool({ breaks: [{ from: '2027-07-23', to: '2027-08-22', label: '여름방학' }] }));
+    await page.click('nav.app-side [data-menu-go="settings"]');
+    await go();
+    const row = `${Y} #ypDays tr[data-i="2"]`;
+    assert(await page.locator(`${row}.yp-bad`).count() === 1 && (await page.textContent(`${row} .yp-why`)).includes('여름방학'), '방학 겹침이 안 보임');
+  }],
+  ['한글 파일로 내려받기, 섹션 복사', async () => {
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click(`${Y} [data-y="hwpx"]`)]);
+    assert(dl.suggestedFilename() === '2027학년도 독서교육 운영 계획.hwpx', '이름: ' + dl.suggestedFilename());
+    await page.click(`${Y} ol.steps [data-step="4"]`);
+    await page.click(`${Y} [data-copy="purpose"]`);
+    await page.waitForTimeout(150);
+    assert(await page.evaluate(() => navigator.clipboard.readText()) === await page.inputValue(`${Y} textarea[data-sec="purpose"]`), '클립보드');
+    await page.click(`${Y} [data-y="next"]`);
+  }],
+  ['확정하면 지난 계획에 「확정」, 학사일정에 3개(다시 확정해도 3개)', async () => {
+    await page.click(`${Y} [data-y="final"]`);
+    assert((await page.textContent(`${Y} #ypList [aria-current="true"]`)).includes('확정'), '확정 표시 없음');
+    const cal = async () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:calendar') || '[]'));
+    let c = await cal();
+    assert(c.length === 3 && c.every(e => e.source.startsWith('year:')), JSON.stringify(c));
+    await page.click(`${Y} [data-y="final"]`);
+    c = await cal();
+    assert(c.length === 3, '쌓임: ' + c.length);
+  }],
+  ['새 계획에서 지난 계획을 작년 계획서로 불러옴', async () => {
+    await page.click(`${Y} [data-y="new"]`);
+    await page.click(`${Y} [data-y="importPrev"]`);
+    await page.click(`${Y} #ypPrev [data-prev]`);
+    const v = await page.inputValue(`${Y} textarea[data-src="lastPlan"]`);
+    assert(v.includes('2027학년도 독서교육 운영 계획') && v.includes('독서의 달 행사'), v.slice(0, 120));
+  }],
+  ['AI가 초안을 쓰는 동안 다른 메뉴에 갔다 와도 그 계획에 들어가 있음', async () => {
+    await page.click(`${Y} #ypList [data-yp]:has-text("생활교육")`);
+    assert((await page.textContent(`${Y} ol.steps [aria-current="step"]`)).includes('지침 점검'), '3단계가 아님');
+    await page.click(`${Y} [data-y="next"]`);
+    slow = 1500;
+    await page.click(`${Y} [data-y="draft"]`);
+    await page.click('nav.app-side [data-menu-go="evaluate"]');
+    await page.waitForTimeout(2200);
+    slow = 0;
+    await go();
+    assert((await page.textContent(`${Y} #ypList [aria-current="true"]`)).includes('생활교육'), '다른 계획이 열림');
+    await page.waitForSelector(`${Y} #ypDraft textarea[data-sec="purpose"]`, { timeout: 5000 });
+  }],
+  ['390px 폭에서 본문이 가로로 넘치지 않음', async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(200);
+    const w = await page.evaluate(() => [document.querySelector('#app').scrollWidth, document.querySelector('#app').clientWidth]);
+    assert(w[0] <= w[1], '넘침: ' + w);
+    await page.setViewportSize({ width: 1280, height: 860 });
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();

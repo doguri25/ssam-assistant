@@ -185,3 +185,9 @@ export function planDoc(plan) {
   });
   return { title: `${plan.year}학년도 ${plan.name || '업무'} 운영 계획`, blocks };
 }
+
+/* 지난 계획을 글로: 다음 해 「작년 계획서」 칸에 넣음 (표는 칸을 ' | '로) */
+export function planText(plan) {
+  const doc = planDoc(plan);
+  return [doc.title, ...doc.blocks.map(b => (b.type === 'table' ? b.rows.map(r => r.join(' | ')).join('\n') : b.text))].join('\n');
+}

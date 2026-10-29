@@ -4,9 +4,11 @@ import { onEnter, go as goMenu } from '../../core/shell.js';
 import * as ai from '../../core/ai.js';
 import { readText, fileMessage } from '../../core/files.js';
 import { getSchool } from '../../core/settings.js';
-import { toast, copyText } from '../../core/ui.js';
+import { toast, copyText, saveFile } from '../../core/ui.js';
+import { makeHwpx } from '../../core/hwpx.js';
+import { listEvents, setEvents, dayIssues, suggestDates, weekday } from '../../core/calendar.js';
 import { stepsHTML } from '../../core/steps.js';
-import { SECTIONS, TEXT_SECTIONS, newPlan, listPlans, getPlan, savePlan, currentId, setCurrent, normReview, normGuide, normDraft, overlap, guideStatus, insertSentence } from './year-model.js';
+import { SECTIONS, TEXT_SECTIONS, newPlan, listPlans, getPlan, savePlan, currentId, setCurrent, normReview, normGuide, normDraft, overlap, guideStatus, insertSentence, planDoc, planText } from './year-model.js';
 
 const STEPS = ['자료 넣기', '작년 평가', '지침 점검', '초안', '일정'];
 const SRC = [
@@ -23,6 +25,7 @@ let saved = !!getPlan(plan.id);
 const busy = {};   // 계획 id → 하는 일 ('review' 등)
 const errs = {};   // 계획 id → 오류 문구
 let reading = '';  // 파일 읽는 중 안내
+let showPrev = false; // 1단계 「지난 계획에서 불러오기」 목록
 
 /* 이름을 넣었거나 이미 저장된 계획이면 저장하고 목록을 고침 */
 function persist() {
@@ -75,7 +78,7 @@ function renderMain() {
   const main = box && box.querySelector('#ypMain');
   if (!main) return;
   const step = plan.step;
-  const body = step === 1 ? step1() : step === 2 ? step2() : step === 3 ? step3() : step === 4 ? step4() : `<div class="yp-card"><p class="muted">곧 만들어요.</p></div>`;
+  const body = step === 1 ? step1() : step === 2 ? step2() : step === 3 ? step3() : step === 4 ? step4() : step5();
   main.innerHTML = stepsHTML(STEPS, step, plan.maxStep)
     + (errs[plan.id] ? `<div class="banner err" role="alert"><span class="grow">${esc(errs[plan.id])}</span></div>` : '')
     + body
@@ -103,12 +106,19 @@ function step1() {
       <h3>자료</h3>
       ${reading ? `<p class="muted"><span class="spin"></span> ${esc(reading)}</p>` : ''}
       ${SRC.map(([k, label, hint]) => `<div class="yp-src">
-        <div class="yp-src-h"><span class="lab">${label}</span><button class="btn" type="button" data-file="${k}">파일 넣기</button></div>
+        <div class="yp-src-h"><span class="lab">${label}</span><span class="row">${k === 'lastPlan' ? '<button class="btn text" type="button" data-y="importPrev">지난 계획에서 불러오기</button>' : ''}<button class="btn" type="button" data-file="${k}">파일 넣기</button></span></div>
+        ${k === 'lastPlan' && showPrev ? prevHTML() : ''}
         <p class="muted">${hint}</p>
         <div class="yp-files muted" data-for="${k}">${plan.sourceNames[k].length ? '넣은 파일: ' + plan.sourceNames[k].map(esc).join(', ') : ''}</div>
         <textarea class="field" data-src="${k}" rows="4" placeholder="여기에 붙여넣어도 돼요" aria-label="${label}">${esc(plan.sources[k])}</textarea>
       </div>`).join('')}
     </div>`;
+}
+
+function prevHTML() {
+  const list = listPlans().filter(p => p.status === 'final' && p.id !== plan.id);
+  return `<div class="yp-prev" id="ypPrev">${list.length ? list.map(p => `<button class="btn" type="button" data-prev="${esc(p.id)}">${p.year}학년도 ${esc(p.name)}</button>`).join('')
+    : '<span class="muted">확정한 지난 계획이 없어요.</span>'}</div>`;
 }
 
 function step2() {
@@ -120,7 +130,7 @@ function step2() {
   return `<div class="yp-card" id="ypReview">
       <div class="yp-review">
         <section><h3>잘된 점</h3>${list(r.good, '없어요.')}</section>
-        <section><h3>아쉬운 점</h3>${r.bad.length ? r.bad.map(b => `<div class="yp-bad"><p class="yp-bad-t">${esc(b.text)}</p>
+        <section><h3>아쉬운 점</h3>${r.bad.length ? r.bad.map(b => `<div class="yp-weak"><p class="yp-weak-t">${esc(b.text)}</p>
           <p class="muted">올해 개선 방향 — 반영할 것을 고르세요</p>
           ${b.ideas.map(i => `<label class="yp-idea"><input type="checkbox" data-idea="${esc(i)}" ${r.picked.includes(i) ? 'checked' : ''}>${esc(i)}</label>`).join('')}</div>`).join('') : '<p class="muted">없어요.</p>'}</section>
         <section><h3>수치 변화</h3>${list(r.numbers, '결과에 수치가 없어요.')}</section>
@@ -176,6 +186,68 @@ function step4() {
   return `<div id="ypOverlapBox">${overlapHTML()}</div>
     <div class="yp-card" id="ypDraft">${SECTIONS.map(sec).join('')}
       <div class="row"><button class="btn text" type="button" data-y="draft">다시 만들기 (고친 내용은 사라져요)</button></div></div>`;
+}
+
+const fmtDay = d => `${+d.slice(5, 7)}월 ${+d.slice(8, 10)}일(${'일월화수목금토'[weekday(d)]})`;
+function step5() {
+  const d = plan.draft;
+  if (!d) return `<div class="yp-card"><p class="muted">초안을 먼저 만들어 주세요.</p><div class="row"><button class="btn primary" type="button" data-step="4">4단계 초안으로</button></div></div>`;
+  const ctx = { breaks: getSchool().breaks, events: listEvents(), source: 'year:' + plan.id };
+  let bad = 0;
+  const rows = d.schedule.map((x, i) => {
+    const issues = x.date ? dayIssues(x.date, ctx) : [];
+    if (issues.length) bad++;
+    const sug = issues.length ? suggestDates(x.date, ctx) : [];
+    return `<tr data-i="${i}" class="${issues.length ? 'yp-bad' : ''}">
+      <td><input class="field" type="date" data-date="${i}" value="${esc(x.date)}" aria-label="${i + 1}번째 일정 날짜"></td>
+      <td><input class="field" data-title="${i}" value="${esc(x.title)}" aria-label="${i + 1}번째 일정 내용"></td>
+      <td><span class="yp-why">${x.date ? esc(issues.join(' · ')) : '<span class="muted">날짜를 정해 주세요</span>'}</span>
+        ${sug.length ? `<div class="yp-sug">${sug.map(s => `<button class="btn tonal" type="button" data-suggest="${s}" data-i="${i}">${fmtDay(s)}</button>`).join('')}</div>` : ''}</td>
+      <td><button class="icon-btn" type="button" data-schdel="${i}" aria-label="이 일정 빼기">×</button></td></tr>`;
+  }).join('');
+  const fin = plan.status === 'final';
+  return `<div class="yp-card">
+      <h3>월별 추진 일정</h3>
+      <p class="muted">주말·공휴일·설정의 방학·재량휴업일·다른 계획 일정과 겹치면 빨갛게 보이고, 가까운 가능한 날짜 2개를 추천해요.</p>
+      ${d.schedule.length ? `<p class="banner ${bad ? 'warn' : 'ok'}"><span class="grow">${bad ? `겹치는 일정이 ${bad}개 있어요.` : '겹치는 일정이 없어요.'}</span></p>` : ''}
+      <div class="yp-tbl-wrap"><table class="yp-tbl yp-days" id="ypDays"><thead><tr><th>날짜</th><th>내용</th><th>확인</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="muted">일정이 없어요.</td></tr>'}</tbody></table></div>
+      <div class="row"><button class="btn text" type="button" data-y="schedAdd">+ 일정 더하기</button></div>
+    </div>
+    <div class="yp-card">
+      <h3>내보내기와 확정</h3>
+      <p class="muted">확정하면 계획서와 일정을 저장하고, 일정은 이 컴퓨터의 학사일정에 넣어요. 확정한 계획은 다음 해 「작년 계획서」로 불러올 수 있어요.</p>
+      ${fin ? '<p class="banner ok"><span class="grow">확정한 계획이에요. 고치면 다시 「작성 중」이 돼요.</span></p>' : ''}
+      <div class="row yp-out"><button class="btn" type="button" data-y="hwpx">한글 파일로 내려받기</button><button class="btn" type="button" data-copy="schedule">일정 복사</button><span class="grow"></span>
+        <button class="btn primary" type="button" data-y="final">${fin ? '다시 확정' : '확정'}</button></div>
+    </div>`;
+}
+
+function setSchedule(i, patch) {
+  const x = plan.draft && plan.draft.schedule[i];
+  if (!x) return;
+  Object.assign(x, patch);
+  if (patch.date !== undefined) x.month = x.date ? +x.date.slice(5, 7) : x.month;
+  if (plan.status === 'final') plan.status = 'draft';
+  persist();
+}
+
+function confirmPlan() {
+  if (!plan.draft) return;
+  plan.status = 'final';
+  persist();
+  const items = plan.draft.schedule.filter(x => x.date).map(x => ({ date: x.date, title: `${plan.name}: ${x.title}` }));
+  setEvents('year:' + plan.id, items);
+  renderList(); renderMain();
+  toast(`확정했어요. 학사일정에 ${items.length}개를 넣었어요`);
+}
+
+async function downloadHwpx() {
+  if (!plan.draft) return;
+  const name = `${plan.year}학년도 ${(plan.name || '업무').replace(/[\\/:*?"<>|]/g, '_')} 운영 계획.hwpx`;
+  try {
+    const where = await saveFile(name, makeHwpx(planDoc(plan)), 'application/hwp+zip');
+    toast(window.__TAURI__ ? `다운로드 폴더에 저장했어요: ${String(where).split(/[\\/]/).pop()}` : '한글 파일을 내려받았어요');
+  } catch (e) { toast('한글 파일을 저장하지 못했어요'); }
 }
 
 /* ---------- AI: 작년 평가 ---------- */
@@ -318,6 +390,7 @@ document.addEventListener('input', e => {
     if (String(el.value).trim()) el.classList.remove('bad');
   } else if (el.dataset.src) plan.sources[el.dataset.src] = el.value;
   else if (el.dataset.sec && plan.draft) { plan.draft = { ...plan.draft, [el.dataset.sec]: el.value }; refreshOverlap(); }
+  else if (el.dataset.title != null) { setSchedule(+el.dataset.title, { title: el.value }); return; }
   else if (el.dataset.bud != null && plan.draft) {
     const b = plan.draft.budget[+el.dataset.bud];
     if (!b) return;
@@ -331,6 +404,7 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => {
   if (!box || !box.contains(e.target) || curTab !== 'year') return;
   const el = e.target;
+  if (el.dataset.date != null) { setSchedule(+el.dataset.date, { date: el.value }); renderMain(); return; }
   if (el.id === 'ypFile') { const t = el.dataset.target; const files = [...el.files]; el.value = ''; if (t && files.length) addFiles(t, files); return; }
   if (el.dataset.idea != null && plan.review) {
     const set = new Set(plan.review.picked);
@@ -353,6 +427,21 @@ document.addEventListener('click', e => {
   }
   const cp = e.target.closest('[data-copy]');
   if (cp) { copyText(sectionText(cp.dataset.copy)).then(ok => toast(ok ? '복사했어요' : '복사하지 못했어요')); return; }
+  const sg = e.target.closest('[data-suggest]');
+  if (sg) { setSchedule(+sg.dataset.i, { date: sg.dataset.suggest }); renderMain(); return; }
+  const sd = e.target.closest('[data-schdel]');
+  if (sd && plan.draft) { plan.draft.schedule.splice(+sd.dataset.schdel, 1); if (plan.status === 'final') plan.status = 'draft'; persist(); renderMain(); return; }
+  const pv = e.target.closest('[data-prev]');
+  if (pv) {
+    const p = getPlan(pv.dataset.prev);
+    if (p) {
+      const prev = plan.sources.lastPlan.trim();
+      plan.sources.lastPlan = (prev ? prev + '\n\n' : '') + planText(p);
+      plan.sourceNames.lastPlan = [...plan.sourceNames.lastPlan, `지난 계획: ${p.year}학년도 ${p.name}`];
+      showPrev = false; persist(); renderMain();
+    }
+    return;
+  }
   const bd = e.target.closest('[data-budel]');
   if (bd && plan.draft) { plan.draft.budget.splice(+bd.dataset.budel, 1); persist(); renderMain(); return; }
   const fb = e.target.closest('[data-file]');
@@ -360,13 +449,17 @@ document.addEventListener('click', e => {
   const b = e.target.closest('[data-y]');
   if (!b) return;
   const a = b.dataset.y;
-  if (a === 'new') { plan = newPlan(); saved = false; render(); box.querySelector('#ypName').focus(); }
+  if (a === 'new') { plan = newPlan(); saved = false; showPrev = false; render(); box.querySelector('#ypName').focus(); }
   else if (a === 'next') next();
   else if (a === 'prev') goStep(Math.max(1, plan.step - 1));
   else if (a === 'review') { if (plan.review) apply(plan.id, p => { p.review = null; }); runReview(); }
   else if (a === 'guide') { if (plan.guide) apply(plan.id, p => { p.guide = null; }); runGuide(); }
   else if (a === 'draft') runDraft();
   else if (a === 'budAdd' && plan.draft) { plan.draft.budget.push({ name: '', amount: 0, note: '' }); persist(); renderMain(); }
+  else if (a === 'schedAdd' && plan.draft) { plan.draft.schedule.push({ title: '', date: '', month: null }); persist(); renderMain(); }
+  else if (a === 'importPrev') { showPrev = !showPrev; renderMain(); }
+  else if (a === 'hwpx') downloadHwpx();
+  else if (a === 'final') confirmPlan();
   else if (a === 'school') goMenu('settings', 'school');
 });
 

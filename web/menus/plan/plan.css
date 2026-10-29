@@ -25,10 +25,10 @@
 .yp-review{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .yp-review section{display:flex;flex-direction:column;gap:8px;min-width:0}
 .yp-ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
-.yp-bad{display:flex;flex-direction:column;gap:6px;padding:10px 12px;background:var(--surface2);border-radius:var(--r-s)}
-.yp-bad + .yp-bad{margin-top:6px}
-.yp-bad p{margin:0}
-.yp-bad-t{font-weight:600}
+.yp-weak{display:flex;flex-direction:column;gap:6px;padding:10px 12px;background:var(--surface2);border-radius:var(--r-s)}
+.yp-weak + .yp-weak{margin-top:6px}
+.yp-weak p{margin:0}
+.yp-weak-t{font-weight:600}
 .req{color:var(--err);font-weight:700}
 .field.bad{border-color:var(--err);box-shadow:0 0 0 1px var(--err)}
 /* 단계 표시 */
@@ -69,3 +69,16 @@ button.steps-in:hover{background:var(--surface2)}
 .yp-tbl td.num,.yp-tbl .field.num{text-align:right;font-variant-numeric:tabular-nums}
 .yp-tbl tfoot td{font-weight:700}
 .yp-same-list{margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px;font-weight:500}
+/* 일정 */
+.yp-days td:first-child{width:170px}
+.yp-days td:last-child{width:44px;text-align:center}
+.yp-days tr.yp-bad td{background:var(--err-soft)}
+.yp-days tr.yp-bad .yp-why{color:var(--err);font-weight:600}
+.yp-why{font-size:13.5px}
+.yp-sug{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.yp-sug .btn{min-height:32px;padding:0 10px;font-size:13px}
+.yp-out{flex-wrap:wrap;gap:8px}
+.yp-prev{display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:var(--surface2);border-radius:var(--r-s)}
+.yp-src-h .row{gap:6px;flex-wrap:wrap;justify-content:flex-end}
+@media (max-width:600px){ .yp-days thead{display:none} .yp-days tr{display:grid;grid-template-columns:minmax(0,1fr) 44px} .yp-days td{border:0;border-bottom:1px solid var(--line)} .yp-days td:first-child{width:auto} .yp-days td:nth-child(2),.yp-days td:nth-child(3){grid-column:1/-1} .yp-days td:last-child{grid-row:1;grid-column:2} }
+.yp-card > p,.yp-card > .banner,.yp-card > div > p.banner{margin:0}
