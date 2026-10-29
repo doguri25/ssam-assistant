@@ -42,14 +42,21 @@ export function parseKey(text) {
   let col, domains = [], start = h + 1;
   const pi = next.findIndex(c => c === '배점');
   if (pi >= 0 && !/^\d+$/.test(next[0])) {
-    // 둘째 머리 줄: 「배점」 앞 칸이 행동 영역 이름
-    domains = next.slice(0, pi).filter(Boolean);
-    const D = pi;
-    col = { dom: 2, answer: 2 + D, points: 3 + D, criteria: 4 + D, pages: 5 + D };
     start = h + 2;
+    if (next[0]) {
+      // 칸을 합친 머리(한글 파일 그대로): 둘째 머리 줄에서 「배점」 앞 칸이 행동 영역 이름
+      domains = next.slice(0, pi).filter(Boolean);
+      const D = pi;
+      col = { dom: Array.from({ length: D }, (_, j) => 2 + j), answer: 2 + D, points: 3 + D, criteria: 4 + D, pages: 5 + D };
+    } else {
+      // 칸을 합치지 않은 머리: 둘째 머리 줄의 칸 자리가 곧 열 자리
+      const dom = next.map((c, i) => (c && i < pi && !/정답|채점/.test(c) ? i : -1)).filter(i => i >= 0);
+      domains = dom.map(i => next[i]);
+      col = { dom, answer: head.findIndex(c => /정답/.test(c)), points: pi, criteria: next.findIndex(c => /채점/.test(c)), pages: head.findIndex(c => /쪽/.test(c)) };
+    }
   } else {
     const at = re => head.findIndex(c => re.test(c));
-    col = { dom: 2, answer: at(/정답/), points: at(/배점/), criteria: at(/채점\s*기준/), pages: at(/쪽/) };
+    col = { dom: [], answer: at(/정답/), points: at(/배점/), criteria: at(/채점\s*기준/), pages: at(/쪽/) };
   }
   const items = [];
   for (let i = start; i < lines.length; i++) {
@@ -58,7 +65,7 @@ export function parseKey(text) {
     const c = cells(line);
     const get = k => (col[k] >= 0 && c[col[k]] != null ? c[col[k]] : '');
     if (/^\d{1,2}$/.test(c[0])) {
-      const dom = domains.filter((_, j) => MARK.test(c[col.dom + j] || ''));
+      const dom = domains.filter((_, j) => MARK.test(c[col.dom[j]] || ''));
       items.push({ no: Number(c[0]), content: c[1] || '', domain: dom.join('·'), type: '', answer: get('answer'), points: num(get('points')), criteria: get('criteria'), pages: get('pages') });
     } else if (!c[0] && items.length) {
       // 첫 칸이 빈 줄: 앞 문항의 칸에 이어 붙임

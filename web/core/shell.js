@@ -6,7 +6,7 @@ import { ensureYears } from './years.js';
 import { freeze } from './store.js';
 
 export const MENUS = [
-  { id: 'evaluate', label: '평가', tabs: [['pyeongeo', '교과 평어'], ['cc', '창의적 체험활동'], ['hk', '행동특성'], ['gr', '평가지 채점']] },
+  { id: 'evaluate', label: '평가', tabs: [['pyeongeo', '교과 평어'], ['cc', '창의적 체험활동'], ['hk', '행동특성'], ['gr', '평가지 채점'], ['unit', '단원평가']] },
   { id: 'training', label: '연수', tabs: [['mine', '내 필수연수'], ['board', '연수 현황판']] },
   { id: 'plan', label: '계획', tabs: [['year', '연간계획'], ['event', '행사계획']] },
   { id: 'class', label: '학급', tabs: [['today', '오늘 수업'], ['progress', '진도표·시수'], ['weekly', '주간학습안내']] },
@@ -45,6 +45,7 @@ export function setActions(html) {
   return el;
 }
 
+const LEGACY = ['pyeongeo', 'cc', 'hk', 'gr'];
 export function go(menuId, tabId) {
   const m = find(menuId) || MENUS[0];
   setActions('');
@@ -57,7 +58,12 @@ export function go(menuId, tabId) {
   });
   $('#menuTitle').textContent = m.label;
   drawTabs(m);
-  if (m.id === 'evaluate' && SSAM().getMode && SSAM().getMode() !== tab) SSAM().setMode(tab);
+  if (m.id === 'evaluate') {
+    // 기존 앱의 화면(mode)이 아닌 탭(단원평가)은 새 모듈이 그림: 기존 화면을 숨김
+    const ev = section('evaluate');
+    if (ev) ev.classList.toggle('ev-new', !LEGACY.includes(tab));
+    if (LEGACY.includes(tab) && SSAM().getMode && SSAM().getMode() !== tab) SSAM().setMode(tab);
+  }
   try { localStorage.setItem(NAV_KEY, JSON.stringify(cur)); } catch (e) {}
   drawAi();
   const fns = hooks[m.id];
@@ -110,6 +116,7 @@ function init() {
   // 기존 앱이 스스로 화면을 바꾸면(새 평가계획 넣기 등) 가로 메뉴도 맞춤
   if (SSAM().onModeChange) SSAM().onModeChange(mode => {
     if (!cur || cur.menu !== 'evaluate' || cur.tab === mode) return;
+    if (!LEGACY.includes(cur.tab)) { go('evaluate', mode); return; }
     cur.tab = mode; drawTabs(find('evaluate'));
     try { localStorage.setItem(NAV_KEY, JSON.stringify(cur)); } catch (e) {}
   });
@@ -123,7 +130,7 @@ function init() {
   const root = $('#sheetRoot');
   if (root) new MutationObserver(drawAi).observe(root, { childList: true });
   const saved = readNav();
-  go(saved ? saved.menu : 'evaluate', saved && saved.menu !== 'evaluate' ? saved.tab : undefined);
+  go(saved ? saved.menu : 'evaluate', saved && (saved.menu !== 'evaluate' || !LEGACY.includes(saved.tab)) ? saved.tab : undefined);
 }
 
 // 메뉴 모듈들이 onEnter를 등록한 뒤에 처음 화면을 그림.

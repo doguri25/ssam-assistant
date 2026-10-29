@@ -21,3 +21,10 @@ writeFileSync(new URL('진도표-예시.hwpx', out), makeHwpx(sampleJindoDoc()))
 console.log('samples/진도표-예시.hwpx');
 writeFileSync(new URL('시간표-예시.hwpx', out), makeHwpx(sampleTimetableDoc()));
 console.log('samples/시간표-예시.hwpx');
+
+// 단원평가 예시: 정답지(문항 이원 분류표 모양)와 평가지
+const { sampleKeyDoc, samplePaperDoc } = await import('../web/menus/evaluate/unit/unit-sample.js');
+writeFileSync(new URL('단원평가-정답지-예시.hwpx', out), makeHwpx(sampleKeyDoc()));
+console.log('samples/단원평가-정답지-예시.hwpx');
+writeFileSync(new URL('단원평가지-예시.hwpx', out), makeHwpx(samplePaperDoc()));
+console.log('samples/단원평가지-예시.hwpx');

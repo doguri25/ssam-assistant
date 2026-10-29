@@ -2858,8 +2858,8 @@ function renderHKEditor() {
 }
 
 /* ---------- 이벤트 ---------- */
-/* 쌤비서: 평가 화면이 숨겨져 있으면(다른 메뉴) 행특·채점 손잡이는 쉼 — 다른 메뉴의 data-pick 등을 잡지 않게 */
-function evalShown() { const s = document.querySelector('section[data-menu="evaluate"]'); return !s || !s.hidden; }
+/* 쌤비서: 평가 화면이 숨겨져 있으면(다른 메뉴·단원평가 탭) 행특·채점 손잡이는 쉼 — 다른 화면의 data-pick 등을 잡지 않게 */
+function evalShown() { const s = document.querySelector('section[data-menu="evaluate"]'); return !s || (!s.hidden && !s.classList.contains('ev-new')); }
 document.addEventListener('click', e => {
   if (S.mode !== 'hk' || !evalShown()) return;
   const t = e.target;

@@ -46,6 +46,20 @@ test('정답지: 영역이 3개인 표', () => {
   assert.equal(k.items[1].type, 'choice');
 });
 
+test('정답지: 칸을 합치지 않은 머리(둘째 머리 줄이 빈 칸으로 시작)', () => {
+  const text = [
+    '2학기 단원평가 문항 이원 분류 및 모범 답안 ( 3 )학년 ( 국어 )과 2단원 (1회)',
+    '문항번호 | 평가 내용 | 행동 영역 |  | 정답 | 배점 및 채점 기준 |  | 교과서 관련 쪽수',
+    ' |  | 지식 | 이해 |  | 배점 | 채점 기준 | ',
+    '1 | 글의 내용 파악하기 |  | ○ | (2) ○ | 5 |  | <국어> 70~75쪽',
+    '2 | 생각 쓰기 | ○ |  | (예) 좋다. | 15 | 비슷하면 정답 | <국어> 88쪽'
+  ].join('\n');
+  const k = parseKey(text);
+  assert.deepEqual(k.domains, ['지식', '이해']);
+  assert.deepEqual(k.items[0], { no: 1, content: '글의 내용 파악하기', domain: '이해', type: 'choice', answer: '(2) ○', points: 5, criteria: '', pages: '<국어> 70~75쪽' });
+  assert.equal(k.items[1].domain, '지식'); assert.equal(k.items[1].criteria, '비슷하면 정답'); assert.equal(k.items[1].points, 15);
+});
+
 test('정답지: 머리 위 학교 이름·빈 줄, 숫자가 아닌 배점, 이어지는 줄', () => {
   const text = [
     '가나초등학교',
