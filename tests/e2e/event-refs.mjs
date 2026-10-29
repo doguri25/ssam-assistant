@@ -103,6 +103,32 @@ await run('event-refs', [
     assert((await getEv(A)).refNotes.options[0] === '안전요원 2명 배치', 'A에 없음');
     assert((await getEv(B)).refNotes.options.length === 0, 'B에 섞임');
   }],
+  ['다듬기: 참고 자료를 바꾸면 「반영한 것」에 다시 만들라는 안내', async () => {
+    const [x] = await seed([base('학예회', { maxStep: 2, refs: [{ id: 'r1', kind: 'official', name: '공문', text: '안전요원 배치' }], refNotes: { options: ['안전요원 2명 배치'], docs: [] },
+      options: [{ label: '안', summary: '요약', timetable: [{ time: '09:00', activity: '개회', place: '강당' }], pros: ['a'], staffNeed: '1명', budget: [] }] })], 0);
+    await page.reload(); await page.waitForTimeout(400); await go();
+    await page.click(`${V} [data-e="refDel"][data-id="r1"]`);
+    await page.click(`${V} .steps [data-step="2"]`);
+    await page.waitForSelector(`${V} .ev-refnotes`);
+    assert((await page.textContent(`${V} .ev-refnotes`)).includes('참고 자료를 바꿨어요'), await page.textContent(`${V} .ev-refnotes`));
+    assert((await getEv(x)).refNotes.stale === true, '저장');
+  }],
+  ['다듬기: 글이 없는 파일은 넣지 않고 알려 줌, 고칠 때 6만 자를 넘으면 알려 줌', async () => {
+    await page.click(`${V} .steps [data-step="1"]`);
+    const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click(`${V} [data-e="refFile"]`)]);
+    await fc.setFiles({ name: '빈.txt', mimeType: 'text/plain', buffer: Buffer.from('   ') });
+    await page.waitForTimeout(300);
+    assert((await page.textContent('#toast')).includes('글이 없'), await page.textContent('#toast'));
+    await page.click(`${V} [data-e="refPaste"]`);
+    await page.fill('#sheetRoot #evRefText', '가'.repeat(100));
+    await page.click('#sheetRoot #evRefOk');
+    await page.waitForSelector(`${V} [data-e="refView"]`);
+    await page.click(`${V} [data-e="refView"]`);
+    await page.fill('#sheetRoot #evRefText', '나'.repeat(70000));
+    await page.click('#sheetRoot #evRefOk');
+    await page.waitForTimeout(150);
+    assert((await page.textContent('#toast')).includes('6만 자'), await page.textContent('#toast'));
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();

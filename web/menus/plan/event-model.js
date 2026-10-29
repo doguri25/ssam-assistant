@@ -125,7 +125,8 @@ function normEvent(v) {
   e.docs = { plan: str(d.plan), safety: str(d.safety), letter: str(d.letter), rain: str(d.rain), roles: normRoles(d.roles, []), done: d.done === true };
   e.refs = normRefs(v.refs);
   const rn = isObj(v.refNotes) ? v.refNotes : {};
-  e.refNotes = { options: normRefNotes(rn.options), docs: normRefNotes(rn.docs) };
+  // stale: 반영한 것을 쓴 뒤에 참고 자료를 바꿈 (다시 만들어야 새 자료가 반영됨)
+  e.refNotes = { options: normRefNotes(rn.options), docs: normRefNotes(rn.docs), stale: !!rn.stale };
   e.survey = normSurvey(v.survey);
   e.status = v.status === 'final' ? 'final' : 'draft';
   e.step = step(v.step);

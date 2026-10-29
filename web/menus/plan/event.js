@@ -183,11 +183,15 @@ function plansHTML() {
 }
 const refTotal = x => x.refs.reduce((n, r) => n + r.text.length, 0);
 /* 참고 자료를 그 행사(id)에 더함 — 파일을 읽는 동안 다른 행사로 가도 섞이지 않게 */
+/* 참고 자료를 바꾸면: 지난 「반영한 것」은 다시 만들기 전까지 옛 자료 기준이라 표시 */
+const refsChanged = x => { if (x.refNotes.options.length || x.refNotes.docs.length) x.refNotes = { ...x.refNotes, stale: true }; };
 function addRef(id, ref) {
+  if (!String(ref.text || '').trim()) { toast(`「${ref.name}」에는 글이 없어 넣지 않았어요`, 5000); return; }
   const add = x => {
     const before = refTotal(x) + ref.text.length;
     x.refs = normRefs([...x.refs, { ...ref, id: 'ref' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }]);
     if (refTotal(x) < before) toast('참고 자료는 모두 합쳐 6만 자까지만 저장해요', 5000);
+    refsChanged(x);
     if (x.status === 'final') { x.status = 'draft'; removeEvents('event:' + x.id); }
   };
   if (ev.id === id) { add(ev); persist(); if (visible() && ev.step === 1) renderMain(); }
@@ -206,11 +210,13 @@ function refSheet(r) {
     if (!text.trim()) { toast('글을 넣어 주세요'); return; }
     S.closeSheet();
     if (!r) { addRef(ev.id, { kind, name: name || '붙여 넣은 자료', text }); return; }
+    const before = refTotal(ev) - r.text.length + text.length;
     ev.refs = normRefs(ev.refs.map(x => (x.id === r.id ? { ...x, kind, name: name || x.name, text } : x)));
-    unconfirm(); persist(); renderMain();
+    if (refTotal(ev) < before) toast('참고 자료는 모두 합쳐 6만 자까지만 저장해요. 넘는 뒷부분은 잘랐어요', 5000);
+    refsChanged(ev); unconfirm(); persist(); renderMain();
   }));
 }
-const refNotesHTML = list => (list && list.length ? `<div class="banner info ev-refnotes"><span class="grow"><b>참고 자료에서 반영한 것</b><ul>${list.map(x => `<li>${esc(x)}</li>`).join('')}</ul></span></div>` : '');
+const refNotesHTML = (list, stale) => (list && list.length ? `<div class="banner info ev-refnotes"><span class="grow"><b>참고 자료에서 반영한 것</b>${stale ? '<span class="muted"> · 참고 자료를 바꿨어요. 다시 만들면 바뀐 자료가 반영돼요</span>' : ''}<ul>${list.map(x => `<li>${esc(x)}</li>`).join('')}</ul></span></div>` : '');
 const refsPart = e => { const b = refsBlock(e.refs); return b ? `\n참고 자료(상위 계획·교육청 공문 등):\n${b}\n` : ''; };
 const refsRule = e => (e.refs.length ? '- 참고 자료의 요구 사항(날짜·대상·필수 활동·안전 기준·제출할 것 등)을 지키고, 반영한 것을 refNotes에 짧게 씀(3~6개). 참고 자료에 없는 사실은 지어내지 않음\n' : '');
 
@@ -237,7 +243,7 @@ function step2() {
     </article>`;
   };
   const p = ev.picked != null ? ev.options[ev.picked] : null;
-  return `${refNotesHTML(ev.refNotes.options)}<div class="ev-opts">${ev.options.map(card).join('')}</div>
+  return `${refNotesHTML(ev.refNotes.options, ev.refNotes.stale)}<div class="ev-opts">${ev.options.map(card).join('')}</div>
     ${p ? `<div class="yp-card"><h3>고른 안의 시간표 <span class="muted">(고칠 수 있어요)</span></h3>
       <div class="yp-tbl-wrap"><table class="yp-tbl" id="evTT"><thead><tr><th>시간</th><th>활동</th><th>장소</th><th></th></tr></thead><tbody>${p.timetable.map((t, j) => `<tr>
         <td><input class="field" data-tt="${j}" data-f="time" value="${esc(t.time)}" aria-label="시간"></td>
@@ -273,7 +279,7 @@ function step3() {
       body += `<div id="evLetterBox">${letterBoxHTML(miss)}</div><div class="ev-qr" id="evLetterQr">${letterQrHTML()}</div>`;
     }
   }
-  return `${refNotesHTML(ev.refNotes.docs)}<div class="yp-card">${tabs}${body}
+  return `${refNotesHTML(ev.refNotes.docs, ev.refNotes.stale)}<div class="yp-card">${tabs}${body}
       <div class="row yp-out"><button class="btn" type="button" data-e="copyDoc">복사</button><button class="btn" type="button" data-e="hwpx">한글 파일로 내려받기</button><span class="grow"></span>
         <button class="btn text" type="button" data-e="docs">다시 만들기 (고친 내용은 사라져요)</button></div></div>
     <div class="yp-card"><h3>품의로 이어 가기</h3><p class="muted">품의 › 새 품의로 넘어가며 행사 정보와 고른 안의 예산 줄을 채워요.</p>
@@ -440,7 +446,7 @@ async function runDocs() {
   try {
     const v = await ai.generateJSON(docsPrompt(ev), { valid: x => x && !Array.isArray(x) && typeof x === 'object' && (typeof x.letter === 'string' || typeof x.plan === 'string') });
     const t = x => (Array.isArray(x) ? x.filter(y => typeof y === 'string').join('\n') : typeof x === 'string' ? x : '');
-    apply(id, e => { e.docs = { plan: t(v.plan), safety: t(v.safety), letter: t(v.letter), rain: t(v.rain), roles: normRoles(v.roles, e.staff.filter(x => x.name.trim())), done: false }; e.refNotes = { ...e.refNotes, docs: normRefNotes(v.refNotes) }; if (e.status === 'final') e.status = 'draft'; });
+    apply(id, e => { e.docs = { plan: t(v.plan), safety: t(v.safety), letter: t(v.letter), rain: t(v.rain), roles: normRoles(v.roles, e.staff.filter(x => x.name.trim())), done: false }; e.refNotes = { ...e.refNotes, docs: normRefNotes(v.refNotes), stale: false }; if (e.status === 'final') e.status = 'draft'; });
   } catch (err) { errs[id] = ai.errorMessage(err && err.code, err); }
   finish(id, 'docs');
 }
@@ -494,7 +500,7 @@ async function runOptions() {
   renderMain();
   try {
     const v = await ai.generateJSON(optionsPrompt(ev), { valid: x => x && normOptions(x.options).length > 0 });
-    apply(id, e => { e.options = normOptions(v.options); e.picked = null; e.refNotes = { ...e.refNotes, options: normRefNotes(v.refNotes) }; });
+    apply(id, e => { e.options = normOptions(v.options); e.picked = null; e.refNotes = { ...e.refNotes, options: normRefNotes(v.refNotes), stale: false }; });
   } catch (err) { errs[id] = ai.errorMessage(err && err.code, err); }
   finish(id, 'options');
 }
@@ -652,7 +658,7 @@ document.addEventListener('click', e => {
   else if (a === 'refPaste') refSheet(null);
   else if (a === 'refPlan') { showPlans = !showPlans; renderMain(); }
   else if (a === 'refView') { const r = ev.refs.find(x => x.id === b.dataset.id); if (r) refSheet(r); }
-  else if (a === 'refDel') { ev.refs = ev.refs.filter(x => x.id !== b.dataset.id); unconfirm(); persist(); renderMain(); }
+  else if (a === 'refDel') { ev.refs = ev.refs.filter(x => x.id !== b.dataset.id); refsChanged(ev); unconfirm(); persist(); renderMain(); }
   else if (a === 'docs') runDocs();
   else if (a === 'roleAdd') { ev.docs.roles.push({ name: '', roles: [] }); persist(); renderMain(); }
   else if (a === 'letterDone') { if (!letterMissing(ev.docs.letter).length) { ev.docs.done = true; persist(); const lb = box.querySelector('#evLetterBox'); if (lb) lb.innerHTML = letterBoxHTML([]); toast('가정통신문을 완성했어요'); } }

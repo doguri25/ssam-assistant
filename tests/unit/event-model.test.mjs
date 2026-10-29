@@ -133,7 +133,7 @@ test('참고 반영 메모 다듬기와 저장', () => {
   store.useStorage(mem());
   const e = saveEvent({ ...newEvent(), name: '운동회', refs: [{ id: 'a', kind: 'official', name: '공문', text: '안전요원 2명' }], refNotes: { options: ['안전요원 2명'], docs: 'x' } });
   const g = getEvent(e.id);
-  assert.equal(g.refs[0].text, '안전요원 2명'); assert.deepEqual(g.refNotes, { options: ['안전요원 2명'], docs: [] });
+  assert.equal(g.refs[0].text, '안전요원 2명'); assert.deepEqual(g.refNotes, { options: ['안전요원 2명'], docs: [], stale: false });
   store.set('events', [{ ...newEvent(), id: 'z', name: 'z', refs: 'x', refNotes: 3 }]);
-  assert.deepEqual(getEvent('z').refs, []); assert.deepEqual(getEvent('z').refNotes, { options: [], docs: [] });
+  assert.deepEqual(getEvent('z').refs, []); assert.deepEqual(getEvent('z').refNotes, { options: [], docs: [], stale: false });
 });
