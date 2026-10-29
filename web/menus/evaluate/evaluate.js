@@ -2197,6 +2197,7 @@ function drawEngine(sh) {
       <input class="field mono" id="apiModelCustom" type="text" placeholder="모델 이름 (예: ${esc(P.models[0][0])})" value="${known ? '' : esc(E.models[p])}" ${known ? 'hidden' : ''}>
     </div>
     <label class="switch"><input type="checkbox" id="keyRemember" ${E.remember ? 'checked' : ''}>${HERE}에 키 기억하기</label>
+    ${!IN_APP && /\.github\.io$/i.test(location.hostname) ? `<p class="muted" style="margin:0">웹판은 ${esc(location.hostname)} 주소를 같은 계정의 다른 웹페이지와 함께 써요. 함께 쓰는 PC에서는 키를 기억하지 않거나 Windows 앱을 쓰는 것이 안전해요.</p>` : ''}
     <div class="row"><button class="btn tonal" type="button" id="keyTest">연결 확인</button><span class="muted" id="keyMsg"></span></div>
     <p class="muted" style="margin:0">키 받는 곳: <a href="${esc(P.keyUrl)}" target="_blank" rel="noopener">${esc(P.keyHost)}</a><br>키는 ${HERE}에만 저장되고, 평어를 만들 때 ${esc(P.name)} 회사로만 보내져요. 사용 요금은 키 주인에게 청구돼요.</p>`;
   const key = box.querySelector('#apiKey');

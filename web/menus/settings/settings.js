@@ -14,6 +14,9 @@ const SSAM = () => window.SSAM || {};
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const toast = (m, ms) => SSAM().toast && SSAM().toast(m, ms);
 const FULL = FULL_MSG;
+/* 웹판 주소(*.github.io)는 같은 계정의 다른 GitHub Pages 페이지와 저장소를 함께 씀 (Windows 앱은 따로) */
+const sharedHost = () => (!window.__TAURI__ && /\.github\.io$/i.test(location.hostname) ? location.hostname : '');
+const sharedNote = () => (sharedHost() ? `<p class="banner warn" style="margin:0 0 8px">웹판은 ${esc(sharedHost())} 주소를 같은 계정의 다른 웹페이지와 함께 써요. AI 키를 기억하게 하면 그 페이지들도 이 키를 읽을 수 있어요. 함께 쓰는 PC에서는 Windows 앱을 쓰거나 [AI 바꾸기]에서 「키 기억하기」를 꺼 주세요.</p>` : '');
 const won = n => Number(n).toLocaleString('ko-KR');
 
 // 테마 미리보기 색 (core/theme.css와 같은 값): 틀, 바탕, 카드, 포인트
@@ -46,7 +49,7 @@ const VIEWS = {
   ai: () => {
     const ready = SSAM().ai && SSAM().ai.engineReady();
     return page('AI', 'Claude·Gemini·GPT·업스테이지 중 하나의 키를 넣어 써요. 키는 이 컴퓨터에만 저장돼요.',
-      card('지금 쓰는 AI', `<p class="set-big">${esc(ready ? SSAM().ai.engineName() : '아직 정하지 않았어요')}</p>
+      card('지금 쓰는 AI', `${sharedNote()}<p class="set-big">${esc(ready ? SSAM().ai.engineName() : '아직 정하지 않았어요')}</p>
         <div class="row"><button class="btn primary" type="button" data-set="openAi">AI 바꾸기</button>
           <button class="btn" type="button" data-set="testAi" ${ready && !(aiMsg && aiMsg.busy) ? '' : 'disabled'}>연결 확인</button></div>
         ${aiMsg ? `<p class="set-msg ${aiMsg.busy ? '' : aiMsg.ok ? 'ok' : 'err'}" role="status">${aiMsg.busy ? '확인하는 중…' : esc(aiMsg.text)}</p>` : ''}`));
@@ -137,7 +140,13 @@ function prepNote() {
 }
 /* 이 컴퓨터 저장 공간(사이트마다 약 5MB) 사용량, 70%가 넘으면 경고 */
 const usagePct = () => Math.round(usage(safeLS()).ratio * 100);
-const usageLine = () => `이 컴퓨터 저장 공간 ${usagePct()}% 사용 (약 5MB 중)`;
+/* 같은 주소의 다른 페이지가 쓴 몫 (ssam: 로 시작하지 않는 키) */
+function otherUse() {
+  const ls = safeLS(); let n = 0;
+  try { if (ls) for (let i = 0; i < ls.length; i++) { const k = ls.key(i); if (!k.startsWith('ssam:')) n += k.length + String(ls.getItem(k) || '').length; } } catch (e) {}
+  return n;
+}
+const usageLine = () => { const o = otherUse(); return `이 컴퓨터 저장 공간 ${usagePct()}% 사용 (약 5MB 중${o >= 1024 ? ` · 같은 주소의 다른 페이지 ${kb(o)}` : ''})`; };
 const usageWarn = () => (usagePct() >= 70 ? '<p class="banner warn" style="margin:8px 0 0">저장 공간이 70% 넘게 찼어요. 백업 파일을 만든 뒤 지난 학년도·단원평가·평가지 채점 기록처럼 쓰지 않는 자료를 지워 주세요.</p>' : '');
 function backupLine() {
   const at = sget('backupAt', 0);
