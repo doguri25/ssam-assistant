@@ -66,6 +66,7 @@ export function go(menuId, tabId) {
   }
   try { localStorage.setItem(NAV_KEY, JSON.stringify(cur)); } catch (e) {}
   drawAi();
+  document.dispatchEvent(new CustomEvent('menu:go', { detail: { menu: m.id, tab } }));
   const fns = hooks[m.id];
   if (fns && fns.length) {
     const ph = section(m.id) && section(m.id).querySelector('.ph');

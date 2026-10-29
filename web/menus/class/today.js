@@ -69,9 +69,18 @@ function redrawLessons() {
 }
 function setDate(d) { if (isDate(d)) { date = d; render(); } }
 
+/* 다른 메뉴에 갔다 오거나 켜 둔 채 날이 바뀌면 오늘로 (shownOn: 그 날짜를 보기 시작한 실제 날) */
+let away = false, shownOn = '';
+const toToday = () => { date = today(); shownOn = date; };
+document.addEventListener('menu:go', e => { if (e.detail.menu !== 'class') away = true; });
+window.addEventListener('focus', () => {
+  if (!visible() || shownOn === today()) return;
+  if (date === shownOn) { toToday(); render(); } else shownOn = today(); // 선생님이 고른 다른 날은 그대로
+});
 onEnter('class', (tab, section) => {
   if (!box || !section.contains(box)) { box = document.createElement('div'); box.className = 'cls-today'; section.append(box); }
-  if (tab === 'today' && curTab !== 'today') date = today();
+  if (tab === 'today' && (curTab !== 'today' || away || shownOn !== today())) toToday();
+  away = false;
   curTab = tab;
   box.hidden = tab !== 'today';
   if (tab === 'today') render();

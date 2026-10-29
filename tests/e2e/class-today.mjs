@@ -84,6 +84,19 @@ await run('class-today', [
     await page.click(`${V} [data-go-day="2026-10-27"]`);
     assert((await page.textContent(`${V} .cls-today .cls-day`)).includes('10월 27일'), '그날로');
   }],
+  ['다른 날을 보다가 다른 메뉴에 갔다 오면 오늘로', async () => {
+    await page.click('nav.app-side [data-menu-go="evaluate"]');
+    await page.click('nav.app-side [data-menu-go="class"]');
+    assert((await page.textContent(`${V} .cls-today .cls-day`)).includes('10월 29일'), await page.textContent(`${V} .cls-today .cls-day`));
+  }],
+  ['켜 둔 채 날이 바뀌면 다시 볼 때 오늘로', async () => {
+    await page.clock.setFixedTime(new Date('2026-10-30T08:10:00'));
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await page.waitForTimeout(100);
+    const day = await page.textContent(`${V} .cls-today .cls-day`);
+    await page.clock.setFixedTime(new Date('2026-10-29T09:00:00'));
+    assert(day.includes('10월 30일'), day);
+  }],
   ['좁은 화면(360px) 가로 스크롤 없음', async () => {
     await page.setViewportSize({ width: 360, height: 800 });
     await page.waitForTimeout(150);
