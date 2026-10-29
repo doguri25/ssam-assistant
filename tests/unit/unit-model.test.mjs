@@ -171,3 +171,14 @@ test('이름 칸 가림은 평가마다 따로 (정하지 않은 평가는 null,
   t.mask = [];
   assert.deepEqual(maskOf(t), { mask: [], all: true });
 });
+
+test('결과 모아 보기용 읽기: 바뀌지 않은 평가는 다시 풀지 않고, 저장하면 새 내용', async () => {
+  const { loadTests } = await import('../../web/menus/evaluate/unit/unit-model.js');
+  store.useStorage(mem());
+  const t = newTest({ meta: { subject: '국어' }, key: { items: [{ no: 1, points: 10 }] } });
+  saveTest(t);
+  const a = loadTests(listTests()), b = loadTests(listTests());
+  assert.equal(a[0], b[0]);
+  t.meta.subject = '수학'; saveTest(t);
+  assert.equal(loadTests(listTests())[0].meta.subject, '수학');
+});

@@ -285,11 +285,12 @@ await run('unit-grade', [
     await page.click(`${V} [data-un-open="${A}"]`);
     await page.click(`${V} .steps [data-step="2"]`);
     await page.setInputFiles(`${V} #unAnsFile`, files);
-    await page.waitForFunction(() => document.querySelectorAll('.unit-box [data-st]').length === 3);
+    await page.waitForFunction(s => (document.querySelector(s + ' #unAnsMsg') || {}).textContent?.includes('3쪽'), V); // 이 평가에 스캔이 붙을 때까지
     await page.click(`${V} [data-un="toGrade"]`);
     await page.click(`${V} [data-un="grade"]`);
-    if (await page.locator('#sheetRoot #unRegradeOk').count()) await page.click('#sheetRoot #unRegradeOk');
-    if (await page.locator('#sheetRoot #unNoMaskOk').count()) await page.click('#sheetRoot #unNoMaskOk');
+    // 앞 시험에 따라 모두 채점한 상태면 「모두 다시 채점할까요?」가 뜸
+    await until(async () => calls > 0 || await page.locator('#sheetRoot #unRegradeOk').count() > 0, 3000);
+    if (!calls) await page.click('#sheetRoot #unRegradeOk');
     await page.waitForTimeout(1500);
     await page.unroute('https://api.anthropic.com/**', deny);
     for (let k = errors.length - 1; k >= 0; k--) if (errors[k].includes('401')) errors.splice(k, 1); // 일부러 낸 401

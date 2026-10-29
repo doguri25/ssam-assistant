@@ -31,7 +31,7 @@ function summary(t) {
   const g = graded(t);
   return {
     id: t.id, title: makeTitle(t.meta), subject: t.meta.subject || '', grade: t.meta.grade, term: t.meta.term, unitNo: t.meta.unitNo, round: t.meta.round,
-    date: t.meta.date || '', total: keyTotal(t.key.items), n: g.length, avg: mean(g.map(s => studentTotal(t, s).pct)), done: !!t.done, at: t.createdAt || 0, sample: !!t.meta.sample
+    date: t.meta.date || '', total: keyTotal(t.key.items), n: g.length, avg: mean(g.map(s => studentTotal(t, s).pct)), done: !!t.done, at: t.createdAt || 0, sample: !!t.meta.sample, savedAt: Date.now() + Math.random()
   };
 }
 /* 저장할 때 긴 글을 자름 (한 평가 약 50KB) */
@@ -49,6 +49,17 @@ export function listTests() {
   return (Array.isArray(l) ? l : []).slice().sort((a, b) => String(b.date).localeCompare(String(a.date)) || (b.at - a.at));
 }
 export const getTest = id => store.get(T(id), null);
+/* 여러 평가를 읽어 통계에 씀: 저장 뒤 바뀌지 않은 평가는 다시 풀지 않음 (읽기 전용으로만 쓸 것) */
+const parsed = new Map();
+export function loadTests(summaries) {
+  return summaries.map(s => {
+    const c = parsed.get(s.id);
+    if (c && c.savedAt === s.savedAt && s.savedAt) return c.test;
+    const test = getTest(s.id);
+    if (test) parsed.set(s.id, { savedAt: s.savedAt, test }); else parsed.delete(s.id);
+    return test;
+  }).filter(Boolean);
+}
 export function saveTest(test) {
   if (!store.set(T(test.id), trimmed(test))) return false;
   const l = store.get(LIST, []).filter(x => x.id !== test.id);

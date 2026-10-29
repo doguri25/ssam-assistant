@@ -5,7 +5,7 @@ import * as ai from '../../../core/ai.js';
 import { makeHwpx } from '../../../core/hwpx.js';
 import { studentTotal } from './unit-grade.js';
 import {
-  listTests, getTest, graded, makeTitle, filterTests, summaryTable, studentHistory, itemStats, domainStats, reteach,
+  listTests, loadTests, graded, makeTitle, filterTests, summaryTable, studentHistory, itemStats, domainStats, reteach,
   levelOf, LEVEL_NAME, getPyeongeo, savePyeongeo
 } from './unit-model.js';
 import { tableDoc, tableCsv } from './unit-docs.js';
@@ -15,7 +15,7 @@ import { U, esc, AI_KEY, registerResults, visible, render, getBox } from './unit
 const R = { rv: 'table', subject: '', term: 0, stuNo: null, weakId: null, pySubject: null, pyRun: null };
 const pct = r => `${Math.round(r * 100)}%`;
 const doneTests = () => listTests().filter(s => s.done);
-const loaded = list => list.map(s => getTest(s.id)).filter(Boolean);
+const loaded = list => loadTests(list);
 const inView = () => visible() && U.view === 'results';
 const fileName = s => s.replace(/[\\/:*?"<>|]/g, '_');
 const copy = async text => toast((await copyText(text)) === false ? '복사하지 못했어요' : '복사했어요');
