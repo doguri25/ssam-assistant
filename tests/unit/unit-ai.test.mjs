@@ -65,3 +65,9 @@ test('다듬기: AI 점수가 「4점」처럼 글이어도 앞의 수를 읽음
   assert.equal(normGrade([{ no: 1, read: '③', points: '4점' }], ITEMS)[1].points, 4);
   assert.equal(normGrade([{ no: 1, read: '③', points: '만점' }], ITEMS)[1].points, 0);
 });
+
+test('채점 프롬프트는 학생 번호만 맨 끝에서 달라짐 (앞부분이 같아 AI 회사의 앞글 캐시를 탈 수 있게)', () => {
+  const a = gradePrompt(TEST, 3).split('\n'), b = gradePrompt(TEST, 4).split('\n');
+  assert.deepEqual(a.slice(0, -1), b.slice(0, -1));
+  assert.equal(a.at(-1), '[학생] 3번');
+});
