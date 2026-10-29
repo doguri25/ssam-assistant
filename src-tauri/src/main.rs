@@ -2,6 +2,7 @@
 // 릴리즈 빌드에서는 뒤에 검은 콘솔 창이 뜨지 않게 함
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod ai_proxy;
 mod neis;
 mod updater;
 
@@ -297,7 +298,8 @@ fn main() {
             check_update,
             install_update,
             neis::neis_arm,
-            neis::neis_disarm
+            neis::neis_disarm,
+            ai_proxy::ai_proxy
         ])
         .run(tauri::generate_context!())
         .expect("평어 만들기를 실행하지 못했어요");

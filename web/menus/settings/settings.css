@@ -9,6 +9,7 @@
 .break-row{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto minmax(0,1fr) auto;gap:8px;align-items:center}
 .set-msg{margin:0;font-weight:700}
 .set-msg.err{color:var(--err)}
+.set-msg.ok{color:var(--ok)}
 .theme-grid{display:flex;flex-wrap:wrap;gap:14px}
 .theme-card{flex:1 1 180px;min-width:0;padding:12px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface);display:flex;flex-direction:column;gap:8px;cursor:pointer}
 .theme-card:has(input:checked){border:2px solid var(--accent);padding:11px}

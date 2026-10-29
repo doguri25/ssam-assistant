@@ -2,6 +2,7 @@
 import { onEnter } from '../../core/shell.js';
 import { THEMES, getTheme, setTheme } from '../../core/theme.js';
 import { getSchool, setSchool, getPurchaseLimit, setPurchaseLimit } from '../../core/settings.js';
+import * as ai from '../../core/ai.js';
 
 const SSAM = () => window.SSAM || {};
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -17,7 +18,7 @@ const PREVIEW = {
   rail: ['#eef3f2', '#ffffff', '#ffffff', '#0f766e', '#dde5e3']
 };
 
-let box = null, school = null, msg = '';
+let box = null, school = null, msg = '', aiMsg = null; // aiMsg: { ok, text } | { busy }
 
 function page(title, desc, body) {
   return `<div class="m-page set-page"><div class="m-head"><h2>${title}</h2>${desc ? `<p class="muted">${desc}</p>` : ''}</div>${body}</div>`;
@@ -31,7 +32,9 @@ const VIEWS = {
     const ready = SSAM().ai && SSAM().ai.engineReady();
     return page('AI', 'Claude·Gemini·GPT·업스테이지 중 하나의 키를 넣어 써요. 키는 이 컴퓨터에만 저장돼요.',
       card('지금 쓰는 AI', `<p class="set-big">${esc(ready ? SSAM().ai.engineName() : '아직 정하지 않았어요')}</p>
-        <div class="row"><button class="btn primary" type="button" data-set="openAi">AI 바꾸기</button></div>`));
+        <div class="row"><button class="btn primary" type="button" data-set="openAi">AI 바꾸기</button>
+          <button class="btn" type="button" data-set="testAi" ${ready && !(aiMsg && aiMsg.busy) ? '' : 'disabled'}>연결 확인</button></div>
+        ${aiMsg ? `<p class="set-msg ${aiMsg.busy ? '' : aiMsg.ok ? 'ok' : 'err'}" role="status">${aiMsg.busy ? '확인하는 중…' : esc(aiMsg.text)}</p>` : ''}`));
   },
   screen: () => {
     const cur = getTheme();
@@ -73,12 +76,24 @@ const VIEWS = {
 
 let curTab = 'roster';
 function render(tab, section) {
-  if (tab !== curTab) { msg = ''; school = null; }
+  if (tab !== curTab) { msg = ''; school = null; aiMsg = null; }
   curTab = tab;
   if (!box || !section.contains(box)) { box = document.createElement('div'); box.className = 'set-box'; section.prepend(box); }
   box.innerHTML = (VIEWS[tab] || VIEWS.roster)();
 }
 const again = () => box && render(curTab, box.parentElement);
+
+/* 짧은 요청으로 키·모델이 맞는지 확인 (PRD S-2) */
+async function testAi() {
+  aiMsg = { busy: true }; again();
+  try {
+    await ai.generate('연결 확인입니다. "확인"이라고만 답하세요.');
+    aiMsg = { ok: true, text: `연결됐어요 · ${ai.providerName()}` };
+  } catch (e) {
+    aiMsg = { ok: false, text: ai.errorMessage(e && e.code, e) };
+  }
+  if (curTab === 'ai') again();
+}
 
 /* 화면의 방학 칸을 school.breaks로 읽어 옴 (저장 전 편집 상태 유지) */
 function readBreaks() {
@@ -95,7 +110,8 @@ document.addEventListener('click', e => {
   const b = e.target.closest('[data-set]');
   if (b) {
     const a = b.dataset.set;
-    if (a === 'openAi') SSAM().ai.openSettings();
+    if (a === 'openAi') { aiMsg = null; SSAM().ai.openSettings(); }
+    else if (a === 'testAi') testAi();
     else if (a === 'addBreak') { school = { ...readSchool(), breaks: [...readBreaks(), { label: '', from: '', to: '' }] }; again(); }
     else if (a === 'delBreak') { const br = readBreaks(); br.splice(+b.dataset.i, 1); school = { ...readSchool(), breaks: br }; again(); }
     else if (a === 'saveSchool') {

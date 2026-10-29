@@ -785,12 +785,20 @@ const PROVIDERS = {
     name: 'GPT', label: 'GPT API', keyUrl: 'https://platform.openai.com/api-keys', keyHost: 'platform.openai.com',
     keyHint: 'sk-로 시작하는 키',
     models: [['gpt-6-luna', 'GPT-6 Luna · 추천·저렴'], ['gpt-6-sol', 'GPT-6 Sol'], ['gpt-5.4-mini', 'GPT-5.4 mini']]
+  },
+  // 업스테이지: OpenAI 방식 채팅. 이미지는 글자 읽기(OCR)로 글을 뽑아 보냄
+  upstage: {
+    name: '업스테이지 Solar', label: '업스테이지 API', keyUrl: 'https://console.upstage.ai/api-keys', keyHost: 'console.upstage.ai',
+    keyHint: '업스테이지 콘솔에서 받은 키',
+    models: [['solar-pro3', 'Solar Pro 3 · 추천'], ['solar-pro2', 'Solar Pro 2'], ['solar-mini', 'Solar Mini · 빠르고 저렴']]
   }
 };
+const UPSTAGE_CHAT = 'https://api.upstage.ai/v1/chat/completions';
+const UPSTAGE_OCR = 'https://api.upstage.ai/v1/document-digitization';
 const E = {
-  engine: null, // 'account' | 'claude' | 'gemini' | 'openai' | null
-  keys: { claude: '', gemini: '', openai: '' },
-  models: { claude: PROVIDERS.claude.models[0][0], gemini: PROVIDERS.gemini.models[0][0], openai: PROVIDERS.openai.models[0][0] },
+  engine: null, // 'account' | 'claude' | 'gemini' | 'openai' | 'upstage' | null
+  keys: { claude: '', gemini: '', openai: '', upstage: '' },
+  models: { claude: PROVIDERS.claude.models[0][0], gemini: PROVIDERS.gemini.models[0][0], openai: PROVIDERS.openai.models[0][0], upstage: PROVIDERS.upstage.models[0][0] },
   remember: true
 };
 function loadEngine() {
@@ -808,7 +816,7 @@ function saveEngine() {
   try {
     localStorage.setItem('ssam:engine', JSON.stringify({
       engine: E.engine, models: E.models, remember: E.remember,
-      keys: E.remember ? E.keys : { claude: '', gemini: '', openai: '' }
+      keys: E.remember ? E.keys : { claude: '', gemini: '', openai: '', upstage: '' }
     }));
   } catch (e) {}
 }
@@ -822,7 +830,7 @@ try {
 } catch (e) {}
 function engineReady() {
   if (E.engine === 'account') return !!cap.sample;
-  if (E.engine && PROVIDERS[E.engine]) return !!E.keys[E.engine].trim();
+  if (E.engine && PROVIDERS[E.engine]) return !!(E.keys[E.engine] || '').trim();
   return false;
 }
 function engineName() {
@@ -900,6 +908,49 @@ async function httpError(res) {
   if (s === 529 || s >= 500) return { code: 'upstream_error', message: msg };
   return { code: 'bad_request', message: msg || ('HTTP ' + s) };
 }
+/* 업스테이지 부르기. 브라우저에서 막히면(교차 출처 차단 등) Windows 앱은 Rust(ai_proxy)로 대신 보냄.
+   대신 보낸 답도 Response로 감싸서 아래 코드는 똑같이 읽음 */
+let upViaApp = false;
+async function upFetch(url, init) {
+  if (!(IN_APP && upViaApp)) {
+    try { return await fetch(url, init); }
+    catch (e) { if (!IN_APP || (e && e.name === 'AbortError')) throw e; upViaApp = true; }
+  }
+  const req = new Request(url, init);
+  const headers = [];
+  req.headers.forEach((v, k) => headers.push([k, v]));
+  const body = Array.from(new Uint8Array(await req.arrayBuffer()));
+  const r = await window.__TAURI__.core.invoke('ai_proxy', { url, headers, body });
+  if (init.signal && init.signal.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+  return new Response(r.body, { status: r.status, headers: { 'content-type': r.contentType || 'application/json' } });
+}
+/* 이미지를 글자로 읽음 (업스테이지 OCR). 실패하면 ocr_failed */
+async function upstageRead(images, signal) {
+  const key = (E.keys.upstage || '').trim();
+  const out = [];
+  for (let i = 0; i < images.length; i++) {
+    const im = images[i];
+    const blob = im.blob || await (await fetch(`data:${im.mime};base64,${im.b64}`)).blob();
+    const fd = new FormData();
+    fd.append('document', blob, `page-${i + 1}.${/png/.test(im.mime) ? 'png' : 'jpg'}`);
+    fd.append('model', 'ocr');
+    let res;
+    try { res = await upFetch(UPSTAGE_OCR, { method: 'POST', signal, headers: { authorization: 'Bearer ' + key }, body: fd }); }
+    catch (e) {
+      if (e && e.name === 'AbortError') throw { code: 'cancelled' };
+      throw { code: 'blocked', message: String(e && e.message || e) };
+    }
+    if (!res.ok) {
+      const er = await httpError(res);
+      throw er.code === 'auth' || er.code === 'quota' ? er : { code: 'ocr_failed', message: er.message };
+    }
+    let j = null;
+    try { j = await res.json(); } catch (e) { throw { code: 'ocr_failed' }; }
+    const text = String((j && j.text) || (j && Array.isArray(j.pages) ? j.pages.map(p => p && p.text || '').join('\n') : '')).trim();
+    out.push(`--- ${i + 1}번째 이미지 ---\n${text || '(읽은 글자 없음)'}`);
+  }
+  return `[이미지에서 읽은 글]\n${out.join('\n')}\n[이미지에서 읽은 글 끝]\n아래 요청에서 이미지라고 한 것은 위에 적은 글이에요.\n\n`;
+}
 /* Claude 5.x 등은 답하기 전에 먼저 생각(thinking)하고, 생각도 max_tokens 안에서 씀.
    평어 쓰기는 깊은 생각이 필요 없어서 effort를 낮춰 빠르게 하고, 글자 한도는 넉넉히 둠 */
 const CLAUDE_EFFORT_RE = /^claude-(?:opus-(?:4-[5-9]|[5-9])|sonnet-(?:4-[6-9]|[5-9])|haiku-[5-9]|fable-|mythos-)/;
@@ -913,7 +964,7 @@ async function callApi(provider, prompt, { onText, signal: outer, images, carefu
   const signal = anySignal([outer, wd.signal]);
   idle();
   try {
-  const key = E.keys[provider].trim();
+  const key = (E.keys[provider] || '').trim();
   const model = E.models[provider];
   let text = '', truncated = false, stopReason = '';
   const push = t => { if (!t) return; text += t; onText && onText({ text, delta: t }); };
@@ -930,6 +981,13 @@ async function callApi(provider, prompt, { onText, signal: outer, images, carefu
         method: 'POST', signal,
         headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
         body: JSON.stringify({ contents: [{ role: 'user', parts: [...imgs.map(im => ({ inline_data: { mime_type: im.mime, data: im.b64 } })), { text: prompt }] }] })
+      });
+    } else if (provider === 'upstage') {
+      // 이미지는 generate에서 글로 바꿔 둠
+      res = await upFetch(UPSTAGE_CHAT, {
+        method: 'POST', signal,
+        headers: { 'content-type': 'application/json', 'authorization': 'Bearer ' + key },
+        body: JSON.stringify({ model, stream: true, messages: [{ role: 'user', content: prompt }] })
       });
     } else {
       res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -992,6 +1050,10 @@ async function generate(prompt, { onText, signal, fresh, images, careful }) {
       opts.images = await fitImages(images, lim.images.maxCount || 1);
     }
     return cap.sample(prompt, opts);
+  }
+  if (E.engine === 'upstage' && images && images.length) {
+    prompt = await upstageRead(images, signal) + prompt;
+    images = null;
   }
   if (E.engine && PROVIDERS[E.engine]) return callApi(E.engine, prompt, { onText, signal, images, careful });
   throw { code: 'no_engine' };
@@ -1400,13 +1462,16 @@ const SAMPLE_MSG = {
   prompt_too_large: '평가 정보가 너무 길어요. 붙여넣은 내용을 줄여 주세요.',
   upstream_error: '연결이 잠깐 끊겼어요. 다시 시도를 눌러 주세요.'
 };
+/* 업스테이지를 쓰면 이미지 화면에 한 줄 안내 (쓰는 것은 막지 않음) */
+const upNote = () => E.engine === 'upstage' ? '<p class="muted up-note">업스테이지는 이미지를 글자로 읽어서 보내요. 손글씨 이미지는 Claude·Gemini·GPT를 권장해요.</p>' : '';
 function errMsg(code, e) {
   const nm = engineName() || 'AI';
   const m = {
-    auth: `${nm} 키가 맞지 않거나 권한이 없어요. 오른쪽 위 메뉴 → 평어 쓰는 방식에서 API 키를 다시 확인해 주세요.`,
+    auth: `${nm} 키가 맞지 않아요(또는 권한이 없어요). 왼쪽 아래 AI 버튼에서 API 키를 다시 확인해 주세요.`,
     quota: e && /^하루/.test(e.message || '') ? `${nm}의 하루 사용 한도를 다 썼어요. 내일 이어서 하거나 결제 설정을 확인해 주세요.` : `${nm} 사용 한도(크레딧·결제)가 부족해요. 결제나 한도를 확인한 뒤 이어서 만들기를 눌러 주세요.`,
     bad_model: `${nm}에서 이 모델을 쓸 수 없어요. 평어 쓰는 방식에서 다른 모델을 골라 주세요.`,
-    blocked: IN_VIEWER ? 'claude.ai 안에서는 외부 API 호출이 막혀 있어요. 평어 쓰는 방식에서 \'Claude 계정\'을 고르거나, 배포한 주소에서 API 키를 써 주세요.' : `${nm}에 연결하지 못했어요. 인터넷 연결과 API 키를 확인해 주세요.`,
+    blocked: IN_VIEWER ? 'claude.ai 안에서는 외부 API 호출이 막혀 있어요. 평어 쓰는 방식에서 \'Claude 계정\'을 고르거나, 배포한 주소에서 API 키를 써 주세요.' : `${nm}에 연결하지 못했어요. 인터넷 연결과 API 키를 확인해 주세요.` + (E.engine === 'upstage' && !IN_APP ? ' 웹에서 계속 막히면 업스테이지는 Windows 앱에서 써 주세요.' : ''),
+    ocr_failed: '업스테이지가 이미지를 읽지 못했어요. 이미지 기능은 Claude·Gemini·GPT를 권장해요.',
     no_engine: '평어를 만들 AI가 아직 정해지지 않았어요. 평어 쓰는 방식에서 API 키를 넣어 주세요.',
     images_unavailable: '이 화면에서는 Claude 계정으로 이미지를 보낼 수 없어요. 평어 쓰는 방식에서 API 키를 넣어 주세요.',
     image_rejected: '평가지 이미지를 AI가 받지 않았어요. 스캔 파일이 너무 크거나 형식이 맞지 않아요.',
@@ -1742,7 +1807,7 @@ function renderList() {
   else if (s.status === 'queued' && !s.items.length) tail = `<li class="skel" aria-hidden="true"></li><li class="skel" aria-hidden="true"></li><li class="skel" aria-hidden="true"></li>`;
   let head = '';
   if (!s.items.length && !busy) {
-    if (!engineReady()) head = `<div class="empty"><h3>평어를 만들 AI를 정해 주세요</h3><p>${IN_VIEWER ? 'Claude 계정이나' : ''} Claude·Gemini·GPT 중 하나의 API 키를 넣으면 바로 만들어요. 키는 ${HERE}에만 저장돼요.</p>
+    if (!engineReady()) head = `<div class="empty"><h3>평어를 만들 AI를 정해 주세요</h3><p>${IN_VIEWER ? 'Claude 계정이나' : ''} Claude·Gemini·GPT·업스테이지 중 하나의 API 키를 넣으면 바로 만들어요. 키는 ${HERE}에만 저장돼요.</p>
       <button class="btn primary" type="button" data-act="settings">API 키 넣기</button></div>`;
     else head = `<div class="empty"><h3>${LVNAME[S.lv]} 수준 평어가 아직 없어요</h3><p>이 평가요소의 최상·상·중·하 평어를 50개씩 만들어요.</p>
       <button class="btn primary" type="button" data-act="genUnit">${ICON.spark}이 평가요소 평어 만들기</button></div>`;
@@ -1881,7 +1946,7 @@ function confirmRegen(u) {
 }
 function openSettings() {
   const seg = (name, opts) => `<div class="seg" data-name="${name}">${opts.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${S.settings[name] === v}">${l}</button>`).join('')}</div>`;
-  const engines = [...(cap.sample ? [['account', 'Claude 계정']] : []), ['claude', 'Claude API'], ['gemini', 'Gemini API'], ['openai', 'GPT API']];
+  const engines = [...(cap.sample ? [['account', 'Claude 계정']] : []), ['claude', 'Claude API'], ['gemini', 'Gemini API'], ['openai', 'GPT API'], ['upstage', '업스테이지 API']];
   openSheet(`<h3>평어 쓰는 방식</h3>
     <div class="opt"><span class="lab">평어를 만드는 AI</span>
       <div class="seg" id="engSeg">${engines.map(([v, l]) => `<button type="button" data-e="${v}" aria-pressed="${E.engine === v}">${l}</button>`).join('')}</div>
@@ -2187,7 +2252,7 @@ function importNote(msg, kind) {
 function noteEngine() {
   if (S.plan) return;
   if (engineReady()) { importNote(`<span class="grow">평어는 <b>${esc(engineName())}</b>(으)로 만들어요.</span><button class="btn" type="button" data-act="keys">바꾸기</button>`, 'info'); return; }
-  importNote(`<span class="grow">평어를 만들려면 Claude·Gemini·GPT 중 하나의 API 키가 필요해요. 키는 ${HERE}에만 저장돼요.</span><button class="btn primary" type="button" data-act="keys">API 키 넣기</button>`, 'info');
+  importNote(`<span class="grow">평어를 만들려면 Claude·Gemini·GPT·업스테이지 중 하나의 API 키가 필요해요. 키는 ${HERE}에만 저장돼요.</span><button class="btn primary" type="button" data-act="keys">API 키 넣기</button>`, 'info');
 }
 const baseName = n => String(n || '').replace(/\.(hwpx?|txt|pdf|docx?)$/i, '').trim();
 async function readBytes(u8, name, source) {
@@ -3350,7 +3415,7 @@ function grWritePrompt(lv, group, avoid) {
 }
 
 /* ---------- 채점 ---------- */
-const FATAL = ['not_granted', 'sampling_disabled', 'auth', 'bad_model', 'blocked', 'no_engine', 'quota', 'session_expired', 'images_unavailable'];
+const FATAL = ['not_granted', 'sampling_disabled', 'auth', 'bad_model', 'blocked', 'no_engine', 'quota', 'session_expired', 'images_unavailable', 'ocr_failed'];
 async function grGrade(st) {
   const ctl = new AbortController();
   GR.running.set(st.id, ctl);
@@ -3655,6 +3720,7 @@ function renderGRSetup() {
     </div>
     ${GR.err ? `<div class="banner err"><span class="grow">${esc(GR.err)}</span><button class="btn" type="button" data-act="settings">평어 쓰는 방식</button></div>` : ''}
     ${!engineReady() ? `<div class="banner info"><span class="grow">채점할 AI를 먼저 정해 주세요. 이미지를 읽을 수 있는 Claude·Gemini·GPT 키가 필요해요.</span><button class="btn primary" type="button" data-act="settings">API 키 넣기</button></div>` : ''}
+    ${upNote()}
     <div class="row gr-go">
       ${locked ? `<button class="btn" type="button" data-gr="stop">멈추기</button>` :
         GR.phase === 'done' ? '' : `<button class="btn primary" type="button" data-gr="start" ${GR.pages.length || GR.phase === 'partial' ? '' : 'disabled'}>${ICON.spark}${GR.phase === 'partial' ? '이어서 하기' : `채점하고 평어 쓰기${act.length ? ` (${act.length}명)` : ''}`}</button>`}
@@ -4440,7 +4506,7 @@ function ccNotePrompt(k, act, list, avoid) {
 }
 
 /* ---------- 만들기 ---------- */
-const CC_FATAL = ['not_granted', 'sampling_disabled', 'auth', 'bad_model', 'blocked', 'no_engine', 'quota', 'session_expired', 'images_unavailable'];
+const CC_FATAL = ['not_granted', 'sampling_disabled', 'auth', 'bad_model', 'blocked', 'no_engine', 'quota', 'session_expired', 'images_unavailable', 'ocr_failed'];
 const CC_BATCH = 10;
 /* 만들 학생 고르기. mode: fill(없거나 바뀐 것) · fresh(쓰지 않은 학생 모두) · [번호](그 학생)
    학습지가 있는 학생은 한 명씩 학습지를 읽고 씀(kind 'sheet'). 읽어 둔 내용이 있으면 그 내용으로('note'),
@@ -4630,6 +4696,7 @@ function renderCCSetup() {
       <div class="seg">${[['short', '짧게'], ['mid', '보통'], ['long', '길게']].map(([v, l]) => `<button type="button" data-cclen="${v}" aria-pressed="${CHE.len === v}">${l} <small class="num">${CC_LEN[v][0]}~${CC_LEN[v][1]}자</small></button>`).join('')}</div>
       <p class="muted">활동이 두 개면 학생마다 두 문장을 이어 써요. 문장 끝은 교과 평어 설정(${S.settings.ending === 'da' ? '~한다.' : '~함.'})을 따라요.</p>
     </div>
+    ${upNote()}
     <div class="cc-go">
       <button class="btn primary" type="button" data-cc="genAll">${ICON.spark}모든 영역 만들기</button>
       <button class="btn text back" type="button" data-cc="showRes">결과 보기</button>
@@ -4728,6 +4795,7 @@ function renderCCResults() {
     <div class="seg cc-tabs" role="tablist">${CC_AREAS.map(tab).join('')}</div>
     ${CHE.err ? `<div class="banner err"><span class="grow">${esc(CHE.err)}</span>${CHE.waitUntil ? '' : '<button class="btn" type="button" data-act="settings">평어 쓰는 방식</button>'}</div>` : ''}
     ${!engineReady() ? `<div class="banner info"><span class="grow">문장을 만들 AI를 먼저 정해 주세요.</span><button class="btn primary" type="button" data-act="settings">API 키 넣기</button></div>` : ''}
+    ${upNote()}
     ${stale && !busy ? `<div class="banner warn"><span class="grow">활동 내용이 바뀐 학생이 ${stale}명 있어요. 「만들기」를 누르면 새 활동으로 고쳐 써요. 사용함으로 표시한 학생은 그대로 둬요.</span></div>` : ''}
     ${sheetN && !busy ? `<div class="banner info"><span class="grow">학습지를 넣은 학생 ${sheetN}명은 아직 학습지 내용이 글에 들어가지 않았어요. 「남은 학생 쓰기」를 누르면 학습지를 읽고 고쳐 써요.</span></div>` : ''}
     ${nos.length && acts.length ? `<div class="tools"><div class="left">${k === 'club' && (A.club || '').trim() ? `<span class="muted">문장 앞에 <b>(${esc(A.club.trim())})</b>를 붙여요</span>` : ''}</div>
@@ -5160,7 +5228,7 @@ var modeHooks = [];
 window.SSAM = {
   setMode, getMode: () => S.mode,
   onModeChange: fn => { modeHooks.push(fn); },
-  ai: { generate, engineReady, engineName, errMsg, openSettings },
+  ai: { generate, engineReady, engineName, providerName: () => E.engine === 'account' ? 'Claude 계정' : (PROVIDERS[E.engine] ? PROVIDERS[E.engine].name : ''), errMsg, openSettings },
   rosterHTML, toast, openSheet, closeSheet, esc
 };
 try { const m = localStorage.getItem('ssam:mode'); if (m === 'hk' || m === 'gr' || m === 'cc') setMode(m); } catch (e) {}
