@@ -2,11 +2,13 @@
    저장하면 'class:changed'를 보내고, 다른 학급 화면은 그것을 듣고 다시 그림 */
 import { onEnter } from '../../core/shell.js';
 import { toast } from '../../core/ui.js';
+import * as ai from '../../core/ai.js';
+import { readText, fileMessage } from '../../core/files.js';
 import { getSchool } from '../../core/settings.js';
-import { normName, periodStart, schoolYearOf } from './class-import.js';
+import { normName, periodStart, schoolYearOf, parseJindo, parseTimetable } from './class-import.js';
 import {
   getInfo, setInfo, getTimetable, setTimetable, listSubjects, saveSubject, removeSubject, setSubjects, resetRecords,
-  makeCtx, progressOf, setNext, alignToPlan, today
+  makeCtx, progressOf, setNext, alignToPlan, today, normLessons, normTimetableAI
 } from './class-model.js';
 import { sampleData } from './class-sample.js';
 
@@ -17,6 +19,12 @@ const NAMES = ['국어', '수학', '사회', '과학', '영어', '음악', '미�
 const DAYS = '월화수목금';
 let box = null, curTab = null;
 let ed = null; // 진도표 고치기 시트에서 고치는 중인 교과 { id, name, lessons, base }
+let ttMsg = null; // 시간표 가져오기 안내 { text, ai: AI로 읽기 버튼, busy }
+let lastTt = ''; // 우리 반을 못 찾은 시간표 파일 글(AI로 읽기용)
+let lastFile = null; // 방금 읽은 진도표 파일 { name, text } — 이 화면에서만 기억(저장 안 함)
+let addToken = 0; // 「교과 추가」 시트마다 번호(AI가 끝났을 때 그 시트가 아직 열려 있는지 봄)
+const MAX_SRC = 60000;
+const AI_KEY = '설정 › AI에서 키를 넣어 주세요';
 
 const visible = () => curTab === 'progress' && box && box.isConnected && !box.closest('[hidden]');
 const changed = from => document.dispatchEvent(new CustomEvent('class:changed', { detail: { from } }));
@@ -59,6 +67,7 @@ function render() {
         <div class="row"><label class="cls-inline">교시 수 <select class="field" id="clsPeriods">${[4, 5, 6, 7].map(n => `<option${tt.periods === n ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
         <button class="btn" type="button" data-c="ttFile">시간표 파일에서 가져오기</button></div>
       </div>
+      <div id="clsTtMsg">${ttMsgHTML()}</div>
       ${ttHTML(tt)}
       <datalist id="clsNames">${names.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
       <p class="muted cls-note">「국어(자)」, 「창체(동)」처럼 괄호를 붙여도 같은 교과로 봐요.</p>
@@ -74,6 +83,159 @@ function render() {
       <input type="file" id="clsJindoFile" accept=".hwp,.hwpx,.pdf,.csv,.xlsx,.txt" hidden>
     </div>
   </div>`;
+}
+
+function ttMsgHTML() {
+  if (!ttMsg) return '';
+  return `<div class="banner ${ttMsg.err ? 'err' : 'warn'}"><span class="grow">${esc(ttMsg.text)}</span>${ttMsg.ai
+    ? `<button class="btn" type="button" data-c="ttAi"${ttMsg.busy ? ' disabled' : ''}>${ttMsg.busy ? 'AI가 읽는 중…' : 'AI로 읽기'}</button>` : ''}</div>`;
+}
+const drawTtMsg = () => { const el = box && box.querySelector('#clsTtMsg'); if (el) el.innerHTML = ttMsgHTML(); };
+
+/* ---------- 시간표 파일 ---------- */
+async function importTt(file) {
+  const info = getInfo();
+  let text;
+  try { text = await readText(file); } catch (err) { toast(fileMessage(err && err.code), 5000); return; }
+  const t = parseTimetable(text, info);
+  if (t) {
+    ttMsg = null;
+    if (saved(setTimetable(t))) { render(); changed('setup'); toast('시간표를 가져왔어요'); }
+    return;
+  }
+  lastTt = text;
+  ttMsg = { text: `시간표 파일에서 ${info.grade}-${info.room}반을 찾지 못했어요.${ai.ready() ? '' : ' AI 키가 있으면 AI로 읽을 수 있어요(설정 › AI).'}`, ai: ai.ready() };
+  drawTtMsg();
+}
+function ttPrompt(info, text) {
+  return `[시간표 읽기]\n아래는 학교 시간표 파일의 글이에요. ${info.grade}학년 ${info.room}반의 시간표만 읽어 주세요.\n\n`
+    + '규칙:\n- cells는 요일 5개(월~금), 요일마다 1교시부터 교시 순서대로 과목 이름\n- 빈 시간은 ""\n- periods는 교시 수(4~7)\n- 파일에 없는 과목은 지어내지 않음\n\n'
+    + '답은 JSON 하나만: {"periods":6,"cells":[["국어","수학","사회","과학","체육",""],["…"],["…"],["…"],["…"]]}\n\n'
+    + `시간표 글:\n${text.slice(0, MAX_SRC)}`;
+}
+async function runTtAi() {
+  if (!ai.ready()) { toast(AI_KEY); return; }
+  if (!lastTt || (ttMsg && ttMsg.busy)) return;
+  const info = getInfo();
+  ttMsg = { ...ttMsg, busy: true }; drawTtMsg();
+  try {
+    const v = await ai.generateJSON(ttPrompt(info, lastTt), { valid: x => !!normTimetableAI(x) });
+    ttMsg = null;
+    if (saved(setTimetable(normTimetableAI(v)))) { changed('ttAi'); if (visible()) render(); toast('AI가 읽은 시간표를 넣었어요. 칸을 확인해 주세요', 5000); }
+  } catch (err) {
+    ttMsg = { text: ai.errorMessage(err && err.code, err), ai: true, err: true };
+    drawTtMsg();
+  }
+}
+
+/* ---------- 진도표 파일: 교과 고르기 ---------- */
+async function importJindo(file) {
+  let text;
+  try { text = await readText(file); } catch (err) { toast(fileMessage(err && err.code), 5000); return; }
+  lastFile = { name: file.name, text };
+  const r = parseJindo(text, { today: today() });
+  if (!r.subjects.length) {
+    toast('이 파일에서 연간지도계획 표를 찾지 못했어요. 교과 이름을 쓰고 AI로 뽑거나 직접 써 주세요.', 8000);
+    openAdd();
+    return;
+  }
+  openPick(r, file.name);
+}
+function openPick(r, fileName) {
+  const have = listSubjects();
+  const items = r.subjects.map((s, i) => {
+    const n = s.lessons.length, first = s.lessons[0].period, lastP = s.lessons[n - 1].period;
+    const warn = s.total != null && s.total !== n ? `<span class="cls-warn">파일에는 ${s.total}시간인데 ${n}줄을 읽었어요</span>` : '';
+    const dup = have.some(h => h.name === s.name) ? '<span class="cls-tag">이미 있어요 — 바꿀까요? 체크 기록은 그대로</span>' : '';
+    return `<li><label><input type="checkbox" data-pick="${i}"${s.pick ? ' checked' : ''}>
+      <b>${esc(s.name)}</b>${s.source !== s.name ? ` <span class="muted">(${esc(s.source)})</span>` : ''}
+      <span class="muted">${n}차시${first && lastP ? ` · ${esc(first)} ~ ${esc(lastP)}` : ''}</span></label>${warn}${dup}</li>`;
+  }).join('');
+  S().openSheet(`<h3>넣을 교과를 골라 주세요</h3>
+    <p class="muted" style="margin:0">「${esc(fileName)}」 · ${r.year}학년도. 창체는 영역별 표 대신 「창의적 체험활동」 합계 표를 골라 두었어요.</p>
+    <ul class="cls-pick">${items}</ul>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" data-c="pickOk">넣기</button></div>`,
+  sh => sh.querySelector('[data-c="pickOk"]').addEventListener('click', () => {
+    const picked = [...sh.querySelectorAll('[data-pick]')].filter(c => c.checked).map(c => r.subjects[+c.dataset.pick]);
+    if (!picked.length) { toast('교과를 하나 이상 골라 주세요'); return; }
+    let ok = true;
+    for (const s of picked) {
+      const old = listSubjects().find(h => h.name === s.name);
+      if (old) { ok = !!saveSubject({ ...old, total: s.total, lessons: s.lessons }) && ok; continue; }
+      const neu = saveSubject({ name: s.name, start: today(), offset: 0, total: s.total, lessons: s.lessons });
+      ok = !!(neu && saveSubject(alignToPlan(makeCtx(), neu))) && ok;
+    }
+    S().closeSheet();
+    if (saved(ok)) { changed('import'); toast(`교과 ${picked.length}개를 넣었어요. 「다음 차시」를 실제 위치로 고쳐 주세요`, 6000); }
+  }));
+}
+
+/* ---------- 교과 추가: 파일·붙여넣기 → AI로 차시 뽑기, 또는 직접 쓰기 ---------- */
+function openAdd() {
+  const token = ++addToken;
+  S().openSheet(`<h3 data-add-token="${token}">교과 추가</h3>
+    <label class="yp-f"><span class="lab">교과 이름</span><input class="field" id="clsNewName" placeholder="예: 도덕"></label>
+    <label class="yp-f"><span class="lab">진도표 글</span><textarea class="field" id="clsNewText" placeholder="진도표 파일을 올리거나 글을 붙여 넣어 주세요"></textarea></label>
+    <div class="row"><button class="btn" type="button" data-c="newFile">파일 올리기</button><span class="muted" id="clsNewFileName">${lastFile ? `방금 읽은 파일: ${esc(lastFile.name)} (글 칸이 비면 이 파일에서 뽑아요)` : ''}</span></div>
+    <input type="file" id="clsNewFile" accept=".hwp,.hwpx,.pdf,.csv,.xlsx,.txt" hidden>
+    <div id="clsNewMsg" class="muted"></div>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button>
+      <button class="btn" type="button" data-c="manual">직접 쓰기</button><button class="btn primary" type="button" data-c="lessonAi">AI로 차시 뽑기</button></div>`,
+  sh => {
+    const msg = t => { sh.querySelector('#clsNewMsg').textContent = t; };
+    sh.querySelector('#clsNewFile').addEventListener('change', async e => {
+      const f = e.target.files[0]; e.target.value = '';
+      if (!f) return;
+      try { lastFile = { name: f.name, text: await readText(f) }; sh.querySelector('#clsNewFileName').textContent = `읽은 파일: ${f.name}`; msg(''); }
+      catch (err) { msg(fileMessage(err && err.code)); }
+    });
+    sh.addEventListener('click', e => {
+      const b = e.target.closest('[data-c]');
+      if (!b) return;
+      const name = normName(sh.querySelector('#clsNewName').value);
+      if (b.dataset.c === 'newFile') sh.querySelector('#clsNewFile').click();
+      else if (b.dataset.c === 'manual') openEditor(listSubjects().find(s => s.name === name) || { id: '', name, lessons: [] });
+      else if (b.dataset.c === 'lessonAi') runLessonAi(token, name, sh.querySelector('#clsNewText').value.trim() || (lastFile ? lastFile.text : ''), msg, b);
+    });
+  });
+}
+function lessonPrompt(name, text) {
+  return `[진도표 읽기]\n아래는 초등학교 교과 진도표(연간지도계획) 글이에요. 「${name}」 교과의 차시 목록만 뽑아 주세요.\n\n`
+    + '규칙:\n- 한 줄 = 1시간. 「3~4차시」처럼 두 시간이면 두 줄로 나눔\n- 진도표 순서대로\n'
+    + '- week: 주 번호(정수, 없으면 null), period: 기간(예: 9.7~9.12, 없으면 ""), unit: 단원명, title: 학습 주제, pages: 쪽수, memo: 비고\n'
+    + '- 진도표에 없는 내용은 지어내지 않음\n\n'
+    + '답은 JSON 하나만: {"lessons":[{"week":1,"period":"8.24~8.29","unit":"1. 단원","title":"학습 주제","pages":"10~11","memo":""}]}\n\n'
+    + `진도표 글:\n${text.slice(0, MAX_SRC)}`;
+}
+async function runLessonAi(token, name, text, msg, btn) {
+  if (!ai.ready()) { msg(AI_KEY); return; }
+  if (!name) { msg('교과 이름을 넣어 주세요'); return; }
+  if (!text) { msg('진도표 파일을 올리거나 글을 붙여 넣어 주세요'); return; }
+  if (text.length > MAX_SRC) toast('앞 6만 자만 AI에 보내요', 4000);
+  const ym = /(\d{4})\s*학년도/.exec(text);
+  const year = ym ? +ym[1] : schoolYearOf(today());
+  btn.disabled = true; msg('AI가 차시를 뽑는 중이에요…');
+  let lessons;
+  try {
+    const v = await ai.generateJSON(lessonPrompt(name, text), { valid: x => x && Array.isArray(x.lessons) });
+    lessons = normLessons(v.lessons, year);
+  } catch (err) {
+    const open = document.querySelector(`#sheetRoot [data-add-token="${token}"]`);
+    if (open) { msg(ai.errorMessage(err && err.code, err)); btn.disabled = false; } else toast(ai.errorMessage(err && err.code, err), 6000);
+    return;
+  }
+  const open = document.querySelector(`#sheetRoot [data-add-token="${token}"]`);
+  if (!lessons.length) {
+    const t = '이 교과의 차시를 찾지 못했어요. 교과 이름이 파일에 적힌 이름과 같은지 확인해 주세요.';
+    if (open) { msg(t); btn.disabled = false; } else toast(t, 6000);
+    return;
+  }
+  const old = listSubjects().find(s => s.name === name);
+  // 시트가 그대로면 고치기 시트로, 그사이 닫았거나 다른 일을 하면 시작한 교과 이름으로 바로 저장
+  if (open) { openEditor(old ? { ...old, lessons } : { id: '', name, lessons }); return; }
+  let s = saveSubject(old ? { ...old, lessons } : { name, start: today(), offset: 0, total: null, lessons });
+  if (s && !old) s = saveSubject(alignToPlan(makeCtx(), s));
+  if (saved(!!s)) { changed('lessonAi'); toast(`「${name}」 차시 ${lessons.length}개를 넣었어요`, 5000); }
 }
 
 /* ---------- 예시·지우기 ---------- */
@@ -180,6 +342,9 @@ function onChange(el) {
     el.value = n;
     saved(!!saveSubject(setNext(makeCtx(), s, n)));
     changed('setup');
+  } else if (el.id === 'clsTtFile' || el.id === 'clsJindoFile') {
+    const f = el.files[0]; el.value = '';
+    if (f) (el.id === 'clsTtFile' ? importTt : importJindo)(f);
   } else if (el.dataset.start) {
     const s = listSubjects().find(x => x.id === el.dataset.start);
     if (s) { saved(!!saveSubject({ ...s, start: el.value })); changed('setup'); }
@@ -202,7 +367,12 @@ document.addEventListener('click', e => {
   if (c === 'sample') askSample();
   else if (c === 'delSub') askDelete(b.dataset.id);
   else if (c === 'editSub') { const s = listSubjects().find(x => x.id === b.dataset.id); if (s) openEditor(s); }
-  else if (c === 'addSub') openEditor({ id: '', name: '', lessons: [] });
-  else if (c === 'ttFile') box.querySelector('#clsTtFile').click();
+  else if (c === 'addSub') openAdd();
+  else if (c === 'ttAi') runTtAi();
+  else if (c === 'ttFile') {
+    const info = getInfo();
+    if (!info.grade || !info.room) { toast('먼저 학년·반을 넣어 주세요'); return; }
+    box.querySelector('#clsTtFile').click();
+  }
   else if (c === 'jindoFile') box.querySelector('#clsJindoFile').click();
 });
