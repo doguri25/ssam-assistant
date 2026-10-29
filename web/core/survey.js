@@ -1,4 +1,5 @@
 /* 설문 CSV(구글 폼 응답) 집계: 5점 척도는 평균·분포, 서술형은 답 모음. 구글 폼에 붙일 문항 글 */
+import { looksLikeName } from './privacy.js';
 
 export const SCALE = ['전혀 그렇지 않다', '그렇지 않다', '보통이다', '그렇다', '매우 그렇다'];
 const WORDS = {
@@ -16,7 +17,6 @@ const SKIP = /타임스탬프|timestamp/i;
 // 개인정보 열은 문항이 아님: 저장하지도 AI로 보내지도 않음. 머리 글에 낱말이 들어 있거나, 학년·반·번호만 있거나, 답이 이름·전화번호·전자 우편·학번 모양
 const PERSONAL_WORD = /이름|성명|성함|학번|연락처|전화|휴대|핸드폰|폰\s*번호|이메일|메일\s*주소|e-?mail|\bname\b|주소|생년월일/i;
 const ONLY_CLASS = h => /학년|반|번호/.test(h) && !h.replace(/학생|학년|반|번호|및|[\s\d/·,.:()\-]/g, '');
-const SURNAME = new Set('김이박최정강조윤장임한오서신권황안송전홍유류고문양손배백허남심노하곽성차주우구민진나지엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예봉경'.split(''));
 const share = (a, f) => a.filter(f).length / a.length;
 export function personalColumn(head, answers = []) {
   const h = String(head || '').replace(/\s+/g, ' ').trim();
@@ -27,7 +27,7 @@ export function personalColumn(head, answers = []) {
   if (share(a, x => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x)) >= 0.5) return true;
   const distinct = new Set(a).size / a.length >= 0.8;
   if (distinct && share(a, x => /^\d{4,6}$/.test(x)) >= 0.8) return true;
-  return a.length >= 3 && distinct && share(a, x => /^[가-힣]{2,4}$/.test(x) && SURNAME.has(x[0])) >= 0.8;
+  return a.length >= 3 && distinct && share(a, looksLikeName) >= 0.8;
 }
 const round2 = n => Math.round(n * 100) / 100;
 
