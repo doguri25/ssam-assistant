@@ -14,6 +14,12 @@ await mockClaude(page, async ({ prompt }) => {
   prompts.push(prompt);
   if (slow) await new Promise(r => setTimeout(r, slow));
   if (prompt.startsWith('[작년 평가]')) return JSON.stringify({ good: ['참여율 높음'], bad: [{ text: '저학년 참여 적음', ideas: ['저학년 짝 독서', '그림책 코너'] }], numbers: ['대출 권수 12% 늘어남'] });
+  if (prompt.startsWith('[지침 점검]')) return JSON.stringify([{ item: '아침 독서 시간 확보', keywords: ['매일 아침', '20분'], sentence: '매일 아침 독서 20분을 운영한다.', section: 'details' }]);
+  if (prompt.startsWith('[연간계획 초안]')) return '```json\n' + JSON.stringify({
+    purpose: '아침 독서 시간을 운영한다.', policy: '학생이 스스로 책을 고르게 한다.', details: '학급별 독서 동아리를 운영한다.', evaluation: '만족도 설문으로 평가한다.',
+    schedule: [{ title: '독서 동아리 모집', date: '2027-03-15' }, { title: '독서의 달 행사', date: '2027-10-03' }, { title: '독서 골든벨', date: '2027-08-10' }],
+    budget: [{ name: '도서 구입', amount: 800000, note: '' }, { name: '행사 상품', amount: 400000, note: '골든벨' }]
+  }) + '\n```';
   return '{}';
 });
 const Y = 'section[data-menu="plan"]';
@@ -75,7 +81,49 @@ await run('year-plan', [
     await page.waitForFunction(s => document.querySelector(`${s} textarea[data-src="lastPlan"]`).value.includes('아침 독서 시간을 운영한다'), Y, { timeout: 8000 });
     assert((await page.textContent(`${Y} .yp-files[data-for="lastPlan"]`)).includes('작년 계획.hwpx'), '파일 이름 없음');
   }],
-  // (Task 5·6 시험이 여기 이어짐)
+  ['3단계 지침 점검: 항목을 뽑고, 초안 전에는 반영 여부를 아직 보여 주지 않음', async () => {
+    await page.fill(`${Y} textarea[data-src="guide"]`, '2027 독서교육 지침: 매일 아침 독서 시간을 확보할 것');
+    await page.click(`${Y} ol.steps [data-step="2"]`);
+    await page.click(`${Y} [data-y="next"]`);
+    await page.waitForSelector(`${Y} #ypGuide li[data-g]`, { timeout: 8000 });
+    assert((await page.textContent(`${Y} #ypGuide`)).includes('아침 독서 시간 확보'), '항목 없음');
+    assert((await page.textContent(`${Y} #ypMain`)).includes('초안을 만든 뒤 반영 여부를 보여 줘요'), '안내 없음');
+  }],
+  ['4단계 초안: 6섹션 순서, 고른 제안·지침 항목이 프롬프트에', async () => {
+    await page.click(`${Y} [data-y="next"]`);
+    await page.click(`${Y} [data-y="draft"]`);
+    await page.waitForSelector(`${Y} #ypDraft textarea[data-sec="purpose"]`, { timeout: 8000 });
+    const heads = await page.locator(`${Y} #ypDraft .yp-sec h3`).allInnerTexts();
+    assert(heads.join('|') === '1. 목적|2. 방침|3. 세부 추진 계획|4. 월별 추진 일정|5. 예산|6. 평가 계획', '섹션: ' + heads.join('|'));
+    const pr = prompts.at(-1);
+    assert(pr.startsWith('[연간계획 초안]') && pr.includes('저학년 짝 독서') && pr.includes('아침 독서 시간 확보'), '프롬프트');
+    assert((await page.textContent(`${Y} #ypSched`)).includes('독서의 달 행사'), '일정 표');
+    assert((await page.textContent(`${Y} #ypBudget`)).includes('1,200,000'), '예산 합계');
+  }],
+  ['3단계로 돌아가면 「빠짐」, [넣기] → 「반영됨」, 세부 추진 계획 끝에 문장', async () => {
+    await page.click(`${Y} ol.steps [data-step="3"]`);
+    assert((await page.textContent(`${Y} #ypGuide li[data-g="0"]`)).includes('빠짐'), '빠짐 아님');
+    await page.click(`${Y} #ypGuide [data-insert="0"]`);
+    assert((await page.textContent(`${Y} #ypGuide li[data-g="0"]`)).includes('반영됨'), '반영됨 아님');
+    await page.click(`${Y} ol.steps [data-step="4"]`);
+    assert((await page.inputValue(`${Y} textarea[data-sec="details"]`)).endsWith('매일 아침 독서 20분을 운영한다.'), '문장이 안 들어감');
+  }],
+  ['작년 계획과 비교: 퍼센트, 60% 넘으면 겹친 문장 표시', async () => {
+    assert(/작년 계획과 \d+% 같아요/.test(await page.textContent(`${Y} #ypOverlap`)), '비교 줄 없음');
+    assert(await page.locator(`${Y} .yp-same`).count() === 0, '처음부터 겹친 문장 표시');
+    for (const k of ['policy', 'details', 'evaluation']) await page.fill(`${Y} textarea[data-sec="${k}"]`, '아침 독서 시간을 운영한다.');
+    await page.waitForFunction(s => document.querySelectorAll(`${s} .yp-same`).length > 0, Y, { timeout: 3000 });
+    assert((await page.textContent(`${Y} #ypOverlap`)).includes('100%'), await page.textContent(`${Y} #ypOverlap`));
+  }],
+  ['지침 자료가 없으면 3단계는 AI 없이 넘어감', async () => {
+    await page.click(`${Y} #ypList [data-yp]:has-text("생활교육")`);
+    const n = prompts.length;
+    await page.click(`${Y} [data-y="next"]`);
+    assert((await page.textContent(`${Y} #ypMain`)).includes('올해 지침 자료가 없어요'), '안내 없음');
+    assert(prompts.length === n, 'AI를 부름');
+    await page.click(`${Y} #ypList [data-yp]:has-text("독서교육")`);
+  }],
+  // (Task 6 시험이 여기 이어짐)
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();

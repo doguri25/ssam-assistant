@@ -4,9 +4,9 @@ import { onEnter, go as goMenu } from '../../core/shell.js';
 import * as ai from '../../core/ai.js';
 import { readText, fileMessage } from '../../core/files.js';
 import { getSchool } from '../../core/settings.js';
-import { toast } from '../../core/ui.js';
+import { toast, copyText } from '../../core/ui.js';
 import { stepsHTML } from '../../core/steps.js';
-import { newPlan, listPlans, getPlan, savePlan, currentId, setCurrent, normReview } from './year-model.js';
+import { SECTIONS, TEXT_SECTIONS, newPlan, listPlans, getPlan, savePlan, currentId, setCurrent, normReview, normGuide, normDraft, overlap, guideStatus, insertSentence } from './year-model.js';
 
 const STEPS = ['자료 넣기', '작년 평가', '지침 점검', '초안', '일정'];
 const SRC = [
@@ -14,6 +14,7 @@ const SRC = [
   ['lastResult', '작년 결과', '만족도 설문, 실적, 반성 메모 — 파일(.hwp·.hwpx·PDF·CSV·엑셀)이나 붙여넣기 (선택)'],
   ['guide', '올해 지침·공문', '교육청 지침·공문을 넣거나 붙여넣어 주세요. (선택)']
 ];
+const won = n => Number(n || 0).toLocaleString('ko-KR');
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 let box = null, curTab = 'year';
@@ -26,7 +27,8 @@ let reading = '';  // 파일 읽는 중 안내
 /* 이름을 넣었거나 이미 저장된 계획이면 저장하고 목록을 고침 */
 function persist() {
   if (!saved && !plan.name.trim()) return;
-  plan = savePlan(plan);
+  // 화면에서 고치는 값(빈 예산 줄 등)은 그대로 두고 저장 시각만 받음
+  plan.updatedAt = savePlan(plan).updatedAt;
   saved = true;
   setCurrent(plan.id);
   renderList();
@@ -73,7 +75,7 @@ function renderMain() {
   const main = box && box.querySelector('#ypMain');
   if (!main) return;
   const step = plan.step;
-  const body = step === 1 ? step1() : step === 2 ? step2() : `<div class="yp-card"><p class="muted">곧 만들어요.</p></div>`;
+  const body = step === 1 ? step1() : step === 2 ? step2() : step === 3 ? step3() : step === 4 ? step4() : `<div class="yp-card"><p class="muted">곧 만들어요.</p></div>`;
   main.innerHTML = stepsHTML(STEPS, step, plan.maxStep)
     + (errs[plan.id] ? `<div class="banner err" role="alert"><span class="grow">${esc(errs[plan.id])}</span></div>` : '')
     + body
@@ -127,6 +129,55 @@ function step2() {
     </div>`;
 }
 
+function step3() {
+  if (!plan.sources.guide.trim()) return `<div class="yp-card"><p class="banner info" id="ypGuideNone"><span class="grow">올해 지침 자료가 없어요. 이 단계는 건너뛰어도 돼요. 1단계에서 지침·공문을 넣으면 꼭 들어가야 할 항목을 점검해 줘요.</span></p></div>`;
+  if (busy[plan.id] === 'guide') return `<div class="yp-card"><p class="muted"><span class="spin"></span> 지침에서 꼭 들어가야 할 항목을 찾고 있어요…</p></div>`;
+  if (!plan.guide) return `<div class="yp-card"><p class="muted">지침을 아직 살펴보지 않았어요.</p><div class="row"><button class="btn primary" type="button" data-y="guide">지침 항목 뽑기</button></div></div>`;
+  const st = guideStatus(plan.guide, plan.draft);
+  const label = Object.fromEntries(SECTIONS);
+  return `<div class="yp-card">
+      <h3>지침 점검표</h3>
+      ${plan.draft ? `<p class="muted">빠진 항목은 [넣기]로 초안에 더할 수 있어요.</p>` : '<p class="banner info"><span class="grow">초안을 만든 뒤 반영 여부를 보여 줘요. 이 항목들은 초안을 쓸 때 함께 넣어요.</span></p>'}
+      <ul class="yp-guide" id="ypGuide">${st.map((g, i) => `<li data-g="${i}" class="${!plan.draft ? '' : g.included ? 'in' : 'out'}">
+        <div class="yp-guide-h"><b>${esc(g.item)}</b>${plan.draft ? `<span class="yp-tag ${g.included ? 'ok' : 'no'}">${g.included ? '반영됨' : '빠짐'}</span>` : ''}</div>
+        ${plan.draft && !g.included && g.sentence ? `<div class="yp-guide-s"><span class="muted">${esc(label[g.section])}에 넣을 문장: </span>${esc(g.sentence)}
+          <button class="btn tonal" type="button" data-insert="${i}">넣기</button></div>` : ''}</li>`).join('')}</ul>
+      <div class="row"><button class="btn text" type="button" data-y="guide">다시 뽑기</button></div>
+    </div>`;
+}
+
+function overlapHTML() {
+  const r = plan.draft ? overlap(plan.sources.lastPlan, plan.draft) : null;
+  if (!r) return '';
+  const hi = r.percent >= 60;
+  return `<div class="banner ${hi ? 'warn' : 'info'}" id="ypOverlap"><span class="grow"><b>작년 계획과 ${r.percent}% 같아요.</b>${hi ? ' 아래 문장을 올해 목표·지침에 맞게 새로 써 주세요.' : ''}
+    ${hi ? `<ul class="yp-same-list">${r.same.map(x => `<li class="yp-same">${esc(x)}</li>`).join('')}</ul>` : ''}</span></div>`;
+}
+
+function step4() {
+  if (busy[plan.id] === 'draft') return `<div class="yp-card"><p class="muted"><span class="spin"></span> 초안을 쓰고 있어요. 다른 메뉴로 가도 계속 써요…</p></div>`;
+  const d = plan.draft;
+  if (!d) return `<div class="yp-card"><h3>초안</h3><p class="muted">목적 → 방침 → 세부 추진 계획 → 월별 추진 일정 → 예산 → 평가 계획 순서로 써요. 작년 문장은 그대로 옮기지 않고 올해 목표·지침 표현으로 새로 써요(법령·근거 문장은 그대로).</p>
+    <div class="row"><button class="btn primary" type="button" data-y="draft">초안 만들기</button></div></div>`;
+  const copy = k => `<button class="btn text" type="button" data-copy="${k}">복사</button>`;
+  const sum = d.budget.reduce((s, b) => s + b.amount, 0);
+  const sec = ([k, label], i) => {
+    const h = `<div class="yp-sec-h"><h3>${i + 1}. ${label}</h3>${copy(k)}</div>`;
+    if (k === 'schedule') return `<section class="yp-sec">${h}<div class="yp-tbl-wrap"><table class="yp-tbl" id="ypSched"><thead><tr><th>날짜</th><th>내용</th></tr></thead><tbody>${d.schedule.map(x => `<tr><td class="num">${esc(x.date || (x.month ? x.month + '월' : '날짜 미정'))}</td><td>${esc(x.title)}</td></tr>`).join('') || '<tr><td colspan="2" class="muted">없어요</td></tr>'}</tbody></table></div><p class="muted">날짜는 5단계 「일정」에서 정하고 겹치는 날을 확인해요.</p></section>`;
+    if (k === 'budget') return `<section class="yp-sec">${h}<div class="yp-tbl-wrap"><table class="yp-tbl" id="ypBudget"><thead><tr><th>항목</th><th>금액(원)</th><th>비고</th><th></th></tr></thead><tbody>${d.budget.map((b, j) => `<tr>
+        <td><input class="field" data-bud="${j}" data-f="name" value="${esc(b.name)}" aria-label="항목"></td>
+        <td><input class="field num" data-bud="${j}" data-f="amount" value="${b.amount}" inputmode="numeric" aria-label="금액"></td>
+        <td><input class="field" data-bud="${j}" data-f="note" value="${esc(b.note)}" aria-label="비고"></td>
+        <td><button class="icon-btn" type="button" data-budel="${j}" aria-label="이 항목 빼기">×</button></td></tr>`).join('')}</tbody>
+        <tfoot><tr><td>합계</td><td class="num" id="ypBudSum">${won(sum)}</td><td colspan="2"></td></tr></tfoot></table></div>
+        <div class="row"><button class="btn text" type="button" data-y="budAdd">+ 항목 더하기</button></div></section>`;
+    return `<section class="yp-sec">${h}<textarea class="field" data-sec="${k}" rows="${k === 'details' ? 8 : 4}" aria-label="${label}">${esc(d[k])}</textarea></section>`;
+  };
+  return `<div id="ypOverlapBox">${overlapHTML()}</div>
+    <div class="yp-card" id="ypDraft">${SECTIONS.map(sec).join('')}
+      <div class="row"><button class="btn text" type="button" data-y="draft">다시 만들기 (고친 내용은 사라져요)</button></div></div>`;
+}
+
 /* ---------- AI: 작년 평가 ---------- */
 function reviewPrompt(p) {
   return `[작년 평가]\n학교 업무 연간계획을 돕는 도우미예요. 아래 작년 운영 결과(설문·실적·반성)를 보고 평가해 주세요.\n`
@@ -152,6 +203,77 @@ async function runReview() {
   if (visible() && plan.id === id) renderMain();
 }
 
+/* ---------- AI: 지침 점검 ---------- */
+function guidePrompt(p) {
+  return `[지침 점검]\n학교 업무 연간계획을 돕는 도우미예요. 아래 올해 지침·공문에서 「${p.name}」 계획서에 꼭 들어가야 할 항목을 3~8개 뽑아 주세요.\n\n`
+    + `지침:\n"""\n${p.sources.guide.slice(0, 15000)}\n"""\n\n`
+    + '규칙:\n- item: 항목 이름(짧게)\n- keywords: 계획서에 그대로 나올 만한 핵심어 2~3개\n- sentence: 계획서에 넣을 한 문장\n'
+    + '- section: purpose(목적)·policy(방침)·details(세부 추진 계획)·evaluation(평가 계획) 중 그 문장이 들어갈 곳\n'
+    + '- 지침에 없는 항목은 지어내지 않음\n\n답은 JSON 배열 하나만: [{"item":"…","keywords":["…","…"],"sentence":"…","section":"details"}]';
+}
+async function runGuide() {
+  const id = plan.id;
+  if (busy[id] || !plan.sources.guide.trim()) return;
+  if (!ai.ready()) { errs[id] = '지침을 살펴볼 AI를 먼저 정해 주세요. 왼쪽 아래 AI에서 정할 수 있어요.'; renderMain(); return; }
+  busy[id] = 'guide'; delete errs[id];
+  renderMain();
+  try {
+    const v = await ai.generateJSON(guidePrompt(plan), { valid: x => Array.isArray(x) && normGuide(x).length > 0 });
+    apply(id, p => { p.guide = normGuide(v); });
+  } catch (e) { errs[id] = ai.errorMessage(e && e.code, e); }
+  delete busy[id];
+  if (visible() && plan.id === id) renderMain();
+}
+
+/* ---------- AI: 초안 ---------- */
+function draftPrompt(p) {
+  const s = getSchool();
+  const picked = p.review ? p.review.picked : [];
+  const lines = [
+    `업무: ${p.name}`, `학년도: ${p.year}학년도 (${p.year}-03-01 ~ ${p.year + 1}-02-28)`, `올해 목표: ${p.goal}`,
+    `학교 현황: ${s.name || '(학교명 없음)'}, 학급 ${s.classes || '-'}개, 학생 ${s.students || '-'}명`,
+    p.owner.trim() && `담당자: ${p.owner}`, p.budget.trim() && `예산: ${p.budget}`,
+    p.review && p.review.good.length && `작년에 잘된 점: ${p.review.good.join(' / ')}`,
+    p.review && p.review.bad.length && `작년에 아쉬운 점: ${p.review.bad.map(b => b.text).join(' / ')}`,
+    picked.length && `올해 반영할 개선 방향: ${picked.join(' / ')}`,
+    p.guide && p.guide.length && `지침에서 꼭 넣을 항목:\n${p.guide.map(g => `- ${g.item}: ${g.sentence}`).join('\n')}`
+  ].filter(Boolean).join('\n');
+  return `[연간계획 초안]\n학교 업무 연간계획서 초안을 써 주세요.\n\n${lines}\n\n`
+    + (p.sources.lastPlan.trim() ? `작년 계획서(참고만):\n"""\n${p.sources.lastPlan.slice(0, 12000)}\n"""\n\n` : '')
+    + '규칙:\n- purpose(목적)·policy(방침)·details(세부 추진 계획)·evaluation(평가 계획)은 학교 계획서 문체(「~한다」, 「가.」「1)」 목록)로 씀\n'
+    + '- 작년 계획서 문장을 그대로 옮기지 말고 올해 목표·지침 표현으로 새로 씀. 단, 법령·근거 문장(「~법 제○조」 등)은 그대로 둠\n'
+    + `- schedule: 6~12개, 각 일정의 date는 ${p.year}-03-01 ~ ${p.year + 1}-02-28 사이 평일 'YYYY-MM-DD'\n`
+    + '- budget: 항목·금액(원, 숫자)·비고. 예산이 주어지면 합계를 그 안으로\n- 메모에 없는 숫자·사실은 지어내지 않음\n\n'
+    + '답은 JSON 하나만: {"purpose":"…","policy":"…","details":"…","schedule":[{"title":"…","date":"YYYY-MM-DD"}],"budget":[{"name":"…","amount":0,"note":"…"}],"evaluation":"…"}';
+}
+async function runDraft() {
+  const id = plan.id;
+  if (busy[id]) return;
+  if (!ai.ready()) { errs[id] = '초안을 쓸 AI를 먼저 정해 주세요. 왼쪽 아래 AI에서 정할 수 있어요.'; renderMain(); return; }
+  busy[id] = 'draft'; delete errs[id];
+  renderMain();
+  try {
+    const v = await ai.generateJSON(draftPrompt(plan), { valid: x => x && !Array.isArray(x) && typeof x.purpose === 'string' });
+    apply(id, p => { p.draft = normDraft(v); if (p.status === 'final') p.status = 'draft'; });
+  } catch (e) { errs[id] = ai.errorMessage(e && e.code, e); }
+  delete busy[id];
+  if (visible() && plan.id === id) renderMain();
+}
+
+/* 초안을 고칠 때 작년 비교만 다시 그림 */
+let ovT = null;
+function refreshOverlap() {
+  clearTimeout(ovT);
+  ovT = setTimeout(() => { const b = box && box.querySelector('#ypOverlapBox'); if (b) b.innerHTML = overlapHTML(); }, 250);
+}
+function sectionText(k) {
+  const d = plan.draft;
+  if (!d) return '';
+  if (k === 'schedule') return d.schedule.map(x => `${x.date || (x.month ? x.month + '월' : '')}\t${x.title}`).join('\n');
+  if (k === 'budget') return ['항목\t금액\t비고', ...d.budget.map(b => `${b.name}\t${b.amount}\t${b.note}`), `합계\t${d.budget.reduce((a, b) => a + b.amount, 0)}\t`].join('\n');
+  return d[k] || '';
+}
+
 /* ---------- 단계 이동 ---------- */
 function goStep(n) {
   plan.step = n;
@@ -159,6 +281,7 @@ function goStep(n) {
   persist();
   renderMain();
   if (n === 2 && plan.sources.lastResult.trim() && !plan.review) runReview();
+  if (n === 3 && plan.sources.guide.trim() && !plan.guide) runGuide();
 }
 function next() {
   if (plan.step === 1) {
@@ -194,7 +317,15 @@ document.addEventListener('input', e => {
     plan[el.dataset.pk] = el.dataset.pk === 'year' ? (parseInt(el.value, 10) || plan.year) : el.value;
     if (String(el.value).trim()) el.classList.remove('bad');
   } else if (el.dataset.src) plan.sources[el.dataset.src] = el.value;
-  else return;
+  else if (el.dataset.sec && plan.draft) { plan.draft = { ...plan.draft, [el.dataset.sec]: el.value }; refreshOverlap(); }
+  else if (el.dataset.bud != null && plan.draft) {
+    const b = plan.draft.budget[+el.dataset.bud];
+    if (!b) return;
+    if (el.dataset.f === 'amount') b.amount = Math.round(Number(String(el.value).replace(/[,\s원]/g, '')) || 0); else b[el.dataset.f] = el.value;
+    const sum = box.querySelector('#ypBudSum');
+    if (sum) sum.textContent = won(plan.draft.budget.reduce((s, x) => s + x.amount, 0));
+  } else return;
+  if (plan.status === 'final' && (el.dataset.sec || el.dataset.bud != null)) plan.status = 'draft';
   persist();
 });
 document.addEventListener('change', e => {
@@ -214,6 +345,16 @@ document.addEventListener('click', e => {
   if (item) { const p = getPlan(item.dataset.yp); if (p) { plan = p; saved = true; setCurrent(p.id); render(); } return; }
   const st = e.target.closest('[data-step]');
   if (st) { const n = +st.dataset.step; if (n <= plan.maxStep) goStep(n); return; }
+  const ins = e.target.closest('[data-insert]');
+  if (ins && plan.guide && plan.draft) {
+    const g = plan.guide[+ins.dataset.insert];
+    if (g) { plan.draft = insertSentence(plan.draft, g.section, g.sentence); if (plan.status === 'final') plan.status = 'draft'; persist(); renderMain(); toast('초안에 넣었어요'); }
+    return;
+  }
+  const cp = e.target.closest('[data-copy]');
+  if (cp) { copyText(sectionText(cp.dataset.copy)).then(ok => toast(ok ? '복사했어요' : '복사하지 못했어요')); return; }
+  const bd = e.target.closest('[data-budel]');
+  if (bd && plan.draft) { plan.draft.budget.splice(+bd.dataset.budel, 1); persist(); renderMain(); return; }
   const fb = e.target.closest('[data-file]');
   if (fb) { const inp = box.querySelector('#ypFile'); inp.dataset.target = fb.dataset.file; inp.click(); return; }
   const b = e.target.closest('[data-y]');
@@ -223,6 +364,9 @@ document.addEventListener('click', e => {
   else if (a === 'next') next();
   else if (a === 'prev') goStep(Math.max(1, plan.step - 1));
   else if (a === 'review') { if (plan.review) apply(plan.id, p => { p.review = null; }); runReview(); }
+  else if (a === 'guide') { if (plan.guide) apply(plan.id, p => { p.guide = null; }); runGuide(); }
+  else if (a === 'draft') runDraft();
+  else if (a === 'budAdd' && plan.draft) { plan.draft.budget.push({ name: '', amount: 0, note: '' }); persist(); renderMain(); }
   else if (a === 'school') goMenu('settings', 'school');
 });
 

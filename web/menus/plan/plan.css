@@ -45,3 +45,27 @@ button.steps-in:hover{background:var(--surface2)}
 .yp-idea input{width:18px;height:18px;margin:1px 0 0;flex:none;accent-color:var(--accent)}
 @media (max-width:900px){ .yp-grid{grid-template-columns:minmax(0,1fr)} .yp-review{grid-template-columns:minmax(0,1fr)} }
 @media (max-width:600px){ .yp-fields{grid-template-columns:minmax(0,1fr)} .yp-card{padding:16px} .steps-t{font-size:13px} }
+/* 지침 점검 */
+.yp-guide{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.yp-guide li{padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-s);display:flex;flex-direction:column;gap:8px}
+.yp-guide li.out{border-color:var(--err);background:var(--err-soft)}
+.yp-guide-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.yp-guide-s{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;font-size:14px}
+.yp-tag{font-size:12.5px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap}
+.yp-tag.ok{background:var(--ok-soft);color:var(--ok)}
+.yp-tag.no{background:var(--err);color:#fff}
+/* 초안 */
+.yp-sec{display:flex;flex-direction:column;gap:8px}
+.yp-sec + .yp-sec{padding-top:16px;border-top:1px solid var(--line)}
+.yp-sec-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.yp-sec h3{font-size:15px}
+.yp-sec textarea{width:100%;box-sizing:border-box;line-height:1.65;resize:vertical}
+.yp-sec p{margin:0}
+.yp-tbl-wrap{overflow-x:auto}
+.yp-tbl{width:100%;border-collapse:collapse;font-size:14px}
+.yp-tbl th,.yp-tbl td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:middle}
+.yp-tbl th{background:var(--surface2);font-weight:600}
+.yp-tbl .field{width:100%;box-sizing:border-box;min-width:0}
+.yp-tbl td.num,.yp-tbl .field.num{text-align:right;font-variant-numeric:tabular-nums}
+.yp-tbl tfoot td{font-weight:700}
+.yp-same-list{margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px;font-weight:500}
