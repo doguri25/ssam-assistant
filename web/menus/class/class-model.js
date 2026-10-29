@@ -3,7 +3,7 @@
 import { get, set, remove } from '../../core/store.js';
 import { isDate, addDays, weekday, dayIssues } from '../../core/calendar.js';
 import { getSchool } from '../../core/settings.js';
-import { normName } from './class-import.js';
+import { normName, periodStart } from './class-import.js';
 
 const str = v => (typeof v === 'string' ? v : '');
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
@@ -184,3 +184,118 @@ export function hours(ctx, sub) {
 
 /* 다음에 할 차시를 n(1부터)으로: 기록은 두고 보정값만 */
 export const setNext = (ctx, sub, n) => ({ ...sub, offset: n - 1 - records(ctx, sub).filter(r => r.status === 'done').length });
+
+/* ---------- 진도 차이 (스펙 3.6) ---------- */
+/* i번째 차시가 든 주의 월요일: 기간 날짜 → 주 번호(시작일이 든 주 = 가장 작은 주) → '' */
+export function lessonMonday(ctx, sub, i) {
+  const l = sub.lessons[i];
+  if (!l) return '';
+  if (l.from) return mondayOf(l.from);
+  if (l.week == null) return '';
+  const min = Math.min(...sub.lessons.map(x => x.week).filter(w => w != null));
+  return addDays(mondayOf(isDate(sub.start) ? sub.start : ctx.today), 7 * (l.week - min));
+}
+/* from부터 「지금까지」의 이 교과 수업 시간 수: 어제까지 전부 + 오늘은 체크한 시간만 */
+function slotsSoFar(ctx, sub, from) {
+  let n = 0;
+  for (let d = from, i = 0; d <= ctx.today && i < 400; d = addDays(d, 1), i++) {
+    for (const s of slotsOn(ctx, d)) if ((d < ctx.today || logged(ctx, d, s.period)) && isOf(ctx, s.subject, sub)) n++;
+  }
+  return n;
+}
+export function progressOf(ctx, sub) {
+  const h = hours(ctx, sub);
+  const plan = h.plan;
+  const actual = Math.min(plan, Math.max(0, sub.offset + records(ctx, sub).filter(r => r.status === 'done').length));
+  const mode = sub.lessons.some(l => l.from || l.week != null) ? 'week' : 'slot';
+  let expected = 0, started;
+  if (mode === 'week') {
+    const mons = sub.lessons.map((_, i) => lessonMonday(ctx, sub, i));
+    const first = mons.filter(Boolean).sort()[0];
+    const cur = mondayOf(ctx.today);
+    started = !!first && first <= ctx.today;
+    if (started) expected = mons.filter(m => m && m < cur).length + Math.min(mons.filter(m => m === cur).length, slotsSoFar(ctx, sub, cur));
+  } else {
+    const st = isDate(sub.start) ? sub.start : ctx.today;
+    started = st <= ctx.today;
+    if (started) expected = slotsSoFar(ctx, sub, st);
+  }
+  expected = Math.min(plan, expected);
+  const inTimetable = ctx.tt.cells.some(row => row.some(c => c && isOf(ctx, c, sub)));
+  return { sub, ...h, actual, expected, diff: actual - expected, next: Math.min(actual + 1, plan + 1), mode, started, inTimetable };
+}
+export const summary = ctx => ctx.subjects.map(s => progressOf(ctx, s));
+/* 진도표대로라면 지금 할 차시를 다음 차시로 */
+export const alignToPlan = (ctx, sub) => setNext(ctx, sub, progressOf(ctx, sub).expected + 1);
+
+/* 체크하지 않은 날: 처음 체크한 날부터, 오늘 앞 수업일 n일 안에서 진도표 있는 교과 수업이 있는데 기록이 없는 날(오래된 순) */
+export function missingDays(ctx, n = 10) {
+  const first = Object.keys(ctx.log).sort()[0];
+  if (!first) return [];
+  const out = [];
+  let seen = 0;
+  for (let d = addDays(ctx.today, -1), i = 0; seen < n && d >= first && i < 120; d = addDays(d, -1), i++) {
+    const slots = slotsOn(ctx, d);
+    if (!slots.length) continue;
+    seen++;
+    if (ctx.log[d]) continue;
+    if (slots.some(s => { const f = findSubject(ctx.subjects, s.subject); return f && f.lessons.length; })) out.push(d);
+  }
+  return out.reverse();
+}
+
+/* ---------- 주간학습안내 ---------- */
+/* 목요일부터 주말까지는 다음 주, 그 밖에는 이번 주 */
+export function defaultWeek(t) {
+  const w = weekday(t);
+  return w === 0 || w >= 4 ? addDays(mondayOf(t), 7) : mondayOf(t);
+}
+export const weekView = (ctx, monday) => [0, 1, 2, 3, 4].map(d => dayView(ctx, addDays(monday, d)));
+
+const text = v => (typeof v === 'number' ? String(v) : str(v)).trim();
+export function normLessons(list, year) {
+  return (Array.isArray(list) ? list : []).map(l => {
+    if (!isObj(l) || !text(l.title)) return null;
+    const period = text(l.period);
+    return { week: Number.isInteger(l.week) ? l.week : null, period, from: periodStart(period, year), unit: text(l.unit), title: text(l.title), pages: text(l.pages), memo: text(l.memo) };
+  }).filter(Boolean);
+}
+export function normTimetableAI(v) {
+  if (!isObj(v) || !Array.isArray(v.cells)) return null;
+  const longest = Math.max(0, ...v.cells.map(r => (Array.isArray(r) ? r.length : 0)));
+  const t = normTimetable({ periods: Math.min(7, Math.max(4, Number.isInteger(v.periods) ? v.periods : longest)), cells: v.cells });
+  return t.cells.some(r => r.some(Boolean)) ? t : null;
+}
+export const normNotes = v => [0, 1, 2, 3, 4].map(d => normWeekly({ notes: { 0: Array.isArray(v) && isObj(v[d]) ? v[d] : {} } }).notes[0]);
+
+export const weeklyTitle = info => (info && info.grade && info.room ? `${info.grade}학년 ${info.room}반 주간학습안내` : '주간학습안내');
+export const cellText = slot => (slot.lesson ? `${slot.subject} · ${slot.lesson.title}` : slot.subject);
+const WD = '월화수목금';
+const md = d => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
+const NOTE_ROWS = [['events', '학사일정'], ['prep', '준비물'], ['homework', '과제'], ['notice', '안내장'], ['safety', '안전']];
+export { NOTE_ROWS };
+
+/* 그 주의 칸 글: 고친 글이 있으면 그것, 수업 없는 날은 1교시 칸에 그 까닭 */
+export function weekCell(days, weekly, d, p) {
+  const k = `${d}-${p}`;
+  if (weekly.cells && Object.prototype.hasOwnProperty.call(weekly.cells, k)) return weekly.cells[k];
+  const day = days[d];
+  if (day.off) return p === 1 ? day.off : '';
+  const slot = day.slots.find(s => s.period === p);
+  return slot ? cellText(slot) : '';
+}
+export function weeklyDoc(days, weekly) {
+  const P = Math.max(1, ...days.flatMap(d => d.slots.map(s => s.period)));
+  const head = ['교시', ...days.map((d, i) => `${WD[i]} ${md(d.date)}`)];
+  const rows = Array.from({ length: P }, (_, i) => [`${i + 1}교시`, ...days.map((d, j) => weekCell(days, weekly, j, i + 1))]);
+  const notes = NOTE_ROWS.map(([k, label]) => [label, ...days.map((d, j) => ((weekly.notes || {})[j] || {})[k] || '')]);
+  return {
+    title: weekly.title || '주간학습안내',
+    blocks: [
+      { type: 'p', text: `${fmtDay(days[0].date)} ~ ${fmtDay(days[4].date)}` },
+      { type: 'table', head: true, rows: [head, ...rows] },
+      { type: 'h', text: '요일별 알림' },
+      { type: 'table', head: true, rows: [['구분', ...head.slice(1)], ...notes] }
+    ]
+  };
+}
