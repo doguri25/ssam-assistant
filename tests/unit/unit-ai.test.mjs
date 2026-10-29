@@ -60,3 +60,8 @@ test('평어 프롬프트·답 읽기', () => {
   assert.ok(p.includes('~함.'));
   assert.deepEqual(normPyeongeo([{ no: 2, text: ' 잘 읽음. ' }]), { 2: '잘 읽음.' });
 });
+
+test('다듬기: AI 점수가 「4점」처럼 글이어도 앞의 수를 읽음', () => {
+  assert.equal(normGrade([{ no: 1, read: '③', points: '4점' }], ITEMS)[1].points, 4);
+  assert.equal(normGrade([{ no: 1, read: '③', points: '만점' }], ITEMS)[1].points, 0);
+});

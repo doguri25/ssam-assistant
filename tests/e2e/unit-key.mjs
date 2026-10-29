@@ -114,6 +114,7 @@ await run('unit-key', [
     await page.waitForTimeout(150);
     assert(await cards() === 5, '예시가 겹침');
     assert((await page.textContent(`${B} .un-list`)).includes('마침'), '마침 표시');
+    assert((await page.textContent(`${B} .un-list`)).includes('(예시)'), '예시 표시');
   }],
   ['지우기(확인 창)', async () => {
     const id = await page.getAttribute(`${B} [data-un-open]:last-of-type`, 'data-un-open');
@@ -127,6 +128,12 @@ await run('unit-key', [
     assert(await page.locator('#menuTabs [data-tab="unit"][aria-current="page"]').count() === 1, '탭');
     assert(await page.isVisible(B), '화면');
     assert(await cards() === 4, '카드');
+  }],
+  ['다듬기: [예시 지우기]는 예시 평가만 지움', async () => {
+    await page.click(`${B} [data-un="sampleDel"]`);
+    await page.waitForTimeout(150);
+    assert(await cards() === 3 && !(await page.textContent(`${B} .un-list`)).includes('(예시)'), '카드 ' + await cards());
+    assert(await page.locator(`${B} [data-un="sampleDel"]`).count() === 0, '단추가 남음');
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

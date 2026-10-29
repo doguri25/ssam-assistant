@@ -42,8 +42,17 @@ export function commit(t) {
   if (ok && curId() === t.id) { U.id = t.id; U.draft = null; }
   return ok;
 }
-/* 같은 평가를 보고 있으면 다시 그림 (AI가 끝났을 때 등) */
-export function refresh(id) { if (visible() && (!id || curId() === id)) render(); }
+/* 같은 평가를 보고 있으면 다시 그림 (AI가 끝났을 때 등). 선생님이 칸에 쓰는 중이면 칸을 떠날 때까지 미룸 */
+let pendingRefresh = false;
+const editing = () => {
+  const a = document.activeElement;
+  return !!(a && box && box.contains(a) && (a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || (a.tagName === 'INPUT' && !/^(file|checkbox|radio|button)$/.test(a.type))));
+};
+export function refresh(id) {
+  if (!visible() || (id && curId() !== id)) return;
+  if (editing()) { pendingRefresh = true; return; }
+  pendingRefresh = false; render();
+}
 
 const reach = t => (!t || !t.key.items.length ? 1 : !t.students.length ? 2 : graded(t).length ? 4 : 3);
 export function openTest(id, step) {
@@ -64,7 +73,7 @@ function listHTML() {
     <span class="muted">${esc(s.date)} · 학생 ${s.n}명${s.avg != null ? ` · 반 평균 ${s.avg}점` : ''}</span>
     <span class="chip${s.done ? ' ok' : ''}">${s.done ? '마침' : '채점 중'}</span>
     <span class="grow"></span><button class="btn text" type="button" data-un="del" data-id="${esc(s.id)}">지우기</button></li>`).join('');
-  return `<div class="row"><button class="btn primary" type="button" id="unNew">새 단원평가</button><button class="btn" type="button" data-un="sample">예시로 채우기</button></div>
+  return `<div class="row"><button class="btn primary" type="button" id="unNew">새 단원평가</button><button class="btn" type="button" data-un="sample">예시로 채우기</button>${list.some(s => s.sample) ? '<button class="btn text" type="button" data-un="sampleDel">예시 지우기</button>' : ''}</div>
     ${list.length ? `<ul class="un-list">${cards}</ul>` : '<div class="yp-card"><p class="muted" style="margin:0">아직 단원평가가 없어요. [새 단원평가]로 정답지부터 넣어 주세요. 바로 보려면 [예시로 채우기].</p></div>'}`;
 }
 function metaHTML(m) {
@@ -232,6 +241,7 @@ document.addEventListener('click', e => {
   const a = b && b.dataset.un;
   if (a === 'del') { askDelete(b.dataset.id); return; }
   if (a === 'sample') { fillSample(); return; }
+  if (a === 'sampleDel') { listTests().filter(s => s.sample).forEach(s => removeTest(s.id)); toast('예시 평가를 지웠어요'); render(); return; }
   if (a === 'back') { U.view = 'list'; U.id = null; U.draft = null; render(); return; }
   if (!a) { const o = e.target.closest('[data-un-open]'); if (o) openTest(o.dataset.unOpen); return; }
   if (!inStep(1)) return;
@@ -257,7 +267,10 @@ document.addEventListener('change', e => {
 });
 
 onEnter('evaluate', (tab, section) => {
-  if (!box || !section.contains(box)) { box = document.createElement('div'); box.className = 'unit-box'; section.append(box); }
+  if (!box || !section.contains(box)) {
+    box = document.createElement('div'); box.className = 'unit-box'; section.append(box);
+    box.addEventListener('focusout', () => setTimeout(() => { if (pendingRefresh && !editing()) { pendingRefresh = false; if (visible()) render(); } }, 0));
+  }
   curTab = tab;
   box.hidden = tab !== 'unit';
   if (tab === 'unit') render();

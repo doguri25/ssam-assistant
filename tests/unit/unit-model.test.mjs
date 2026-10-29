@@ -63,6 +63,8 @@ test('나누기·가리기 설정, 평어 초안 저장', () => {
   saveSet({ pagesPer: 4, mask: [{ x: 0.7, y: 0, w: 0.3, h: 0.1 }], maskAll: true, maskOn: true });
   assert.equal(getSet().pagesPer, 4);
   assert.deepEqual(getPyeongeo('국어').cuts, { top: 95, high: 80, mid: 60 });
+  assert.deepEqual(getPyeongeo('국어').off, []);
+  assert.equal(makeTitle({ ...META, sample: true }), '3학년 국어 1단원 경험과 관련지으며 이해해요 (1회) (예시)');
   savePyeongeo('국어', { tests: ['a'], cuts: { top: 90, high: 80, mid: 60 }, students: { 1: { level: 'top', text: '잘함.', manual: false } } });
   assert.equal(getPyeongeo('국어').students[1].text, '잘함.');
 });

@@ -196,6 +196,41 @@ await run('unit-grade', [
     assert(s3.pts === 10 && s3.flag === '' && s1.pts === 0 && s1.flag === 'similar', JSON.stringify([s3, s1]));
     await page.click(`${V} [data-un="back"]`);
   }],
+  ['다듬기: 채점하는 동안 같은 평가의 1단계에서 쓰던 글이 지워지지 않음', async () => {
+    await page.click(`${V} [data-un-open="${A}"]`);
+    await page.click(`${V} .steps [data-step="3"]`);
+    slow = 1500;
+    await page.click(`${V} [data-un="grade"]`);
+    await page.click('#sheetRoot #unRegradeOk');
+    await page.click(`${V} .steps [data-step="1"]`);
+    await page.click(`${V} #unUnitName`); await page.keyboard.press('End'); await page.keyboard.type(' 고침');
+    await page.waitForTimeout(3600); slow = 0;
+    assert(await page.evaluate(() => document.activeElement && document.activeElement.id) === 'unUnitName', '쓰던 칸에서 커서가 빠짐');
+    assert((await page.inputValue(`${V} #unUnitName`)).endsWith(' 고침'), '쓰던 글이 지워짐: ' + await page.inputValue(`${V} #unUnitName`));
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(200);
+    assert((await T(A)).meta.unitName.endsWith(' 고침'), '저장 안 됨');
+  }],
+  ['다듬기: 저장 공간이 꽉 차면 채점을 멈춤(AI를 더 부르지 않음)', async () => {
+    await page.click(`${V} .steps [data-step="3"]`);
+    await page.evaluate(() => { const o = Storage.prototype.setItem; window.__set = o; Storage.prototype.setItem = function (k, v) { if (String(k).startsWith('ssam:unit:t:')) throw new Error('QuotaExceededError'); return o.call(this, k, v); }; });
+    slow = 300;
+    const n = grades().length;
+    await page.click(`${V} [data-un="grade"]`);
+    await page.click('#sheetRoot #unRegradeOk');
+    await until(() => grades().length >= n + 2);
+    await page.waitForTimeout(1500); slow = 0;
+    await page.evaluate(() => { Storage.prototype.setItem = window.__set; });
+    assert(grades().length === n + 2, `불린 수 ${grades().length - n}`);
+  }],
+  ['다듬기: 채점한 뒤 쪽 수를 바꾸면 알려 줌', async () => {
+    await page.click(`${V} .steps [data-step="2"]`);
+    await page.fill(`${V} #unPagesPer`, '2'); await page.dispatchEvent(`${V} #unPagesPer`, 'change');
+    await page.waitForTimeout(100);
+    assert((await page.textContent('#toast')).includes('이미 채점한 학생이 있어'), await page.textContent('#toast'));
+    await page.fill(`${V} #unPagesPer`, '1'); await page.dispatchEvent(`${V} #unPagesPer`, 'change');
+    await page.click(`${V} [data-un="back"]`);
+  }],
   ['업스테이지면 손글씨 안내', async () => {
     await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'upstage', keys: { upstage: 'up-test' }, remember: true })));
     await page.reload(); await page.waitForTimeout(500);

@@ -115,6 +115,18 @@ await run('unit-results', [
     const all = await page.evaluate(() => navigator.clipboard.readText());
     assert(all.split('\n').length === 6 && all.startsWith('1번\t1번 고친 평어임.'), all.slice(0, 80));
   }],
+  ['다듬기: 평가를 골라 둔 뒤 나중에 마친 같은 교과 평가는 체크된 채로', async () => {
+    await page.uncheck(`${V} input[data-pytest="sample-2"]`);
+    await page.waitForTimeout(100);
+    await page.evaluate(async () => {
+      const m = await import('./menus/evaluate/unit/unit-model.js');
+      const x = m.getTest('sample-1'); x.id = 'later'; x.meta = { ...x.meta, round: 3, date: '2026-10-28', sample: false }; m.saveTest(x);
+    });
+    await page.reload(); await page.waitForTimeout(500);
+    await page.click(`${V} [data-unv="results"]`); await page.click(`${V} [data-rv="pyeongeo"]`);
+    assert(await page.isChecked(`${V} input[data-pytest="later"]`), '새 평가가 빠짐');
+    assert(!(await page.isChecked(`${V} input[data-pytest="sample-2"]`)), '뺀 평가가 돌아옴');
+  }],
   ['좁은 화면(360px) 가로 스크롤 없음', async () => {
     await page.click(`${V} [data-rv="table"]`);
     await page.setViewportSize({ width: 360, height: 800 });

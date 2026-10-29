@@ -27,7 +27,7 @@ const clear = (id, nos) => page.evaluate(([id, nos]) => {
   localStorage.setItem(k, JSON.stringify(x));
 }, [id, nos]);
 const open1 = async id => { await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="unit"]'); if (await page.locator(`${V} [data-un="back"]`).count()) await page.click(`${V} [data-un="back"]`); await page.click(`${V} [data-un-open="${id}"]`); };
-const TITLE = '3학년 국어 2단원 중요한 내용을 적어요 (1회)';
+const TITLE = '3학년 국어 2단원 중요한 내용을 적어요 (1회) (예시)';
 await page.goto(url);
 await page.waitForTimeout(400);
 await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="unit"]');

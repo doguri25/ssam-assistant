@@ -82,7 +82,7 @@ function pyState(all) {
   if (!subs.includes(R.pySubject)) R.pySubject = subs[0] || null;
   const mine = all.filter(t => t.meta.subject === R.pySubject);
   const saved = R.pySubject ? getPyeongeo(R.pySubject) : null;
-  const ids = saved && Array.isArray(saved.tests) ? saved.tests.filter(id => mine.some(t => t.id === id)) : mine.map(t => t.id);
+  const ids = mine.map(t => t.id).filter(id => !(saved && saved.off.includes(id)));
   const chosen = mine.filter(t => ids.includes(t.id));
   const nos = [...new Set(chosen.flatMap(t => graded(t).map(s => s.no)))].sort((a, b) => a - b);
   const students = nos.map(no => {
@@ -94,7 +94,7 @@ function pyState(all) {
   return { subs, mine, saved, ids, chosen, students };
 }
 function savePy(st, patch = {}) {
-  const v = { tests: st.ids, cuts: st.saved.cuts, students: Object.fromEntries(st.students.map(s => [s.no, { level: s.level, text: s.text, manual: s.manual }])), ...patch };
+  const v = { off: st.mine.map(t => t.id).filter(id => !st.ids.includes(id)), cuts: st.saved.cuts, students: Object.fromEntries(st.students.map(s => [s.no, { level: s.level, text: s.text, manual: s.manual }])), ...patch };
   savePyeongeo(R.pySubject, v);
 }
 function pyHTML(all) {
@@ -145,7 +145,7 @@ async function writePyeongeo() {
       const res = normPyeongeo(await ai.generateJSON(pyeongeoPrompt(subject, chunk), { valid: v => Object.keys(normPyeongeo(v)).length > 0 }));
       const cur = getPyeongeo(subject), now = pyStateFor(subject);
       for (const s of now.students) if (res[s.no] && !s.text) s.text = res[s.no];
-      savePyeongeo(subject, { tests: now.ids, cuts: cur.cuts, students: Object.fromEntries(now.students.map(s => [s.no, { level: s.level, text: s.text, manual: s.manual }])) });
+      savePyeongeo(subject, { off: now.mine.map(t => t.id).filter(id => !now.ids.includes(id)), cuts: cur.cuts, students: Object.fromEntries(now.students.map(s => [s.no, { level: s.level, text: s.text, manual: s.manual }])) });
     }
   } catch (e) {
     toast(e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 해 보세요.' : ai.errorMessage(e && e.code, e), 6000);
@@ -204,7 +204,7 @@ document.addEventListener('change', e => {
     if (!R.pySubject) return;
     if (el.dataset.pytest) {
       const ids = new Set(st.ids); if (el.checked) ids.add(el.dataset.pytest); else ids.delete(el.dataset.pytest);
-      savePy(st, { tests: st.mine.map(t => t.id).filter(id => ids.has(id)) }); render();
+      savePy({ ...st, ids: st.mine.map(t => t.id).filter(id => ids.has(id)) }); render();
     } else if (['unCutTop', 'unCutHigh', 'unCutMid'].includes(el.id)) {
       const k = { unCutTop: 'top', unCutHigh: 'high', unCutMid: 'mid' }[el.id];
       const cuts = { ...st.saved.cuts, [k]: Math.max(0, Math.min(100, Number(el.value) || 0)) };

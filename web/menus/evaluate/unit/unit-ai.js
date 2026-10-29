@@ -6,7 +6,8 @@ import { makeTitle, LEVEL_NAME } from './unit-model.js';
 const TYPE_NAME = Object.fromEntries(ITEM_TYPES);
 const TYPES = ITEM_TYPES.map(t => t[0]);
 const listOf = (v, k) => (Array.isArray(v) ? v : (v && Array.isArray(v[k]) ? v[k] : []));
-const numOr = (v, d = null) => { const n = Number(v); return Number.isFinite(n) && String(v).trim() !== '' ? n : d; };
+// 수, 또는 「4점」처럼 앞에 수가 있는 글 → 수. 아니면 d
+const numOr = (v, d = null) => { const m = /^\s*(-?\d+(?:\.\d+)?)/.exec(String(v == null ? '' : v)); return m ? Number(m[1]) : d; };
 
 export function gradePrompt(test, no) {
   const key = test.key.items.map(i => `${i.no} | ${TYPE_NAME[i.type] || '단답'} | ${i.answer} | ${i.points} | ${i.criteria || ''}`);

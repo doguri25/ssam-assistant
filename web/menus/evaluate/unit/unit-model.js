@@ -15,7 +15,7 @@ const domainsOf = it => String(it.domain || '').split('·').filter(Boolean);
 
 export function makeTitle(m = {}) {
   const parts = [m.grade ? `${m.grade}학년` : '', m.subject || '', m.unitNo ? `${m.unitNo}단원` : '', m.unitName || '', m.round ? `(${m.round}회)` : ''].filter(Boolean);
-  return parts.join(' ') || '단원평가';
+  return (parts.join(' ') || '단원평가') + (m.sample ? ' (예시)' : '');
 }
 
 export function newTest({ meta = {}, key = {}, paper = {} } = {}) {
@@ -31,7 +31,7 @@ function summary(t) {
   const g = graded(t);
   return {
     id: t.id, title: makeTitle(t.meta), subject: t.meta.subject || '', grade: t.meta.grade, term: t.meta.term, unitNo: t.meta.unitNo, round: t.meta.round,
-    date: t.meta.date || '', total: keyTotal(t.key.items), n: g.length, avg: mean(g.map(s => studentTotal(t, s).pct)), done: !!t.done, at: t.createdAt || 0
+    date: t.meta.date || '', total: keyTotal(t.key.items), n: g.length, avg: mean(g.map(s => studentTotal(t, s).pct)), done: !!t.done, at: t.createdAt || 0, sample: !!t.meta.sample
   };
 }
 /* 저장할 때 긴 글을 자름 (한 평가 약 50KB) */
@@ -63,7 +63,8 @@ export const getSet = () => ({ pagesPer: 2, mask: [], maskAll: false, maskOn: tr
 export const saveSet = s => store.set(SET, s);
 export function getPyeongeo(subject) {
   const v = store.get(PY(subject), null) || {};
-  return { tests: null, students: {}, ...v, cuts: { ...CUTS, ...(v.cuts || {}) } };
+  // off: 뺀 평가 id (나중에 마친 같은 교과 평가는 들어감)
+  return { students: {}, ...v, off: Array.isArray(v.off) ? v.off : [], cuts: { ...CUTS, ...(v.cuts || {}) } };
 }
 export const savePyeongeo = (subject, v) => store.set(PY(subject), v);
 

@@ -5,7 +5,10 @@ const CIRCLED = '①②③④⑤⑥⑦⑧⑨⑩';
 const SYMBOLS = '㉮㉯㉰㉱㉲㉳㉴㉵㉶㉷㉸㉹㉺㉻㉠㉡㉢㉣㉤㉥㉦㉧㉨㉩㉪㉫㉬㉭';
 const MARK = /^[○◯OoVv✓✔●◎]$/;
 const cells = line => line.split('|').map(c => c.replace(/\s+/g, ' ').trim());
-const num = s => (/^\d+(\.\d+)?$/.test(String(s).trim()) ? Number(s) : 0);
+// 「5」·「5점」·「4.5」 → 앞의 수, 수가 아니면 0
+const num = s => { const m = /^\s*(\d+(?:\.\d+)?)\s*(점)?\s*$/.exec(String(s)); return m ? Number(m[1]) : 0; };
+// 문항 번호 칸: 「1」·「1.」·「1번」
+const itemNo = s => { const m = /^(\d{1,2})\s*(?:\.|번)?$/.exec(String(s).trim()); return m ? Number(m[1]) : null; };
 
 /* 문항 유형 짐작 (스펙 3.1 차례) */
 export function itemType(answer, criteria) {
@@ -64,9 +67,9 @@ export function parseKey(text) {
     if (!line.includes('|')) continue;
     const c = cells(line);
     const get = k => (col[k] >= 0 && c[col[k]] != null ? c[col[k]] : '');
-    if (/^\d{1,2}$/.test(c[0])) {
+    if (itemNo(c[0]) != null) {
       const dom = domains.filter((_, j) => MARK.test(c[col.dom[j]] || ''));
-      items.push({ no: Number(c[0]), content: c[1] || '', domain: dom.join('·'), type: '', answer: get('answer'), points: num(get('points')), criteria: get('criteria'), pages: get('pages') });
+      items.push({ no: itemNo(c[0]), content: c[1] || '', domain: dom.join('·'), type: '', answer: get('answer'), points: num(get('points')), criteria: get('criteria'), pages: get('pages') });
     } else if (!c[0] && items.length) {
       // 첫 칸이 빈 줄: 앞 문항의 칸에 이어 붙임
       const last = items[items.length - 1];

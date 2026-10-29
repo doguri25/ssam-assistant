@@ -63,7 +63,7 @@ const GOOD = ['중요한 내용을 정확히 찾고 간추려 썼어요.', '사�
 const CHEER = ['지금처럼 꼼꼼히 읽어 봐요!', '중심 문장을 다시 찾아 보면 더 좋아질 거예요.', '글을 한 번 더 천천히 읽어 봐요.', '잔치가 열리는 곳을 다시 확인해 봐요.', '선 잇기 문제를 다시 풀어 봐요.', '중심 문장 고르기를 한 번 더 연습해 봐요.'];
 
 function graded(meta, date, shift, id) {
-  const t = newTest({ meta: { ...SAMPLE_META, ...meta, date }, key: { domains: ['지식', '이해'], items: SAMPLE_ITEMS.map(i => ({ ...i })) }, paper: { text: '' } });
+  const t = newTest({ meta: { ...SAMPLE_META, ...meta, date, sample: true }, key: { domains: ['지식', '이해'], items: SAMPLE_ITEMS.map(i => ({ ...i })) }, paper: { text: '' } });
   t.id = id; t.done = true; t.createdAt = Date.parse(date + 'T09:00:00Z');
   t.students = ANS.map((_, s) => {
     const [reads, p9, p10] = ANS[(s + shift) % ANS.length];

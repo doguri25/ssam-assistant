@@ -110,7 +110,8 @@ async function gradeOne(id, i) {
     if (!st || st.no !== no) return;
     st.items = mergeCells(st.items, Object.fromEntries(t.key.items.map(it => [it.no, gradeCell(it, res[it.no])])));
     st.status = 'done'; st.err = '';
-    saveOrWarn(t);
+    // 저장 공간이 꽉 차면 남은 학생은 부르지 않음 (AI를 불러도 결과를 버리게 되므로)
+    if (!saveOrWarn(t) && G.run && G.run.id === id) { G.run.stop = true; G.run.queue = []; }
   } catch (e) {
     if (ctrl.signal.aborted) return;
     const t = getTest(id), st = t && t.students[i];
@@ -292,6 +293,7 @@ document.addEventListener('change', e => {
     const per = Math.max(1, Math.min(8, Math.round(Number(el.value) || 1)));
     saveSet({ ...getSet(), pagesPer: per });
     if (hasPages(t.id) && !t.students.some(s => s.status === 'done')) { t.students = []; split(t, G.pages.length, per); commit(t); }
+    else if (t.students.some(s => s.status === 'done')) toast('이미 채점한 학생이 있어서 지금 나눈 것은 그대로예요. 답안 스캔을 다시 올리면 새 쪽 수로 나눠요.', 6000);
     render();
   } else if (el.id === 'unMaskOn') { saveSet({ ...getSet(), maskOn: el.checked }); render(); }
   else if (el.dataset.stno != null) {
