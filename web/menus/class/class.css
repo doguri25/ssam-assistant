@@ -52,3 +52,23 @@
 .cls-warn{font-size:12.5px;color:var(--warn)}
 #clsNewText{min-height:120px}
 #clsTtMsg:empty{display:none}
+/* 오늘 수업 */
+.cls-day-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cls-day{font:700 18px/1.3 var(--f-display);min-width:140px;text-align:center}
+.cls-day-nav .field{flex:none;min-width:0;width:auto}
+.cls-events{display:flex;flex-wrap:wrap;gap:6px}
+.cls-chip{padding:4px 10px;border-radius:999px;background:var(--accent-soft);color:var(--accent-ink);font-size:13px;font-weight:500}
+#clsMissing:empty{display:none}
+.cls-missing{align-items:center;flex-wrap:wrap}
+.cls-missing .btn{padding:4px 8px;min-height:32px}
+.cls-lessons{list-style:none;margin:0;padding:4px 22px}
+.cls-lesson{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:8px 14px;align-items:center;padding:14px 0;border-top:1px solid var(--line)}
+.cls-lesson:first-child{border-top:0}
+.cls-l-p{font-weight:700;color:var(--ink3);font-size:13.5px}
+.cls-l-main{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;min-width:0}
+.cls-l-s{font-size:16px}
+.cls-l-n{font-variant-numeric:tabular-nums;font-weight:600;color:var(--accent-ink)}
+.cls-l-t{flex-basis:100%;font-size:15px;overflow-wrap:anywhere}
+.cls-off{flex-direction:row;align-items:center;gap:10px}
+.cls-marks button{min-height:40px}
+@media (max-width:640px){.cls-lessons{padding:4px 14px}.cls-lesson{grid-template-columns:44px minmax(0,1fr)}.cls-marks{grid-column:1/-1}}

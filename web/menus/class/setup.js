@@ -248,7 +248,7 @@ function applySample() {
   changed('sample');
   toast('예시 자료를 채웠어요');
 }
-function askSample() {
+export function askSample() {
   if (!hasData()) { applySample(); return; }
   S().openSheet(`<h3>지금 자료를 지우고 예시로 바꿀까요?</h3>
     <p class="muted" style="margin:0">학급·시간표·진도표·체크 기록·주간학습안내를 지우고 지어낸 예시(3학년 1반)로 채워요.</p>
