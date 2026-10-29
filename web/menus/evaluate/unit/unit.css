@@ -50,3 +50,22 @@ section[data-menu="evaluate"].ev-new > :not(.unit-box){display:none !important}
 .un-irow.chk{background:#fff8d9}
 .un-iread{flex:1;min-width:0}
 .un-irow .field.num{width:64px}
+/* 4단계: 피드백 */
+.un-fbs{display:flex;flex-direction:column;gap:10px}
+.un-fb textarea.field{width:100%;box-sizing:border-box;min-height:44px;resize:vertical}
+.un-fb-wrap{overflow-x:auto;max-width:100%}
+.un-fb-t{border-collapse:collapse;width:100%;font-size:13.5px}
+.un-fb-t th,.un-fb-t td{border-bottom:1px solid var(--line);padding:6px;text-align:left;vertical-align:top}
+.un-fb-t th{color:var(--ink3);font-weight:600;font-size:12.5px;white-space:nowrap}
+.un-print{display:none}
+@media print{
+  body *{visibility:hidden !important}
+  .un-print,.un-print *{visibility:visible !important}
+  .un-print{display:block !important;position:absolute;left:0;top:0;width:100%;color:#000}
+  .un-ps{box-sizing:border-box;height:48vh;overflow:hidden;padding:4mm 2mm;border-bottom:1px dashed #999;break-inside:avoid}
+  .un-ps:nth-child(2n){border-bottom:0;break-after:page}
+  .un-ps h2{font-size:15px;margin:0 0 4px}
+  .un-ps p{margin:4px 0;font-size:12.5px}
+  .un-ps .un-fb-t{font-size:11.5px}
+  .un-ps .un-fb-t th,.un-ps .un-fb-t td{border:1px solid #999;padding:3px 4px;color:#000}
+}
