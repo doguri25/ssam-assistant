@@ -2,7 +2,8 @@
    평가 메뉴의 가로 메뉴는 기존 앱의 화면(mode)과 같음: window.SSAM.setMode로 바꿈 */
 import { icon } from './icons.js';
 import { renderPlaceholder } from '../menus/placeholder.js';
-import { getYears } from './years.js';
+import { ensureYears } from './years.js';
+import { freeze } from './store.js';
 
 export const MENUS = [
   { id: 'evaluate', label: '평가', tabs: [['pyeongeo', '교과 평어'], ['cc', '창의적 체험활동'], ['hk', '행동특성'], ['gr', '평가지 채점']] },
@@ -81,7 +82,11 @@ function drawSide() {
 /* 세로 메뉴 아래 「2026학년도」 (누르면 설정 › 학년도) */
 function drawYear() {
   const el = $('#sideYear');
-  if (el) el.innerHTML = `<small>학년도</small><b>${getYears(localStorage).current}학년도</b>`;
+  if (!el) return;
+  let ls = null;
+  try { ls = window.localStorage; } catch (e) {}
+  // 처음 연 날의 학년도를 저장해 둠 (저장소가 막혀 있으면 오늘이 든 학년도만 보임)
+  el.innerHTML = `<small>학년도</small><b>${ensureYears(ls).current}학년도</b>`;
 }
 
 /* 세로 메뉴 아래 「사용 중인 AI」 */
@@ -107,6 +112,12 @@ function init() {
     if (!cur || cur.menu !== 'evaluate' || cur.tab === mode) return;
     cur.tab = mode; drawTabs(find('evaluate'));
     try { localStorage.setItem(NAV_KEY, JSON.stringify(cur)); } catch (e) {}
+  });
+  // 다른 탭에서 학년도를 옮기면 이 탭은 저장을 멈추고 다시 엶 (지난 학년도 자료를 새 학년도에 쓰지 않게)
+  window.addEventListener('storage', e => {
+    if (e.key !== 'ssam:years' && e.key !== null) return;
+    freeze(); if (SSAM().freeze) SSAM().freeze(true);
+    location.reload();
   });
   // 설정 시트를 닫으면 AI 이름을 다시 읽음
   const root = $('#sheetRoot');

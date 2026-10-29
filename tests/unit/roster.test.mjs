@@ -29,3 +29,8 @@ test('번호 머리가 없거나 번호가 없으면 null', () => {
   assert.equal(parseRoster([['번호', '이름'], ['', '가']]), null);
   assert.equal(parseRoster(null), null);
 });
+
+test('검토 고침: 상태 칸이 여럿이면 모두 봄(비고의 전출)', () => {
+  const r = parseRoster([['번호', '성명', '학적상태', '비고'], ['1', '가', '', ''], ['2', '나', '', '전출'], ['3', '다', '재학', '']]);
+  assert.deepEqual(r.except, [2]);
+});

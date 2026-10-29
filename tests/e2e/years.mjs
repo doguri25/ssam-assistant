@@ -27,8 +27,9 @@ await page.reload(); await page.waitForTimeout(500);
 subjects = await ls('class:subjects');
 
 await run('years', [
-  ['옆 메뉴에 「2026학년도」, 누르면 설정 › 학년도', async () => {
+  ['옆 메뉴에 「2026학년도」, 처음 연 날의 학년도를 저장, 누르면 설정 › 학년도', async () => {
     assert((await page.textContent('#sideYear')).includes('2026학년도'), await page.textContent('#sideYear'));
+    assert(JSON.parse(await ls('years')).current === 2026, '학년도를 저장하지 않음');
     await page.click('#sideYear');
     await page.waitForSelector(`${S} [data-yr="2026"]`);
     assert(await page.getAttribute('#menuTabs [data-tab="years"]', 'aria-current') === 'page', '탭');
@@ -61,7 +62,8 @@ await run('years', [
     assert(txt.includes('2027학년도') && txt.includes('연간계획') && txt.includes('보관함'), txt.slice(0, 120));
     await reloadAfter('#sheetRoot #yrNewOk');
     assert((await page.textContent('#sideYear')).includes('2027학년도'), '옆 메뉴');
-    assert(await ls('class:subjects') === null && await ls('hk') === null, '안 비워짐');
+    const hk = JSON.parse(await ls('hk') || '{"students":[]}');
+    assert(await ls('class:subjects') === null && hk.students.length === 0, '안 비워짐');
     assert((await ls('yearplans')).includes('독서 교육'), '연간계획이 없음');
     assert(await ls('engine') === ENGINE, 'AI 키가 바뀜');
     await page.click('nav.app-side [data-menu-go="plan"]'); await page.click('#menuTabs [data-tab="year"]');
@@ -92,10 +94,37 @@ await run('years', [
     const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click(`${S} [data-set="restore"]`)]);
     await fc.setFiles(backupPath);
     await page.waitForSelector('#sheetRoot input[data-ry="2026"]');
-    assert(await page.isChecked('#sheetRoot input[data-ry="2026"]'), '체크');
+    assert(!(await page.isChecked('#sheetRoot input[data-ry="2026"]')), '지금 학년도가 미리 체크됨');
+    await page.check('#sheetRoot input[data-ry="2026"]');
     await reloadAfter('#sheetRoot #yrRestoreOk');
     assert(await ls('class:subjects') === subjects, '돌아오지 않음');
     assert(await ls('engine') === ENGINE, 'AI 키가 바뀜');
+  }],
+  ['다른 탭이 학년도를 옮기면 이 탭도 다시 열려 지난 자료를 새 학년도에 쓰지 않음', async () => {
+    const other = await t.ctx.newPage();
+    await other.goto(url); await other.waitForTimeout(500);
+    await other.click('nav.app-side [data-menu-go="evaluate"]'); await other.click('#menuTabs [data-tab="hk"]');
+    await other.waitForSelector('#hkMemo');
+    await yearsTab();
+    await page.click(`${S} [data-set="newYear"]`);
+    await page.waitForSelector('#sheetRoot #yrNewOk');
+    await Promise.all([other.waitForEvent('load'), page.waitForEvent('load'), page.click('#sheetRoot #yrNewOk')]);
+    await other.waitForTimeout(500);
+    assert((await other.textContent('#sideYear')).includes('2027학년도'), '다른 탭이 2026에 머묾');
+    if (await other.locator('#hkMemo').count()) { await other.fill('#hkMemo', '지난 학년도 메모'); await other.waitForTimeout(900); }
+    assert(await ls('hk') === null || !(await ls('hk')).includes('지난 학년도 메모'), '지난 자료가 섞임: ' + await ls('hk'));
+    await other.close();
+    await yearsTab();
+    await page.click(`${S} [data-yr="2026"] [data-set="goYear"]`);
+    await page.waitForSelector('#sheetRoot #yrGoOk');
+    await reloadAfter('#sheetRoot #yrGoOk');
+  }],
+  ['보관함에 있는 학년도는 새로 시작하지 않고 그 학년도로 감', async () => {
+    await yearsTab();
+    await page.click(`${S} [data-set="newYear"]`);
+    await page.waitForSelector('#sheetRoot #yrGoOk');
+    assert((await page.textContent('#sheetRoot .sheet')).includes('2027학년도 자료가 이미 있어요'), await page.textContent('#sheetRoot .sheet'));
+    await page.click('#sheetRoot [data-close]');
   }],
   ['다른 JSON은 쌤비서 백업이 아님', async () => {
     await yearsTab();

@@ -5,7 +5,7 @@ import * as store from '../../web/core/store.js';
 import {
   getInfo, setInfo, getTimetable, setTimetable, listSubjects, saveSubject, removeSubject, getLog, setMark, getWeekly, saveWeekly,
   mondayOf, fmtDay, fmtShort, noClass, sameSubject, findSubject, slotsOn, lessonAt, dayView, hours, setNext,
-  lessonMonday, progressOf, summary, alignToPlan, missingDays, defaultWeek, weekView, normLessons, normTimetableAI, normNotes, weeklyTitle, cellText, weeklyDoc, unitPos
+  lessonMonday, progressOf, summary, alignToPlan, missingDays, defaultWeek, weekView, normLessons, normTimetableAI, normNotes, weeklyTitle, cellText, weeklyDoc, unitPos, migrateWeeklyEvents
 } from '../../web/menus/class/class-model.js';
 import { sampleData } from '../../web/menus/class/class-sample.js';
 
@@ -339,4 +339,16 @@ test('다듬기: 예시 자료는 오늘이 든 학기', () => {
   const spring = sampleData('2027-04-15');
   assert.equal(spring.subjects[0].lessons[0].from, '2027-03-01');
   assert.ok(spring.subjects[0].lessons[0].no);
+});
+
+test('검토 고침: 지난 버전 주간학습안내의 빈 학사일정 칸은 「자동」으로 한 번만 옮김', () => {
+  store.useStorage(mem());
+  const old = { title: 't', cells: {}, notes: Object.fromEntries([0, 1, 2, 3, 4].map(d => [d, { events: '', prep: d === 1 ? '색연필' : '', homework: '', notice: '', safety: '' }])) };
+  store.set('class:weekly:2026-11-02', old);
+  migrateWeeklyEvents();
+  const w = getWeekly('2026-11-02');
+  assert.equal(w.notes[0].events, null); assert.equal(w.notes[1].prep, '색연필');
+  saveWeekly('2026-11-02', { ...w, notes: { ...w.notes, 2: { ...w.notes[2], events: '' } } });
+  migrateWeeklyEvents();
+  assert.equal(getWeekly('2026-11-02').notes[2].events, '');
 });

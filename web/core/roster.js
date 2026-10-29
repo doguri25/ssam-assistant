@@ -11,13 +11,13 @@ export function parseRoster(rows) {
     const head = R[h].map(norm);
     const ci = head.findIndex(c => HEAD_NO.test(c));
     if (ci < 0) continue;
-    const si = head.findIndex((c, i) => i !== ci && HEAD_STATE.test(c));
+    const si = head.map((c, i) => (i !== ci && HEAD_STATE.test(c) ? i : -1)).filter(i => i >= 0);
     const nos = new Set(), out = new Set();
     for (const r of R.slice(h + 1)) {
       const v = norm(r[ci]);
       if (!/^\d{1,2}$/.test(v) || +v < 1 || +v > 60) continue;
       nos.add(+v);
-      if (si >= 0 && OUT.test(norm(r[si]))) out.add(+v);
+      if (si.some(i => OUT.test(norm(r[i])))) out.add(+v);
     }
     if (!nos.size) return null;
     const count = Math.max(...nos);

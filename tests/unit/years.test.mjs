@@ -5,7 +5,7 @@ import * as store from '../../web/core/store.js';
 import { schoolYearOf } from '../../web/core/calendar.js';
 import { schoolYearOf as fromClass } from '../../web/menus/class/class-import.js';
 import { memArchive } from '../../web/core/archive.js';
-import { isYearKey, getYears, snapshot, carryOver, makeBackup, parseBackup, moveTo } from '../../web/core/years.js';
+import { isYearKey, getYears, ensureYears, snapshot, carryOver, makeBackup, parseBackup, moveTo } from '../../web/core/years.js';
 
 function mem(init = {}) {
   const m = new Map(Object.entries(init));
@@ -103,4 +103,44 @@ test('저장 멈춤: 멈춘 동안 set은 false', () => {
   assert.equal(store.set('a', 1), false); assert.equal(store.get('a'), null);
   store.unfreeze();
   assert.equal(store.set('a', 1), true); assert.equal(store.get('a'), 1);
+});
+
+test('검토 고침: 처음 연 날의 학년도를 저장해 두어 3월이 와도 바뀌지 않음', () => {
+  const ls = mem();
+  assert.deepEqual(ensureYears(ls, '2026-11-10'), { current: 2026 });
+  assert.deepEqual(JSON.parse(ls.getItem('ssam:years')), { current: 2026 });
+  assert.deepEqual(ensureYears(ls, '2027-03-02'), { current: 2026 });
+  assert.deepEqual(getYears(ls, '2027-03-02'), { current: 2026 });
+  assert.deepEqual(getYears(null, '2027-03-02'), { current: 2027 });
+  assert.deepEqual(snapshot(null), {});
+});
+
+test('검토 고침: 보관함에 이미 있는 학년도를 새로 시작하지 않음', async () => {
+  const ls = seed(), archive = memArchive();
+  await archive.put(2027, { hk: '"2027 real work"' });
+  const before = ls.dump();
+  let un = 0;
+  const r = await moveTo(2027, { ls, archive, unfreeze: () => un++, data: {}, today: '2026-10-29' });
+  assert.deepEqual(r, { ok: false, code: 'EXISTS' });
+  assert.deepEqual(ls.dump(), before); assert.equal(un, 1);
+  assert.deepEqual(await archive.get(2027), { hk: '"2027 real work"' });
+  // 지금 학년도를 백업으로 바꾸는 것(같은 학년도)은 됨
+  assert.deepEqual(await moveTo(2026, { ls, archive, data: { hk: '"restored"' }, today: '2026-10-29' }), { ok: true });
+  assert.equal(ls.getItem('ssam:hk'), '"restored"');
+});
+
+test('검토 고침: 새 학년도에 설정(평어·행특·채점·나이스·품의 기준)은 가져가고 학생 자료는 비움', () => {
+  const snap = {
+    prefs: J({ current: 'plan1', settings: { len: 'long', ending: 'eum' } }),
+    hk: J({ settings: { min: 400, max: 600 }, students: [{ id: 's', memo: '학생 메모' }] }),
+    grset: J({ pagesPer: 2, startNo: 5, except: [7], mask: [{ x: 1 }], mix: 'top' }),
+    purchaseLimit: '30000000', neis: J({ overwrite: true }), 'neis:hk': J({ x: 1 }), 'class:log': '{}'
+  };
+  const c = carryOver(snap, 2027);
+  assert.deepEqual(JSON.parse(c.prefs), { current: null, settings: { len: 'long', ending: 'eum' } });
+  assert.deepEqual(JSON.parse(c.hk), { settings: { min: 400, max: 600 }, students: [] });
+  assert.deepEqual(JSON.parse(c.grset), { pagesPer: 2, startNo: 1, except: [], mask: [{ x: 1 }], mix: 'top' });
+  assert.equal(c.purchaseLimit, '30000000'); assert.equal(c.neis, snap.neis); assert.equal(c['neis:hk'], snap['neis:hk']);
+  assert.ok(!('class:log' in c));
+  assert.ok(!JSON.stringify(c).includes('학생 메모'));
 });

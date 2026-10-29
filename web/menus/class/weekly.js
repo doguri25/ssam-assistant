@@ -6,7 +6,7 @@ import { toast, copyText, saveFile } from '../../core/ui.js';
 import { makeHwpx } from '../../core/hwpx.js';
 import { listEvents, addDays } from '../../core/calendar.js';
 import {
-  makeCtx, getInfo, getWeekly, saveWeekly, weekView, defaultWeek, weeklyTitle, weekCell, weeklyDoc, weekPeriods, normNotes, NOTE_ROWS, fmtDay, today
+  makeCtx, getInfo, getWeekly, saveWeekly, weekView, defaultWeek, weeklyTitle, weekCell, weeklyDoc, weekPeriods, normNotes, NOTE_ROWS, fmtDay, today, migrateWeeklyEvents
 } from './class-model.js';
 import { askSample } from './setup.js';
 
@@ -17,6 +17,7 @@ const dotted = d => `${+d.slice(5, 7)}.${+d.slice(8, 10)}`;
 const FULL = '저장 공간이 모자라 저장하지 못했어요';
 const AI_KEYS = ['prep', 'safety', 'homework', 'notice'];
 let box = null, curTab = null, monday = null;
+migrateWeeklyEvents();
 const busy = {}; // 월요일 → AI가 쓰는 중
 const visible = () => curTab === 'weekly' && box && box.isConnected && !box.closest('[hidden]');
 

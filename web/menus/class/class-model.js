@@ -103,6 +103,18 @@ export function normWeekly(v) {
   return { title: str(w.title), cells, notes };
 }
 export const getWeekly = monday => normWeekly(get('class:weekly:' + monday, null));
+/* 한 번만: 지난 버전은 손대지 않은 학사일정 칸을 ''로 저장했음 → 「자동」(null)으로 */
+export function migrateWeeklyEvents() {
+  if (get('mig:weeklyEvents', null)) return;
+  for (const k of list('class:weekly:')) {
+    const v = get(k, null);
+    if (!isObj(v) || !isObj(v.notes)) continue;
+    const notes = {};
+    for (const [d, n] of Object.entries(v.notes)) notes[d] = isObj(n) && n.events === '' ? { ...n, events: null } : n;
+    set(k, { ...v, notes });
+  }
+  set('mig:weeklyEvents', 1);
+}
 export const saveWeekly = (monday, w) => set('class:weekly:' + monday, normWeekly(w));
 export const clearWeekly = monday => remove('class:weekly:' + monday);
 

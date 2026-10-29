@@ -17,4 +17,8 @@ export async function switchYear(target, data = null) {
   if (r.ok) location.reload();
   return r;
 }
-export const switchError = code => (code === 'ARCHIVE_FAILED' ? '보관하지 못했어요. 지금 자료는 그대로예요' : '새 학년도 자료를 쓰지 못했어요. 지금 자료는 그대로예요');
+export const switchError = code => (code === 'ARCHIVE_FAILED' ? '보관하지 못했어요. 지금 자료는 그대로예요'
+  : code === 'EXISTS' ? '그 학년도 자료가 이미 보관함에 있어요. 학년도 목록에서 그 학년도로 가 주세요'
+  : '학년도 자료를 쓰지 못했어요. 지금 자료는 그대로예요');
+/* 저장소에 닿을 수 없으면 null (브라우저가 사이트 저장소를 막은 경우) */
+export const safeLS = () => { try { return window.localStorage; } catch (e) { return null; } };

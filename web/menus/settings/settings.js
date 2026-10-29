@@ -7,7 +7,7 @@ import { readTable } from '../../core/sheet.js';
 import { parseRoster } from '../../core/roster.js';
 import { saveFile } from '../../core/ui.js';
 import { getYears, snapshot, carryOver, makeBackup, parseBackup } from '../../core/years.js';
-import { switchYear, switchError, getArchive } from '../../core/year-switch.js';
+import { switchYear, switchError, getArchive, safeLS } from '../../core/year-switch.js';
 
 const SSAM = () => window.SSAM || {};
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -27,7 +27,7 @@ let box = null, school = null, msg = '', aiMsg = null; // aiMsg: { ok, text } | 
 let yrList = null; // 보관한 학년도 [{ year, savedAt, size }] (null = 불러오는 중)
 const kb = n => `${Math.max(1, Math.round(n / 1024)).toLocaleString('ko-KR')}KB`;
 const ymd = t => { const d = new Date(t); return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}.`; };
-const curYear = () => getYears(localStorage).current;
+const curYear = () => getYears(safeLS()).current;
 const snapSize = snap => Object.entries(snap).reduce((n, [k, v]) => n + k.length + String(v).length, 0);
 
 function page(title, desc, body) {
@@ -86,7 +86,7 @@ const VIEWS = {
       : yrList.filter(x => x.year !== cur).map(x => `<li class="yr-row" data-yr="${x.year}"><b>${x.year}학년도</b><span class="muted">보관됨 · ${ymd(x.savedAt)} · ${kb(x.size)}</span><span class="grow"></span>
           <button class="btn" type="button" data-set="goYear" data-y="${x.year}">이 학년도로 가기</button><button class="btn text" type="button" data-set="delYear" data-y="${x.year}">지우기</button></li>`).join('');
     return page('학년도', '학년도마다 자료를 따로 두고 오갈 수 있어요. AI 키와 화면 테마는 모든 학년도가 같이 써요.',
-      card('지금 학년도', `<p class="set-big">${cur}학년도</p><p class="muted" style="margin:0">자료 ${kb(snapSize(snapshot(localStorage)))}</p>`) +
+      card('지금 학년도', `<p class="set-big">${cur}학년도</p><p class="muted" style="margin:0">자료 ${kb(snapSize(snapshot(safeLS())))}</p>`) +
       card('백업 파일', `<p class="muted" style="margin:0">지금 학년도와 보관한 학년도 자료를 파일 하나로 저장해요(AI 키는 넣지 않아요). 앱 안의 보관함은 이 컴퓨터에만 있어서, 컴퓨터를 바꾸거나 프로그램을 지우면 사라져요. 백업 파일을 만들어 두세요.</p>
         <div class="row"><button class="btn primary" type="button" data-set="backup">백업 파일 만들기</button><button class="btn" type="button" data-set="restore">백업 파일 불러오기</button></div>
         <input type="file" id="backupFile" accept=".json,application/json" hidden>`) +
@@ -140,7 +140,7 @@ async function makeBackupFile() {
   try {
     const cur = curYear(), archives = {};
     for (const x of await getArchive().list()) if (x.year !== cur) archives[x.year] = await getArchive().get(x.year);
-    const b = makeBackup({ current: cur, snap: snapshot(localStorage), archives });
+    const b = makeBackup({ current: cur, snap: snapshot(safeLS()), archives });
     const d = new Date(), pad = n => String(n).padStart(2, '0');
     const name = `쌤비서 백업 ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.json`;
     const where = await saveFile(name, new TextEncoder().encode(JSON.stringify(b)), 'application/json');
@@ -152,19 +152,22 @@ async function go(target, data) {
   const r = await switchYear(target, data);
   if (!r.ok) toast(switchError(r.code), 7000);
 }
-function askNewYear() {
+async function askNewYear() {
   const cur = curYear(), next = cur + 1;
-  if ((yrList || []).some(x => x.year === next)) {
+  // 목록을 아직 못 불러왔어도 보관함을 직접 봄 (보관한 그 학년도를 새로 시작해 덮어쓰지 않게)
+  let exists = (yrList || []).some(x => x.year === next);
+  if (!exists) { try { exists = !!(await getArchive().get(next)); } catch (e) {} }
+  if (exists) {
     SSAM().openSheet(`<h3>${next}학년도 자료가 이미 있어요</h3><p class="muted" style="margin:0">보관함에 있는 ${next}학년도로 가요. 지금(${cur}학년도) 자료는 보관함에 남아요.</p>${sheetBtns('yrGoOk', '그 학년도로 가기')}`,
       onOk('yrGoOk', () => { SSAM().closeSheet(); go(next); }));
     return;
   }
   SSAM().openSheet(`<h3>${next}학년도를 시작할까요?</h3>
     <p class="muted" style="margin:0">${cur}학년도 자료는 보관함에 그대로 남고, 언제든 돌아올 수 있어요. 백업 파일도 만들어 두면 좋아요.</p>
-    <ul class="yr-sum"><li><b>가져가는 것</b> 연간계획·행사계획(내년 계획의 작년 자료로), 학사일정 중 ${next}학년도(3월 1일부터) 날짜, 학교명·학급 수·학생 수</li>
-      <li><b>비우는 것</b> 학급 명단, 평가 자료(평어·창체·행특·채점), 학급 메뉴(시간표·진도표·체크·주간학습안내), 작성 중인 품의</li></ul>
+    <ul class="yr-sum"><li><b>가져가는 것</b> 연간계획·행사계획(내년 계획의 작년 자료로), 학사일정 중 ${next}학년도(3월 1일부터) 날짜, 학교명·학급 수·학생 수, 평어·행특·채점·나이스 입력 설정, 품의 기준 금액</li>
+      <li><b>비우는 것</b> 학급 명단, 평가 자료(평가계획·평어·창체·행특·채점 결과), 학급 메뉴(시간표·진도표·체크·주간학습안내), 작성 중인 품의</li></ul>
     ${sheetBtns('yrNewOk', `${next}학년도 시작하기`, '<button class="btn" type="button" data-sheet="backup">백업 파일 만들기</button>')}`,
-  onOk('yrNewOk', () => { SSAM().closeSheet(); go(next, carryOver(snapshot(localStorage), next)); }));
+  onOk('yrNewOk', () => { SSAM().closeSheet(); go(next, carryOver(snapshot(safeLS()), next)); }));
 }
 function askGo(y) {
   SSAM().openSheet(`<h3>${y}학년도로 갈까요?</h3><p class="muted" style="margin:0">지금(${curYear()}학년도) 자료는 보관함에 남아요. 앱을 다시 열어요.</p>${sheetBtns('yrGoOk', `${y}학년도로 가기`)}`,
@@ -183,11 +186,13 @@ async function restoreFile(file) {
   let r;
   try { r = parseBackup(await file.text()); } catch (e) { toast('쌤비서 백업 파일이 아니에요', 6000); return; }
   const cur = curYear(), years = Object.keys(r.years).map(Number).sort((a, b) => b - a);
+  // 지금 학년도에 자료가 있으면 미리 체크하지 않음 (더 새로운 지금 자료를 실수로 덮어쓰지 않게)
+  const liveEmpty = !Object.keys(snapshot(safeLS())).length;
   if (!years.length) { toast('백업 파일에 학년도 자료가 없어요', 5000); return; }
   SSAM().openSheet(`<h3>백업 파일에서 불러올 학년도</h3>
     <p class="muted" style="margin:0">「${esc(file.name)}」</p>
-    <ul class="yr-pick">${years.map(y => `<li><label><input type="checkbox" data-ry="${y}" checked> <b>${y}학년도</b>
-      <span class="muted">${y === cur ? '지금 자료를 파일 내용으로 바꿔요' : (yrList || []).some(x => x.year === y) ? '보관함의 자료를 바꿔요' : '보관함에 넣어요'}</span></label></li>`).join('')}</ul>
+    <ul class="yr-pick">${years.map(y => `<li><label><input type="checkbox" data-ry="${y}"${y !== cur || liveEmpty ? ' checked' : ''}> <b>${y}학년도</b>
+      <span class="muted">${y === cur ? '지금 자료를 파일 내용으로 바꿔요 — 파일보다 새로 쓴 자료는 사라져요' : (yrList || []).some(x => x.year === y) ? '보관함의 자료를 바꿔요' : '보관함에 넣어요'}</span></label></li>`).join('')}</ul>
     ${sheetBtns('yrRestoreOk', '불러오기')}`,
   onOk('yrRestoreOk', async () => {
     const pick = [...document.querySelectorAll('#sheetRoot [data-ry]')].filter(c => c.checked).map(c => +c.dataset.ry);
