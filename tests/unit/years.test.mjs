@@ -173,3 +173,8 @@ test('다듬기: 보관함을 읽지 못하면 ARCHIVE_READ, 응답이 없으면
   assert.deepEqual(await moveTo(2027, { ls, archive: hang, unfreeze: () => un++, data: {}, today: '2026-10-29', timeout: 50 }), { ok: false, code: 'ARCHIVE_FAILED' });
   assert.equal(un, 2); assert.deepEqual(ls.dump(), before);
 });
+
+test('마지막 백업 시각(backupAt)은 학년도마다 따로가 아니라 모든 학년도가 같이 씀', async () => {
+  const { isYearKey } = await import('../../web/core/years.js');
+  assert.equal(isYearKey('backupAt'), false);
+});

@@ -74,3 +74,13 @@ test('미뤄 둔 저장: flushAll이 등록한 함수를 모두 부르고, 뺀 �
   store.flushAll();
   assert.deepEqual(seen, ['b']);
 });
+
+test('저장 공간 사용량: 이 사이트의 모든 키·값 글자 수를 약 5MB(5,242,880자)와 견줌', () => {
+  const m = new Map([['ssam:a', 'x'.repeat(1000)], ['other', 'y'.repeat(2000)]]);
+  const s = { getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, v), removeItem: k => m.delete(k), key: i => [...m.keys()][i] ?? null, get length() { return m.size; } };
+  const u = store.usage(s);
+  assert.equal(u.used, 'ssam:a'.length + 1000 + 'other'.length + 2000);
+  assert.equal(u.limit, 5242880);
+  assert.ok(Math.abs(u.ratio - u.used / 5242880) < 1e-9);
+  assert.deepEqual(store.usage(null), { used: 0, limit: 5242880, ratio: 0 });
+});

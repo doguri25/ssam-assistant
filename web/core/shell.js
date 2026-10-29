@@ -3,7 +3,7 @@
 import { icon } from './icons.js';
 import { renderPlaceholder } from '../menus/placeholder.js';
 import { ensureYears } from './years.js';
-import { freeze, onFail, FULL_MSG, flushAll } from './store.js';
+import { freeze, onFail, FULL_MSG, flushAll, usage } from './store.js';
 
 export const MENUS = [
   { id: 'evaluate', label: '평가', tabs: [['pyeongeo', '교과 평어'], ['cc', '창의적 체험활동'], ['hk', '행동특성'], ['gr', '평가지 채점'], ['unit', '단원평가']] },
@@ -127,6 +127,12 @@ function init() {
     freeze(); if (SSAM().freeze) SSAM().freeze(true);
     location.reload();
   });
+  // 저장 공간이 70%를 넘으면 열 때 한 번 알림 (처음 뜨는 다른 알림에 덮이지 않게 조금 뒤에)
+  setTimeout(() => {
+    let r = 0;
+    try { r = usage(window.localStorage).ratio; } catch (e) {}
+    if (r >= 0.7 && SSAM().toast) SSAM().toast(`저장 공간이 ${Math.round(r * 100)}% 찼어요. 설정 › 학년도에서 백업 파일을 만든 뒤 쓰지 않는 자료를 지워 주세요.`, 9000);
+  }, 1200);
   // 창을 닫거나 다른 창으로 가면 미뤄 둔 저장을 바로 씀
   window.addEventListener('pagehide', flushAll);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAll(); });

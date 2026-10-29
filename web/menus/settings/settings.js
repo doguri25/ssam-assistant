@@ -8,7 +8,7 @@ import { parseRoster } from '../../core/roster.js';
 import { saveFile } from '../../core/ui.js';
 import { getYears, snapshot, carryOver, makeBackup, parseBackup } from '../../core/years.js';
 import { switchYear, switchError, getArchive, safeLS } from '../../core/year-switch.js';
-import { FULL_MSG } from '../../core/store.js';
+import { FULL_MSG, usage, get as sget, set as sset } from '../../core/store.js';
 
 const SSAM = () => window.SSAM || {};
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -88,8 +88,9 @@ const VIEWS = {
       : yrList.filter(x => x.year !== cur).map(x => `<li class="yr-row" data-yr="${x.year}"><b>${x.year}학년도</b><span class="muted">보관됨 · ${ymd(x.savedAt)} · ${kb(x.size)}</span><span class="grow"></span>
           <button class="btn" type="button" data-set="goYear" data-y="${x.year}">이 학년도로 가기</button><button class="btn text" type="button" data-set="delYear" data-y="${x.year}">지우기</button></li>`).join('');
     return page('학년도', '학년도마다 자료를 따로 두고 오갈 수 있어요. AI 키와 화면 테마는 모든 학년도가 같이 써요.',
-      card('지금 학년도', `<p class="set-big">${cur}학년도</p><p class="muted" style="margin:0">자료 ${kb(snapSize(snapshot(safeLS())))}</p>`) +
+      card('지금 학년도', `<p class="set-big">${cur}학년도</p><p class="muted" style="margin:0">자료 ${kb(snapSize(snapshot(safeLS())))} · ${usageLine()}</p>${usageWarn()}`) +
       card('백업 파일', `<p class="muted" style="margin:0">지금 학년도와 보관한 학년도 자료를 파일 하나로 저장해요(AI 키는 넣지 않아요). 앱 안의 보관함은 이 컴퓨터에만 있어서, 컴퓨터를 바꾸거나 프로그램을 지우면 사라져요. 백업 파일을 만들어 두세요.</p>
+        <p class="muted" style="margin:0">${backupLine()}</p>
         <div class="row"><button class="btn primary" type="button" data-set="backup">백업 파일 만들기</button><button class="btn" type="button" data-set="restore">백업 파일 불러오기</button></div>
         <input type="file" id="backupFile" accept=".json,application/json" hidden>`) +
       card('학년도 목록', `<ul class="yr-list"><li class="yr-row" data-yr="${cur}"><b>${cur}학년도</b><span class="muted">지금</span></li>${rows}</ul>`) +
@@ -128,7 +129,20 @@ async function testAi() {
 }
 
 /* ---------- 학년도 ---------- */
+/* 이 컴퓨터 저장 공간(사이트마다 약 5MB) 사용량, 70%가 넘으면 경고 */
+const usagePct = () => Math.round(usage(safeLS()).ratio * 100);
+const usageLine = () => `이 컴퓨터 저장 공간 ${usagePct()}% 사용 (약 5MB 중)`;
+const usageWarn = () => (usagePct() >= 70 ? '<p class="banner warn" style="margin:8px 0 0">저장 공간이 70% 넘게 찼어요. 백업 파일을 만든 뒤 지난 학년도·단원평가·평가지 채점 기록처럼 쓰지 않는 자료를 지워 주세요.</p>' : '');
+function backupLine() {
+  const at = sget('backupAt', 0);
+  if (!at) return '아직 백업 파일을 만들지 않았어요.';
+  const days = Math.floor((Date.now() - at) / 864e5);
+  return `마지막 백업: ${days < 1 ? '오늘' : `${days}일 전`}${days > 30 ? ' · 한 달이 넘었어요. 새로 만들어 두세요.' : ''}`;
+}
+let persistAsked = false;
 function loadYears() {
+  // 브라우저가 공간이 모자랄 때 보관함(이 사이트 자료)을 먼저 지우지 않게 요청 (학년도 화면을 처음 열 때 한 번)
+  if (!persistAsked) { persistAsked = true; try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) {} }
   yrList = null;
   getArchive().list().then(l => { yrList = l; }, () => { yrList = []; toast('보관함을 열지 못했어요', 5000); })
     .then(() => { if (curTab === 'years') again(); });
@@ -151,6 +165,8 @@ async function makeBackupFile() {
     const d = new Date(), pad = n => String(n).padStart(2, '0');
     const name = `쌤비서 백업 ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.json`;
     const where = await saveFile(name, new TextEncoder().encode(JSON.stringify(b)), 'application/json');
+    sset('backupAt', Date.now());
+    if (curTab === 'years') again();
     toast(partial ? '보관함을 열지 못해 지금 학년도만 백업했어요' : window.__TAURI__ ? `다운로드 폴더에 저장했어요: ${String(where).split(/[\\/]/).pop()}` : '백업 파일을 내려받았어요', partial ? 6000 : undefined);
   } catch (e) { toast('백업 파일을 만들지 못했어요', 5000); }
 }

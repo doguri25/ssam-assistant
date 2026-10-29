@@ -3,6 +3,10 @@ import { open, run, assert } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
+await page.addInitScript(() => {
+  window.__persist = 0;
+  if (navigator.storage) navigator.storage.persist = async () => { window.__persist++; return true; };
+});
 await page.goto(url);
 await page.waitForTimeout(300);
 await page.evaluate(() => localStorage.setItem('ssam:hk', JSON.stringify({ settings: {}, students: [{ id: 'a', no: 1, label: '', memo: '', done: 0, results: [] }] })));
@@ -66,6 +70,27 @@ await run('storage-full', [
     await page.waitForTimeout(900);
     await ok();
     assert((await toast()).includes('저장 공간'), '두 번째: ' + await toast());
+  }],
+  ['설정 › 학년도: 저장 공간 사용량과 마지막 백업(백업하면 「오늘」), 브라우저에 자료를 지우지 말라고 요청', async () => {
+    await page.click('nav.app-side [data-menu-go="settings"]'); await page.click('#menuTabs [data-tab="years"]');
+    await page.waitForSelector(`${S} [data-set="backup"]`);
+    assert(await page.evaluate(() => window.__persist) >= 1, 'persist를 부르지 않음');
+    let txt = await page.textContent(S);
+    assert(/저장 공간 \d+% 사용/.test(txt) && txt.includes('아직 백업 파일을 만들지 않았어요'), txt.slice(0, 300));
+    await Promise.all([page.waitForEvent('download'), page.click(`${S} [data-set="backup"]`)]);
+    await page.waitForTimeout(200);
+    txt = await page.textContent(S);
+    assert(txt.includes('마지막 백업: 오늘'), txt.slice(0, 300));
+  }],
+  ['저장 공간이 70%를 넘으면 설정에 경고, 앱을 열 때도 한 번 알림', async () => {
+    await page.evaluate(() => localStorage.setItem('zz-test-junk', 'x'.repeat(3900000)));
+    await page.reload(); await page.waitForTimeout(1600);
+    assert((await toast()).includes('저장 공간이') && (await toast()).includes('%'), '열 때 알림: ' + await toast());
+    await page.click('nav.app-side [data-menu-go="settings"]'); await page.click('#menuTabs [data-tab="years"]');
+    await page.waitForSelector(`${S} [data-set="backup"]`);
+    const txt = await page.textContent(S);
+    await page.evaluate(() => localStorage.removeItem('zz-test-junk'));
+    assert(txt.includes('저장 공간이 70% 넘게 찼어요'), txt.slice(0, 300));
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

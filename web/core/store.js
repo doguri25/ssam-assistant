@@ -39,6 +39,14 @@ export function remove(key) {
   try { if (storage) storage.removeItem(PREFIX + key); } catch (e) {}
 }
 
+/* 이 사이트 저장소를 얼마나 썼는지 (브라우저는 사이트마다 약 5MB = 글자 5,242,880개까지). 같은 주소의 다른 페이지가 쓴 것도 셈 */
+export const LIMIT = 5242880;
+export function usage(s = storage) {
+  let used = 0;
+  try { if (s) for (let i = 0; i < s.length; i++) { const k = s.key(i); used += k.length + String(s.getItem(k) || '').length; } } catch (e) {}
+  return { used, limit: LIMIT, ratio: used / LIMIT };
+}
+
 /* 접두어로 시작하는 키 목록 ('ssam:'은 뺀 이름) */
 export function list(prefix = '') {
   const out = [];
