@@ -66,13 +66,17 @@ function unitTitles(topics, n) {
 }
 
 /* 단원이 이어지는 줄마다 「k/n」 (진도표의 차시 칸) */
+/* 단원 안 차시 번호 「n/전체」. ◈ 행사 줄은 실제 진도표처럼 「1/1」이고 단원을 끊지 않음 */
 function numbered(lessons) {
-  let a = 0;
-  return lessons.map((l, i) => {
-    if (i && l.unit !== lessons[i - 1].unit) a = i;
-    let b = i; while (b + 1 < lessons.length && lessons[b + 1].unit === l.unit) b++;
-    return { ...l, no: `${i - a + 1}/${b - a + 1}` };
-  });
+  const ev = l => /^◈/.test(l.unit);
+  const out = lessons.map(l => ({ ...l, no: ev(l) ? '1/1' : '' }));
+  const idx = lessons.map((l, i) => i).filter(i => !ev(lessons[i]));
+  for (let k = 0; k < idx.length;) {
+    let e = k; while (e + 1 < idx.length && lessons[idx[e + 1]].unit === lessons[idx[k]].unit) e++;
+    for (let j = k; j <= e; j++) out[idx[j]].no = `${j - k + 1}/${e - k + 1}`;
+    k = e + 1;
+  }
+  return out;
 }
 
 function buildSubject(name, START) {

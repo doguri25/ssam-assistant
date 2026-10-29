@@ -8,7 +8,7 @@ import { getSchool } from '../../core/settings.js';
 import { normName, periodStart, schoolYearOf, parseJindo, parseTimetable } from './class-import.js';
 import {
   getInfo, setInfo, getTimetable, setTimetable, listSubjects, saveSubject, removeSubject, setSubjects, resetRecords,
-  makeCtx, progressOf, setNext, alignToPlan, today, normLessons, normTimetableAI
+  makeCtx, progressOf, setNext, alignToPlan, today, normLessons, normTimetableAI, hasTimetable
 } from './class-model.js';
 import { sampleData } from './class-sample.js';
 
@@ -239,7 +239,7 @@ async function runLessonAi(token, name, text, msg, btn) {
 }
 
 /* ---------- 예시·지우기 ---------- */
-const hasData = () => listSubjects().length > 0 || getTimetable().cells.some(d => d.some(Boolean));
+const hasData = () => listSubjects().length > 0 || hasTimetable(getTimetable());
 function applySample() {
   const d = sampleData(today(), getSchool().breaks);
   const ok = setInfo(d.info) && setTimetable(d.timetable) && setSubjects(d.subjects);

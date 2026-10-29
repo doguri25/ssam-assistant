@@ -6,8 +6,7 @@ import { toast, copyText, saveFile } from '../../core/ui.js';
 import { makeHwpx } from '../../core/hwpx.js';
 import { listEvents, addDays } from '../../core/calendar.js';
 import {
-  makeCtx, getInfo, getWeekly, saveWeekly, weekView, defaultWeek, weeklyTitle, weekCell, weeklyDoc, weekPeriods, normNotes, NOTE_ROWS, fmtDay, today, migrateWeeklyEvents
-} from './class-model.js';
+  makeCtx, getInfo, getWeekly, saveWeekly, weekView, defaultWeek, weeklyTitle, weekCell, weeklyDoc, weekPeriods, normNotes, NOTE_ROWS, fmtDay, today, migrateWeeklyEvents, hasTimetable } from './class-model.js';
 import { askSample } from './setup.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -36,7 +35,7 @@ function render() {
   if (!box) return;
   const ctx = makeCtx();
   const head = '<div class="m-head"><h2>주간학습안내</h2><p class="muted">진도표대로 이어지는 다음 주 학습 내용과 요일별 알림을 한 장으로 만들어요. 칸은 모두 고칠 수 있어요.</p></div>';
-  if (!ctx.tt.cells.some(d => d.some(Boolean))) {
+  if (!hasTimetable(ctx.tt)) {
     box.innerHTML = `<div class="m-page cls-page">${head}<div class="yp-card"><p style="margin:0">먼저 진도표·시수 › 준비에서 시간표를 넣어 주세요.</p>
       <div class="row"><button class="btn primary" type="button" data-w="setup">준비로 가기</button><button class="btn" type="button" data-w="sample">예시로 채우기</button></div></div></div>`;
     return;

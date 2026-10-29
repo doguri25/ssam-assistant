@@ -2,7 +2,7 @@
 import { onEnter, go } from '../../core/shell.js';
 import { toast } from '../../core/ui.js';
 import { listEvents, addDays, isDate } from '../../core/calendar.js';
-import { makeCtx, dayView, setMark, missingDays, fmtDay, fmtShort, today, unitPos } from './class-model.js';
+import { makeCtx, dayView, setMark, missingDays, fmtDay, fmtShort, today, unitPos, hasTimetable } from './class-model.js';
 import { askSample } from './setup.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -41,7 +41,7 @@ function render() {
   if (!box) return;
   const ctx = makeCtx();
   const head = '<div class="m-head"><h2>오늘 수업</h2><p class="muted">교시마다 수업한 만큼 체크하면 시수와 진도가 저절로 계산돼요.</p></div>';
-  if (!ctx.tt.cells.some(d => d.some(Boolean))) {
+  if (!hasTimetable(ctx.tt)) {
     box.innerHTML = `<div class="m-page cls-page">${head}<div class="yp-card"><p style="margin:0">먼저 진도표·시수 › 준비에서 시간표를 넣어 주세요.</p>
       <div class="row"><button class="btn primary" type="button" data-t="setup">준비로 가기</button><button class="btn" type="button" data-t="sample">예시로 채우기</button></div></div></div>`;
     return;

@@ -352,3 +352,24 @@ test('검토 고침: 지난 버전 주간학습안내의 빈 학사일정 칸은
   migrateWeeklyEvents();
   assert.equal(getWeekly('2026-11-02').notes[2].events, '');
 });
+
+test('다듬기: 숨긴 교시(7교시)에만 있는 교과는 「시간표에 없어요」', () => {
+  const sub = { id: 's', name: '영어', start: '2026-08-24', offset: 0, lessons: [{ week: null, period: '', from: '', unit: '', title: 'a', no: '', pages: '', memo: '' }] };
+  const cells = Array.from({ length: 5 }, () => Array(7).fill(''));
+  cells[0][6] = '영어';
+  const c = { tt: { periods: 6, cells }, subjects: [sub], log: {}, breaks: [], today: '2026-09-02' };
+  assert.equal(progressOf(c, sub).inTimetable, false);
+  assert.equal(progressOf({ ...c, tt: { periods: 7, cells } }, sub).inTimetable, true);
+});
+
+test('다듬기: 예시 진도표의 ◈ 행사 줄은 단원 차시 번호를 끊지 않음', () => {
+  const ko = sampleData('2026-10-29').subjects.find(s => s.name === '국어');
+  const k = ko.lessons.findIndex(l => l.unit.startsWith('◈'));
+  assert.ok(k > 0);
+  const before = ko.lessons[k - 1], after = ko.lessons[k + 1];
+  if (after && after.unit === before.unit) {
+    const [n1, of1] = before.no.split('/').map(Number), [n2, of2] = after.no.split('/').map(Number);
+    assert.equal(n2, n1 + 1); assert.equal(of1, of2);
+  }
+  assert.equal(ko.lessons[k].no, '1/1');
+});

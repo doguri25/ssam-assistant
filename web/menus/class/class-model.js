@@ -208,6 +208,9 @@ export function unitPos(sub, i) {
   return { n: i - a + 1, of: b - a + 1 };
 }
 
+/* 보이는 교시(periods) 안에 수업이 하나라도 있으면 시간표가 있는 것 (숨긴 교시의 글은 세지 않음) */
+export const hasTimetable = tt => !!(tt && tt.cells.some(d => d.slice(0, tt.periods || d.length).some(Boolean)));
+
 /* 시수(스펙 3.5) */
 export function hours(ctx, sub) {
   const plan = sub.lessons.length;
@@ -259,7 +262,7 @@ export function progressOf(ctx, sub) {
     if (started) expected = slotsSoFar(ctx, sub, st);
   }
   expected = Math.min(plan, expected);
-  const inTimetable = ctx.tt.cells.some(row => row.some(c => c && isOf(ctx, c, sub)));
+  const inTimetable = ctx.tt.cells.some(row => row.slice(0, ctx.tt.periods || row.length).some(c => c && isOf(ctx, c, sub)));
   return { sub, ...h, actual, expected, diff: actual - expected, next: Math.min(actual + 1, plan + 1), mode, started, inTimetable };
 }
 export const summary = ctx => ctx.subjects.map(s => progressOf(ctx, s));
