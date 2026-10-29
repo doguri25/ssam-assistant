@@ -1,12 +1,28 @@
 // 계획 › 학급운영계획: 1 자료 넣기 → 2 목차 → 3 초안 → 4 첨부·내보내기
 import { join } from 'node:path';
-import { open, run, assert, FIXTURES } from './helpers.mjs';
+import { open, run, assert, mockClaude, FIXTURES } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
 await page.clock.setFixedTime(new Date('2026-10-29T09:00:00'));
 await page.addInitScript(() => {
   if (!localStorage.getItem('ssam:engine')) localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true }));
+});
+const prompts = [];
+let slow = 0;
+await mockClaude(page, async ({ prompt }) => {
+  prompts.push(prompt);
+  if (slow) await new Promise(r => setTimeout(r, slow));
+  if (prompt.startsWith('[학급운영계획 지침]')) {
+    const id = (/^(\S+): 교과 평가 계획$/m.exec(prompt) || /^(\S+): /m.exec(prompt.split('계획서 칸')[1]))[1];
+    return JSON.stringify([{ item: '기초학력 진단', keywords: ['기초학력', '진단'], sentence: '3월에 기초학력 진단을 실시한다.', section: id }]);
+  }
+  if (prompt.startsWith('[학급운영계획 초안]')) {
+    const secs = [...prompt.matchAll(/^ {2}- \[(\S+)\] ([^(\n]+)/gm)].map(m => [m[1], m[2].trim()]);
+    return JSON.stringify({ sections: Object.fromEntries(secs.map(([id, t]) => [id, `${t}을(를) 올해 학급에 맞게 운영한다.`])), monthly: [{ month: 3, text: '학급 세우기' }, { month: 4, text: '학부모 상담' }] });
+  }
+  if (prompt.startsWith('[평가계획 읽기]')) return JSON.stringify({ rows: [{ subject: '국어', unit: '읽기', standard: '[4국02-01] 중심 생각 찾기', method: '서술형', when: '4월' }, { subject: '수학', unit: '곱셈', standard: '[4수01-03]', method: '지필', when: '5월' }] });
+  return '{}';
 });
 const V = 'section[data-menu="plan"] .cp-box';
 const go = async () => { await page.click('nav.app-side [data-menu-go="plan"]'); await page.click('#menuTabs [data-tab="class"]'); };
@@ -63,6 +79,68 @@ await run('class-plan', [
     const n = await page.locator(`${V} #cpOutline li`).count();
     const std = await page.evaluate(async () => (await import('./menus/plan/classplan-model.js')).STANDARD.length);
     assert(n === std, `${n} / ${std}`);
+  }],
+  ['3단계 초안: 지침이 있으면 지침 항목 → 초안 차례로 부르고, 칸마다 글', async () => {
+    const A = await page.evaluate(async () => (await import('./menus/plan/classplan-model.js')).listPlans().find(p => p.sourceNames.lastPlan.length).id);
+    await page.click(`${V} [data-cp="${A}"]`);
+    await page.click(`${V} ol.steps [data-step="1"]`);
+    await page.fill(`${V} textarea[data-src="guide"]`, '기초학력 진단을 3월에 실시한다.');
+    await page.click(`${V} [data-c="next"]`); await page.click(`${V} [data-c="next"]`);
+    const n0 = prompts.length;
+    await page.click(`${V} [data-c="draft"]`);
+    await page.waitForSelector(`${V} textarea[data-sec]`, { timeout: 8000 });
+    const ps = prompts.slice(n0);
+    assert(ps.length === 2 && ps[0].startsWith('[학급운영계획 지침]') && ps[1].startsWith('[학급운영계획 초안]'), ps.map(x => x.slice(0, 12)).join(','));
+    assert(ps[1].includes('남 13명, 여 12명') && ps[1].includes('3월에 기초학력 진단을 실시한다.') && !ps[1].includes('김가람'), ps[1].slice(0, 300));
+    const leaves = await page.evaluate(async () => { const m = await import('./menus/plan/classplan-model.js'); return m.leaves(m.getPlan(m.currentId()).outline).length; });
+    assert(await page.locator(`${V} textarea[data-sec]`).count() === leaves, '칸 수');
+    assert((await page.textContent(`${V} #cpOverlap`)).includes('%'), '겹침');
+  }],
+  ['지침 점검: 빠짐 → [넣기]로 그 칸에 넣으면 반영됨', async () => {
+    assert((await page.textContent(`${V} #cpGuide`)).includes('빠짐'), await page.textContent(`${V} #cpGuide`));
+    await page.click(`${V} [data-insert="0"]`);
+    assert((await page.textContent(`${V} #cpGuide`)).includes('반영됨'), '반영됨');
+    const p = await cur();
+    assert(Object.values(p.draft).some(t => t.includes('3월에 기초학력 진단을 실시한다.')), '초안에 없음');
+  }],
+  ['칸을 고치면 저장, 월별 칸을 더하면 월별 표가 나오고 고침', async () => {
+    await page.click(`${V} ol.steps [data-step="2"]`);
+    await page.click(`${V} [data-c="oAdd"]`);
+    const add = page.locator(`${V} #cpOutline li`).last().locator('input[data-ot]');
+    await add.fill('월별 운영 계획'); await add.dispatchEvent('change');
+    assert((await page.locator(`${V} #cpOutline li`).last().textContent()).includes('월별 표'), '월별 표 표시');
+    await page.click(`${V} ol.steps [data-step="3"]`);
+    const ta = page.locator(`${V} textarea[data-sec]`).first();
+    await ta.fill('고친 학급 실태 글이다.');
+    const m = page.locator(`${V} input[data-mon="0"]`);
+    await m.fill('학급 세우기와 규칙 정하기');
+    await page.waitForTimeout(600);
+    const p = await cur();
+    assert(Object.values(p.draft).includes('고친 학급 실태 글이다.') && p.monthly[0].text === '학급 세우기와 규칙 정하기', JSON.stringify(p.monthly));
+  }],
+  ['초안을 쓰는 동안 다른 계획으로 가도 결과는 시작한 계획에', async () => {
+    const A = (await cur()).id;
+    const B = await page.evaluate(async a => (await import('./menus/plan/classplan-model.js')).listPlans().find(p => p.id !== a).id, A);
+    slow = 1200;
+    await page.click(`${V} [data-c="draft"]`);
+    await page.click(`${V} [data-cp="${B}"]`);
+    await page.waitForTimeout(1800); slow = 0;
+    const r = await page.evaluate(async ([a, b]) => { const m = await import('./menus/plan/classplan-model.js'); return [m.getPlan(a).draft, m.getPlan(b).draft]; }, [A, B]);
+    assert(r[0] && Object.keys(r[0]).length > 0 && !r[1], JSON.stringify(r).slice(0, 200));
+    await page.click(`${V} [data-cp="${A}"]`);
+  }],
+  ['AI를 정하지 않았으면 초안을 부르지 않고 안내', async () => {
+    await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: {}, remember: true })));
+    await page.reload(); await page.waitForTimeout(400); await go();
+    const s3 = page.locator(`${V} ol.steps [data-step="3"]`);
+    if (await s3.count()) await s3.click();
+    const n = prompts.length;
+    await page.click(`${V} [data-c="draft"]`);
+    await page.waitForSelector(`${V} .banner.err`);
+    assert((await page.textContent(`${V} .banner.err`)).includes('AI를 먼저 정해'), await page.textContent(`${V} .banner.err`));
+    assert(prompts.length === n, 'AI를 부름');
+    await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true })));
+    await page.reload(); await page.waitForTimeout(400); await go();
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

@@ -3,11 +3,17 @@
    AI 답은 시작할 때의 계획 id에 저장해서, 그사이 다른 계획·메뉴로 가도 섞이지 않음 */
 import { onFlush } from '../../core/store.js';
 import { onEnter } from '../../core/shell.js';
+import * as ai from '../../core/ai.js';
 import { readText, fileMessage } from '../../core/files.js';
 import { toast } from '../../core/ui.js';
 import { stepsHTML } from '../../core/steps.js';
 import { stripNames } from '../../core/privacy.js';
-import { STANDARD, MAX_SRC, parseOutline, withRoles, newId, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent, planTitle, planText } from './classplan-model.js';
+import {
+  STANDARD, MAX_SRC, parseOutline, withRoles, leaves, sectionBodies, newId, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent,
+  normSections, normMonthly, normGuide, guideStatus, insertSentence, draftText, hoursRows, planTitle, planText
+} from './classplan-model.js';
+import { overlap } from './year-model.js';
+import { guidePrompt, draftPrompt } from './classplan-ai.js';
 
 const STEPS = ['자료 넣기', '목차', '초안', '첨부·내보내기'];
 const SRC = [
@@ -187,8 +193,93 @@ function setOutline(o, note) {
   persist(); renderMain();
 }
 
-/* ---------- 3·4단계 ---------- */
-function step3() { return '<div class="yp-card"><p class="muted">초안 단계는 준비 중이에요.</p></div>'; }
+/* ---------- 3단계: 초안·지침 점검 ---------- */
+const ROMAN = 'ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ';
+function overlapHTML() {
+  const r = plan.draft ? overlap(plan.sources.lastPlan, draftText(plan.draft)) : null;
+  if (!r) return '';
+  const hi = r.percent >= 60;
+  return `<div class="banner ${hi ? 'warn' : 'info'}" id="cpOverlap"><span class="grow"><b>작년 계획과 ${r.percent}% 같아요.</b>${hi ? ' 아래 문장을 올해 우리 반에 맞게 새로 써 주세요.' : ''}
+    ${hi ? `<ul class="yp-same-list">${r.same.slice(0, 12).map(x => `<li class="yp-same">${esc(x)}</li>`).join('')}</ul>` : ''}</span></div>`;
+}
+function guideHTML() {
+  if (!plan.guide || !plan.guide.length) return '';
+  const name = Object.fromEntries(plan.outline.map(x => [x.id, x.title]));
+  const st = guideStatus(plan.guide, plan.draft);
+  return `<div class="yp-card"><h3>올해 지침 점검</h3><p class="muted">빠진 항목은 [넣기]로 그 칸에 더할 수 있어요.</p>
+    <ul class="yp-guide" id="cpGuide">${st.map((g, i) => `<li data-g="${i}" class="${g.included ? 'in' : 'out'}">
+      <div class="yp-guide-h"><b>${esc(g.item)}</b><span class="yp-tag ${g.included ? 'ok' : 'no'}">${g.included ? '반영됨' : '빠짐'}</span></div>
+      ${!g.included && g.sentence ? `<div class="yp-guide-s"><span class="muted cp-guide-sec">「${esc(name[g.section] || '')}」에 넣을 문장: </span>${esc(g.sentence)}
+        <button class="btn tonal" type="button" data-insert="${i}">넣기</button></div>` : ''}</li>`).join('')}</ul></div>`;
+}
+function monthlyHTML() {
+  const m = plan.monthly.length ? plan.monthly : [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2].map(month => ({ month, text: '' }));
+  return `<div class="yp-tbl-wrap"><table class="yp-tbl" id="cpMonthly"><thead><tr><th>월</th><th>주요 활동</th></tr></thead><tbody>${m.map((x, i) => `<tr>
+    <td class="num">${x.month}월</td><td><input class="field" data-mon="${i}" value="${esc(x.text)}" aria-label="${x.month}월 주요 활동"></td></tr>`).join('')}</tbody></table></div>`;
+}
+const HINT = { hours: '4단계에서 첨부한 진도표의 교과별 시수표가 이 칸 뒤에 붙어요.', eval: '4단계에서 첨부한 평가계획의 평가 표가 이 칸 뒤에 붙어요.', monthly: '' };
+function step3() {
+  const b = busy[plan.id];
+  if (b === 'guide' || b === 'draft') return `<div class="yp-card"><p class="muted"><span class="spin"></span> ${b === 'guide' ? '올해 지침에서 꼭 넣을 항목을 찾고 있어요…' : '칸마다 올해 초안을 쓰고 있어요. 다른 메뉴로 가도 계속 써요…'}</p></div>`;
+  const d = plan.draft;
+  if (!d) return `<div class="yp-card"><h3>초안</h3><p class="muted">목차 칸마다 작년 글의 짜임과 문체를 따라 올해 우리 반에 맞게 써요.${plan.sources.guide.trim() ? ' 올해 지침에서 꼭 넣을 항목을 먼저 찾아 함께 넣어요.' : ''} 학생 이름은 보내지 않아요.</p>
+    <div class="row"><button class="btn primary" type="button" data-c="draft">AI로 초안 쓰기</button><button class="btn" type="button" data-c="blank">직접 쓰기</button></div></div>`;
+  const leafIds = new Set(leaves(plan.outline).map(x => x.id));
+  let a = 0, n = 0;
+  const secs = plan.outline.map(x => {
+    if (x.level === 1) { a++; n = 0; }
+    else n++;
+    const head = x.level === 1 ? `${ROMAN[a - 1] || a}. ${x.title}` : `${n}. ${x.title}`;
+    if (!leafIds.has(x.id)) return `<h3 class="cp-sec-l1">${esc(head)}</h3>`;
+    return `<section class="yp-sec cp-sec"><h4>${esc(head)}</h4>
+      ${x.role === 'monthly' ? monthlyHTML() : `<textarea class="field" data-sec="${esc(x.id)}" rows="4" aria-label="${esc(x.title)}">${esc(d[x.id] || '')}</textarea>`}
+      ${HINT[x.role] ? `<p class="muted">${HINT[x.role]}</p>` : ''}</section>`;
+  }).join('');
+  return `<div id="cpOverlapBox">${overlapHTML()}</div>${guideHTML()}
+    <div class="yp-card" id="cpDraft">${secs}
+      <div class="row"><button class="btn text" type="button" data-c="draft">AI로 다시 쓰기 (고친 내용은 사라져요)</button></div></div>`;
+}
+/* AI 일이 끝나면: 그 계획의 3단계를 보고 있을 때만 다시 그림 */
+function finish(id) {
+  delete busy[id];
+  if (!visible() || plan.id !== id) return;
+  if (plan.step === 3) renderMain();
+  else if (errs[id]) toast(errs[id], 6000);
+}
+async function runDraft() {
+  const id = plan.id;
+  if (busy[id]) return;
+  if (!ai.ready()) { errs[id] = '초안을 쓸 AI를 먼저 정해 주세요. 왼쪽 아래 AI에서 정할 수 있어요.'; renderMain(); return; }
+  if (!saved) persist();
+  delete errs[id];
+  try {
+    if (plan.sources.guide.trim() && !plan.guide) {
+      busy[id] = 'guide'; renderMain();
+      const outline = plan.outline;
+      const v = await ai.generateJSON(guidePrompt(plan), { valid: x => Array.isArray(x) && normGuide(x, outline).length > 0 });
+      apply(id, p => { p.guide = normGuide(v, p.outline); });
+    }
+    const target = getPlan(id);
+    if (!target) return;
+    busy[id] = 'draft'; if (visible() && plan.id === id) renderMain();
+    const prompt = draftPrompt(target, { bodies: sectionBodies(target.sources.lastPlan, target.outline), hours: hoursRows(target.attach), evalCount: target.evalRows.length });
+    const v = await ai.generateJSON(prompt, { valid: x => Object.keys(normSections(x, target.outline)).length > 0 });
+    apply(id, p => {
+      p.draft = normSections(v, p.outline);
+      const m = normMonthly(v);
+      if (m.length) p.monthly = m;
+      if (p.status === 'final') p.status = 'draft';
+    });
+  } catch (e) { errs[id] = ai.errorMessage(e && e.code, e); }
+  finish(id);
+}
+let ovT = null;
+function refreshOverlap() {
+  clearTimeout(ovT);
+  ovT = setTimeout(() => { const b = box && box.querySelector('#cpOverlapBox'); if (b) b.innerHTML = overlapHTML(); }, 250);
+}
+
+/* ---------- 4단계 ---------- */
 function step4() { return '<div class="yp-card"><p class="muted">첨부·내보내기 단계는 준비 중이에요.</p></div>'; }
 
 /* ---------- 단계 옮기기 ---------- */
@@ -227,7 +318,16 @@ document.addEventListener('input', e => {
   } else if (el.dataset.src) {
     if (el.value.length > MAX_SRC) { el.value = cap(el.value); toast('앞 6만 자만 저장해요', 4000); }
     plan.sources[el.dataset.src] = el.value;
+    // 지침을 고치면 지침 항목을 다시 뽑음
+    if (el.dataset.src === 'guide') plan.guide = null;
+  } else if (el.dataset.sec && plan.draft) { plan.draft = { ...plan.draft, [el.dataset.sec]: el.value }; refreshOverlap(); }
+  else if (el.dataset.mon != null) {
+    const m = plan.monthly.length ? plan.monthly : [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2].map(month => ({ month, text: '' }));
+    const x = m[+el.dataset.mon];
+    if (!x) return;
+    x.text = el.value; plan.monthly = m;
   } else return;
+  if (plan.status === 'final' && (el.dataset.sec || el.dataset.mon != null)) plan.status = 'draft';
   persistSoon();
 });
 document.addEventListener('change', e => {
@@ -261,6 +361,12 @@ document.addEventListener('click', e => {
     }
     return;
   }
+  const ins = e.target.closest('[data-insert]');
+  if (ins && plan.guide && plan.draft) {
+    const g = plan.guide[+ins.dataset.insert];
+    if (g) { plan.draft = insertSentence(plan.draft, g.section, g.sentence); if (plan.status === 'final') plan.status = 'draft'; persist(); renderMain(); toast('초안에 넣었어요'); }
+    return;
+  }
   const o = plan.outline, idx = k => +e.target.closest(`[${k}]`).getAttribute(k);
   if (e.target.closest('[data-oup]')) { const i = idx('data-oup'); setOutline(move(o, i, i - 1)); return; }
   if (e.target.closest('[data-odown]')) { const i = idx('data-odown'); setOutline(move(o, i, i + 1)); return; }
@@ -273,6 +379,8 @@ document.addEventListener('click', e => {
   else if (a === 'next') goStep(Math.min(4, plan.step + 1));
   else if (a === 'prev') goStep(Math.max(1, plan.step - 1));
   else if (a === 'importPrev') { showPrev = !showPrev; renderMain(); }
+  else if (a === 'draft') runDraft();
+  else if (a === 'blank') { plan.draft = {}; persist(); renderMain(); }
   else if (a === 'oAdd') { setOutline([...o, { id: newId(), title: '새 칸', level: 2 }]); const ins = box.querySelectorAll('#cpOutline input[data-ot]'); if (ins.length) { ins[ins.length - 1].focus(); ins[ins.length - 1].select(); } }
   else if (a === 'oLast') { const p = parseOutline(plan.sources.lastPlan); if (p.length) setOutline(p, `작년 계획서 목차 그대로예요(${p.length}칸).`); else toast('작년 계획서에서 목차를 찾지 못했어요'); }
   else if (a === 'oStd') setOutline(STANDARD.map(x => ({ ...x })), '표준 목차로 바꿨어요.');
