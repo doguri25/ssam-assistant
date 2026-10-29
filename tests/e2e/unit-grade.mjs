@@ -267,6 +267,17 @@ await run('unit-grade', [
     assert(Array.isArray(b.mask) && b.mask.length === 1, JSON.stringify(b.mask));
     await page.click(`${V} [data-un="back"]`);
   }],
+  ['검토 고침: 문항을 빼고 다시 더해도 그 번호에 지난 채점 칸이 남지 않음', async () => {
+    await page.click(`${V} [data-un-open="${A}"]`);
+    await page.click(`${V} .steps [data-step="1"]`);
+    assert((await T(A)).students.some(s => s.items[10]), '처음부터 10번 칸이 없음');
+    await page.click(`${V} [data-un="delItem"][data-no="10"]`);
+    assert((await T(A)).students.every(s => !s.items[10]), '뺀 문항의 칸이 남음');
+    await page.click(`${V} [data-un="addItem"]`);
+    const a = await T(A);
+    assert(a.key.items.at(-1).no === 10 && a.students.every(s => !s.items[10]), JSON.stringify(a.students.map(s => s.items[10])));
+    await page.click(`${V} [data-un="back"]`);
+  }],
   ['업스테이지면 손글씨 안내', async () => {
     await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'upstage', keys: { upstage: 'up-test' }, remember: true })));
     await page.reload(); await page.waitForTimeout(500);

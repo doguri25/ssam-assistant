@@ -253,7 +253,10 @@ document.addEventListener('click', e => {
     t.key.items.push({ no, content: '', domain: '', type: 'short', answer: '', points: 0, criteria: '', pages: '' });
     commit(t); render();
   } else if (a === 'delItem') {
-    t.key.items = t.key.items.filter(i => i.no !== Number(b.dataset.no));
+    // 그 문항의 채점 칸도 지움 (같은 번호로 다시 더하면 지난 점수가 새 배점을 넘지 않게)
+    const no = Number(b.dataset.no);
+    t.key.items = t.key.items.filter(i => i.no !== no);
+    for (const st of t.students) if (st.items) delete st.items[no];
     commit(t); render();
   } else if (a === 'next') goStep(2);
 });
