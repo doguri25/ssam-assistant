@@ -12,7 +12,8 @@ import { listEvents as listCalendar, setEvents, removeEvents, dayIssues, suggest
 import { summarize, formText } from '../../core/survey.js';
 import { qrPng } from '../../core/qr.js';
 import { readTable } from '../../core/sheet.js';
-import { KINDS, DOCS, newEvent, listEventPlans, getEvent, saveEvent, deleteEvent, currentEventId, setCurrentEvent, normOptions, normRoles, roleLoad, letterMissing, docDoc, confirmBlockers, normItems } from './event-model.js';
+import { listPlans, planText } from './year-model.js';
+import { KINDS, DOCS, REF_KINDS, normRefs, guessKind, refsBlock, normRefNotes, newEvent, listEventPlans, getEvent, saveEvent, deleteEvent, currentEventId, setCurrentEvent, normOptions, normRoles, roleLoad, letterMissing, docDoc, confirmBlockers, normItems } from './event-model.js';
 
 const STEPS = ['행사 정보', '구성안', '문서', '설문·결과'];
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -30,6 +31,7 @@ const cap = t => String(t).slice(0, MAX_SRC);
 let warnedFull = false;
 let curDoc = 'plan'; // 3단계에서 보고 있는 문서
 let showMemos = false; // 1단계 「지난 행사 개선 메모 불러오기」 목록
+let showPlans = false; // 1단계 참고 자료 「연간계획에서 불러오기」 목록
 const qrCache = {}; // 폼 주소 → QR 그림(data URL)
 const TARGETS = [['student', '학생'], ['parent', '학부모'], ['staff', '교직원']];
 const FEW = n => `응답이 적어요(${n}명). 결과를 일반화하기 어려워요.`;
@@ -90,6 +92,7 @@ function render() {
       <section class="yp-main" id="evMain"></section>
     </div>
     <input type="file" id="evFile" accept=".csv,.xlsx,.hwp,.hwpx,.pdf,.txt" hidden>
+    <input type="file" id="evRefFile" accept=".hwp,.hwpx,.pdf,.csv,.xlsx,.txt" multiple hidden>
   </div>`;
   renderList();
   renderMain();
@@ -156,8 +159,60 @@ function step1() {
       ${showMemos ? memosHTML() : ''}
       <p class="muted">있으면 아쉬운 점을 고친 「보완안」도 만들어요. CSV·엑셀·한글 파일이나 붙여넣기.</p>
       <textarea class="field" id="evLast" rows="4" placeholder="작년 설문 결과나 반성 메모" aria-label="작년 설문 결과">${esc(ev.lastSurvey)}</textarea>
-    </div>`;
+    </div>
+    ${refsCard()}`;
 }
+
+/* ---------- 참고 자료(상위 계획·교육청 공문 등) ---------- */
+function refsCard() {
+  return `<div class="yp-card" id="evRefs">
+    <div class="yp-src-h"><h3>참고 자료 <span class="muted">(선택 · 상위 계획, 교육청 공문 등)</span></h3>
+      <span class="row"><button class="btn text" type="button" data-e="refPlan">연간계획에서 불러오기</button><button class="btn text" type="button" data-e="refPaste">붙여넣기</button><button class="btn" type="button" data-e="refFile">파일 넣기</button></span></div>
+    ${showPlans ? plansHTML() : ''}
+    <p class="muted">AI가 구성안과 문서를 만들 때 참고해요. 공문의 날짜·대상·필수 활동·안전 기준 같은 요구 사항을 지키게 해요. 원본 파일은 저장하지 않고 읽은 글만 저장해요.</p>
+    ${ev.refs.length ? `<ul class="ev-refs">${ev.refs.map(r => `<li data-ref="${esc(r.id)}">
+      <select class="field" data-refkind="${esc(r.id)}" aria-label="「${esc(r.name)}」 종류">${REF_KINDS.map(([k, l]) => `<option value="${k}"${r.kind === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
+      <b>${esc(r.name)}</b><span class="muted">${r.text.length.toLocaleString('ko-KR')}자</span><span class="grow"></span>
+      <button class="btn text" type="button" data-e="refView" data-id="${esc(r.id)}">보기·고치기</button><button class="btn text" type="button" data-e="refDel" data-id="${esc(r.id)}">빼기</button></li>`).join('')}</ul>` : '<p class="muted">아직 없어요.</p>'}
+  </div>`;
+}
+function plansHTML() {
+  const list = listPlans();
+  return `<div class="yp-prev" id="evPlans">${list.length ? list.map(p => `<button class="btn" type="button" data-refplan="${esc(p.id)}">${p.year}학년도 ${esc(p.name || '이름 없는 계획')}</button>`).join('')
+    : '<span class="muted">저장한 연간계획이 없어요.</span>'}</div>`;
+}
+const refTotal = x => x.refs.reduce((n, r) => n + r.text.length, 0);
+/* 참고 자료를 그 행사(id)에 더함 — 파일을 읽는 동안 다른 행사로 가도 섞이지 않게 */
+function addRef(id, ref) {
+  const add = x => {
+    const before = refTotal(x) + ref.text.length;
+    x.refs = normRefs([...x.refs, { ...ref, id: 'ref' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }]);
+    if (refTotal(x) < before) toast('참고 자료는 모두 합쳐 6만 자까지만 저장해요', 5000);
+    if (x.status === 'final') { x.status = 'draft'; removeEvents('event:' + x.id); }
+  };
+  if (ev.id === id) { add(ev); persist(); if (visible() && ev.step === 1) renderMain(); }
+  else apply(id, add);
+}
+function refSheet(r) {
+  const S = window.SSAM;
+  if (!S || !S.openSheet) return;
+  S.openSheet(`<h3>${r ? '참고 자료 보기·고치기' : '참고 자료 붙여넣기'}</h3>
+    <div class="row"><select class="field" id="evRefKind" aria-label="종류">${REF_KINDS.map(([k, l]) => `<option value="${k}"${(r ? r.kind : 'official') === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
+      <input class="field" id="evRefName" value="${esc(r ? r.name : '')}" placeholder="이름 (예: 도교육청 체육행사 안내)" aria-label="이름"></div>
+    <textarea class="field" id="evRefText" rows="10" placeholder="공문·계획의 글을 붙여 넣어 주세요" aria-label="글">${esc(r ? r.text : '')}</textarea>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="evRefOk">${r ? '저장' : '넣기'}</button></div>`,
+  sh => sh.querySelector('#evRefOk').addEventListener('click', () => {
+    const kind = sh.querySelector('#evRefKind').value, name = sh.querySelector('#evRefName').value.trim(), text = sh.querySelector('#evRefText').value;
+    if (!text.trim()) { toast('글을 넣어 주세요'); return; }
+    S.closeSheet();
+    if (!r) { addRef(ev.id, { kind, name: name || '붙여 넣은 자료', text }); return; }
+    ev.refs = normRefs(ev.refs.map(x => (x.id === r.id ? { ...x, kind, name: name || x.name, text } : x)));
+    unconfirm(); persist(); renderMain();
+  }));
+}
+const refNotesHTML = list => (list && list.length ? `<div class="banner info ev-refnotes"><span class="grow"><b>참고 자료에서 반영한 것</b><ul>${list.map(x => `<li>${esc(x)}</li>`).join('')}</ul></span></div>` : '');
+const refsPart = e => { const b = refsBlock(e.refs); return b ? `\n참고 자료(상위 계획·교육청 공문 등):\n${b}\n` : ''; };
+const refsRule = e => (e.refs.length ? '- 참고 자료의 요구 사항(날짜·대상·필수 활동·안전 기준·제출할 것 등)을 지키고, 반영한 것을 refNotes에 짧게 씀(3~6개). 참고 자료에 없는 사실은 지어내지 않음\n' : '');
 
 function memosHTML() {
   const list = listEventPlans().filter(x => x.id !== ev.id && x.survey && x.survey.nextMemo.trim())
@@ -182,7 +237,7 @@ function step2() {
     </article>`;
   };
   const p = ev.picked != null ? ev.options[ev.picked] : null;
-  return `<div class="ev-opts">${ev.options.map(card).join('')}</div>
+  return `${refNotesHTML(ev.refNotes.options)}<div class="ev-opts">${ev.options.map(card).join('')}</div>
     ${p ? `<div class="yp-card"><h3>고른 안의 시간표 <span class="muted">(고칠 수 있어요)</span></h3>
       <div class="yp-tbl-wrap"><table class="yp-tbl" id="evTT"><thead><tr><th>시간</th><th>활동</th><th>장소</th><th></th></tr></thead><tbody>${p.timetable.map((t, j) => `<tr>
         <td><input class="field" data-tt="${j}" data-f="time" value="${esc(t.time)}" aria-label="시간"></td>
@@ -218,7 +273,7 @@ function step3() {
       body += `<div id="evLetterBox">${letterBoxHTML(miss)}</div><div class="ev-qr" id="evLetterQr">${letterQrHTML()}</div>`;
     }
   }
-  return `<div class="yp-card">${tabs}${body}
+  return `${refNotesHTML(ev.refNotes.docs)}<div class="yp-card">${tabs}${body}
       <div class="row yp-out"><button class="btn" type="button" data-e="copyDoc">복사</button><button class="btn" type="button" data-e="hwpx">한글 파일로 내려받기</button><span class="grow"></span>
         <button class="btn text" type="button" data-e="docs">다시 만들기 (고친 내용은 사라져요)</button></div></div>
     <div class="yp-card"><h3>품의로 이어 가기</h3><p class="muted">품의 › 새 품의로 넘어가며 행사 정보와 고른 안의 예산 줄을 채워요.</p>
@@ -367,12 +422,14 @@ function docsPrompt(e) {
   return `[행사 문서]\n학교 행사 문서를 써 주세요: 계획서, 역할 분담표, 안전 점검표, 가정통신문${e.outdoor ? ', 우천 시 대체 일정' : ''}.\n\n`
     + `종류: ${kindName(e.kind)}\n행사명: ${e.name}\n목적: ${e.purpose || '(없음)'}\n대상: ${e.grades}\n날짜: ${e.date}\n장소: ${e.place} (${e.outdoor ? '야외' : '실내'})\n예산: ${e.budget || '(정하지 않음)'}\n학교: ${s.name || '(학교명 없음)'}\n`
     + (o ? `\n고른 구성안(${o.label}): ${o.summary}\n시간표:\n${o.timetable.map(t => `- ${t.time} ${t.activity}${t.place ? ' (' + t.place + ')' : ''}`).join('\n')}\n필요 인력: ${o.staffNeed || '-'}\n예산 내역: ${o.budget.map(b => `${b.name} ${b.amount}원`).join(', ') || '-'}\n` : '')
+    + refsPart(e)
     + (e.staff.length ? `\n참여 교직원(이 이름만 쓰세요):\n${e.staff.filter(x => x.name.trim()).map(x => `- ${x.name}${x.duty ? ' (' + x.duty + ')' : ''}`).join('\n')}\n` : '\n참여 교직원 명단이 없어요. 역할 분담표의 name에는 「진행 담당」처럼 역할 이름을 쓰세요.\n')
     + '\n규칙:\n- plan: 학교 계획서 문체(「가.」「1)」 목록), 개요·운영 방침·세부 운영·안전 대책·평가 순\n'
     + '- roles: [{"name":"…","roles":["…"]}] 사람마다 고르게 나눔\n- safety: 「- 」로 시작하는 점검 항목 목록\n'
     + '- letter: 학부모가 읽기 쉬운 말로. 날짜(일시)·준비물·복장·문의처(학교 교무실 전화)를 꼭 넣음\n'
     + (e.outdoor ? '- rain: 비가 오면 어떻게 할지(장소·시간 바꾸기) 두세 줄\n' : '- rain: 빈 글\n')
-    + '- 메모에 없는 사실은 지어내지 않음\n\n답은 JSON 하나만: {"plan":"…","roles":[…],"safety":"…","letter":"…","rain":"…"}';
+    + refsRule(e)
+    + '- 메모에 없는 사실은 지어내지 않음\n\n답은 JSON 하나만: {"plan":"…","roles":[…],"safety":"…","letter":"…","rain":"…"' + (e.refs.length ? ',"refNotes":["…"]' : '') + '}';
 }
 async function runDocs() {
   const id = ev.id;
@@ -383,7 +440,7 @@ async function runDocs() {
   try {
     const v = await ai.generateJSON(docsPrompt(ev), { valid: x => x && !Array.isArray(x) && typeof x === 'object' && (typeof x.letter === 'string' || typeof x.plan === 'string') });
     const t = x => (Array.isArray(x) ? x.filter(y => typeof y === 'string').join('\n') : typeof x === 'string' ? x : '');
-    apply(id, e => { e.docs = { plan: t(v.plan), safety: t(v.safety), letter: t(v.letter), rain: t(v.rain), roles: normRoles(v.roles, e.staff.filter(x => x.name.trim())), done: false }; if (e.status === 'final') e.status = 'draft'; });
+    apply(id, e => { e.docs = { plan: t(v.plan), safety: t(v.safety), letter: t(v.letter), rain: t(v.rain), roles: normRoles(v.roles, e.staff.filter(x => x.name.trim())), done: false }; e.refNotes = { ...e.refNotes, docs: normRefNotes(v.refNotes) }; if (e.status === 'final') e.status = 'draft'; });
   } catch (err) { errs[id] = ai.errorMessage(err && err.code, err); }
   finish(id, 'docs');
 }
@@ -421,11 +478,13 @@ function optionsPrompt(e) {
     + `학교: ${s.name || '(학교명 없음)'}, 학급 ${s.classes || '-'}개, 학생 ${s.students || '-'}명\n`
     + (e.staff.length ? `참여 교직원 ${e.staff.length}명\n` : '')
     + (hasLast ? `\n작년 설문 결과:\n"""\n${e.lastSurvey.slice(0, 8000)}\n"""\n` : '')
+    + refsPart(e)
     + '\n규칙:\n'
     + (hasLast ? '- 첫 안은 label "보완안": 작년 설문의 아쉬운 점을 고친 안. 나머지는 label "새로운 안": 새 활동을 넣은 안\n' : '- 작년 자료가 없으니 보완안은 만들지 마세요. 모두 label "새로운 안"\n')
     + '- summary: 한 줄 소개\n- timetable: 6~12줄, [{"time":"09:00","activity":"…","place":"…"}]\n- pros: 장점 2~3개\n- staffNeed: 필요 인력 한 줄\n'
-    + '- budget: [{"name":"…","amount":0}] (원, 숫자. 예산이 있으면 그 안으로)\n- 안전을 먼저 생각하고, 메모에 없는 사실은 지어내지 않음\n\n'
-    + '답은 JSON 하나만: {"options":[{"label":"…","summary":"…","timetable":[…],"pros":["…"],"staffNeed":"…","budget":[…]}]}';
+    + '- budget: [{"name":"…","amount":0}] (원, 숫자. 예산이 있으면 그 안으로)\n- 안전을 먼저 생각하고, 메모에 없는 사실은 지어내지 않음\n'
+    + refsRule(e) + '\n'
+    + '답은 JSON 하나만: {"options":[{"label":"…","summary":"…","timetable":[…],"pros":["…"],"staffNeed":"…","budget":[…]}]' + (e.refs.length ? ',"refNotes":["…"]' : '') + '}';
 }
 async function runOptions() {
   const id = ev.id;
@@ -435,7 +494,7 @@ async function runOptions() {
   renderMain();
   try {
     const v = await ai.generateJSON(optionsPrompt(ev), { valid: x => x && normOptions(x.options).length > 0 });
-    apply(id, e => { e.options = normOptions(v.options); e.picked = null; });
+    apply(id, e => { e.options = normOptions(v.options); e.picked = null; e.refNotes = { ...e.refNotes, options: normRefNotes(v.refNotes) }; });
   } catch (err) { errs[id] = ai.errorMessage(err && err.code, err); }
   finish(id, 'options');
 }
@@ -513,6 +572,19 @@ document.addEventListener('change', e => {
   } else if (el.id === 'evCsv') {
     const f = el.files[0]; el.value = '';
     if (f) addCsv(f);
+  } else if (el.dataset.refkind) {
+    const r = ev.refs.find(x => x.id === el.dataset.refkind);
+    if (r) { r.kind = el.value; unconfirm(); persist(); }
+  } else if (el.id === 'evRefFile') {
+    const files = [...el.files]; el.value = '';
+    const id = ev.id;
+    if (!saved) persist();
+    (async () => {
+      for (const f of files) {
+        try { addRef(id, { kind: guessKind(f.name), name: f.name, text: await readText(f) }); }
+        catch (err) { toast(fileMessage(err && err.code), 5000); }
+      }
+    })();
   } else if (el.id === 'evFile') {
     const files = [...el.files]; el.value = '';
     // 넣기 시작한 행사(id)에 넣음 — 읽는 동안 다른 행사로 가도 섞이지 않게
@@ -546,6 +618,12 @@ document.addEventListener('click', e => {
   if (sd) { ev.staff.splice(+sd.dataset.staffdel, 1); persist(); renderMain(); return; }
   const tg = e.target.closest('[data-target]');
   if (tg) { survey().target = tg.dataset.target; persist(); renderMain(); return; }
+  const rp = e.target.closest('[data-refplan]');
+  if (rp) {
+    const p = listPlans().find(x => x.id === rp.dataset.refplan);
+    if (p) { showPlans = false; const title = `${p.year}학년도 ${p.name || '연간계획'}`; addRef(ev.id, { kind: 'upper', name: title, text: planText(p) }); }
+    return;
+  }
   const mm = e.target.closest('[data-memo]');
   if (mm) {
     const x = getEvent(mm.dataset.memo);
@@ -570,6 +648,11 @@ document.addEventListener('click', e => {
   else if (a === 'staffAdd') { ev.staff.push({ name: '', duty: '' }); persist(); renderMain(); const r = box.querySelector(`[data-staff="${ev.staff.length - 1}"][data-f="name"]`); if (r) r.focus(); }
   else if (a === 'ttAdd' && picked()) { picked().timetable.push({ time: '', activity: '', place: '' }); persist(); renderMain(); }
   else if (a === 'lastFile') box.querySelector('#evFile').click();
+  else if (a === 'refFile') box.querySelector('#evRefFile').click();
+  else if (a === 'refPaste') refSheet(null);
+  else if (a === 'refPlan') { showPlans = !showPlans; renderMain(); }
+  else if (a === 'refView') { const r = ev.refs.find(x => x.id === b.dataset.id); if (r) refSheet(r); }
+  else if (a === 'refDel') { ev.refs = ev.refs.filter(x => x.id !== b.dataset.id); unconfirm(); persist(); renderMain(); }
   else if (a === 'docs') runDocs();
   else if (a === 'roleAdd') { ev.docs.roles.push({ name: '', roles: [] }); persist(); renderMain(); }
   else if (a === 'letterDone') { if (!letterMissing(ev.docs.letter).length) { ev.docs.done = true; persist(); const lb = box.querySelector('#evLetterBox'); if (lb) lb.innerHTML = letterBoxHTML([]); toast('가정통신문을 완성했어요'); } }
