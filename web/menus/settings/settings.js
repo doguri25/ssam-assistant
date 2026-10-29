@@ -135,4 +135,10 @@ document.addEventListener('click', e => {
   }
 });
 
+// AI 창(평어 쓰는 방식)을 닫으면 설정 › AI의 요약을 다시 그림
+const sheetRoot = document.getElementById('sheetRoot');
+if (sheetRoot) new MutationObserver(() => {
+  if (!sheetRoot.childElementCount && curTab === 'ai' && box && box.isConnected && !box.parentElement.hidden) again();
+}).observe(sheetRoot, { childList: true });
+
 onEnter('settings', render);

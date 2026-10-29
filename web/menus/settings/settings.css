@@ -24,4 +24,4 @@
 .tp-body b{flex:1;border-radius:4px;background:var(--tc);border:1px solid var(--tl)}
 .tp-body b.acc{border-top:3px solid var(--ta)}
 section[data-menu="settings"] .credit{margin-top:8px}
-@media (max-width:760px){ .break-row{grid-template-columns:1fr 1fr} .break-row span{display:none} }
+@media (max-width:760px){ .break-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr)} .break-row span{display:none} .break-row .field{min-width:0} }

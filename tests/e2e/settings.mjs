@@ -24,6 +24,19 @@ await run('settings', [
     assert(await page.isVisible('#engSeg'), 'AI 설정 창이 안 열림');
     await page.click('#sheetRoot [data-close]');
   }],
+  ['AI 창에서 바꾸고 닫으면 설정 › AI도 바로 새 값', async () => {
+    await page.evaluate(() => localStorage.removeItem('ssam:engine'));
+    await page.reload(); await page.waitForTimeout(300);
+    await tab('ai');
+    assert((await page.textContent(S)).includes('아직 정하지 않았어요'), '처음 상태가 아님');
+    await page.click(`${S} [data-set="openAi"]`);
+    await page.click('#engSeg [data-e="claude"]');
+    await page.fill('#apiKey', 'sk-ant-test');
+    await page.click('#sheetRoot [data-close]');
+    await page.waitForTimeout(100);
+    assert((await page.textContent(S)).includes('Claude API'), '설정 › AI가 옛 값: ' + (await page.textContent(`${S} .set-big`)));
+    assert(await page.isEnabled(`${S} [data-set="testAi"]`), '[연결 확인]이 꺼져 있음');
+  }],
   ['화면 탭에서 종이 문서를 고르면 바로 바뀜', async () => {
     await tab('screen');
     assert(await page.locator(`${S} [data-theme-pick]`).count() === 5, '테마 카드 수');

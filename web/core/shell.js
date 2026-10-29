@@ -17,6 +17,7 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SSAM = () => window.SSAM || {};
 const hooks = {};
+const EVAL_ACTS = ['new', 'plans', 'pronoun'];
 let cur = null;
 
 /* 메뉴에 들어올 때 부를 함수 등록: fn(tab, section) */
@@ -50,8 +51,11 @@ export function go(menuId, tabId) {
   try { localStorage.setItem(NAV_KEY, JSON.stringify(cur)); } catch (e) {}
   drawAi();
   const fns = hooks[m.id];
-  if (fns && fns.length) fns.forEach(fn => fn(tab, section(m.id)));
-  else if (m.id !== 'evaluate') renderPlaceholder(section(m.id), m, tab);
+  if (fns && fns.length) {
+    const ph = section(m.id) && section(m.id).querySelector('.ph');
+    if (ph) ph.remove();
+    fns.forEach(fn => fn(tab, section(m.id)));
+  } else if (m.id !== 'evaluate') renderPlaceholder(section(m.id), m, tab);
 }
 
 function drawTabs(m) {
@@ -76,7 +80,10 @@ function init() {
   document.addEventListener('click', e => {
     const g = e.target.closest('[data-menu-go]'); if (g) { go(g.dataset.menuGo); return; }
     const t = e.target.closest('#menuTabs [data-tab]'); if (t) { go(cur.menu, t.dataset.tab); return; }
-    if (e.target.closest('#sideAi')) go('settings', 'ai');
+    if (e.target.closest('#sideAi')) { go('settings', 'ai'); return; }
+    // ⋮ 메뉴의 평가계획 일(새로 넣기·저장된 계획·대명사 줄이기)은 평가 화면에서 보이게 함
+    const a = e.target.closest('#menu [data-act]');
+    if (a && EVAL_ACTS.includes(a.dataset.act) && cur && cur.menu !== 'evaluate') go('evaluate');
   });
   // 기존 앱이 스스로 화면을 바꾸면(새 평가계획 넣기 등) 가로 메뉴도 맞춤
   if (SSAM().onModeChange) SSAM().onModeChange(mode => {
@@ -91,6 +98,7 @@ function init() {
   go(saved ? saved.menu : 'evaluate', saved && saved.menu !== 'evaluate' ? saved.tab : undefined);
 }
 
-// 메뉴 모듈들이 onEnter를 등록한 뒤에 처음 화면을 그림 (모듈은 DOMContentLoaded 전에 모두 실행됨)
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-else init();
+// 메뉴 모듈들이 onEnter를 등록한 뒤에 처음 화면을 그림.
+// 모듈은 문서를 다 읽은 뒤(readyState 'interactive') DOMContentLoaded 전에 실행되므로 늘 그 이벤트를 기다림
+if (document.readyState === 'complete') init();
+else document.addEventListener('DOMContentLoaded', init);

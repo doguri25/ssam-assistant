@@ -81,6 +81,37 @@ await run('shell', [
     assert(hs.every(h => h > 0 && h < 26), '메뉴 글자 높이(줄바꿈?): ' + hs.join(','));
     await page.setViewportSize({ width: 1280, height: 860 });
   }],
+  ['380px 폭: 세로 메뉴 버튼·가로 메뉴가 모두 화면 안, 본문도 가로로 넘치지 않음', async () => {
+    await page.setViewportSize({ width: 380, height: 800 });
+    await page.click('nav.app-side [data-menu-go="settings"]'); await page.click('#menuTabs [data-tab="school"]');
+    await page.click('section[data-menu="settings"] [data-set="addBreak"]');
+    await page.waitForTimeout(200);
+    const r = await page.evaluate(() => ({
+      side: [...document.querySelectorAll('.app-side .side-btn')].map(b => { const x = b.getBoundingClientRect(); return [b.textContent.trim(), Math.round(x.left), Math.round(x.right)]; }),
+      tabs: [...document.querySelectorAll('#menuTabs button')].map(b => { const x = b.getBoundingClientRect(); return [b.textContent.trim(), Math.round(x.right)]; }),
+      app: [document.querySelector('#app').scrollWidth, document.querySelector('#app').clientWidth],
+      sideBox: [document.querySelector('.app-side').scrollWidth, document.querySelector('.app-side').clientWidth]
+    }));
+    assert(r.side.every(([, l, rt]) => l >= 0 && rt <= 380), '세로 메뉴 버튼이 화면 밖: ' + JSON.stringify(r.side));
+    assert(r.tabs.every(([, rt]) => rt <= 380), '가로 메뉴가 화면 밖: ' + JSON.stringify(r.tabs));
+    assert(r.sideBox[0] <= r.sideBox[1], '세로 메뉴가 넘침: ' + r.sideBox);
+    assert(r.app[0] <= r.app[1], '본문이 넘침: ' + r.app);
+    await page.setViewportSize({ width: 1280, height: 860 });
+  }],
+  ['설정에서 끄고 다시 켜면 설정만 보이고 「곧 만들어요」 자리가 없음', async () => {
+    await page.click('nav.app-side [data-menu-go="settings"]'); await page.click('#menuTabs [data-tab="ai"]');
+    await page.reload(); await page.waitForTimeout(500);
+    assert(await title() === '설정', '제목: ' + await title());
+    assert(await page.locator('section[data-menu="settings"] .ph').count() === 0, '설정에 「곧 만들어요」가 남음');
+    assert((await page.textContent('section[data-menu="settings"]')).includes('지금 쓰는 AI'), '설정 › AI 내용 없음');
+  }],
+  ['품의에서 ⋮ → 새 평가계획 넣기를 누르면 평가로 감', async () => {
+    await page.click('nav.app-side [data-menu-go="purchase"]');
+    await page.click('#menuBtn'); await page.click('#menu [data-act="new"]');
+    assert(await title() === '평가', '제목: ' + await title());
+    assert(await page.isVisible('section[data-menu="evaluate"]'), '평가 화면이 안 보임');
+    await page.keyboard.press('Escape');
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();

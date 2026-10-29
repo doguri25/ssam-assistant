@@ -41,19 +41,25 @@ section[data-menu="evaluate"][hidden]{display:none}
 /* 좁은 화면: 세로 메뉴를 위쪽 가로 줄로 */
 @media (max-width:760px){
   .app-shell{flex-direction:column}
-  .app-side{width:auto;flex-direction:row;align-items:center;overflow-x:auto;border-right:0;border-bottom:1px solid var(--frame-line);scrollbar-width:none}
-  .app-side::-webkit-scrollbar{display:none}
+  /* 좁으면 메뉴 버튼이 다음 줄로 넘어감 (가려져서 못 누르는 버튼이 없게) */
+  .app-side{width:auto;flex-direction:row;flex-wrap:wrap;align-items:center;border-right:0;border-bottom:1px solid var(--frame-line)}
   .app-side .app-logo{height:56px;padding:0 12px;border-bottom:0}
   .logo-mark{width:34px;height:34px;font-size:16px;border-radius:10px}
   .logo-name{display:none}
-  .side-menus,.side-foot{flex-direction:row;padding:0 6px;margin:0;gap:2px}
+  .side-menus,.side-foot{flex-direction:row;flex-wrap:wrap;padding:0 6px;margin:0;gap:2px}
   .side-ai{display:none}
   .side-btn{flex:none;width:auto;min-height:44px;padding:0 10px;gap:6px;font-size:14px;white-space:nowrap}
   /* 헤더: 첫 줄 제목·버튼, 둘째 줄 가로 메뉴 */
   .app-top{height:auto;flex-wrap:wrap;padding:0 12px;gap:0 12px}
   .app-top h1{font-size:17px;padding:12px 0}
-  .app-top .app-tabs{order:3;flex:1 1 100%;min-height:44px}
+  .app-top .app-tabs{order:3;flex:1 1 100%;min-height:44px;flex-wrap:wrap}
   .app-top .app-tabs button{padding:0 12px}
   .app-top .menu{top:52px}
   .m-page{padding:20px 16px}
+}
+/* 아주 좁으면 아이콘 위·글자 아래로 세워 한 줄에 다 들어가게 */
+@media (max-width:480px){
+  .app-side .app-logo{padding:0 8px}
+  .side-menus,.side-foot{padding:0 2px}
+  .side-btn{flex-direction:column;justify-content:center;gap:2px;min-width:44px;padding:4px 6px;font-size:12px}
 }

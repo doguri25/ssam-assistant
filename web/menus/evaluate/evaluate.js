@@ -911,18 +911,40 @@ async function httpError(res) {
 /* 업스테이지 부르기. 브라우저에서 막히면(교차 출처 차단 등) Windows 앱은 Rust(ai_proxy)로 대신 보냄.
    대신 보낸 답도 Response로 감싸서 아래 코드는 똑같이 읽음 */
 let upViaApp = false;
-async function upFetch(url, init) {
+const abortError = () => Object.assign(new Error('aborted'), { name: 'AbortError' });
+/* keepAlive: 대신 보내는 동안 30초마다 부름 (답이 통째로 와서 그동안 2분 멈춤 감시가 끊지 않게) */
+async function upFetch(url, init, keepAlive) {
+  const sig = init.signal;
   if (!(IN_APP && upViaApp)) {
     try { return await fetch(url, init); }
-    catch (e) { if (!IN_APP || (e && e.name === 'AbortError')) throw e; upViaApp = true; }
+    catch (e) {
+      // 멈추기·2분 멈춤으로 끊긴 것은 막힌 게 아니므로 대신 보내지 않음
+      if (!IN_APP || (sig && sig.aborted) || (e && e.name === 'AbortError')) throw e;
+      upViaApp = true;
+    }
   }
   const req = new Request(url, init);
   const headers = [];
   req.headers.forEach((v, k) => headers.push([k, v]));
   const body = Array.from(new Uint8Array(await req.arrayBuffer()));
-  const r = await window.__TAURI__.core.invoke('ai_proxy', { url, headers, body });
-  if (init.signal && init.signal.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
-  return new Response(r.body, { status: r.status, headers: { 'content-type': r.contentType || 'application/json' } });
+  const call = window.__TAURI__.core.invoke('ai_proxy', { url, headers, body });
+  const ka = keepAlive ? setInterval(keepAlive, 30000) : null;
+  let onAbort = null;
+  try {
+    // 멈추기는 바로 듣고, Rust 쪽 답은 버림
+    const r = await new Promise((ok, no) => {
+      if (sig) {
+        if (sig.aborted) return no(abortError());
+        onAbort = () => no(abortError());
+        sig.addEventListener('abort', onAbort, { once: true });
+      }
+      call.then(ok, no);
+    });
+    return new Response(r.body, { status: r.status, headers: { 'content-type': r.contentType || 'application/json' } });
+  } finally {
+    if (ka) clearInterval(ka);
+    if (sig && onAbort) sig.removeEventListener('abort', onAbort);
+  }
 }
 /* 이미지를 글자로 읽음 (업스테이지 OCR). 실패하면 ocr_failed */
 async function upstageRead(images, signal) {
@@ -942,7 +964,8 @@ async function upstageRead(images, signal) {
     }
     if (!res.ok) {
       const er = await httpError(res);
-      throw er.code === 'auth' || er.code === 'quota' ? er : { code: 'ocr_failed', message: er.message };
+      // 키·한도·잠깐 끊김(429·5xx)은 그대로 넘겨 쉬었다가 다시 하게 함. 나머지는 이미지를 못 읽은 것
+      throw ['auth', 'quota', 'rate_limited', 'upstream_error'].includes(er.code) ? er : { code: 'ocr_failed', message: er.message };
     }
     let j = null;
     try { j = await res.json(); } catch (e) { throw { code: 'ocr_failed' }; }
@@ -988,7 +1011,7 @@ async function callApi(provider, prompt, { onText, signal: outer, images, carefu
         method: 'POST', signal,
         headers: { 'content-type': 'application/json', 'authorization': 'Bearer ' + key },
         body: JSON.stringify({ model, stream: true, messages: [{ role: 'user', content: prompt }] })
-      });
+      }, idle);
     } else {
       res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST', signal,
@@ -2087,7 +2110,7 @@ async function runUpdate(sh, info) {
 }
 if (IN_APP) {
   try {
-    window.__TAURI__.core.invoke('app_version').then(v => { UPD.version = v; const el = $('#menuVer'); el.textContent = `평어 만들기 ${v}`; el.hidden = false; }).catch(() => {});
+    window.__TAURI__.core.invoke('app_version').then(v => { UPD.version = v; const el = $('#menuVer'); el.textContent = `쌤비서 ${v}`; el.hidden = false; }).catch(() => {});
   } catch (e) {}
   setTimeout(() => checkUpdate(false), 2500);
 }
@@ -2098,7 +2121,7 @@ async function openUninstall() {
   try { info = await T.core.invoke('uninstall_info'); } catch (e) {}
   openSheet(`<h3>프로그램 삭제</h3>
     <p class="muted" style="margin:0">${info.installed
-      ? '평어 만들기를 이 컴퓨터에서 지워요. 삭제하기를 누르면 앱이 닫히고 Windows 제거 창이 열려요.'
+      ? '쌤비서를 이 컴퓨터에서 지워요. 삭제하기를 누르면 앱이 닫히고 Windows 제거 창이 열려요.'
       : '설치하지 않고 쓰는 실행 파일이에요. 삭제하기를 누르면 앱이 닫히고 탐색기에서 이 파일을 보여 줘요. 그 파일을 지우면 끝이에요.'}</p>
     <label class="switch"><input type="checkbox" id="unData" checked>저장된 API 키, 평가계획, 평어, 행특, 채점 기록도 지우기</label>
     ${!info.installed && info.exePath ? `<p class="muted mono" style="margin:0;word-break:break-all">${esc(info.exePath)}</p>` : ''}

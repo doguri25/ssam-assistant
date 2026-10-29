@@ -10,12 +10,12 @@ const OCR = 'https://api.upstage.ai/v1/document-digitization';
 
 const log = [];          // 부른 순서: 'ocr' | 'chat'
 let lastChat = null;     // { auth, body }
-let ocrFail = false, chatStatus = 200;
+let ocrStatus = 200, chatStatus = 200;
 await page.route('https://api.upstage.ai/**', async route => {
   const req = route.request();
   if (req.url() === OCR) {
     log.push('ocr');
-    if (ocrFail) return route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":{"message":"ocr down"}}' });
+    if (ocrStatus !== 200) return route.fulfill({ status: ocrStatus, contentType: 'application/json', body: '{"error":{"message":"ocr says no"}}' });
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ text: '분리수거 당번을 정해 매일 확인했다', pages: [{ text: '분리수거 당번을 정해 매일 확인했다' }] }) });
   }
   if (req.url() !== CHAT) return route.fulfill({ status: 404, body: 'not found' });
@@ -82,12 +82,19 @@ await run('upstage', [
     const c = lastChat.body.messages[0].content;
     assert(typeof c === 'string' && c.includes('[이미지에서 읽은 글]') && c.includes('분리수거 당번을 정해 매일 확인했다'), '채팅 본문에 읽은 글 없음');
   }],
-  ['글자 읽기가 실패하면 안내', async () => {
-    ocrFail = true;
+  ['글자 읽기가 이미지를 받지 않으면(400) 안내', async () => {
+    ocrStatus = 400;
     await page.click('[data-ccre="1"]');
     await page.waitForFunction(() => document.querySelector('#ccView').textContent.includes('업스테이지가 이미지를 읽지 못했어요'), null, { timeout: 10000 });
     assert((await page.textContent('#ccView')).includes('이미지 기능은 Claude·Gemini·GPT를 권장해요'), '권장 문구 없음');
-    ocrFail = false;
+    ocrStatus = 200;
+  }],
+  ['글자 읽기가 요청 한도(429)면 멈추지 않고 쉬었다가 이어서', async () => {
+    ocrStatus = 429;
+    await page.click('[data-ccre="1"]');
+    await page.waitForFunction(() => document.querySelector('#ccView').textContent.includes('요청 한도'), null, { timeout: 10000 });
+    assert(!(await page.textContent('#ccView')).includes('이미지를 읽지 못했어요'), '429를 읽기 실패로 봄');
+    ocrStatus = 200;
   }],
   ['설정 › AI [연결 확인]: 성공·키 틀림', async () => {
     await page.click('nav.app-side [data-menu-go="settings"]'); await page.click('#menuTabs [data-tab="ai"]');
@@ -99,8 +106,8 @@ await run('upstage', [
     chatStatus = 200;
   }],
   ['페이지 오류 없음', async () => {
-    // 일부러 돌려준 500·401 응답 기록은 뺌
-    const real = errors.filter(m => !/Failed to load resource: the server responded with a status of (500|401)/.test(m));
+    // 일부러 돌려준 400·401·429·500 응답 기록은 뺌
+    const real = errors.filter(m => !/Failed to load resource: the server responded with a status of (400|401|429|500)/.test(m));
     assert(real.length === 0, real.join(' | '));
   }]
 ]);
