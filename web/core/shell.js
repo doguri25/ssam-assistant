@@ -36,8 +36,16 @@ function readNav() {
   return null;
 }
 
+/* 헤더 오른쪽(⋮ 왼쪽)에 메뉴별 버튼을 둠. 메뉴·탭이 바뀔 때마다 비워짐 */
+export function setActions(html) {
+  const el = $('#topExtra');
+  if (el) el.innerHTML = html || '';
+  return el;
+}
+
 export function go(menuId, tabId) {
   const m = find(menuId) || MENUS[0];
+  setActions('');
   let tab = m.tabs.find(x => x.id === tabId) ? tabId : null;
   if (!tab) tab = m.id === 'evaluate' ? (SSAM().getMode && SSAM().getMode()) || 'pyeongeo' : m.tabs[0].id;
   cur = { menu: m.id, tab };

@@ -29,7 +29,8 @@ export function startServer(root = WEB) {
 /* 브라우저 + 서버를 열고, 페이지 오류를 모아 둠. 끝나면 close() */
 export async function open({ width = 1280, height = 860 } = {}) {
   const srv = await startServer();
-  const browser = await chromium.launch();
+  // 컨테이너 기본 로캘(C)에서는 한글 파일 이름 내려받기가 「download」로 바뀌어서 UTF-8로 띄움
+  const browser = await chromium.launch({ env: { ...process.env, LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8' } });
   const ctx = await browser.newContext({ viewport: { width, height } });
   const page = await ctx.newPage();
   page.setDefaultTimeout(8000);
