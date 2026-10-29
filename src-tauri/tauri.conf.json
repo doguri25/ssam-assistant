@@ -1,0 +1,59 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "평어 만들기",
+  "mainBinaryName": "pyeongeo",
+  "version": "../package.json",
+  "identifier": "kr.doguri.pyeongeo",
+  "build": {
+    "frontendDist": "../dist",
+    "beforeBuildCommand": "node scripts/copy-web.mjs"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "평어 만들기",
+        "width": 1280,
+        "height": 860,
+        "minWidth": 380,
+        "minHeight": 560,
+        "center": true,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "publisher": "doguri25",
+    "copyright": "© 2026 도구리 (raccoon@ai.cne.go.kr)",
+    "category": "Education",
+    "shortDescription": "평가계획으로 교과 평어, 행동특성 및 종합의견, 수행평가지 채점 평어를 만드는 도구",
+    "longDescription": "평가계획(한글 파일)을 넣으면 과목·평가요소별 최상·상·중·하 평어를 만들고, 학생별 메모로 행동특성 및 종합의견을 쓰며, 스캔한 수행평가지를 채점해 비율대로 수준을 나누고 학생별 평어를 씁니다.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "Korean"
+        ],
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico"
+      }
+    }
+  }
+}

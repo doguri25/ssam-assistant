@@ -1,0 +1,16 @@
+{
+  "name": "pyeongeo",
+  "version": "1.8.0",
+  "private": true,
+  "description": "평가계획으로 교과 평어, 행동특성 및 종합의견, 수행평가지 채점 평어를 만드는 도구",
+  "scripts": {
+    "web": "node scripts/copy-web.mjs",
+    "test": "node --test tests/unit/",
+    "e2e": "node tests/e2e/run-all.mjs",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.1",
+    "playwright": "^1.56.1"
+  }
+}
