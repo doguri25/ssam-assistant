@@ -1,0 +1,171 @@
+// 단원평가 2·3단계: 답안 올리기(번호·명단 예외·이름 가리기), 문항별 채점, 확인 표(노란 칸·칸 고치기·문항 모아 보기),
+// 다시 채점해도 고친 칸 그대로, 멈추기, 채점 도중 다른 평가로 가도 결과는 시작한 평가에, 채점 마치기, 업스테이지 안내
+import { open, run, assert, mockClaude } from './helpers.mjs';
+import { SAMPLE_ITEMS } from '../../web/menus/evaluate/unit/unit-sample.js';
+import { autoJudge } from '../../web/menus/evaluate/unit/unit-grade.js';
+
+const t = await open();
+const { page, url, errors } = t;
+await page.clock.setFixedTime(new Date('2026-10-29T09:00:00'));
+let slow = 0, round = 1;
+const prompts = [];
+await page.addInitScript(() => {
+  if (!localStorage.getItem('ssam:engine')) localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true }));
+});
+// 학생마다 다른 답: 1번은 2번 문항을 틀렸는데 AI가 맞다고 함(differ), 서술형 9·10번은 부분 점수
+const READS = {
+  1: ['(2)', '②', '㉯', '민수', '②, ④', '(1)-②, (2)-①', '마을 도서관', '⑤', '도서관에서 잔치가 열린다.', '가고 싶다.'],
+  3: ['(1)', '③', '㉮', '민수', '②', '(1)-②, (2)-①', '도서관', '⑤', '', '재미있겠다.'],
+  4: ['(2)', '③', '㉯', '민지', '②, ④', '(1)-②, (2)-②', '마을 도서관', '③', '토요일에 잔치가 있다.', '책을 읽고 싶다. 재미있기 때문이다.']
+};
+await mockClaude(page, async ({ prompt, images }) => {
+  prompts.push({ prompt, images });
+  if (slow) await new Promise(r => setTimeout(r, slow));
+  const no = Number((/\[학생\] (\d+)번/.exec(prompt) || [])[1]);
+  const reads = READS[no].slice();
+  if (round === 2 && no === 3) reads[0] = '(2)';
+  // AI처럼 채점: 맞으면 만점, 서술형은 부분 점수, 「도서관」은 같은 뜻으로 봄. 1번 학생 2번 문항만 틀렸는데 맞다고 함
+  return JSON.stringify({ items: reads.map((read, i) => {
+    const it = SAMPLE_ITEMS[i];
+    let p = autoJudge(it, read);
+    if (p == null) p = it.type === 'essay' ? (read ? (i === 8 ? 9 : 12) : 0) : (read === '도서관' ? 10 : 0);
+    if (no === 1 && i === 1) p = 10;
+    return { no: i + 1, read, points: p, sure: true, why: it.type === 'essay' ? '기준과 비교' : '' };
+  }) });
+});
+const V = 'section[data-menu="evaluate"] .unit-box';
+const go = async () => { await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="unit"]'); };
+const T = id => page.evaluate(id => JSON.parse(localStorage.getItem('ssam:unit:t:' + id)), id);
+const grades = () => prompts.filter(p => p.prompt.startsWith('[단원평가 채점]'));
+const until = async (fn, ms = 6000) => { const end = Date.now() + ms; while (!(await fn())) { if (Date.now() > end) throw new Error('시간 초과'); await new Promise(r => setTimeout(r, 50)); } };
+await page.goto(url);
+await page.waitForTimeout(400);
+const [A, B] = await page.evaluate(async () => {
+  const m = await import('./menus/evaluate/unit/unit-model.js'), s = await import('./menus/evaluate/unit/unit-sample.js');
+  const mk = (round, date) => { const x = m.newTest({ meta: { ...s.SAMPLE_META, round, date }, key: { domains: ['지식', '이해'], items: s.SAMPLE_ITEMS }, paper: { text: '' } }); m.saveTest(x); return x.id; };
+  localStorage.setItem('ssam:class', JSON.stringify({ count: 4, except: [2] }));
+  return [mk(1, '2026-10-29'), mk(2, '2026-10-28')];
+});
+await page.reload(); await page.waitForTimeout(500);
+await go();
+const shot = async (w, h) => ({ name: `답안${w}.png`, mimeType: 'image/png', buffer: await page.screenshot({ clip: { x: 0, y: 0, width: w, height: h } }) });
+const files = [await shot(300, 420), await shot(310, 430), await shot(320, 440)];
+
+await run('unit-grade', [
+  ['답안 올리기: 학생 한 명 1쪽, 명단 예외 번호 2를 건너뛰어 1·3·4번', async () => {
+    await page.click(`${V} [data-un-open="${A}"]`);
+    assert((await page.textContent(`${V} .steps [aria-current="step"]`)).includes('답안'), '2단계가 아님');
+    await page.fill(`${V} #unPagesPer`, '1'); await page.dispatchEvent(`${V} #unPagesPer`, 'change');
+    await page.setInputFiles(`${V} #unAnsFile`, files);
+    await page.waitForFunction(() => document.querySelectorAll('.unit-box [data-st]').length === 3);
+    const nos = await page.$$eval(`${V} input[data-stno]`, els => els.map(e => e.value));
+    assert(nos.join(',') === '1,3,4', nos.join(','));
+    assert((await T(A)).students.map(s => s.no).join(',') === '1,3,4', '저장');
+  }],
+  ['이름 칸 상자를 그리면 unit:set에 저장', async () => {
+    await page.click(`${V} [data-un="mask"]`);
+    const b = await page.locator('#sheetRoot #mkStage').boundingBox();
+    await page.mouse.move(b.x + b.width * 0.6, b.y + 10); await page.mouse.down();
+    await page.mouse.move(b.x + b.width * 0.95, b.y + 40, { steps: 4 }); await page.mouse.up();
+    await page.click('#sheetRoot #mkOk');
+    const set = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:unit:set')));
+    assert(set.mask.length === 1 && set.pagesPer === 1, JSON.stringify(set));
+  }],
+  ['채점 시작 → 학생마다 AI 한 번, 이미지 1장', async () => {
+    await page.click(`${V} [data-un="toGrade"]`);
+    assert(!(await page.textContent(V)).includes('업스테이지'), '업스테이지 안내가 보임');
+    await page.click(`${V} [data-un="grade"]`);
+    await page.waitForFunction(id => JSON.parse(localStorage.getItem('ssam:unit:t:' + id)).students.every(s => s.status === 'done'), A);
+    assert(grades().length === 3 && grades().every(p => p.images === 1), JSON.stringify(grades().map(p => p.images)));
+    assert(['1', '3', '4'].every(n => grades().some(p => p.prompt.includes(`[학생] ${n}번`))), '번호');
+  }],
+  ['확인 표: 앱이 정한 점수, 노란 칸(앱과 AI가 다름·서술형), 총점', async () => {
+    await page.waitForSelector(`${V} [data-cell="1-2"]`);
+    assert(await page.locator(`${V} [data-cell="1-2"].chk`).count() === 1, '1번 2번 문항이 노란 칸이 아님');
+    assert(await page.locator(`${V} [data-cell="1-9"].chk`).count() === 1, '서술형');
+    assert(await page.locator(`${V} [data-cell="1-1"].chk`).count() === 0, '맞은 칸이 노란 칸');
+    const a = await T(A);
+    assert(a.students[0].items[2].pts === 0 && a.students[0].items[2].flag === 'differ', JSON.stringify(a.students[0].items[2]));
+    assert(a.students[1].items[7].flag === 'similar' && a.students[1].items[7].pts === 10, '단답 similar');
+    assert((await page.textContent(`${V} [data-strow="1"]`)).includes('/100'), '총점');
+    assert(/확인할 칸 \d+개/.test(await page.textContent(`${V} #unPending`)), '확인할 칸');
+  }],
+  ['칸 시트에서 점수 고치기 → 선생님이 고침, 노란색 풀림', async () => {
+    const before = Number((/(\d+)개/.exec(await page.textContent(`${V} #unPending`)) || [])[1]);
+    await page.click(`${V} [data-cell="1-2"]`);
+    await page.waitForSelector('#sheetRoot #unCellOk');
+    assert((await page.inputValue('#sheetRoot #unCellRead')) === '②', '읽은 답');
+    await page.click('#sheetRoot [data-pts="10"]');
+    await page.click('#sheetRoot #unCellOk');
+    await page.waitForTimeout(100);
+    const c = (await T(A)).students[0].items[2];
+    assert(c.pts === 10 && c.manual && c.ok, JSON.stringify(c));
+    assert(await page.locator(`${V} [data-cell="1-2"].chk`).count() === 0, '노란 칸 남음');
+    const after = Number((/(\d+)개/.exec(await page.textContent(`${V} #unPending`)) || [])[1]);
+    assert(after === before - 1, `${before} → ${after}`);
+  }],
+  ['문항 모아 보기: AI 점수로 모두 확인', async () => {
+    await page.click(`${V} [data-item="9"]`);
+    await page.waitForSelector('#sheetRoot [data-un="itemOk"]');
+    assert((await page.textContent('#sheetRoot')).includes('도서관에서 잔치가 열린다.'), '반 전체 답');
+    await page.click('#sheetRoot [data-un="itemOk"]');
+    await page.waitForTimeout(100);
+    assert(await page.locator(`${V} [data-cell$="-9"].chk`).count() === 0, '9번 노란 칸 남음');
+    assert((await T(A)).students.every(s => s.items[9].ok), '저장');
+  }],
+  ['다시 채점해도 선생님이 고친 칸은 그대로', async () => {
+    const n = grades().length;
+    await page.click(`${V} [data-un="retry"][data-no="1"]`);
+    await until(() => grades().length === n + 1);
+    await page.waitForTimeout(300);
+    assert(grades().length === n + 1, '다시 부르지 않음');
+    const c = (await T(A)).students[0].items[2];
+    assert(c.pts === 10 && c.manual, JSON.stringify(c));
+  }],
+  ['멈추기: 시작하지 않은 학생은 부르지 않음, 오류 없음', async () => {
+    slow = 900;
+    const n = grades().length;
+    await page.click(`${V} [data-un="grade"]`);
+    await page.click('#sheetRoot #unRegradeOk');
+    await page.waitForSelector(`${V} [data-un="stop"]`);
+    await page.click(`${V} [data-un="stop"]`);
+    await page.waitForTimeout(1300); slow = 0;
+    assert(grades().length - n === 2, `불린 수 ${grades().length - n}`);
+    assert((await T(A)).students.every(s => s.status === 'done'), JSON.stringify((await T(A)).students.map(s => s.status)));
+    assert(await page.locator(`${V} [data-un="grade"]`).count() === 1, '채점 시작 단추가 없음');
+  }],
+  ['채점 도중 다른 평가를 열어도 결과는 시작한 평가에', async () => {
+    slow = 700; round = 2;
+    await page.click(`${V} [data-un="grade"]`);
+    await page.click('#sheetRoot #unRegradeOk');
+    await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} [data-un-open="${B}"]`);
+    await page.waitForTimeout(1800); slow = 0;
+    assert((await T(B)).students.length === 0, 'B에 학생이 생김');
+    assert((await T(A)).students[1].items[1].read === '(2)', 'A에 새 결과가 없음');
+    assert((await page.textContent(`${V} .un-title`)).includes('(2회)'), '보는 평가가 바뀜');
+  }],
+  ['채점 마치기 → 확인 창 → 마침, 목록에 반 평균', async () => {
+    await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} [data-un-open="${A}"]`);
+    if (!(await page.locator(`${V} [data-un="finish"]`).count())) await page.click(`${V} .steps [data-step="3"]`);
+    await page.click(`${V} [data-un="finish"]`);
+    assert((await page.textContent('#sheetRoot')).includes('확인하지 않은 칸'), '확인 창 글');
+    await page.click('#sheetRoot #unFinishOk');
+    await page.waitForTimeout(100);
+    assert((await T(A)).done === true, 'done');
+    await page.click(`${V} [data-un="back"]`);
+    const card = await page.textContent(`${V} [data-un-open="${A}"]`);
+    assert(card.includes('마침') && card.includes('반 평균') && card.includes('학생 3명'), card);
+  }],
+  ['업스테이지면 손글씨 안내', async () => {
+    await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'upstage', keys: { upstage: 'up-test' }, remember: true })));
+    await page.reload(); await page.waitForTimeout(500);
+    await page.click(`${V} [data-un-open="${A}"]`);
+    await page.click(`${V} .steps [data-step="3"]`);
+    assert((await page.textContent(V)).includes('업스테이지는 이미지를 글자로 바꿔 보내요'), '안내 없음');
+    assert((await page.textContent(V)).includes('스캔을 다시 올려'), '다시 열면 스캔이 없다는 안내');
+  }],
+  ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
+]);
+await t.close();

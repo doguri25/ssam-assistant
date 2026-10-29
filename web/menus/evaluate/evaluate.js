@@ -5255,6 +5255,8 @@ window.SSAM = {
   onModeChange: fn => { modeHooks.push(fn); },
   ai: { generate, engineReady, engineName, providerName: () => E.engine === 'account' ? 'Claude 계정' : (PROVIDERS[E.engine] ? PROVIDERS[E.engine].name : ''), errMsg, openSettings },
   rosterHTML, toast, openSheet, closeSheet, esc, copyText,
+  // 단원평가: 이름 칸 가리기 편집기 { shots: [{ url, label }], mask, all, what, save(mask, all) }
+  openMaskEditor,
   // 설정 › 학급 명단 엑셀 가져오기
   setClass: (count, except) => setClass(count, except, 'roster'),
   // 학년도를 옮기는 동안 평가 메뉴의 저장도 멈춤
@@ -5279,6 +5281,10 @@ window.SSAM = {
       } finally { doc.destroy(); }
       return out.join('\n\n');
     },
+    // 단원평가: 스캔 PDF·사진 여러 개 → 쪽 [{ name, blob, url, thumb, w, h }] (파일 이름 차례), 쪽 → AI에 보낼 그림(가릴 곳은 흰색)
+    readPages: (fileList, say) => readFiles(fileList, say || (() => {})),
+    pageImage: (page, mask) => pageImage(page, mask && mask.length ? mask : null),
+    freePages(pages) { for (const p of pages || []) { URL.revokeObjectURL(p.url); if (p.thumb) URL.revokeObjectURL(p.thumb); p._enc = null; } },
     async toImages(file) {
       const pages = /\.pdf$/i.test(file.name || '') || file.type === 'application/pdf' ? await readPdfPages(file) : [await readImagePage(file)];
       const out = [];
