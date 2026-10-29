@@ -99,3 +99,15 @@ test('평가지: 머리가 없어도 문항은 읽음', () => {
   assert.deepEqual(p.meta, { subject: '', grade: null, term: null, unitNo: null, unitName: '', round: null });
   assert.deepEqual(p.questions, { 1: '첫 문제입니다.', 2: '둘째 문제입니다.' });
 });
+
+test('시연 자료: 정답지·평가지 한글 파일 글이 그대로 읽힘(10문항·100점)', async () => {
+  const { sampleKeyDoc, samplePaperDoc, SAMPLE_ITEMS } = await import('../../web/menus/evaluate/unit/unit-sample.js');
+  const docText = d => [d.title, ...d.blocks.flatMap(b => (b.type === 'table' ? b.rows.map(r => r.join(' | ')) : String(b.text || '').split('\n')))].join('\n');
+  const k = parseKey(docText(sampleKeyDoc()));
+  assert.equal(k.items.length, 10); assert.equal(keyTotal(k.items), 100);
+  assert.deepEqual(k.items.map(i => i.type), SAMPLE_ITEMS.map(i => i.type));
+  assert.deepEqual(k.meta, { term: 2, grade: 3, subject: '국어', unitNo: 2, round: 1 });
+  const p = parsePaper(docText(samplePaperDoc()));
+  assert.equal(p.meta.unitName, '중요한 내용을 적어요');
+  assert.equal(Object.keys(p.questions).length, 10);
+});
