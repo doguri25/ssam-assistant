@@ -11,6 +11,8 @@ export const TEXT_SECTIONS = ['purpose', 'policy', 'details', 'evaluation'];
 const SRC = ['lastPlan', 'lastResult', 'guide'];
 
 const str = v => (typeof v === 'string' ? v : v == null ? '' : typeof v === 'number' ? String(v) : '');
+// AI가 섹션을 목록(배열)으로 주면 줄로 이음
+const text = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.trim()).join('\n') : str(v));
 const strs = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim()) : []);
 const num = v => { const n = Number(String(v == null ? '' : v).replace(/[,\s원₩]/g, '')); return Number.isFinite(n) ? Math.round(n) : 0; };
 const won = n => Number(n).toLocaleString('ko-KR');
@@ -58,7 +60,8 @@ export function savePlan(plan) {
   if (!p) return null;
   const list = listPlans();
   p.updatedAt = Math.max(Date.now(), ...list.map(x => x.updatedAt + 1));
-  set(LIST_KEY, [p, ...list.filter(x => x.id !== p.id)]);
+  // 저장 공간이 모자라면 null (화면이 알림)
+  if (!set(LIST_KEY, [p, ...list.filter(x => x.id !== p.id)])) return null;
   return p;
 }
 export function deletePlan(id) { set(LIST_KEY, listPlans().filter(p => p.id !== id)); }
@@ -86,7 +89,7 @@ export function normGuide(v) {
 export function normDraft(v) {
   if (!isObj(v)) return null;
   const d = {};
-  for (const k of TEXT_SECTIONS) d[k] = str(v[k]);
+  for (const k of TEXT_SECTIONS) d[k] = text(v[k]);
   d.schedule = (Array.isArray(v.schedule) ? v.schedule : []).filter(s => isObj(s) && str(s.title).trim()).map(s => {
     const date = isDate(s.date) ? s.date : '';
     const m = date ? +date.slice(5, 7) : Number.isInteger(+s.month) && +s.month >= 1 && +s.month <= 12 ? +s.month : null;

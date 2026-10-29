@@ -6,9 +6,9 @@ import { readText, fileMessage } from '../../core/files.js';
 import { getSchool } from '../../core/settings.js';
 import { toast, copyText, saveFile } from '../../core/ui.js';
 import { makeHwpx } from '../../core/hwpx.js';
-import { listEvents, setEvents, dayIssues, suggestDates, weekday } from '../../core/calendar.js';
+import { listEvents, setEvents, removeEvents, dayIssues, suggestDates, weekday } from '../../core/calendar.js';
 import { stepsHTML } from '../../core/steps.js';
-import { SECTIONS, TEXT_SECTIONS, newPlan, listPlans, getPlan, savePlan, currentId, setCurrent, normReview, normGuide, normDraft, overlap, guideStatus, insertSentence, planDoc, planText } from './year-model.js';
+import { SECTIONS, TEXT_SECTIONS, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent, normReview, normGuide, normDraft, overlap, guideStatus, insertSentence, planDoc, planText } from './year-model.js';
 
 const STEPS = ['자료 넣기', '작년 평가', '지침 점검', '초안', '일정'];
 const SRC = [
@@ -24,14 +24,20 @@ let plan = getPlan(currentId()) || newPlan();
 let saved = !!getPlan(plan.id);
 const busy = {};   // 계획 id → 하는 일 ('review' 등)
 const errs = {};   // 계획 id → 오류 문구
-let reading = '';  // 파일 읽는 중 안내
+const reading = {}; // 계획 id → 파일 읽는 중 안내
+const MAX_SRC = 60000; // 자료 칸 하나에 저장하는 글자 수 (AI에는 그 앞부분만 감)
+const STEP_OF = { review: 2, guide: 3, draft: 4 }; // AI 일 → 결과를 보이는 단계
+let warnedFull = false;
 let showPrev = false; // 1단계 「지난 계획에서 불러오기」 목록
 
 /* 이름을 넣었거나 이미 저장된 계획이면 저장하고 목록을 고침 */
 function persist() {
   if (!saved && !plan.name.trim()) return;
   // 화면에서 고치는 값(빈 예산 줄 등)은 그대로 두고 저장 시각만 받음
-  plan.updatedAt = savePlan(plan).updatedAt;
+  const s = savePlan(plan);
+  if (!s) { if (!warnedFull) { warnedFull = true; toast('저장 공간이 모자라 저장하지 못했어요. 쓰지 않는 계획을 지우거나 긴 자료를 줄여 주세요.', 8000); } return; }
+  warnedFull = false;
+  plan.updatedAt = s.updatedAt;
   saved = true;
   setCurrent(plan.id);
   renderList();
@@ -42,9 +48,18 @@ function apply(id, fn) {
   if (!p) return;
   fn(p);
   const s = savePlan(p);
+  if (!s) { toast('저장 공간이 모자라 저장하지 못했어요.', 6000); return; }
   if (plan.id === id) plan = s;
   renderList();
 }
+/* AI 일이 끝나면: 그 결과를 보이는 단계를 보고 있을 때만 다시 그림 (다른 단계에서 치는 글이 끊기지 않게) */
+function finish(id, kind) {
+  delete busy[id];
+  if (!visible() || plan.id !== id) return;
+  if (plan.step === STEP_OF[kind]) renderMain();
+  else if (errs[id]) toast(errs[id], 6000);
+}
+const cap = t => String(t).slice(0, MAX_SRC);
 const visible = () => curTab === 'year' && box && box.isConnected && !box.closest('[hidden]');
 
 /* ---------- 그리기 ---------- */
@@ -82,7 +97,8 @@ function renderMain() {
   main.innerHTML = stepsHTML(STEPS, step, plan.maxStep)
     + (errs[plan.id] ? `<div class="banner err" role="alert"><span class="grow">${esc(errs[plan.id])}</span></div>` : '')
     + body
-    + `<div class="row yp-nav">${step > 1 ? '<button class="btn" type="button" data-y="prev">이전</button>' : ''}<span class="grow"></span>${step < 5 ? '<button class="btn primary" type="button" data-y="next">다음</button>' : ''}</div>`;
+    + `<div class="row yp-nav">${step > 1 ? '<button class="btn" type="button" data-y="prev">이전</button>' : ''}<span class="grow"></span>${step < 5 ? '<button class="btn primary" type="button" data-y="next">다음</button>' : ''}</div>`
+    + (saved ? `<div class="row yp-del"><button class="btn text yp-danger" type="button" data-y="delete">이 계획 지우기</button></div>` : '');
 }
 
 function step1() {
@@ -104,13 +120,14 @@ function step1() {
     </div>
     <div class="yp-card">
       <h3>자료</h3>
-      ${reading ? `<p class="muted"><span class="spin"></span> ${esc(reading)}</p>` : ''}
+      ${reading[plan.id] ? `<p class="muted"><span class="spin"></span> ${esc(reading[plan.id])}</p>` : ''}
       ${SRC.map(([k, label, hint]) => `<div class="yp-src">
         <div class="yp-src-h"><span class="lab">${label}</span><span class="row">${k === 'lastPlan' ? '<button class="btn text" type="button" data-y="importPrev">지난 계획에서 불러오기</button>' : ''}<button class="btn" type="button" data-file="${k}">파일 넣기</button></span></div>
         ${k === 'lastPlan' && showPrev ? prevHTML() : ''}
         <p class="muted">${hint}</p>
         <div class="yp-files muted" data-for="${k}">${plan.sourceNames[k].length ? '넣은 파일: ' + plan.sourceNames[k].map(esc).join(', ') : ''}</div>
         <textarea class="field" data-src="${k}" rows="4" placeholder="여기에 붙여넣어도 돼요" aria-label="${label}">${esc(plan.sources[k])}</textarea>
+        <p class="muted yp-cap" data-cap="${k}" ${plan.sources[k].length >= MAX_SRC ? '' : 'hidden'}>앞 6만 자만 저장해요. AI에는 그중 앞부분만 보내요.</p>
       </div>`).join('')}
     </div>`;
 }
@@ -193,23 +210,20 @@ function step5() {
   const d = plan.draft;
   if (!d) return `<div class="yp-card"><p class="muted">초안을 먼저 만들어 주세요.</p><div class="row"><button class="btn primary" type="button" data-step="4">4단계 초안으로</button></div></div>`;
   const ctx = { breaks: getSchool().breaks, events: listEvents(), source: 'year:' + plan.id };
-  let bad = 0;
+  const bad = d.schedule.filter(x => x.date && dayIssues(x.date, ctx).length).length;
   const rows = d.schedule.map((x, i) => {
-    const issues = x.date ? dayIssues(x.date, ctx) : [];
-    if (issues.length) bad++;
-    const sug = issues.length ? suggestDates(x.date, ctx) : [];
-    return `<tr data-i="${i}" class="${issues.length ? 'yp-bad' : ''}">
+    const c = dayCheck(x, i, ctx);
+    return `<tr data-i="${i}" class="${c.bad ? 'yp-bad' : ''}">
       <td><input class="field" type="date" data-date="${i}" value="${esc(x.date)}" aria-label="${i + 1}번째 일정 날짜"></td>
       <td><input class="field" data-title="${i}" value="${esc(x.title)}" aria-label="${i + 1}번째 일정 내용"></td>
-      <td><span class="yp-why">${x.date ? esc(issues.join(' · ')) : '<span class="muted">날짜를 정해 주세요</span>'}</span>
-        ${sug.length ? `<div class="yp-sug">${sug.map(s => `<button class="btn tonal" type="button" data-suggest="${s}" data-i="${i}">${fmtDay(s)}</button>`).join('')}</div>` : ''}</td>
+      <td class="yp-check">${c.html}</td>
       <td><button class="icon-btn" type="button" data-schdel="${i}" aria-label="이 일정 빼기">×</button></td></tr>`;
   }).join('');
   const fin = plan.status === 'final';
   return `<div class="yp-card">
       <h3>월별 추진 일정</h3>
       <p class="muted">주말·공휴일·설정의 방학·재량휴업일·다른 계획 일정과 겹치면 빨갛게 보이고, 가까운 가능한 날짜 2개를 추천해요.</p>
-      ${d.schedule.length ? `<p class="banner ${bad ? 'warn' : 'ok'}"><span class="grow">${bad ? `겹치는 일정이 ${bad}개 있어요.` : '겹치는 일정이 없어요.'}</span></p>` : ''}
+      <div id="ypDaysSum">${daysSumHTML(bad, d.schedule.length)}</div>
       <div class="yp-tbl-wrap"><table class="yp-tbl yp-days" id="ypDays"><thead><tr><th>날짜</th><th>내용</th><th>확인</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="muted">일정이 없어요.</td></tr>'}</tbody></table></div>
       <div class="row"><button class="btn text" type="button" data-y="schedAdd">+ 일정 더하기</button></div>
     </div>
@@ -220,6 +234,25 @@ function step5() {
       <div class="row yp-out"><button class="btn" type="button" data-y="hwpx">한글 파일로 내려받기</button><button class="btn" type="button" data-copy="schedule">일정 복사</button><span class="grow"></span>
         <button class="btn primary" type="button" data-y="final">${fin ? '다시 확정' : '확정'}</button></div>
     </div>`;
+}
+
+function dayCheck(x, i, ctx) {
+  const issues = x.date ? dayIssues(x.date, ctx) : [];
+  const sug = issues.length ? suggestDates(x.date, ctx) : [];
+  return { bad: issues.length > 0, html: `<span class="yp-why">${x.date ? esc(issues.join(' · ')) : '<span class="muted">날짜를 정해 주세요</span>'}</span>`
+    + (sug.length ? `<div class="yp-sug">${sug.map(s => `<button class="btn tonal" type="button" data-suggest="${s}" data-i="${i}">${fmtDay(s)}</button>`).join('')}</div>` : '') };
+}
+const daysSumHTML = (bad, n) => (n ? `<p class="banner ${bad ? 'warn' : 'ok'}"><span class="grow">${bad ? `겹치는 일정이 ${bad}개 있어요.` : '겹치는 일정이 없어요.'}</span></p>` : '');
+/* 날짜를 바꾸면 그 줄의 확인 칸과 위 요약만 고침 (날짜 칸은 다시 그리지 않음 — 키보드로 치는 중이어도 끊기지 않게) */
+function refreshDays(i) {
+  const d = plan.draft, tr = box && box.querySelector(`#ypDays tr[data-i="${i}"]`);
+  if (!d || !tr || !d.schedule[i]) return;
+  const ctx = { breaks: getSchool().breaks, events: listEvents(), source: 'year:' + plan.id };
+  const c = dayCheck(d.schedule[i], i, ctx);
+  tr.classList.toggle('yp-bad', c.bad);
+  tr.querySelector('.yp-check').innerHTML = c.html;
+  const sum = box.querySelector('#ypDaysSum');
+  if (sum) sum.innerHTML = daysSumHTML(d.schedule.filter(x => x.date && dayIssues(x.date, ctx).length).length, d.schedule.length);
 }
 
 function setSchedule(i, patch) {
@@ -239,6 +272,21 @@ function confirmPlan() {
   setEvents('year:' + plan.id, items);
   renderList(); renderMain();
   toast(`확정했어요. 학사일정에 ${items.length}개를 넣었어요`);
+}
+
+function askDelete() {
+  const id = plan.id, S = window.SSAM;
+  if (!S || !S.openSheet) return;
+  S.openSheet(`<h3>「${esc(plan.name || '이름 없는 계획')}」 지우기</h3>
+    <p class="muted" style="margin:0">계획서·일정·넣은 자료가 모두 지워지고, 확정해서 학사일정에 넣은 일정도 빠져요. 되돌릴 수 없어요.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>그만두기</button><button class="btn primary" type="button" data-y="deleteYes">지우기</button></div>`,
+  sh => sh.querySelector('[data-y="deleteYes"]').addEventListener('click', () => {
+    deletePlan(id); removeEvents('year:' + id);
+    S.closeSheet();
+    plan = listPlans()[0] || newPlan(); saved = !!getPlan(plan.id);
+    if (saved) setCurrent(plan.id);
+    render(); toast('지웠어요');
+  }));
 }
 
 async function downloadHwpx() {
@@ -271,8 +319,7 @@ async function runReview() {
   } catch (e) {
     errs[id] = ai.errorMessage(e && e.code, e);
   }
-  delete busy[id];
-  if (visible() && plan.id === id) renderMain();
+  finish(id, 'review');
 }
 
 /* ---------- AI: 지침 점검 ---------- */
@@ -293,8 +340,7 @@ async function runGuide() {
     const v = await ai.generateJSON(guidePrompt(plan), { valid: x => Array.isArray(x) && normGuide(x).length > 0 });
     apply(id, p => { p.guide = normGuide(v); });
   } catch (e) { errs[id] = ai.errorMessage(e && e.code, e); }
-  delete busy[id];
-  if (visible() && plan.id === id) renderMain();
+  finish(id, 'guide');
 }
 
 /* ---------- AI: 초안 ---------- */
@@ -325,11 +371,12 @@ async function runDraft() {
   busy[id] = 'draft'; delete errs[id];
   renderMain();
   try {
-    const v = await ai.generateJSON(draftPrompt(plan), { valid: x => x && !Array.isArray(x) && typeof x.purpose === 'string' });
+    // 섹션이 몇 개 빠져도 받음 (빠진 섹션은 빈 글)
+    const ok = x => { const d = normDraft(x); return !!d && (TEXT_SECTIONS.some(k => d[k].trim()) || d.schedule.length > 0); };
+    const v = await ai.generateJSON(draftPrompt(plan), { valid: ok });
     apply(id, p => { p.draft = normDraft(v); if (p.status === 'final') p.status = 'draft'; });
   } catch (e) { errs[id] = ai.errorMessage(e && e.code, e); }
-  delete busy[id];
-  if (visible() && plan.id === id) renderMain();
+  finish(id, 'draft');
 }
 
 /* 초안을 고칠 때 작년 비교만 다시 그림 */
@@ -365,20 +412,26 @@ function next() {
   goStep(Math.min(5, plan.step + 1));
 }
 
+/* 파일은 넣기 시작한 계획(id)에 넣음 — 읽는 동안 다른 계획으로 가도 섞이지 않게 */
 async function addFiles(target, files) {
+  const id = plan.id;
+  if (!saved) persist();
+  const here = () => visible() && plan.id === id && plan.step === 1;
   for (const f of files) {
-    reading = `「${f.name}」 읽는 중…`;
-    if (plan.step === 1) renderMain();
+    reading[id] = `「${f.name}」 읽는 중…`;
+    if (here()) renderMain();
     try {
       const text = await readText(f);
-      const prev = plan.sources[target].trim();
-      plan.sources[target] = (prev ? prev + '\n\n' : '') + `(파일 「${f.name}」)\n${text}`;
-      plan.sourceNames[target] = [...plan.sourceNames[target], f.name];
-      persist();
+      const add = p => {
+        const prev = p.sources[target].trim();
+        p.sources[target] = cap((prev ? prev + '\n\n' : '') + `(파일 「${f.name}」)\n${text}`);
+        p.sourceNames[target] = [...p.sourceNames[target], f.name];
+      };
+      if (plan.id === id) { add(plan); persist(); } else apply(id, add);
     } catch (e) { toast(fileMessage(e && e.code), 5000); }
   }
-  reading = '';
-  if (visible() && plan.step === 1) renderMain();
+  delete reading[id];
+  if (here()) renderMain();
 }
 
 /* ---------- 입력·누르기 ---------- */
@@ -388,7 +441,11 @@ document.addEventListener('input', e => {
   if (el.dataset.pk) {
     plan[el.dataset.pk] = el.dataset.pk === 'year' ? (parseInt(el.value, 10) || plan.year) : el.value;
     if (String(el.value).trim()) el.classList.remove('bad');
-  } else if (el.dataset.src) plan.sources[el.dataset.src] = el.value;
+  } else if (el.dataset.src) {
+    if (el.value.length > MAX_SRC) { el.value = cap(el.value); toast('앞 6만 자만 저장해요', 4000); }
+    plan.sources[el.dataset.src] = el.value;
+    const n = box.querySelector(`[data-cap="${el.dataset.src}"]`); if (n) n.hidden = el.value.length < MAX_SRC;
+  }
   else if (el.dataset.sec && plan.draft) { plan.draft = { ...plan.draft, [el.dataset.sec]: el.value }; refreshOverlap(); }
   else if (el.dataset.title != null) { setSchedule(+el.dataset.title, { title: el.value }); return; }
   else if (el.dataset.bud != null && plan.draft) {
@@ -404,7 +461,7 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => {
   if (!box || !box.contains(e.target) || curTab !== 'year') return;
   const el = e.target;
-  if (el.dataset.date != null) { setSchedule(+el.dataset.date, { date: el.value }); renderMain(); return; }
+  if (el.dataset.date != null) { setSchedule(+el.dataset.date, { date: el.value }); refreshDays(+el.dataset.date); return; }
   if (el.id === 'ypFile') { const t = el.dataset.target; const files = [...el.files]; el.value = ''; if (t && files.length) addFiles(t, files); return; }
   if (el.dataset.idea != null && plan.review) {
     const set = new Set(plan.review.picked);
@@ -460,6 +517,7 @@ document.addEventListener('click', e => {
   else if (a === 'importPrev') { showPrev = !showPrev; renderMain(); }
   else if (a === 'hwpx') downloadHwpx();
   else if (a === 'final') confirmPlan();
+  else if (a === 'delete') askDelete();
   else if (a === 'school') goMenu('settings', 'school');
 });
 

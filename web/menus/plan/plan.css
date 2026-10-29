@@ -82,3 +82,6 @@ button.steps-in:hover{background:var(--surface2)}
 .yp-src-h .row{gap:6px;flex-wrap:wrap;justify-content:flex-end}
 @media (max-width:600px){ .yp-days thead{display:none} .yp-days tr{display:grid;grid-template-columns:minmax(0,1fr) 44px} .yp-days td{border:0;border-bottom:1px solid var(--line)} .yp-days td:first-child{width:auto} .yp-days td:nth-child(2),.yp-days td:nth-child(3){grid-column:1/-1} .yp-days td:last-child{grid-row:1;grid-column:2} }
 .yp-card > p,.yp-card > .banner,.yp-card > div > p.banner{margin:0}
+.yp-del{justify-content:flex-end}
+.yp-danger{color:var(--err)}
+.yp-cap{margin:0;font-size:13px;color:var(--warn)}

@@ -107,3 +107,15 @@ test('지난 계획을 글로 (다음 해 작년 계획서)', () => {
   assert.ok(t.includes('2027-10-15 | 발표회'));
   assert.ok(t.includes('합계 | 1,200,000 |'));
 });
+
+test('AI가 섹션을 목록(배열)으로 주면 줄로 이어 받음', () => {
+  const d = normDraft({ purpose: ['가. 습관을 기른다.', '나. 문화를 만든다.'], policy: [1, '방침'] });
+  assert.equal(d.purpose, '가. 습관을 기른다.\n나. 문화를 만든다.');
+  assert.equal(d.policy, '방침');
+});
+
+test('저장 공간이 모자라면 savePlan은 null', () => {
+  const full = { ...mem(), setItem: () => { throw new Error('QuotaExceededError'); } };
+  store.useStorage(full);
+  assert.equal(savePlan({ ...newPlan(), name: '큰 계획' }), null);
+});
