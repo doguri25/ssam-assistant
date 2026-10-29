@@ -32,6 +32,7 @@ export async function open({ width = 1280, height = 860 } = {}) {
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width, height } });
   const page = await ctx.newPage();
+  page.setDefaultTimeout(8000);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error' && !/fonts\.g|net::ERR/.test(m.text())) errors.push(m.text()); });

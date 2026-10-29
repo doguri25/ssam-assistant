@@ -1,0 +1,96 @@
+/* 창 틀: 왼쪽 세로 메뉴 + 상단 헤더(메뉴 제목·가로 메뉴). 메뉴마다 <section data-menu>를 보이고 숨김.
+   평가 메뉴의 가로 메뉴는 기존 앱의 화면(mode)과 같음: window.SSAM.setMode로 바꿈 */
+import { icon } from './icons.js';
+import { renderPlaceholder } from '../menus/placeholder.js';
+
+export const MENUS = [
+  { id: 'evaluate', label: '평가', tabs: [['pyeongeo', '교과 평어'], ['cc', '창의적 체험활동'], ['hk', '행동특성'], ['gr', '평가지 채점']] },
+  { id: 'training', label: '연수', tabs: [['mine', '내 필수연수'], ['board', '연수 현황판']] },
+  { id: 'plan', label: '계획', tabs: [['year', '연간계획'], ['event', '행사계획']] },
+  { id: 'class', label: '학급', tabs: [['today', '오늘 수업'], ['progress', '진도표·시수'], ['weekly', '주간학습안내']] },
+  { id: 'purchase', label: '품의', tabs: [['new', '새 품의'], ['templates', '저장한 템플릿'], ['recent', '최근 작성']] },
+  { id: 'settings', label: '설정', tabs: [['roster', '학급 명단'], ['ai', 'AI'], ['screen', '화면'], ['school', '학교 정보'], ['purchase', '품의 기준']] }
+].map(m => ({ ...m, icon: m.id, tabs: m.tabs.map(([id, label]) => ({ id, label })) }));
+
+const NAV_KEY = 'ssam:nav';
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const SSAM = () => window.SSAM || {};
+const hooks = {};
+let cur = null;
+
+/* 메뉴에 들어올 때 부를 함수 등록: fn(tab, section) */
+export function onEnter(menu, fn) {
+  (hooks[menu] || (hooks[menu] = [])).push(fn);
+  if (cur && cur.menu === menu) fn(cur.tab, section(menu));
+}
+const section = menu => document.querySelector(`section[data-menu="${menu}"]`);
+const find = id => MENUS.find(m => m.id === id);
+
+function readNav() {
+  try {
+    const v = JSON.parse(localStorage.getItem(NAV_KEY));
+    if (v && find(v.menu)) return v;
+  } catch (e) {}
+  return null;
+}
+
+export function go(menuId, tabId) {
+  const m = find(menuId) || MENUS[0];
+  let tab = m.tabs.find(x => x.id === tabId) ? tabId : null;
+  if (!tab) tab = m.id === 'evaluate' ? (SSAM().getMode && SSAM().getMode()) || 'pyeongeo' : m.tabs[0].id;
+  cur = { menu: m.id, tab };
+  document.querySelectorAll('section[data-menu]').forEach(s => { s.hidden = s.dataset.menu !== m.id; });
+  document.querySelectorAll('[data-menu-go]').forEach(b => {
+    if (b.dataset.menuGo === m.id) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
+  $('#menuTitle').textContent = m.label;
+  drawTabs(m);
+  if (m.id === 'evaluate' && SSAM().getMode && SSAM().getMode() !== tab) SSAM().setMode(tab);
+  try { localStorage.setItem(NAV_KEY, JSON.stringify(cur)); } catch (e) {}
+  drawAi();
+  const fns = hooks[m.id];
+  if (fns && fns.length) fns.forEach(fn => fn(tab, section(m.id)));
+  else if (m.id !== 'evaluate') renderPlaceholder(section(m.id), m, tab);
+}
+
+function drawTabs(m) {
+  $('#menuTabs').setAttribute('aria-label', `${m.label} 메뉴`);
+  $('#menuTabs').innerHTML = m.tabs.map(t => `<button type="button" data-tab="${t.id}"${t.id === cur.tab ? ' aria-current="page"' : ''}>${esc(t.label)}</button>`).join('');
+}
+
+function drawSide() {
+  const btn = m => `<button type="button" class="side-btn" data-menu-go="${m.id}">${icon(m.icon)}<span>${esc(m.label)}</span></button>`;
+  $('#sideMenus').innerHTML = MENUS.filter(m => m.id !== 'settings').map(btn).join('');
+  $('#sideSettings').innerHTML = btn(find('settings'));
+}
+
+/* 세로 메뉴 아래 「사용 중인 AI」 */
+function drawAi() {
+  const name = SSAM().ai && SSAM().ai.engineReady && SSAM().ai.engineReady() ? SSAM().ai.engineName() : '';
+  $('#sideAiName').textContent = name || 'AI를 정해 주세요';
+}
+
+function init() {
+  drawSide();
+  document.addEventListener('click', e => {
+    const g = e.target.closest('[data-menu-go]'); if (g) { go(g.dataset.menuGo); return; }
+    const t = e.target.closest('#menuTabs [data-tab]'); if (t) { go(cur.menu, t.dataset.tab); return; }
+    if (e.target.closest('#sideAi')) go('settings', 'ai');
+  });
+  // 기존 앱이 스스로 화면을 바꾸면(새 평가계획 넣기 등) 가로 메뉴도 맞춤
+  if (SSAM().onModeChange) SSAM().onModeChange(mode => {
+    if (!cur || cur.menu !== 'evaluate' || cur.tab === mode) return;
+    cur.tab = mode; drawTabs(find('evaluate'));
+    try { localStorage.setItem(NAV_KEY, JSON.stringify(cur)); } catch (e) {}
+  });
+  // 설정 시트를 닫으면 AI 이름을 다시 읽음
+  const root = $('#sheetRoot');
+  if (root) new MutationObserver(drawAi).observe(root, { childList: true });
+  const saved = readNav();
+  go(saved ? saved.menu : 'evaluate', saved && saved.menu !== 'evaluate' ? saved.tab : undefined);
+}
+
+// 메뉴 모듈들이 onEnter를 등록한 뒤에 처음 화면을 그림 (모듈은 DOMContentLoaded 전에 모두 실행됨)
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+else init();
