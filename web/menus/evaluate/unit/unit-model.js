@@ -1,0 +1,178 @@
+/* 단원평가 저장·통계 (스펙 2.3·4). 학년도마다 따로인 ssam:unit:* 키에 둠 */
+import * as store from '../../../core/store.js';
+import { keyTotal } from './unit-key.js';
+import { studentTotal } from './unit-grade.js';
+
+const LIST = 'unit:list', T = id => 'unit:t:' + id, SET = 'unit:set', PY = s => 'unit:pyeongeo:' + s;
+export const LEVEL_NAME = { top: '최상', high: '상', mid: '중', low: '하' };
+const CUTS = { top: 95, high: 80, mid: 60 };
+const r1 = x => Math.round(x * 10) / 10;
+const mean = a => (a.length ? r1(a.reduce((s, x) => s + x, 0) / a.length) : null);
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+export const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+export const graded = test => ((test && test.students) || []).filter(s => !s.skip && s.status === 'done');
+const domainsOf = it => String(it.domain || '').split('·').filter(Boolean);
+
+export function makeTitle(m = {}) {
+  const parts = [m.grade ? `${m.grade}학년` : '', m.subject || '', m.unitNo ? `${m.unitNo}단원` : '', m.unitName || '', m.round ? `(${m.round}회)` : ''].filter(Boolean);
+  return parts.join(' ') || '단원평가';
+}
+
+export function newTest({ meta = {}, key = {}, paper = {} } = {}) {
+  return {
+    id: newId(),
+    meta: { subject: '', grade: null, term: null, unitNo: null, unitName: '', round: null, date: today(), ...meta },
+    key: { domains: [], items: [], ...key }, paper: { text: '', ...paper },
+    students: [], done: false, createdAt: Date.now()
+  };
+}
+
+function summary(t) {
+  const g = graded(t);
+  return {
+    id: t.id, title: makeTitle(t.meta), subject: t.meta.subject || '', grade: t.meta.grade, term: t.meta.term, unitNo: t.meta.unitNo, round: t.meta.round,
+    date: t.meta.date || '', total: keyTotal(t.key.items), n: g.length, avg: mean(g.map(s => studentTotal(t, s).pct)), done: !!t.done, at: t.createdAt || 0
+  };
+}
+/* 저장할 때 긴 글을 자름 (한 평가 약 50KB) */
+function trimmed(t) {
+  return {
+    ...t, paper: { ...t.paper, text: String(t.paper.text || '').slice(0, 12000) },
+    students: t.students.map(s => ({
+      ...s, items: Object.fromEntries(Object.entries(s.items || {}).map(([k, c]) => [k, { ...c, read: String(c.read || '').slice(0, 120), why: String(c.why || '').slice(0, 80) }]))
+    }))
+  };
+}
+
+export function listTests() {
+  const l = store.get(LIST, []);
+  return (Array.isArray(l) ? l : []).slice().sort((a, b) => String(b.date).localeCompare(String(a.date)) || (b.at - a.at));
+}
+export const getTest = id => store.get(T(id), null);
+export function saveTest(test) {
+  if (!store.set(T(test.id), trimmed(test))) return false;
+  const l = store.get(LIST, []).filter(x => x.id !== test.id);
+  return store.set(LIST, [...l, summary(test)]);
+}
+export function removeTest(id) {
+  store.remove(T(id));
+  store.set(LIST, store.get(LIST, []).filter(x => x.id !== id));
+}
+
+export const getSet = () => ({ pagesPer: 2, mask: [], maskAll: false, maskOn: true, ...(store.get(SET, {}) || {}) });
+export const saveSet = s => store.set(SET, s);
+export function getPyeongeo(subject) {
+  const v = store.get(PY(subject), null) || {};
+  return { tests: null, students: {}, ...v, cuts: { ...CUTS, ...(v.cuts || {}) } };
+}
+export const savePyeongeo = (subject, v) => store.set(PY(subject), v);
+
+/* 1번부터(또는 start부터) 예외 번호를 건너뛰며 n개 */
+export function numbersFor(n, except = [], start = 1) {
+  const ex = new Set(except.map(Number)), out = [];
+  for (let no = Math.max(1, start | 0); out.length < n; no++) if (!ex.has(no)) out.push(no);
+  return out;
+}
+export const termOf = date => { const m = Number(String(date || '').slice(5, 7)); return m >= 3 && m <= 8 ? 1 : 2; };
+export const filterTests = (list, { subject = '', term = 0 } = {}) =>
+  list.filter(s => (!subject || s.subject === subject) && (!term || termOf(s.date) === Number(term)));
+
+const order = (a, b) => String(a.meta.subject).localeCompare(String(b.meta.subject), 'ko') || ((a.meta.unitNo || 0) - (b.meta.unitNo || 0)) || ((a.meta.round || 0) - (b.meta.round || 0)) || String(a.meta.date).localeCompare(String(b.meta.date));
+
+export function summaryTable(tests) {
+  const ts = tests.slice().sort(order);
+  const nos = [...new Set(ts.flatMap(t => graded(t).map(s => s.no)))].sort((a, b) => a - b);
+  const pctOf = (t, no) => { const s = graded(t).find(x => x.no === no); return s ? studentTotal(t, s).pct : null; };
+  const rows = nos.map(no => {
+    const cells = Object.fromEntries(ts.map(t => [t.id, pctOf(t, no)]));
+    return { no, cells, avg: mean(Object.values(cells).filter(v => v != null)) };
+  });
+  const colAvg = Object.fromEntries(ts.map(t => [t.id, mean(graded(t).map(s => studentTotal(t, s).pct))]));
+  return { cols: ts.map(t => ({ id: t.id, title: makeTitle(t.meta), subject: t.meta.subject })), rows, colAvg };
+}
+
+export function studentHistory(tests, no) {
+  const ts = tests.slice().sort((a, b) => String(a.meta.date).localeCompare(String(b.meta.date)));
+  const rows = [], dom = new Map(), weak = new Map();
+  for (const t of ts) {
+    const s = graded(t).find(x => x.no === no);
+    if (!s) continue;
+    const tot = studentTotal(t, s);
+    rows.push({ id: t.id, title: makeTitle(t.meta), date: t.meta.date, score: tot.score, total: tot.total, pct: tot.pct, classAvg: mean(graded(t).map(x => studentTotal(t, x).pct)) });
+    for (const d of t.key.domains || []) if (!dom.has(d)) dom.set(d, [0, 0]);
+    for (const it of t.key.items) {
+      const got = Number(s.items[it.no] && s.items[it.no].pts) || 0, full = Number(it.points) || 0;
+      for (const d of domainsOf(it)) { const v = dom.get(d) || [0, 0]; v[0] += got; v[1] += full; dom.set(d, v); }
+      const w = weak.get(it.content) || { content: it.content, lost: 0, pages: it.pages };
+      w.lost += full - got; weak.set(it.content, w);
+    }
+  }
+  return {
+    rows,
+    domains: [...dom].filter(([, v]) => v[1]).map(([name, v]) => ({ name, rate: v[0] / v[1] })),
+    weak: [...weak.values()].filter(w => w.lost > 0).sort((a, b) => b.lost - a.lost).slice(0, 5)
+  };
+}
+
+export function itemStats(test) {
+  const g = graded(test);
+  return test.key.items.map(it => {
+    const full = Number(it.points) || 0;
+    const got = g.reduce((s, st) => s + (Number(st.items[it.no] && st.items[it.no].pts) || 0), 0);
+    const wrong = [];
+    if (it.type === 'choice' || it.type === 'symbol') {
+      const m = new Map();
+      for (const st of g) {
+        const c = st.items[it.no];
+        if (!c || !c.read || (Number(c.pts) || 0) >= full) continue;
+        const k = c.read.replace(/\s+/g, '');
+        m.set(k, { answer: (m.get(k) || {}).answer || c.read, count: ((m.get(k) || {}).count || 0) + 1 });
+      }
+      wrong.push(...[...m.values()].sort((a, b) => b.count - a.count).slice(0, 3));
+    }
+    return { no: it.no, content: it.content, domain: it.domain, type: it.type, rate: full && g.length ? got / (full * g.length) : 0, wrong, pages: it.pages };
+  });
+}
+export const reteach = test => itemStats(test).filter(x => x.rate < 0.6).sort((a, b) => a.rate - b.rate);
+
+export function domainStats(tests) {
+  const dom = new Map();
+  for (const t of tests) {
+    for (const d of t.key.domains || []) if (!dom.has(d)) dom.set(d, [0, 0]);
+    for (const st of graded(t)) for (const it of t.key.items) {
+      const got = Number(st.items[it.no] && st.items[it.no].pts) || 0;
+      for (const d of domainsOf(it)) { const v = dom.get(d) || [0, 0]; v[0] += got; v[1] += Number(it.points) || 0; dom.set(d, v); }
+    }
+  }
+  return [...dom].filter(([, v]) => v[1]).map(([name, v]) => ({ name, rate: v[0] / v[1] }));
+}
+
+export function levelOf(pct, cuts = CUTS) {
+  const c = { ...CUTS, ...cuts };
+  return pct >= c.top ? 'top' : pct >= c.high ? 'high' : pct >= c.mid ? 'mid' : 'low';
+}
+
+export function feedbackOf(test, st) {
+  const { score, total } = studentTotal(test, st);
+  const wrong = [], partial = [];
+  for (const it of test.key.items) {
+    const c = st.items[it.no] || {}, pts = Number(c.pts) || 0, full = Number(it.points) || 0;
+    if (pts <= 0) wrong.push({ no: it.no, content: it.content, read: c.read || '', answer: it.answer, pages: it.pages });
+    else if (pts < full) partial.push({ no: it.no, content: it.content, pts, points: full });
+  }
+  return { score, total, wrong, partial };
+}
+
+export function feedbackText(test, st) {
+  const f = feedbackOf(test, st);
+  const out = [`[${makeTitle(test.meta)}] ${st.no}번 · 점수 ${f.score}/${f.total}`];
+  const items = [
+    ...f.wrong.map(w => ({ no: w.no, line: `- ${w.no}번 ${w.content}${w.pages ? ` (${w.pages})` : ''}` })),
+    ...f.partial.map(p => { const it = test.key.items.find(i => i.no === p.no) || {}; return { no: p.no, line: `- ${p.no}번 ${p.content} (부분 점수 ${p.pts}/${p.points}${it.pages ? `, ${it.pages}` : ''})` }; })
+  ].sort((a, b) => a.no - b.no);
+  if (items.length) out.push('다시 볼 문항', ...items.map(x => x.line));
+  else out.push('다시 볼 문항: 없어요. 모두 맞혔어요!');
+  if (st.good) out.push(`잘한 점: ${st.good}`);
+  if (st.cheer) out.push(`한마디: ${st.cheer}`);
+  return out.join('\n');
+}

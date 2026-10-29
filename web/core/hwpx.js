@@ -1,5 +1,5 @@
 /* 한글 파일(.hwpx) 만들기: 무압축 zip + 한글 문서 XML(OWPML).
-   doc = { title, blocks: [{ type: 'h', text } | { type: 'p', text } | { type: 'table', rows: string[][], head?: boolean }] }
+   doc = { title, blocks: [{ type: 'h', text } | { type: 'p', text } | { type: 'table', rows: string[][], head?: boolean } | { type: 'break' }] }
    글자 모양 0 보통 10pt · 1 굵게 10pt · 2 제목 굵게 16pt · 3 소제목 굵게 12pt
    문단 모양 0 양쪽 · 1 가운데 · 2 왼쪽(위 여백) / 테두리 1 없음 · 2 없음(글자용) · 3 실선 · 4 실선+회색(머리줄) */
 import { zipStore } from './zip.js';
@@ -105,11 +105,12 @@ function secPr() {
 /* 본문 XML을 만드는 도구 (문단·표 id를 차례로 매김) */
 function sectionXml(doc) {
   let pid = 0, tid = 0;
-  const para = (pr, runs) => `<hp:p id="${pid++}" paraPrIDRef="${pr}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">${runs}</hp:p>`;
+  const para = (pr, runs, pb) => `<hp:p id="${pid++}" paraPrIDRef="${pr}" styleIDRef="0" pageBreak="${pb ? 1 : 0}" columnBreak="0" merged="0">${runs}</hp:p>`;
   const run = (cpr, text) => `<hp:run charPrIDRef="${cpr}"><hp:t>${esc(text)}</hp:t></hp:run>`;
-  const lines = (pr, cpr, text) => String(text == null ? '' : text).split('\n').map(l => para(pr, run(cpr, l))).join('');
+  // pb: 첫 줄을 새 쪽에서 시작
+  const lines = (pr, cpr, text, pb) => String(text == null ? '' : text).split('\n').map((l, i) => para(pr, run(cpr, l), pb && !i)).join('');
 
-  function table(rows, head) {
+  function table(rows, head, pb) {
     const cols = Math.max(1, ...rows.map(r => r.length));
     const w = Math.floor(TEXT_W / cols), rowH = 1000;
     const tr = (r, ri) => '<hp:tr>' + Array.from({ length: cols }, (_, ci) => {
@@ -125,16 +126,20 @@ function sectionXml(doc) {
       + '<hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="0" holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="COLUMN" vertAlign="TOP" horzAlign="LEFT" vertOffset="0" horzOffset="0"/>'
       + '<hp:outMargin left="0" right="0" top="0" bottom="0"/><hp:inMargin left="510" right="510" top="141" bottom="141"/>'
       + rows.map(tr).join('') + '</hp:tbl>';
-    return para(0, `<hp:run charPrIDRef="0">${tbl}<hp:t/></hp:run>`);
+    return para(0, `<hp:run charPrIDRef="0">${tbl}<hp:t/></hp:run>`, pb);
   }
 
   // 첫 문단: 구역 설정 + 제목
   let body = para(1, `<hp:run charPrIDRef="2">${secPr()}<hp:ctrl><hp:colPr id="" type="NEWSPAPER" layout="LEFT" colCount="1" sameSz="1" sameGap="0"/></hp:ctrl></hp:run>${run(2, doc.title || '')}`);
+  // { type: 'break' }: 다음 블록을 새 쪽에서 시작
+  let brk = false;
   for (const b of doc.blocks || []) {
     if (!b) continue;
-    if (b.type === 'h') body += lines(2, 3, b.text);
-    else if (b.type === 'table') { const rows = (b.rows || []).filter(Array.isArray); if (rows.length) body += table(rows, !!b.head); }
-    else body += lines(0, 0, b.text);
+    if (b.type === 'break') { brk = true; continue; }
+    const pb = brk; brk = false;
+    if (b.type === 'h') body += lines(2, 3, b.text, pb);
+    else if (b.type === 'table') { const rows = (b.rows || []).filter(Array.isArray); if (rows.length) body += table(rows, !!b.head, pb); else brk = pb; }
+    else body += lines(0, 0, b.text, pb);
   }
   return `${HEAD}<hs:sec ${XMLNS}>${body}</hs:sec>`;
 }

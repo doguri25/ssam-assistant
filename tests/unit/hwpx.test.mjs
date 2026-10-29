@@ -38,6 +38,14 @@ test('본문: 이스케이프, 문단, 표 하나 2×2', async () => {
   assert.ok(head.includes('<hh:trackchageConfig flags="56"/></hh:head>'));
 });
 
+test('쪽 나누기: break 다음 문단이 새 쪽에서 시작', async () => {
+  const m = await unzip(makeHwpx({ title: 't', blocks: [{ type: 'p', text: 'a' }, { type: 'break' }, { type: 'p', text: 'b' }, { type: 'break' }, { type: 'table', rows: [['c']] }] }));
+  const sec = dec(m.get('Contents/section0.xml'));
+  assert.equal((sec.match(/pageBreak="1"/g) || []).length, 2);
+  assert.match(sec, /<hp:p [^>]*pageBreak="1"[^>]*><hp:run charPrIDRef="0"><hp:t>b<\/hp:t>/);
+  assert.match(sec, /<hp:p [^>]*pageBreak="1"[^>]*><hp:run charPrIDRef="0"><hp:tbl /);
+});
+
 test('표의 칸 수가 줄마다 달라도 가장 긴 줄에 맞춤', async () => {
   const m = await unzip(makeHwpx({ title: 't', blocks: [{ type: 'table', rows: [['a', 'b', 'c'], ['d']] }] }));
   const sec = dec(m.get('Contents/section0.xml'));
