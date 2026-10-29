@@ -35,7 +35,7 @@ export function snapshot(ls) {
 }
 
 const parse = t => { try { return JSON.parse(t); } catch (e) { return null; } };
-/* 새 학년도에 가져가는 것: 연간계획·행사계획, 새 학년도(3월 1일부터) 학사일정, 학교명·학급 수·학생 수,
+/* 새 학년도에 가져가는 것: 연간계획·행사계획·학급운영계획, 새 학년도(3월 1일부터) 학사일정, 학교명·학급 수·학생 수,
    설정(평어·행특 설정, 채점 설정(예외 번호는 비움), 나이스 입력 설정, 품의 기준 금액). 학생 자료는 비움.
    classSetup: 2월에 새 학년도 준비를 미리 넣었으면 학급 명단·학급 정보·시간표·진도표도 (진도 위치는 처음부터, 체크·주간학습안내는 비움) */
 export function carryOver(snap, newYear, { classSetup = false } = {}) {

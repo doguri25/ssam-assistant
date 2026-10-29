@@ -45,7 +45,7 @@ const PAGE = /(\s*[.·…‥ㆍ]{2,}\s*|\s{2,})\d{1,3}$/, LESSON = /\d{1,2}\s*\/
 function headings(src) {
   const lines = String(src || '').split('\n');
   const roman = lines.some(l => L1.test(l.trim()) && !l.includes('|'));
-  let out = [], seen = new Set(), inTop = false, prev1 = 0, prev2 = 0;
+  let out = [], seen = new Set(), inTop = false, prev1 = 0, prev2 = 0, parent = '';
   lines.forEach((raw, i) => {
     const l = raw.trim().replace(PAGE, '');
     if (!l || l.includes('|') || l.includes('\t') || l.length > 41 || LESSON.test(l)) return;
@@ -60,8 +60,8 @@ function headings(src) {
     if (level === 1 && n === 1 && out.length && norm(title) === norm(out[0].title)) { out = []; seen = new Set(); prev1 = 0; }
     const ok = prev => n >= Math.max(1, prev) && n <= prev + 2; // 같은 번호 거듭·하나 건너뜀은 잘못 매긴 번호로 봄
     if (level === 2 ? !ok(prev2) : !roman && !ok(prev1)) return;
-    if (level === 1) { inTop = true; prev1 = n; prev2 = 0; } else prev2 = n;
-    const key = level + norm(title);
+    if (level === 1) { inTop = true; prev1 = n; prev2 = 0; parent = norm(title); } else prev2 = n;
+    const key = level === 1 ? '1' + norm(title) : `2${parent}/${norm(title)}`; // 작은 칸은 큰 칸마다 따로
     if (seen.has(key)) return;
     seen.add(key);
     out.push({ line: i, level, title });

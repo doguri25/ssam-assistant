@@ -1,7 +1,7 @@
 /* 계획 › 학급운영계획: 1 자료 넣기 → 2 목차 → 3 초안 → 4 첨부·내보내기 (스펙 2026-10-29-class-plan).
    작년 계획서 목차 그대로 올해 초안을 쓰고, 첨부한 진도표·평가계획을 읽어 표로 넣음.
    AI 답은 시작할 때의 계획 id에 저장해서, 그사이 다른 계획·메뉴로 가도 섞이지 않음 */
-import { onFlush } from '../../core/store.js';
+import { onFlush, get } from '../../core/store.js';
 import { onEnter } from '../../core/shell.js';
 import * as ai from '../../core/ai.js';
 import { readText, fileMessage } from '../../core/files.js';
@@ -67,6 +67,9 @@ function apply(id, fn) {
   renderList();
 }
 
+/* 확정한 계획을 고치면 다시 「작성 중」 */
+const unfinal = p => { if (p.status === 'final') p.status = 'draft'; };
+
 /* ---------- 그리기 ---------- */
 function render() {
   if (!box) return;
@@ -109,7 +112,8 @@ function renderMain() {
 }
 
 /* ---------- 1단계: 자료 넣기 ---------- */
-function rosterCount() { try { const c = JSON.parse(localStorage.getItem('ssam:class') || 'null'); return c && c.count ? c.count : 0; } catch (e) { return 0; } }
+/* 설정 › 학급 명단의 학생 수 (예외 번호 뺌) */
+function rosterCount() { const c = get('class', null); return c && c.count ? c.count - (Array.isArray(c.except) ? c.except.length : 0) : 0; }
 function step1() {
   const n = rosterCount();
   const num = (id, k, label, min, max) => `<label class="yp-f"><span class="lab">${label}</span><input class="field num" type="number" id="${id}" data-pk="${k}" min="${min}" max="${max}" value="${plan[k] == null ? '' : plan[k]}"></label>`;
@@ -142,7 +146,8 @@ const jindoSubjects = r => (r ? r.subjects.filter(s => s.pick).map(s => ({ name:
 function attInfo(a) {
   if (a.kind === 'jindo') {
     const s = a.summary.subjects;
-    return s.length ? `교과 ${s.length}개 · ${s.reduce((n, x) => n + x.hours, 0)}시간` : '연간지도계획 표를 찾지 못했어요. 시수표 없이 붙임 목록에만 들어가요.';
+    if (s.length) return `교과 ${s.length}개 · ${s.reduce((n, x) => n + x.hours, 0)}시간`;
+    return attMem[a.id] && attMem[a.id].jindo ? '창체 영역별 표만 있어 시수표에 넣을 교과가 없어요. 학급 메뉴로는 넣을 수 있어요.' : '연간지도계획 표를 찾지 못했어요. 시수표 없이 붙임 목록에만 들어가요.';
   }
   if (a.kind === 'eval') return a.text ? '4단계에서 AI로 평가 표를 읽어요.' : '글을 읽지 못해 붙임 목록에만 들어가요.';
   return '붙임 목록에만 들어가요.';
@@ -175,7 +180,7 @@ async function addAttach(files) {
     if (here()) renderMain();
     try {
       const { att, privacy } = attachFrom(f.name, await readText(f));
-      apply(id, p => { p.attach = [...p.attach, att]; });
+      apply(id, p => { p.attach = [...p.attach, att]; unfinal(p); });
       if (privacy && (privacy.dropped || privacy.masked)) toast(privacyMsg(privacy), 7000);
     } catch (e) { toast(fileMessage(e && e.code), 5000); }
   }
@@ -188,7 +193,7 @@ function setKind(aid, kind) {
   a.kind = kind;
   if (kind === 'eval' && !a.text && m) a.text = m.text;
   if (kind === 'jindo' && m) a.summary = { subjects: jindoSubjects(m.jindo) };
-  persist(); renderMain();
+  unfinal(plan); persist(); renderMain();
 }
 function prevHTML() {
   const list = listPlans().filter(p => p.status === 'final' && p.id !== plan.id);
@@ -220,10 +225,16 @@ async function addFiles(target, files) {
 
 /* ---------- 2단계: 목차 ---------- */
 let outlineNote = '';
+/* 표준 목차를 보기만 하고 고치지 않았는지 (초안도 없음) */
+const untouchedStd = () => !plan.draft && plan.outline.length === STANDARD.length
+  && plan.outline.every((x, i) => x.id === STANDARD[i].id && x.title === STANDARD[i].title && x.level === STANDARD[i].level);
 function ensureOutline() {
-  if (plan.outline.length) return;
-  const o = plan.sources.lastPlan.trim() ? parseOutline(plan.sources.lastPlan) : [];
+  const last = plan.sources.lastPlan.trim();
+  // 표준 목차를 본 뒤 작년 계획서를 넣었으면 작년 목차로 바꿈 (고친 목차·초안이 있으면 그대로)
+  if (plan.outline.length && !(last && untouchedStd())) return;
+  const o = last ? parseOutline(plan.sources.lastPlan) : [];
   if (o.length) { plan.outline = o; outlineNote = `작년 계획서 목차 그대로예요(${o.length}칸). 이름을 고치거나 빼고 더할 수 있어요.`; }
+  else if (plan.outline.length) return;
   else {
     plan.outline = STANDARD.map(x => ({ ...x }));
     outlineNote = plan.sources.lastPlan.trim() ? '작년 계획서에서 목차를 찾지 못해 표준 목차로 시작해요.' : '작년 계획서가 없어 표준 목차로 시작해요. 여러 학교의 학급운영계획과 학급 교육과정 운영 평가 항목을 모아 만든 목차예요.';
@@ -263,7 +274,7 @@ function setOutline(o, note) {
   if (plan.guide) plan.guide = normGuide(plan.guide, plan.outline);
   if (plan.draft) plan.draft = Object.fromEntries(Object.entries(plan.draft).filter(([k]) => plan.outline.some(x => x.id === k)));
   outlineNote = note || '';
-  persist(); renderMain();
+  unfinal(plan); persist(); renderMain();
 }
 
 /* ---------- 3단계: 초안·지침 점검 ---------- */
@@ -325,12 +336,14 @@ function finish(id, step) {
   else if (errs[id]) toast(errs[id], 6000);
 }
 const BUSY_MSG = 'AI가 이 계획의 다른 일을 하고 있어요. 끝나면 다시 눌러 주세요.';
+const SAVE_FAIL = '저장 공간이 모자라 이 계획을 저장하지 못해 초안을 쓰지 않았어요. 쓰지 않는 계획을 지우거나 긴 자료를 줄여 주세요.';
 async function runDraft() {
   const id = plan.id;
   if (busy[id]) { toast(BUSY_MSG); return; }
   if (!ai.ready()) { errs[id] = '초안을 쓸 AI를 먼저 정해 주세요. 왼쪽 아래 AI에서 정할 수 있어요.'; renderMain(); return; }
   if (!saved) persist();
   delete errs[id]; delete notes[id];
+  if (!getPlan(id)) { errs[id] = SAVE_FAIL; renderMain(); return; }
   try {
     // 지침 항목을 찾지 못하거나 지침 읽기가 실패해도 초안은 씀 (실패면 다음에 다시 찾음)
     if (plan.sources.guide.trim() && !plan.guide) {
@@ -341,7 +354,7 @@ async function runDraft() {
       } catch (e) { notes[id] = `올해 지침에서 항목을 찾지 못해 지침 점검 없이 초안을 썼어요(${ai.errorMessage(e && e.code, e)}). [AI로 다시 쓰기]를 누르면 지침부터 다시 찾아요.`; }
     }
     const target = getPlan(id);
-    if (!target) return;
+    if (!target) { errs[id] = SAVE_FAIL; finish(id, 3); return; }
     busy[id] = 'draft'; if (visible() && plan.id === id) renderMain();
     const prompt = draftPrompt(target, { bodies: sectionBodies(target.sources.lastPlan, target.outline), hours: hoursRows(target.attach), evalCount: target.evalRows.length });
     const v = await ai.generateJSON(prompt, { valid: x => Object.keys(normSections(x, target.outline)).length > 0 });
@@ -395,6 +408,7 @@ function exportHTML() {
   return `<div class="yp-card"><h3>내보내기와 확정</h3>
       <p class="muted">한글 파일은 목차 그대로 제목과 칸 글을 쓰고, 시수표·평가 표·월별 표는 그 칸 뒤에, 첨부파일은 끝 「붙임」에 적어요. 확정한 계획은 다음 해 「지난 학급운영계획에서 불러오기」로 쓸 수 있어요.</p>
       ${plan.attach.length ? `<div class="cp-buim"><b>붙임</b><ol id="cpBuim">${plan.attach.map(a => `<li>${esc(KIND_NAME[a.kind] || '첨부')}(${esc(a.name)}) 1부.</li>`).join('')}</ol></div>` : ''}
+      ${plan.monthly.length && noSec('monthly') ? '<p class="muted">목차에 「월별」 칸이 없어 월별 활동 표는 한글 파일에 들어가지 않아요. 2단계에서 칸을 더해 주세요.</p>' : ''}
       ${!d ? '<p class="banner warn"><span class="grow">3단계에서 초안을 먼저 써 주세요.</span></p>' : fin ? '<p class="banner ok"><span class="grow">확정한 계획이에요. 고치면 다시 「작성 중」이 돼요.</span></p>' : ''}
       <div class="row yp-out"><button class="btn" type="button" data-c="hwpx"${d ? '' : ' disabled'}>한글 파일로 내려받기</button><span class="grow"></span>
         <button class="btn primary" type="button" data-c="final"${d ? '' : ' disabled'}>${fin ? '다시 확정' : '확정'}</button></div>
@@ -508,7 +522,7 @@ document.addEventListener('input', e => {
     if (!r || !EVAL_COLS.some(c => c[0] === el.dataset.ek)) return;
     r[el.dataset.ek] = el.value;
   } else return;
-  if (plan.status === 'final' && (el.dataset.sec || el.dataset.mon != null || el.dataset.ev != null)) plan.status = 'draft';
+  if (el.dataset.pk || el.dataset.sec || el.dataset.mon != null || el.dataset.ev != null) unfinal(plan);
   persistSoon();
 });
 document.addEventListener('change', e => {
@@ -520,7 +534,7 @@ document.addEventListener('change', e => {
     if (files.length) { if (t === 'attach') addAttach(files); else if (t) addFiles(t, files); }
     return;
   }
-  if (el.id === 'cpGrade') { plan.grade = el.value ? +el.value : null; persist(); return; }
+  if (el.id === 'cpGrade') { plan.grade = el.value ? +el.value : null; unfinal(plan); persist(); return; }
   if (el.dataset.akind) { setKind(el.dataset.akind, el.value); return; }
   // 붙여넣은 작년 계획서·지침: 칸을 벗어나면 명단 줄·전화번호는 빼고 이름 칸은 가림 (저장은 모델이 늘 거침)
   if (el.dataset.src) {
@@ -534,7 +548,7 @@ document.addEventListener('change', e => {
     if (!el.value.trim()) { el.value = x.title; return; }
     x.title = el.value.trim().slice(0, 60);
     plan.outline = withRoles(plan.outline);
-    persist();
+    unfinal(plan); persist();
     refreshRoles();
   }
 });
@@ -566,7 +580,7 @@ document.addEventListener('click', e => {
     return;
   }
   const ad = e.target.closest('[data-adel]');
-  if (ad) { plan.attach = plan.attach.filter(x => x.id !== ad.dataset.adel); delete attMem[ad.dataset.adel]; persist(); renderMain(); return; }
+  if (ad) { plan.attach = plan.attach.filter(x => x.id !== ad.dataset.adel); delete attMem[ad.dataset.adel]; unfinal(plan); persist(); renderMain(); return; }
   const tc = e.target.closest('[data-toclass]');
   if (tc) { toClass(tc.dataset.toclass); return; }
   const ed = e.target.closest('[data-evdel]');
