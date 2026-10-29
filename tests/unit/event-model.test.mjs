@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as store from '../../web/core/store.js';
-import { KINDS, DOCS, newEvent, listEventPlans, getEvent, saveEvent, deleteEvent, currentEventId, setCurrentEvent, normOptions, normRoles, normItems, roleLoad, letterMissing, confirmBlockers, docDoc } from '../../web/menus/plan/event-model.js';
+import { KINDS, DOCS, newEvent, listEventPlans, getEvent, saveEvent, deleteEvent, currentEventId, setCurrentEvent, normOptions, normRoles, normItems, roleLoad, letterMissing, confirmBlockers, docDoc, REF_KINDS, normRefs, guessKind, refsBlock, normRefNotes } from '../../web/menus/plan/event-model.js';
 
 function mem() {
   const m = new Map();
@@ -97,4 +97,43 @@ test('저장된 설문 결과가 망가져도 읽을 수 있는 것만, 서술�
   assert.equal(r.questions[1].count, 450);
   store.set('events', [{ id: 'e2', name: 'x', survey: { result: { n: 'x', questions: 1 } } }]);
   assert.equal(getEvent('e2').survey.result, null);
+});
+
+test('참고 자료: 종류·이름·10개·합쳐 6만 자', () => {
+  assert.deepEqual(REF_KINDS.map(k => k[0]), ['upper', 'official', 'other']);
+  const r = normRefs([{ id: 'a', kind: 'bad', name: '', text: '가' }, { kind: 'official', name: '공문', text: '' }, 'x', { id: 'b', kind: 'upper', name: '계획', text: 'x'.repeat(35000) }, { id: 'c', kind: 'official', name: '공문 2', text: 'y'.repeat(35000) }]);
+  assert.deepEqual(r.map(x => [x.id, x.kind, x.name]), [['a', 'other', '참고 자료'], ['b', 'upper', '계획'], ['c', 'official', '공문 2']]);
+  assert.equal(r.reduce((n, x) => n + x.text.length, 0), 60000);
+  assert.equal(r[2].text.length, 60000 - 1 - 35000);
+  assert.equal(normRefs(Array.from({ length: 12 }, (_, i) => ({ id: 'r' + i, text: 't' }))).length, 10);
+  assert.ok(normRefs([{ text: '본문' }])[0].id);
+  assert.deepEqual(normRefs('x'), []);
+});
+
+test('파일 이름으로 종류 짐작', () => {
+  assert.equal(guessKind('2027 학교폭력예방 교육청 공문.hwp'), 'official');
+  assert.equal(guessKind('홍성교육지원청 안내.pdf'), 'official');
+  assert.equal(guessKind('학교 교육계획.hwpx'), 'upper');
+  assert.equal(guessKind('사진.png'), 'other');
+});
+
+test('AI에 보낼 참고 자료: 짧은 것은 다, 긴 것은 남은 몫까지', () => {
+  assert.equal(refsBlock([]), '');
+  const refs = normRefs([{ id: 'l', kind: 'upper', name: '긴 계획', text: 'L'.repeat(50000) }, { id: 's', kind: 'official', name: '짧은 공문', text: 'S'.repeat(1000) }]);
+  const b = refsBlock(refs, 24000);
+  assert.ok(b.indexOf('[상위 계획] 긴 계획') < b.indexOf('[교육청 공문] 짧은 공문'), '순서');
+  assert.equal((b.match(/S/g) || []).length, 1000);
+  assert.equal((b.match(/L/g) || []).length, 23000);
+  assert.ok(b.includes('뒷부분 줄임'));
+});
+
+test('참고 반영 메모 다듬기와 저장', () => {
+  assert.deepEqual(normRefNotes([' 안전요원 2명 ', '', 3, 'x'.repeat(300), 'a', 'b', 'c', 'd', 'e', 'f', 'g']).map(x => x.length), [7, 200, 1, 1, 1, 1, 1, 1]);
+  assert.deepEqual(normRefNotes(null), []);
+  store.useStorage(mem());
+  const e = saveEvent({ ...newEvent(), name: '운동회', refs: [{ id: 'a', kind: 'official', name: '공문', text: '안전요원 2명' }], refNotes: { options: ['안전요원 2명'], docs: 'x' } });
+  const g = getEvent(e.id);
+  assert.equal(g.refs[0].text, '안전요원 2명'); assert.deepEqual(g.refNotes, { options: ['안전요원 2명'], docs: [] });
+  store.set('events', [{ ...newEvent(), id: 'z', name: 'z', refs: 'x', refNotes: 3 }]);
+  assert.deepEqual(getEvent('z').refs, []); assert.deepEqual(getEvent('z').refNotes, { options: [], docs: [] });
 });

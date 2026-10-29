@@ -7,6 +7,7 @@ const LIST_KEY = 'events', CUR_KEY = 'event:current';
 
 export const KINDS = [['sports', '운동회'], ['arts', '학예회'], ['field', '현장체험학습'], ['other', '기타']];
 export const DOCS = [['plan', '계획서'], ['roles', '역할 분담표'], ['safety', '안전 점검표'], ['letter', '가정통신문']];
+export const REF_KINDS = [['upper', '상위 계획'], ['official', '교육청 공문'], ['other', '기타']];
 
 const str = v => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
 const strs = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim()) : []);
@@ -21,6 +22,7 @@ export function newEvent() {
     kind: 'sports', name: '', purpose: '', grades: '', date: '', place: '', outdoor: false, budget: '',
     staff: [], lastSurvey: '', options: null, picked: null,
     docs: { plan: '', safety: '', letter: '', rain: '', roles: [], done: false },
+    refs: [], refNotes: { options: [], docs: [] },
     survey: null, status: 'draft', step: 1, maxStep: 1, updatedAt: 0
   };
 }
@@ -49,6 +51,35 @@ export function normItems(v) {
   return (Array.isArray(v) ? v : []).filter(i => isObj(i) && str(i.q).trim())
     .map(i => ({ type: i.type === 'scale' ? 'scale' : 'text', q: str(i.q).trim() }));
 }
+
+/* 참고 자료(상위 계획·교육청 공문 등): 10개까지, 글은 앞에서부터 합쳐 6만 자까지 (원본 파일은 저장하지 않음) */
+const REF_MAX = 10, REF_TOTAL = 60000;
+export function normRefs(v) {
+  let left = REF_TOTAL;
+  return (Array.isArray(v) ? v : []).filter(isObj)
+    .map((r, i) => ({ id: str(r.id) || 'ref' + i, kind: REF_KINDS.some(k => k[0] === r.kind) ? r.kind : 'other', name: str(r.name).trim().slice(0, 100) || '참고 자료', text: str(r.text) }))
+    .filter(r => r.text.trim()).slice(0, REF_MAX)
+    .map(r => { const text = r.text.slice(0, Math.max(0, left)); left -= text.length; return { ...r, text }; })
+    .filter(r => r.text.trim());
+}
+export const guessKind = name => (/공문|교육청|교육지원청|교육부/.test(name) ? 'official' : /계획/.test(name) ? 'upper' : 'other');
+const refKindName = k => (REF_KINDS.find(x => x[0] === k) || REF_KINDS[2])[1];
+/* AI에 보낼 참고 자료 글: 합쳐 budget자 안에서, 짧은 자료는 다 넣고 긴 자료는 남은 몫까지 */
+export function refsBlock(refs, budget = 24000) {
+  if (!refs || !refs.length) return '';
+  const alloc = new Map();
+  let left = budget;
+  [...refs].sort((a, b) => a.text.length - b.text.length).forEach((r, i, arr) => {
+    const n = Math.min(r.text.length, Math.floor(left / (arr.length - i)));
+    alloc.set(r, n); left -= n;
+  });
+  return refs.map(r => {
+    const t = r.text.slice(0, alloc.get(r));
+    return `[${refKindName(r.kind)}] ${r.name}\n"""\n${t}${t.length < r.text.length ? '\n…(뒷부분 줄임)' : ''}\n"""`;
+  }).join('\n\n');
+}
+/* AI가 「참고 자료에서 반영한 것」으로 돌려준 짧은 글들 */
+export const normRefNotes = v => (Array.isArray(v) ? v : []).filter(x => typeof x === 'string' && x.trim()).map(x => x.trim().slice(0, 200)).slice(0, 8);
 
 /* 저장된 설문 결과: 읽을 수 있는 문항만, 서술형 답은 300개까지 저장(개수 count는 그대로) */
 const MAX_ANSWERS = 300;
@@ -92,6 +123,9 @@ function normEvent(v) {
   e.picked = Number.isInteger(v.picked) && e.options && v.picked >= 0 && v.picked < e.options.length ? v.picked : null;
   const d = isObj(v.docs) ? v.docs : {};
   e.docs = { plan: str(d.plan), safety: str(d.safety), letter: str(d.letter), rain: str(d.rain), roles: normRoles(d.roles, []), done: d.done === true };
+  e.refs = normRefs(v.refs);
+  const rn = isObj(v.refNotes) ? v.refNotes : {};
+  e.refNotes = { options: normRefNotes(rn.options), docs: normRefNotes(rn.docs) };
   e.survey = normSurvey(v.survey);
   e.status = v.status === 'final' ? 'final' : 'draft';
   e.step = step(v.step);
