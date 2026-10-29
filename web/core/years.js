@@ -76,17 +76,19 @@ export function parseBackup(text) {
 
 /* 학년도 옮기기: 저장 멈춤 → 지금 학년도를 보관함에 → 학년도 키를 비우고 가려는 학년도 자료를 씀 → 학년도 표시.
    data가 없으면 보관함의 그 학년도(없으면 빈 자료). 성공하면 멈춘 채로 두고(부른 쪽이 다시 엶) */
-export async function moveTo(target, { ls, archive, freeze = () => {}, unfreeze = () => {}, data = null, today } = {}) {
+export async function moveTo(target, { ls, archive, freeze = () => {}, unfreeze = () => {}, data = null, today, timeout = 20000 } = {}) {
   freeze();
   const cur = getYears(ls, today).current;
   const now = snapshot(ls);
+  // 보관함(IndexedDB)이 응답하지 않으면 기다리다 멈춤을 풂 (앱이 저장을 멈춘 채로 남지 않게)
+  const T = p => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error('timeout')), timeout))]);
   let next = data;
   try {
     // 보관함에 있는 학년도를 새 자료로 시작하지 않음 (그 학년도의 자료를 덮어쓰게 되므로)
-    if (data && target !== cur && await archive.get(target)) { unfreeze(); return { ok: false, code: 'EXISTS' }; }
-    await archive.put(cur, now);
-    if (!next) next = (await archive.get(target)) || {};
-  } catch (e) { unfreeze(); return { ok: false, code: 'ARCHIVE_FAILED' }; }
+    if (data && target !== cur && await T(archive.get(target))) { unfreeze(); return { ok: false, code: 'EXISTS' }; }
+  } catch (e) { unfreeze(); return { ok: false, code: 'ARCHIVE_READ' }; }
+  try { await T(archive.put(cur, now)); } catch (e) { unfreeze(); return { ok: false, code: 'ARCHIVE_FAILED' }; }
+  try { if (!next) next = (await T(archive.get(target))) || {}; } catch (e) { unfreeze(); return { ok: false, code: 'ARCHIVE_READ' }; }
   const write = snap => {
     for (const k of yearKeys(ls)) ls.removeItem(k);
     for (const [k, v] of Object.entries(snap)) if (isYearKey(k) && typeof v === 'string') ls.setItem(PREFIX + k, v);
@@ -95,9 +97,11 @@ export async function moveTo(target, { ls, archive, freeze = () => {}, unfreeze 
     write(next);
     ls.setItem(PREFIX + 'years', JSON.stringify({ current: target }));
   } catch (e) {
-    try { write(now); } catch (e2) {}
+    // 지금 자료로 되돌림. 그것도 못 하면 지금 자료는 방금 보관함에 넣은 것으로 남아 있음
+    let back = true;
+    try { write(now); } catch (e2) { back = false; }
     unfreeze();
-    return { ok: false, code: 'WRITE_FAILED' };
+    return { ok: false, code: back ? 'WRITE_FAILED' : 'RESTORE_FAILED' };
   }
   return { ok: true };
 }

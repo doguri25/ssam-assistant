@@ -92,7 +92,7 @@ const VIEWS = {
         <input type="file" id="backupFile" accept=".json,application/json" hidden>`) +
       card('학년도 목록', `<ul class="yr-list"><li class="yr-row" data-yr="${cur}"><b>${cur}학년도</b><span class="muted">지금</span></li>${rows}</ul>`) +
       card('새 학년도', `<p class="muted" style="margin:0">학년도가 끝나면 새 학년도를 시작해요. 지금 자료는 보관함에 남고, 연간계획·행사계획은 새 학년도로 가져가요.</p>
-        <div class="row"><button class="btn" type="button" data-set="newYear">${cur + 1}학년도 시작하기</button></div>`));
+        <div class="row"><button class="btn" type="button" data-set="newYear">${(yrList || []).some(x => x.year === cur + 1) ? `${cur + 1}학년도 자료가 이미 있어요 · 그 학년도로 가기` : `${cur + 1}학년도 시작하기`}</button></div>`));
   },
   purchase: () => page('품의 기준', '',
     card('계약 기준 금액', `<label class="set-f"><span class="lab">원 (합계가 이 금액을 넘으면 「별도 계약 절차 확인 필요」라고 알려요)</span>
@@ -131,6 +131,8 @@ function loadYears() {
   getArchive().list().then(l => { yrList = l; }, () => { yrList = []; toast('보관함을 열지 못했어요', 5000); })
     .then(() => { if (curTab === 'years') again(); });
 }
+/* AI 키를 「기억하기」 없이 넣었으면 학년도를 옮겨 앱을 다시 열 때 키를 다시 넣어야 함 */
+const keyNote = () => { try { const e = JSON.parse(localStorage.getItem('ssam:engine') || 'null'); return e && e.remember === false ? '<p class="banner warn" style="margin:0">AI 키를 기억하지 않게 해 두셨어요. 학년도를 옮기면 앱을 다시 여니 키를 다시 넣어야 해요.</p>' : ''; } catch (e) { return ''; } };
 const sheetBtns = (okId, okLabel, extra = '') => `<div class="row" style="justify-content:flex-end">${extra}<span class="grow"></span><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="${okId}">${okLabel}</button></div>`;
 const onOk = (id, fn) => sh => {
   sh.querySelector('#' + id).addEventListener('click', fn);
@@ -139,12 +141,15 @@ const onOk = (id, fn) => sh => {
 async function makeBackupFile() {
   try {
     const cur = curYear(), archives = {};
-    for (const x of await getArchive().list()) if (x.year !== cur) archives[x.year] = await getArchive().get(x.year);
+    // 보관함을 못 열어도(시크릿 창 등) 지금 학년도는 백업함
+    let partial = false;
+    try { for (const x of await getArchive().list()) if (x.year !== cur) archives[x.year] = await getArchive().get(x.year); }
+    catch (e) { partial = true; }
     const b = makeBackup({ current: cur, snap: snapshot(safeLS()), archives });
     const d = new Date(), pad = n => String(n).padStart(2, '0');
     const name = `쌤비서 백업 ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.json`;
     const where = await saveFile(name, new TextEncoder().encode(JSON.stringify(b)), 'application/json');
-    toast(window.__TAURI__ ? `다운로드 폴더에 저장했어요: ${String(where).split(/[\\/]/).pop()}` : '백업 파일을 내려받았어요');
+    toast(partial ? '보관함을 열지 못해 지금 학년도만 백업했어요' : window.__TAURI__ ? `다운로드 폴더에 저장했어요: ${String(where).split(/[\\/]/).pop()}` : '백업 파일을 내려받았어요', partial ? 6000 : undefined);
   } catch (e) { toast('백업 파일을 만들지 못했어요', 5000); }
 }
 async function go(target, data) {
@@ -158,7 +163,7 @@ async function askNewYear() {
   let exists = (yrList || []).some(x => x.year === next);
   if (!exists) { try { exists = !!(await getArchive().get(next)); } catch (e) {} }
   if (exists) {
-    SSAM().openSheet(`<h3>${next}학년도 자료가 이미 있어요</h3><p class="muted" style="margin:0">보관함에 있는 ${next}학년도로 가요. 지금(${cur}학년도) 자료는 보관함에 남아요.</p>${sheetBtns('yrGoOk', '그 학년도로 가기')}`,
+    SSAM().openSheet(`<h3>${next}학년도 자료가 이미 있어요</h3><p class="muted" style="margin:0">보관함에 있는 ${next}학년도로 가요. 지금(${cur}학년도) 자료는 보관함에 남아요.</p>${keyNote()}${sheetBtns('yrGoOk', '그 학년도로 가기')}`,
       onOk('yrGoOk', () => { SSAM().closeSheet(); go(next); }));
     return;
   }
@@ -166,11 +171,11 @@ async function askNewYear() {
     <p class="muted" style="margin:0">${cur}학년도 자료는 보관함에 그대로 남고, 언제든 돌아올 수 있어요. 백업 파일도 만들어 두면 좋아요.</p>
     <ul class="yr-sum"><li><b>가져가는 것</b> 연간계획·행사계획(내년 계획의 작년 자료로), 학사일정 중 ${next}학년도(3월 1일부터) 날짜, 학교명·학급 수·학생 수, 평어·행특·채점·나이스 입력 설정, 품의 기준 금액</li>
       <li><b>비우는 것</b> 학급 명단, 평가 자료(평가계획·평어·창체·행특·채점 결과), 학급 메뉴(시간표·진도표·체크·주간학습안내), 작성 중인 품의</li></ul>
-    ${sheetBtns('yrNewOk', `${next}학년도 시작하기`, '<button class="btn" type="button" data-sheet="backup">백업 파일 만들기</button>')}`,
+    ${keyNote()}${sheetBtns('yrNewOk', `${next}학년도 시작하기`, '<button class="btn" type="button" data-sheet="backup">백업 파일 만들기</button>')}`,
   onOk('yrNewOk', () => { SSAM().closeSheet(); go(next, carryOver(snapshot(safeLS()), next)); }));
 }
 function askGo(y) {
-  SSAM().openSheet(`<h3>${y}학년도로 갈까요?</h3><p class="muted" style="margin:0">지금(${curYear()}학년도) 자료는 보관함에 남아요. 앱을 다시 열어요.</p>${sheetBtns('yrGoOk', `${y}학년도로 가기`)}`,
+  SSAM().openSheet(`<h3>${y}학년도로 갈까요?</h3><p class="muted" style="margin:0">지금(${curYear()}학년도) 자료는 보관함에 남아요. 앱을 다시 열어요.</p>${keyNote()}${sheetBtns('yrGoOk', `${y}학년도로 가기`)}`,
     onOk('yrGoOk', () => { SSAM().closeSheet(); go(y); }));
 }
 function askDel(y) {
@@ -203,6 +208,11 @@ async function restoreFile(file) {
     if (pick.includes(cur)) { go(cur, r.years[cur]); return; }
     toast(`${pick.join(', ')}학년도를 보관함에 넣었어요`);
     loadYears();
+    // 백업 파일의 지금 학년도가 이 앱과 다르면(새 컴퓨터로 옮길 때 등) 그 학년도로 갈지 물어봄
+    if (r.current && r.current !== cur && pick.includes(r.current)) {
+      SSAM().openSheet(`<h3>${r.current}학년도로 갈까요?</h3><p class="muted" style="margin:0">백업 파일의 지금 학년도는 ${r.current}학년도예요. 이 앱은 ${cur}학년도예요. 가면 ${cur}학년도 자료는 보관함에 남아요.</p>${keyNote()}${sheetBtns('yrGoOk', `${r.current}학년도로 가기`)}`,
+        onOk('yrGoOk', () => { SSAM().closeSheet(); go(r.current); }));
+    }
   }));
 }
 

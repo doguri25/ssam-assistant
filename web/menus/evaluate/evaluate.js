@@ -1197,15 +1197,17 @@ const Store = {
     const body = { items: set.items.map(x => ({ t: x.t, d: x.d ? 1 : 0 })), want: set.want || N, at: Date.now() };
     if (this.mode === 'db') return writeDoc(this.base() + '/p_' + planId + '/sets/' + key, body);
     if (this.mode === 'local') {
-      this._lt = this._lt || {};
+      this._lt = this._lt || {}; this._lf = this._lf || {};
       clearTimeout(this._lt[planId]);
-      this._lt[planId] = setTimeout(() => {
-        delete this._lt[planId];
+      const write = () => {
+        delete this._lt[planId]; delete this._lf[planId];
         if (this._gone && this._gone.has(planId)) return; // 지운 평가계획
         const all = {};
         sets.forEach((v, k) => { if (v.items.length) all[k] = { items: v.items.map(x => ({ t: x.t, d: x.d ? 1 : 0 })), want: v.want }; });
         this.lsSet('ssam:sets:' + planId, all);
-      }, 300);
+      };
+      this._lf[planId] = write;
+      this._lt[planId] = setTimeout(write, 300);
     }
   },
   // 평가계획에서 빠진 평가요소의 평어 묶음을 지움
@@ -2588,11 +2590,13 @@ const HKStore = {
   },
   save() {
     clearTimeout(this.t);
-    this.t = setTimeout(() => {
-      const body = { settings: HK.settings, students: HK.students.map(s => ({ id: s.id, no: s.no, label: s.label || '', memo: s.memo || '', done: s.done ? 1 : 0, results: (s.results || []).slice(0, 4).map(r => ({ t: r.t, d: r.d ? 1 : 0 })) })), at: Date.now() };
-      if (Store.mode === 'db') writeDoc(Store.base() + '/hk', body);
-      else if (Store.mode === 'local') Store.lsSet('ssam:hk', body);
-    }, 500);
+    this.t = setTimeout(() => this.write(), 500);
+  },
+  write() {
+    this.t = null;
+    const body = { settings: HK.settings, students: HK.students.map(s => ({ id: s.id, no: s.no, label: s.label || '', memo: s.memo || '', done: s.done ? 1 : 0, results: (s.results || []).slice(0, 4).map(r => ({ t: r.t, d: r.d ? 1 : 0 })) })), at: Date.now() };
+    if (Store.mode === 'db') writeDoc(Store.base() + '/hk', body);
+    else if (Store.mode === 'local') Store.lsSet('ssam:hk', body);
   }
 };
 
@@ -3058,22 +3062,24 @@ const GRStore = {
   save() {
     if (!GR.id || !GR.students.some(s => s.status === 'done' || s.text)) return;
     clearTimeout(this.t);
-    this.t = setTimeout(async () => {
-      await storeReady;
-      const body = this.body();
-      if (Store.mode === 'db') writeDoc(Store.base() + '/g_' + GR.id, body);
-      else if (Store.mode === 'local') {
-        Store.lsSet('ssam:gr:' + GR.id, body);
-        const ids = Store.lsGet('ssam:grs', []);
-        if (!ids.includes(GR.id)) {
-          ids.unshift(GR.id);
-          // 30개를 넘는 오래된 채점 기록은 목록에서 빼면서 내용도 지움 (저장 공간 아끼기)
-          ids.slice(30).forEach(old => { try { localStorage.removeItem('ssam:gr:' + old); } catch (e) {} });
-          Store.lsSet('ssam:grs', ids.slice(0, 30));
-        }
+    this.t = setTimeout(() => this.write(), 600);
+  },
+  async write() {
+    this.t = null;
+    await storeReady;
+    const body = this.body();
+    if (Store.mode === 'db') writeDoc(Store.base() + '/g_' + GR.id, body);
+    else if (Store.mode === 'local') {
+      Store.lsSet('ssam:gr:' + GR.id, body);
+      const ids = Store.lsGet('ssam:grs', []);
+      if (!ids.includes(GR.id)) {
+        ids.unshift(GR.id);
+        // 30개를 넘는 오래된 채점 기록은 목록에서 빼면서 내용도 지움 (저장 공간 아끼기). 학년도를 옮기는 중에는 지우지 않음
+        if (!S.wiping) ids.slice(30).forEach(old => { try { localStorage.removeItem('ssam:gr:' + old); } catch (e) {} });
+        Store.lsSet('ssam:grs', ids.slice(0, 30));
       }
-      this.list();
-    }, 600);
+    }
+    this.list();
   },
   async list() {
     await storeReady;
@@ -4446,11 +4452,13 @@ const CCStore = {
   },
   save() {
     clearTimeout(this.t);
-    this.t = setTimeout(() => {
-      const body = { areas: CHE.areas, len: CHE.len, grade: CHE.grade, at: Date.now() };
-      if (Store.mode === 'db') writeDoc(Store.base() + '/cc', JSON.parse(JSON.stringify(body)));
-      else if (Store.mode === 'local') Store.lsSet('ssam:cc', body);
-    }, 400);
+    this.t = setTimeout(() => this.write(), 400);
+  },
+  write() {
+    this.t = null;
+    const body = { areas: CHE.areas, len: CHE.len, grade: CHE.grade, at: Date.now() };
+    if (Store.mode === 'db') writeDoc(Store.base() + '/cc', JSON.parse(JSON.stringify(body)));
+    else if (Store.mode === 'local') Store.lsSet('ssam:cc', body);
   }
 };
 
@@ -5279,6 +5287,14 @@ window.SSAM = {
   setClass: (count, except) => setClass(count, except, 'roster'),
   // 학년도를 옮기는 동안 평가 메뉴의 저장도 멈춤
   freeze: on => { S.wiping = !!on; },
+  // 학년도를 옮기기 전: 평어·행특·채점·창체를 만드는 중인지, 미뤄 둔 저장을 바로 함
+  busy: () => workBusy(),
+  async flush() {
+    const jobs = [];
+    for (const st of [HKStore, GRStore, CCStore]) if (st && st.t) { clearTimeout(st.t); jobs.push(st.write()); }
+    if (Store._lf) for (const k of Object.keys(Store._lf)) { clearTimeout(Store._lt[k]); Store._lf[k](); }
+    await Promise.all(jobs);
+  },
   // 새 메뉴(품의 등)가 쓰는 파일 읽기: 한글 파일 글, PDF·사진 → AI에 보낼 그림
   files: {
     readHwpxText: async u8 => blocksToText(await parseHWPX(u8, DOMParser)),

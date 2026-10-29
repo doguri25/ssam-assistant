@@ -144,3 +144,32 @@ test('검토 고침: 새 학년도에 설정(평어·행특·채점·나이스·
   assert.ok(!('class:log' in c));
   assert.ok(!JSON.stringify(c).includes('학생 메모'));
 });
+
+test('다듬기: 가려는 학년도를 쓰다 실패하면 지금 자료로 되돌리고 WRITE_FAILED', async () => {
+  const ls = seed(), before = ls.dump(), archive = memArchive();
+  const set = ls.setItem;
+  let n = 0;
+  ls.setItem = (k, v) => { if (k === 'ssam:hk' && n++ === 0) throw new Error('quota'); return set(k, v); };
+  const r = await moveTo(2027, { ls, archive, data: { hk: '"new"' }, today: '2026-10-29' });
+  assert.deepEqual(r, { ok: false, code: 'WRITE_FAILED' });
+  assert.deepEqual(ls.dump(), before);
+});
+
+test('다듬기: 되돌리기도 실패하면 RESTORE_FAILED (지금 자료는 보관함에 있음)', async () => {
+  const ls = seed(), archive = memArchive();
+  const set = ls.setItem;
+  ls.setItem = (k, v) => { if (k === 'ssam:hk') throw new Error('quota'); return set(k, v); };
+  const r = await moveTo(2027, { ls, archive, data: { hk: '"new"' }, today: '2026-10-29' });
+  assert.deepEqual(r, { ok: false, code: 'RESTORE_FAILED' });
+  assert.ok((await archive.get(2026)).hk);
+});
+
+test('다듬기: 보관함을 읽지 못하면 ARCHIVE_READ, 응답이 없으면 기다리다 멈춤을 풂', async () => {
+  const ls = seed(), before = ls.dump();
+  let un = 0;
+  const bad = { ...memArchive(), get: async () => { throw new Error('read'); } };
+  assert.deepEqual(await moveTo(2027, { ls, archive: bad, unfreeze: () => un++, today: '2026-10-29' }), { ok: false, code: 'ARCHIVE_READ' });
+  const hang = { ...memArchive(), put: () => new Promise(() => {}) };
+  assert.deepEqual(await moveTo(2027, { ls, archive: hang, unfreeze: () => un++, data: {}, today: '2026-10-29', timeout: 50 }), { ok: false, code: 'ARCHIVE_FAILED' });
+  assert.equal(un, 2); assert.deepEqual(ls.dump(), before);
+});

@@ -2,11 +2,16 @@
    실제 호출·키·모델은 평가 메뉴(window.SSAM.ai)가 맡음 — Claude·Gemini·GPT·업스테이지 */
 const A = () => (window.SSAM && window.SSAM.ai) || null;
 
+/* 지금 AI가 쓰는 중인 요청 수 (학년도를 옮기기 전에 봄) */
+let inflight = 0;
+export const busyCount = () => inflight;
+
 /* images: [{ mime, b64, blob }] → { text, truncated }. 실패하면 { code, message }를 던짐 */
 export function generate(prompt, { signal, images, careful } = {}) {
   const a = A();
   if (!a) return Promise.reject({ code: 'no_engine' });
-  return a.generate(prompt, { signal, images, careful, fresh: true });
+  inflight++;
+  return Promise.resolve(a.generate(prompt, { signal, images, careful, fresh: true })).finally(() => { inflight--; });
 }
 
 export const ready = () => !!(A() && A().engineReady());
