@@ -5256,6 +5256,23 @@ window.SSAM = {
   // 새 메뉴(품의 등)가 쓰는 파일 읽기: 한글 파일 글, PDF·사진 → AI에 보낼 그림
   files: {
     readHwpxText: async u8 => blocksToText(await parseHWPX(u8, DOMParser)),
+    // .hwp·.hwpx → 글 (CFB면 hwp, 아니면 hwpx)
+    readHwpText: async u8 => blocksToText(u8[0] === 0xD0 && u8[1] === 0xCF ? await parseHWP(u8) : await parseHWPX(u8, DOMParser)),
+    // PDF의 글자 층 → 글 (쪽 사이는 빈 줄)
+    async pdfText(u8) {
+      const lib = await loadPdfJs();
+      const doc = await lib.getDocument({ data: u8, isEvalSupported: false }).promise;
+      const out = [];
+      try {
+        for (let i = 1; i <= doc.numPages; i++) {
+          const pg = await doc.getPage(i);
+          const c = await pg.getTextContent();
+          out.push(c.items.map(it => (it.str || '') + (it.hasEOL ? '\n' : '')).join(''));
+          pg.cleanup();
+        }
+      } finally { doc.destroy(); }
+      return out.join('\n\n');
+    },
     async toImages(file) {
       const pages = /\.pdf$/i.test(file.name || '') || file.type === 'application/pdf' ? await readPdfPages(file) : [await readImagePage(file)];
       const out = [];
