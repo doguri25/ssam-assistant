@@ -13,12 +13,19 @@ export function get(key, fallback = null) {
   } catch (e) { return fallback; }
 }
 
+/* 학년도를 옮기는 동안 모든 저장을 멈춤 (옮긴 학년도에 지난 자료가 섞이지 않게) */
+let frozen = false;
+export const freeze = () => { frozen = true; };
+export const unfreeze = () => { frozen = false; };
+
 export function set(key, value) {
+  if (frozen) return false;
   try { if (!storage) return false; storage.setItem(PREFIX + key, JSON.stringify(value)); return true; }
   catch (e) { return false; }
 }
 
 export function remove(key) {
+  if (frozen) return;
   try { if (storage) storage.removeItem(PREFIX + key); } catch (e) {}
 }
 

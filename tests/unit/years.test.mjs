@@ -1,0 +1,106 @@
+// 학년도: 공통 키와 학년도 키 나누기, 백업 파일, 새 학년도에 가져가는 것, 학년도 옮기기(보관함), 저장 멈춤
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import * as store from '../../web/core/store.js';
+import { schoolYearOf } from '../../web/core/calendar.js';
+import { schoolYearOf as fromClass } from '../../web/menus/class/class-import.js';
+import { memArchive } from '../../web/core/archive.js';
+import { isYearKey, getYears, snapshot, carryOver, makeBackup, parseBackup, moveTo } from '../../web/core/years.js';
+
+function mem(init = {}) {
+  const m = new Map(Object.entries(init));
+  return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k), key: i => [...m.keys()][i] ?? null, get length() { return m.size; }, dump: () => Object.fromEntries(m) };
+}
+const J = v => JSON.stringify(v);
+const seed = () => mem({
+  'ssam:engine': J({ engine: 'claude', keys: { claude: 'sk-secret' } }), 'ssam:theme': J('mono'), 'ssam:nav': J({ menu: 'class' }), 'ssam:mode': 'hk', 'ssam:mig:fable': '1',
+  'ssam:class:log': J({ '2026-10-28': { 1: { subject: '국어', status: 'done' } } }), 'ssam:class:subjects': J([{ id: 'a', name: '국어', lessons: [] }]),
+  'ssam:hk': J({ students: [{ id: 's', no: 1 }] }), 'ssam:yearplans': J([{ id: 'p', name: '독서' }]), 'ssam:events': J([{ id: 'e', name: '운동회' }]),
+  'ssam:calendar': J([{ date: '2027-02-27', title: '졸업식', source: 'year:p' }, { date: '2027-03-02', title: '입학식', source: 'year:p' }]),
+  'ssam:school': J({ name: '가나초', year: 2027, classes: 12, students: 280, breaks: [{ from: '2026-12-24', to: '2027-02-28', label: '겨울방학' }] }),
+  'other:x': '1'
+});
+
+test('학년도 = 3월~다음 해 2월, 학급 메뉴와 같은 답', () => {
+  assert.equal(schoolYearOf('2027-02-10'), 2026); assert.equal(schoolYearOf('2026-03-02'), 2026);
+  assert.equal(fromClass('2026-10-29'), schoolYearOf('2026-10-29'));
+});
+
+test('공통 키와 학년도 키', () => {
+  for (const k of ['class:log', 'hk', 'school', 'yearplans', 'events', 'calendar', 'plans', 'sets:x']) assert.ok(isYearKey(k), k);
+  for (const k of ['engine', 'theme', 'nav', 'mode', 'updSkip', 'years', 't', 'mig:fable']) assert.ok(!isYearKey(k), k);
+});
+
+test('지금 학년도: 없으면 오늘이 든 학년도', () => {
+  assert.deepEqual(getYears(mem(), '2026-10-29'), { current: 2026 });
+  assert.deepEqual(getYears(mem({ 'ssam:years': J({ current: 2027 }) }), '2026-10-29'), { current: 2027 });
+  assert.deepEqual(getYears(mem({ 'ssam:years': 'x' }), '2027-01-05'), { current: 2026 });
+});
+
+test('묶음: 공통 키·ssam이 아닌 키는 빼고 저장된 글 그대로', () => {
+  const s = snapshot(seed());
+  assert.ok(!('engine' in s) && !('theme' in s) && !('mig:fable' in s) && !('other:x' in s));
+  assert.equal(s.hk, J({ students: [{ id: 's', no: 1 }] }));
+  assert.equal(s['class:log'], seed().getItem('ssam:class:log'));
+});
+
+test('새 학년도에 가져가는 것', () => {
+  const c = carryOver(snapshot(seed()), 2027);
+  assert.deepEqual(Object.keys(c).sort(), ['calendar', 'events', 'school', 'yearplans']);
+  assert.deepEqual(JSON.parse(c.calendar).map(e => e.date), ['2027-03-02']);
+  assert.deepEqual(JSON.parse(c.school), { name: '가나초', classes: 12, students: 280, breaks: [] });
+});
+
+test('백업 파일: 만들기·읽기, AI 키 없음, 틀린 파일', () => {
+  const snap = snapshot(seed());
+  const b = makeBackup({ current: 2026, snap, archives: { 2025: { hk: '{}' }, 2026: { hk: 'stale' } } }, new Date('2026-10-29T00:00:00Z'));
+  assert.equal(b.app, 'ssam'); assert.equal(b.kind, 'backup'); assert.equal(b.version, 1); assert.equal(b.current, 2026);
+  assert.equal(b.years['2026'].hk, snap.hk);
+  assert.ok(!JSON.stringify(b).includes('sk-secret'));
+  const r = parseBackup(JSON.stringify(b));
+  assert.equal(r.current, 2026); assert.deepEqual(r.years['2025'], { hk: '{}' }); assert.deepEqual(r.years['2026'], snap);
+  const sneaky = { ...b, years: { 2026: { ...snap, engine: '{"keys":1}' } } };
+  assert.ok(!('engine' in parseBackup(JSON.stringify(sneaky)).years['2026']));
+  for (const bad of ['x', '{"a":1}', JSON.stringify({ ...b, version: 2 }), JSON.stringify({ ...b, years: { 2026: { hk: 3 } } }), JSON.stringify({ ...b, years: { abc: {} } })]) {
+    assert.throws(() => parseBackup(bad), e => e.code === 'NOT_BACKUP', bad.slice(0, 30));
+  }
+});
+
+test('학년도 옮기기: 새 학년도 → 다시 돌아오기', async () => {
+  const ls = seed(), archive = memArchive();
+  const before = ls.dump();
+  let frozen = 0;
+  const r = await moveTo(2027, { ls, archive, freeze: () => frozen++, unfreeze: () => frozen--, data: carryOver(snapshot(ls), 2027), today: '2026-10-29' });
+  assert.deepEqual(r, { ok: true });
+  assert.equal(ls.getItem('ssam:class:log'), null); assert.equal(ls.getItem('ssam:hk'), null);
+  assert.equal(ls.getItem('ssam:yearplans'), before['ssam:yearplans']);
+  assert.equal(ls.getItem('ssam:engine'), before['ssam:engine']); assert.equal(ls.getItem('ssam:mode'), 'hk'); assert.equal(ls.getItem('other:x'), '1');
+  assert.deepEqual(JSON.parse(ls.getItem('ssam:years')), { current: 2027 });
+  assert.deepEqual((await archive.list()).map(x => x.year), [2026]);
+  assert.equal(frozen, 1);
+  ls.setItem('ssam:class:info', J({ grade: 4, room: 1 }));
+  const back = await moveTo(2026, { ls, archive, today: '2026-10-29' });
+  assert.deepEqual(back, { ok: true });
+  for (const k of Object.keys(before)) assert.equal(ls.getItem(k), before[k], k);
+  assert.equal(ls.getItem('ssam:class:info'), null);
+  assert.deepEqual((await archive.list()).map(x => x.year), [2027, 2026]);
+  assert.equal(await archive.get(2027).then(s => s['class:info']), J({ grade: 4, room: 1 }));
+});
+
+test('보관함에 못 쓰면 아무것도 바꾸지 않음', async () => {
+  const ls = seed(), before = ls.dump();
+  const archive = { ...memArchive(), put: async () => { throw new Error('quota'); } };
+  let un = 0;
+  const r = await moveTo(2027, { ls, archive, freeze: () => {}, unfreeze: () => un++, data: {}, today: '2026-10-29' });
+  assert.deepEqual(r, { ok: false, code: 'ARCHIVE_FAILED' });
+  assert.deepEqual(ls.dump(), before);
+  assert.equal(un, 1);
+});
+
+test('저장 멈춤: 멈춘 동안 set은 false', () => {
+  store.useStorage(mem());
+  store.freeze();
+  assert.equal(store.set('a', 1), false); assert.equal(store.get('a'), null);
+  store.unfreeze();
+  assert.equal(store.set('a', 1), true); assert.equal(store.get('a'), 1);
+});

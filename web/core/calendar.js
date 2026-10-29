@@ -29,6 +29,11 @@ export function isDate(s) {
   return Number.isFinite(t) && fromUTC(t) === s;
 }
 export const addDays = (s, n) => fromUTC(toUTC(s) + n * 86400000);
+/* 학년도: 3~12월은 그해, 1~2월은 전해 */
+export function schoolYearOf(date) {
+  const y = +String(date).slice(0, 4), m = +String(date).slice(5, 7);
+  return m <= 2 ? y - 1 : y;
+}
 export const weekday = s => new Date(toUTC(s)).getUTCDay();
 
 /* ---------- 학사일정 ---------- */

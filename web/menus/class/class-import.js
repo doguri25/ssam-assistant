@@ -1,18 +1,15 @@
 /* 학급: 학교에서 받은 진도표(교과·창체 연간지도계획)와 학년별 기초시간표를 글에서 읽기 (AI 없음, 화면 없음).
    글은 core/files.js의 readText가 한글 표를 「칸 | 칸」 줄로 바꾼 것. 합친 칸 때문에 줄마다 칸 수가 다름 */
 
+import { schoolYearOf } from '../../core/calendar.js';
+export { schoolYearOf };
+
 export const normName = s => String(s == null ? '' : s).replace(/\s+/g, '');
 
 const PERIOD = /^(\d{1,2})\.(\d{1,2})\.?\s*~\s*\d{1,2}\.\d{1,2}\.?$/;
 const LESSON_NO = /^\d+\s*\/\s*\d+$/;
 const SUB_AREA = /^(자율.?자치활동|동아리활동|진로활동)$/;
 const pad = n => String(n).padStart(2, '0');
-
-/* 학년도: 3~12월은 그해, 1~2월은 전해 */
-export function schoolYearOf(date) {
-  const y = +String(date).slice(0, 4), m = +String(date).slice(5, 7);
-  return m <= 2 ? y - 1 : y;
-}
 
 /* 「8.24~8.29」의 첫날. 1~2월은 학년도 다음 해 */
 export function periodStart(period, year) {
