@@ -3077,12 +3077,8 @@ const GRStore = {
     else if (Store.mode === 'local') {
       Store.lsSet('ssam:gr:' + GR.id, body);
       const ids = Store.lsGet('ssam:grs', []);
-      if (!ids.includes(GR.id)) {
-        ids.unshift(GR.id);
-        // 30개를 넘는 오래된 채점 기록은 목록에서 빼면서 내용도 지움 (저장 공간 아끼기). 학년도를 옮기는 중에는 지우지 않음
-        if (!S.wiping) ids.slice(30).forEach(old => { try { localStorage.removeItem('ssam:gr:' + old); } catch (e) {} });
-        Store.lsSet('ssam:grs', ids.slice(0, 30));
-      }
+      // 오래된 채점 기록도 말없이 지우지 않음 (저장 공간이 차면 알림이 뜨고, 선생님이 목록에서 지움)
+      if (!ids.includes(GR.id)) { ids.unshift(GR.id); Store.lsSet('ssam:grs', ids); }
     }
     this.list();
   },
