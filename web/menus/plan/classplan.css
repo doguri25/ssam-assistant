@@ -1,0 +1,15 @@
+/* 계획 › 학급운영계획 (연간계획의 yp-* 틀을 함께 씀) */
+.cp-class{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+.cp-class .wide{grid-column:1/-1}
+.cp-outline{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.cp-outline li{display:flex;align-items:center;gap:6px;min-width:0}
+.cp-outline li.l2{padding-left:24px}
+.cp-outline li input[data-ot]{flex:1;min-width:0}
+.cp-outline li.l1 input[data-ot]{font-weight:700}
+.cp-role{font-size:12px;padding:2px 8px;border-radius:999px;background:var(--surface-2,#eef);white-space:nowrap}
+.cp-attach{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.cp-attach li{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.cp-attach li b{overflow-wrap:anywhere}
+.cp-sec h4{margin:12px 0 6px}
+.cp-sec-l1{margin:16px 0 4px;font-size:15px}
+.cp-guide-sec{font-size:12px}

@@ -26,7 +26,7 @@ export function roleOf(title) {
   return '';
 }
 /* 아래 칸이 없는 칸(글을 쓰는 칸)마다, 역할은 처음 칸 하나에만 */
-function withRoles(list) {
+export function withRoles(list) {
   const used = new Set();
   return list.map((x, i) => {
     const leaf = x.level === 2 || !(list[i + 1] && list[i + 1].level === 2);
