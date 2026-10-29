@@ -22,6 +22,13 @@ console.log('samples/진도표-예시.hwpx');
 writeFileSync(new URL('시간표-예시.hwpx', out), makeHwpx(sampleTimetableDoc()));
 console.log('samples/시간표-예시.hwpx');
 
+// 학급운영계획 예시: 작년 계획서(담임 명단·연락 줄 포함, 이름 빼기 시연), 교과 평가계획
+const { sampleLastPlanDoc, sampleEvalDoc } = await import('../web/menus/plan/classplan-sample.js');
+writeFileSync(new URL('학급운영계획-작년-예시.hwpx', out), makeHwpx(sampleLastPlanDoc()));
+console.log('samples/학급운영계획-작년-예시.hwpx');
+writeFileSync(new URL('평가계획-예시.hwpx', out), makeHwpx(sampleEvalDoc()));
+console.log('samples/평가계획-예시.hwpx');
+
 // 단원평가 예시: 정답지(문항 이원 분류표 모양)와 평가지
 const { sampleKeyDoc, samplePaperDoc } = await import('../web/menus/evaluate/unit/unit-sample.js');
 writeFileSync(new URL('단원평가-정답지-예시.hwpx', out), makeHwpx(sampleKeyDoc()));

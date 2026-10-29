@@ -17,6 +17,7 @@ import { overlap } from './year-model.js';
 import { guidePrompt, draftPrompt, evalPrompt } from './classplan-ai.js';
 import { parseJindo } from '../class/class-import.js';
 import { listSubjects, importSubjects, today } from '../class/class-model.js';
+import { sampleSources } from './classplan-sample.js';
 
 const STEPS = ['자료 넣기', '목차', '초안', '첨부·내보내기'];
 const SRC = [
@@ -75,6 +76,7 @@ function render() {
       <aside class="yp-side" aria-labelledby="cpListH">
         <div class="yp-side-h"><b id="cpListH">지난 학급운영계획</b><button class="btn text" type="button" data-c="new">+ 새 계획</button></div>
         <ul class="yp-list" id="cpList"></ul>
+        <button class="btn text" type="button" data-c="sample">예시로 채우기</button>
       </aside>
       <section class="yp-main" id="cpMain"></section>
     </div>
@@ -155,7 +157,14 @@ function attachHTML() {
         <button class="icon-btn" type="button" data-adel="${esc(a.id)}" aria-label="「${esc(a.name)}」 빼기">×</button></li>`).join('')}</ul>
     </div>`;
 }
-/* 첨부 읽기: 종류 짐작, 진도표는 교과별 시수, 평가계획은 이름 줄 뺀 글을 지님 */
+/* 첨부 읽기: 종류 짐작, 진도표는 교과별 시수, 평가계획은 이름 줄 뺀 글을 지님 → { att, dropped } */
+function attachFrom(name, raw) {
+  const r = stripNames(raw), kind = attachKind(name, raw), id = newId();
+  const j = parseJindo(raw, { today: today() });
+  attMem[id] = { text: r.text, jindo: j.subjects.length ? j : null };
+  return { att: { id, name, kind, text: kind === 'eval' ? r.text : '', summary: { subjects: kind === 'jindo' ? jindoSubjects(attMem[id].jindo) : [] } }, dropped: kind === 'eval' ? r.dropped : 0 };
+}
+const droppedMsg = n => `이름·전화번호가 적힌 줄 ${n}개는 빼고 넣었어요(학생 이름은 저장하지도 AI로 보내지도 않아요).`;
 async function addAttach(files) {
   const id = plan.id;
   if (!saved) persist();
@@ -164,11 +173,9 @@ async function addAttach(files) {
     readingAtt[id] = `「${f.name}」 읽는 중…`;
     if (here()) renderMain();
     try {
-      const raw = await readText(f), r = stripNames(raw), kind = attachKind(f.name, raw), aid = newId();
-      const j = parseJindo(raw, { today: today() });
-      attMem[aid] = { text: r.text, jindo: j.subjects.length ? j : null };
-      apply(id, p => { p.attach = [...p.attach, { id: aid, name: f.name, kind, text: kind === 'eval' ? r.text : '', summary: { subjects: kind === 'jindo' ? jindoSubjects(attMem[aid].jindo) : [] } }]; });
-      if (kind === 'eval' && r.dropped) toast(`이름·전화번호가 적힌 줄 ${r.dropped}개는 빼고 넣었어요(학생 이름은 저장하지도 AI로 보내지도 않아요).`, 7000);
+      const { att, dropped } = attachFrom(f.name, await readText(f));
+      apply(id, p => { p.attach = [...p.attach, att]; });
+      if (dropped) toast(droppedMsg(dropped), 7000);
     } catch (e) { toast(fileMessage(e && e.code), 5000); }
   }
   delete readingAtt[id];
@@ -202,7 +209,7 @@ async function addFiles(target, files) {
         p.sources[target] = cap((prev ? prev + '\n\n' : '') + r.text);
         p.sourceNames[target] = [...p.sourceNames[target], f.name];
       });
-      if (r.dropped) toast(`이름·전화번호가 적힌 줄 ${r.dropped}개는 빼고 넣었어요(학생 이름은 저장하지도 AI로 보내지도 않아요).`, 7000);
+      if (r.dropped) toast(droppedMsg(r.dropped), 7000);
     } catch (e) { toast(fileMessage(e && e.code), 5000); }
   }
   delete reading[id];
@@ -342,7 +349,7 @@ function step4() {
   const live = jin.filter(a => attMem[a.id] && attMem[a.id].jindo);
   return attachHTML()
     + `<div class="yp-card"><h3>교과별 시수표</h3>
-      ${hours.length ? `<div class="yp-tbl-wrap"><table class="yp-tbl" id="cpHours"><thead><tr><th>교과</th><th>시수</th></tr></thead><tbody>${hours.map(r => `<tr><td>${esc(r[0])}</td><td class="num">${esc(r[1])}</td></tr>`).join('')}</tbody></table></div>`
+      ${hours.length ? `<div class="yp-tbl-wrap"><table class="yp-tbl cp-hours" id="cpHours"><thead><tr><th>교과</th><th>시수</th></tr></thead><tbody>${hours.map(r => `<tr><td>${esc(r[0])}</td><td class="num">${esc(r[1])}</td></tr>`).join('')}</tbody></table></div>`
         : '<p class="muted">연간지도계획 표가 있는 진도표를 첨부하면 교과별 시수를 읽어 표로 넣어요.</p>'}
       ${hours.length && noSec('hours') ? '<p class="muted">목차에 「시간 배당」·「시수」 칸이 없어 한글 파일에는 들어가지 않아요. 2단계에서 칸을 더해 주세요.</p>' : ''}
       ${live.length ? `<div class="row">${live.map(a => `<button class="btn tonal" type="button" data-toclass="${esc(a.id)}">학급 › 진도표·시수에도 넣기${live.length > 1 ? ` (${esc(a.name)})` : ''}</button>`).join('')}</div>` : ''}
@@ -428,6 +435,18 @@ function goStep(n) {
   if (n >= 2) ensureOutline();
   persist();
   renderMain();
+}
+
+/* [예시로 채우기]: 새 계획에 지어낸 작년 계획서·올해 지침·첨부(파일에서 읽은 것과 같은 길을 거침) */
+function fillSample() {
+  const s = sampleSources(today()), p = newPlan(), last = stripNames(s.lastPlan.text);
+  Object.assign(p, { grade: p.grade || 3, room: p.room || 2, boys: 12, girls: 13, motto: '서로 돕고 함께 웃는 우리 반' });
+  p.sources = { lastPlan: cap(last.text), guide: s.guide.text };
+  p.sourceNames = { lastPlan: [s.lastPlan.name], guide: [s.guide.name] };
+  p.attach = s.attach.map(f => attachFrom(f.name, f.text).att);
+  plan = p; saved = false; showPrev = false; outlineNote = '';
+  persist(); render();
+  toast(`예시를 채웠어요. ${droppedMsg(last.dropped)}`, 7000);
 }
 
 function askDelete() {
@@ -531,6 +550,7 @@ document.addEventListener('click', e => {
   if (!b) return;
   const a = b.dataset.c;
   if (a === 'new') { plan = newPlan(); saved = false; showPrev = false; outlineNote = ''; render(); }
+  else if (a === 'sample') fillSample();
   else if (a === 'next') goStep(Math.min(4, plan.step + 1));
   else if (a === 'prev') goStep(Math.max(1, plan.step - 1));
   else if (a === 'importPrev') { showPrev = !showPrev; renderMain(); }
