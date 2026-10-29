@@ -132,13 +132,14 @@ function dice(a, b) {
   return (2 * n) / (a.size + b.size);
 }
 
-/* 올해 초안 문장 중 작년 계획과 (거의) 같은 문장의 비율. 법령 문장은 뺌. 작년 글이 비면 null */
+/* 올해 초안 문장 중 작년 계획과 (거의) 같은 문장의 비율. 법령 문장은 뺌. 작년 글이 비면 null.
+   draft는 연간계획 초안({purpose, …}) 또는 글 (학급운영계획) */
 export function overlap(lastText, draft) {
   if (!String(lastText || '').trim()) return null;
   const last = sentences(lastText).filter(s => !LAW.test(s)).map(norm).filter(Boolean);
   const exact = new Set(last);
   const lastB = last.map(s => ({ len: s.length, b: bigrams(s) }));
-  const mine = sentences(TEXT_SECTIONS.map(k => (draft && draft[k]) || '').join('\n')).filter(s => !LAW.test(s));
+  const mine = sentences(typeof draft === 'string' ? draft : TEXT_SECTIONS.map(k => (draft && draft[k]) || '').join('\n')).filter(s => !LAW.test(s));
   const same = [];
   for (const s of mine) {
     const n = norm(s);

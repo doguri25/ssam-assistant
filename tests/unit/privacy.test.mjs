@@ -24,4 +24,9 @@ test('두 글자 낱말 줄(교과·학습 낱말)과 흔한 세 글자 낱말 �
   assert.deepEqual(stripNames(src), { text: src, dropped: 0 });
 });
 
+test('조사가 붙은 낱말이 많은 문장·표 줄은 남김 (진도표의 학습 주제 등)', () => {
+  const src = ['우리가 방법을 정하고 장소를 고르며 문장을 다듬기', '지킴이 | 공동체 | 모두가 함께 지구를 지켜요 | 3/12 | 40~41'].join('\n');
+  assert.deepEqual(stripNames(src), { text: src, dropped: 0 });
+});
+
 test('빈 글', () => { assert.deepEqual(stripNames(''), { text: '', dropped: 0 }); });

@@ -7,17 +7,18 @@ const PHONE = /0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}/;
 
 /* 이름처럼 보이는 낱말: 2~4글자 한글, 흔한 성으로 시작 (설문 답 판단용) */
 export const looksLikeName = s => /^[가-힣]{2,4}$/.test(s) && SURNAME.has(s[0]);
-/* 줄 안의 이름 세기: 세 글자 이름(흔한 낱말 빼고)과 두 글자 성 + 두 글자 */
-const nameish = t => (/^[가-힣]{3}$/.test(t) && SURNAME.has(t[0]) && !COMMON.has(t)) || DOUBLE.test(t);
+/* 줄 안의 이름 세기: 세 글자 이름(흔한 낱말·조사로 끝나는 낱말 빼고)과 두 글자 성 + 두 글자 */
+const ENDING = /[을를의에과와한할해요고며로도만적형께]$/;
+const nameish = t => (/^[가-힣]{3}$/.test(t) && SURNAME.has(t[0]) && !COMMON.has(t) && !ENDING.test(t)) || DOUBLE.test(t);
 
-/* 이름이 셋 이상 늘어선 줄(명단·담임 표)과 전화번호가 든 줄을 뺌 → { text, dropped } */
+/* 명단·담임 표처럼 이름이 늘어선 줄(이름 셋 이상, 한글 낱말의 60% 이상)과 전화번호가 든 줄을 뺌 → { text, dropped } */
 export function stripNames(text) {
   const src = String(text || '');
   if (!src) return { text: '', dropped: 0 };
   let dropped = 0;
   const kept = src.split('\n').filter(line => {
-    const names = line.split(/[\s|,·/()]+/).filter(nameish).length;
-    if (names >= 3 || PHONE.test(line)) { dropped++; return false; }
+    const words = line.split(/[\s|,·/()]+/).filter(t => /^[가-힣]+$/.test(t)), names = words.filter(nameish).length;
+    if ((names >= 3 && names / words.length >= 0.6) || PHONE.test(line)) { dropped++; return false; }
     return true;
   });
   return { text: kept.join('\n'), dropped };
