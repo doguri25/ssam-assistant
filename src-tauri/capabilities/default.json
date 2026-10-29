@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "평어 만들기 창의 기본 권한",
+  "description": "쌤비서 창의 기본 권한",
   "windows": ["main"],
   "permissions": [
     "core:default",

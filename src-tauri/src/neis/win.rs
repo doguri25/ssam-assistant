@@ -107,7 +107,7 @@ fn window_pid(hwnd: isize) -> u32 {
     pid
 }
 
-/// 이 창이 이 앱(평어 만들기)의 창인지
+/// 이 창이 이 앱(쌤비서)의 창인지
 pub fn is_own_window(hwnd: isize) -> bool {
     hwnd != 0 && window_pid(hwnd) == unsafe { GetCurrentProcessId() }
 }

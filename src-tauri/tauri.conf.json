@@ -1,9 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "평어 만들기",
-  "mainBinaryName": "pyeongeo",
+  "productName": "쌤비서",
+  "mainBinaryName": "ssam",
   "version": "../package.json",
-  "identifier": "kr.doguri.pyeongeo",
+  "identifier": "kr.doguri.ssam",
   "build": {
     "frontendDist": "../dist",
     "beforeBuildCommand": "node scripts/copy-web.mjs"
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "평어 만들기",
+        "title": "쌤비서",
         "width": 1280,
         "height": 860,
         "minWidth": 380,
@@ -34,8 +34,8 @@
     "publisher": "doguri25",
     "copyright": "© 2026 도구리 (raccoon@ai.cne.go.kr)",
     "category": "Education",
-    "shortDescription": "평가계획으로 교과 평어, 행동특성 및 종합의견, 수행평가지 채점 평어를 만드는 도구",
-    "longDescription": "평가계획(한글 파일)을 넣으면 과목·평가요소별 최상·상·중·하 평어를 만들고, 학생별 메모로 행동특성 및 종합의견을 쓰며, 스캔한 수행평가지를 채점해 비율대로 수준을 나누고 학생별 평어를 씁니다.",
+    "shortDescription": "학교 업무 AI 비서: 평가·연수·계획·학급·품의",
+    "longDescription": "평가·연수·계획·학급·품의 업무를 왼쪽 세로 메뉴 하나에 모으고, AI가 초안을 쓰면 교사는 확인·수정만 하는 Windows 앱(웹판 포함).",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

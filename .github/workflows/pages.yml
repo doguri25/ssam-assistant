@@ -1,0 +1,32 @@
+name: 웹판 배포 (GitHub Pages)
+
+# main에 올리면 web/ 폴더를 그대로 https://doguri25.github.io/ssam-assistant/ 에 올림
+# 처음 한 번: 레포 Settings → Pages → Source를 「GitHub Actions」로 바꿔야 함
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: web
+      - id: deploy
+        uses: actions/deploy-pages@v4

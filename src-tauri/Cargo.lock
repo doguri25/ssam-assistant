@@ -2828,22 +2828,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pyeongeo"
-version = "1.8.0"
-dependencies = [
- "arboard",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "tauri",
- "tauri-build",
- "tauri-plugin-global-shortcut",
- "tauri-plugin-opener",
- "windows-sys 0.61.2",
-]
-
-[[package]]
 name = "quick-xml"
 version = "0.42.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3421,6 +3405,22 @@ dependencies = [
  "gobject-sys",
  "libc",
  "system-deps",
+]
+
+[[package]]
+name = "ssam"
+version = "0.1.0"
+dependencies = [
+ "arboard",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-global-shortcut",
+ "tauri-plugin-opener",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

@@ -6,7 +6,15 @@
 - 구현 계획: [docs/superpowers/plans/](docs/superpowers/plans/)
 - 출발점: 평어 만들기 1.8.0 (교과 평어·창의적 체험활동·행동특성·평가지 채점)
 
-> 지금은 개발 중입니다. 기능이 갖춰지는 대로 설치 파일과 웹판 주소를 여기에 적어요.
+> 지금은 개발 중입니다.
+
+- 웹판: https://doguri25.github.io/ssam-assistant/ (main에 올리면 저절로 배포)
+- Windows 앱: [릴리즈](https://github.com/doguri25/ssam-assistant/releases)의 `ssam-<버전>-setup.exe` 또는 `ssam-<버전>-portable.exe`. 앱이 새 버전을 스스로 확인해요.
+
+## 배포
+
+- **Windows 앱**: Actions → 「Windows 앱 빌드·릴리즈 (쌤비서)」를 「릴리즈 만들기」를 켜고 실행하면 `package.json` 버전(`v0.1.0` 등)으로 릴리즈를 만들고 설치 파일·`latest.json`을 올려요. 바뀐 점은 `.github/RELEASE_NOTES.md`의 `whats-new` 사이에 적어요.
+- **웹판**: 처음 한 번 레포 **Settings → Pages → Source를 「GitHub Actions」**로 바꿔 주세요. 그 뒤로는 main에 올릴 때마다 `web/` 폴더가 배포돼요.
 
 ## 개발
 

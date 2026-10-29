@@ -1,7 +1,7 @@
 [package]
-name = "pyeongeo"
-version = "1.8.0"
-description = "평어 만들기"
+name = "ssam"
+version = "0.1.0"
+description = "쌤비서"
 authors = ["doguri25"]
 edition = "2021"
 publish = false

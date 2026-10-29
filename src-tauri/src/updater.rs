@@ -1,6 +1,6 @@
 //! 자동 업데이트
 //!
-//! 공개 레포(doguri25/nice-releases)의 최신 릴리즈에 올라간 `latest.json`을 읽어
+//! 레포(doguri25/ssam-assistant)의 최신 릴리즈에 올라간 `latest.json`을 읽어
 //! 새 버전이 있는지 보고, 파일을 받으면서 확인값(SHA-256)을 계산해
 //! `latest.json`에 적힌 값과 맞으면 설치한다.
 //!
@@ -14,16 +14,16 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// 업데이트 파일을 올려 두는 공개 레포
-pub const RELEASES_REPO: &str = "doguri25/nice-releases";
+pub const RELEASES_REPO: &str = "doguri25/ssam-assistant";
 pub const GITHUB: &str = "https://github.com";
 /// 릴리즈마다 함께 올리는 새 버전 정보 파일
 pub const MANIFEST_NAME: &str = "latest.json";
 /// 레포에 아직 릴리즈가 없을 때
 pub const NO_RELEASE: &str = "NO_RELEASE";
 /// 실행 파일판을 바꿀 때 옛 파일에 붙이는 꼬리 (다음 실행 때 지움)
-pub const OLD_SUFFIX: &str = ".pyeongeo-old";
+pub const OLD_SUFFIX: &str = ".ssam-old";
 /// 받은 설치 파일을 두는 임시 폴더 이름
-pub const TEMP_DIR_NAME: &str = "pyeongeo-update";
+pub const TEMP_DIR_NAME: &str = "ssam-update";
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct FileEntry {
@@ -120,7 +120,7 @@ pub fn release_page(repo: &str) -> String {
 
 pub fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
-        .user_agent(concat!("pyeongeo-updater/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("ssam-updater/", env!("CARGO_PKG_VERSION")))
         .connect_timeout(Duration::from_secs(15))
         .build()
         .map_err(|e| format!("인터넷 연결을 준비하지 못했어요: {e}"))
@@ -263,7 +263,7 @@ pub fn old_path(exe: &Path) -> PathBuf {
 
 /// 실행 파일판 바꾸기.
 /// Windows에서는 실행 중인 파일을 지울 수는 없지만 이름은 바꿀 수 있어서,
-/// 지금 파일을 `<이름>.pyeongeo-old`로 비켜 두고 받은 파일을 제자리에 놓는다.
+/// 지금 파일을 `<이름>.ssam-old`로 비켜 두고 받은 파일을 제자리에 놓는다.
 /// 돌려주는 값: 비켜 둔 옛 파일 (앱이 닫힌 뒤 지움)
 pub fn swap_portable(exe: &Path, downloaded: &Path, target: &Path) -> Result<PathBuf, String> {
     let old = old_path(exe);
@@ -286,7 +286,7 @@ pub fn cleanup_leftovers(exe: &Path, temp: &Path) {
             for e in entries.flatten() {
                 let name = e.file_name();
                 let name = name.to_string_lossy();
-                if name.ends_with(OLD_SUFFIX) || name.ends_with(".pyeongeo-download") {
+                if name.ends_with(OLD_SUFFIX) || name.ends_with(".ssam-download") {
                     let _ = std::fs::remove_file(e.path());
                 }
             }
@@ -296,7 +296,7 @@ pub fn cleanup_leftovers(exe: &Path, temp: &Path) {
 }
 
 /// 업데이트로 새로 켠 실행 파일판에 붙이는 표시. 이 표시가 있으면 옛 앱이 닫힐 때까지 기다렸다가 시작
-pub const UPDATED_FLAG: &str = "--pyeongeo-updated";
+pub const UPDATED_FLAG: &str = "--ssam-updated";
 
 // 백신이 「의심스러운 프로세스 실행」으로 잡지 않도록 cmd·powershell 같은 다른 프로그램을
 // 거치지 않고, 설치 파일이나 새 실행 파일을 직접 켠다.
@@ -326,7 +326,7 @@ pub fn launch_updated(exe: &Path) -> Result<(), String> {
         .map_err(|e| format!("새 버전을 켜지 못했어요: {e}"))
 }
 
-/// 옆에 남은 옛 파일(.pyeongeo-old)을 지울 수 있을 때까지(= 옛 앱이 닫힐 때까지) 기다림.
+/// 옆에 남은 옛 파일(.ssam-old)을 지울 수 있을 때까지(= 옛 앱이 닫힐 때까지) 기다림.
 /// 다 지웠으면 true, 시간이 다 되면 false
 pub fn wait_old_gone(exe: &Path, timeout: Duration) -> bool {
     let Some(dir) = exe.parent() else {
@@ -361,8 +361,8 @@ mod tests {
     fn manifest_json(version: &str) -> String {
         format!(
             r#"{{"version":"{version}","notes":"- 고친 점","published":"2026-10-14T00:00:00Z",
-            "setup":{{"name":"pyeongeo-{version}-setup.exe","sha256":"{a}","size":10}},
-            "portable":{{"name":"pyeongeo-{version}-portable.exe","sha256":"{b}","size":20}}}}"#,
+            "setup":{{"name":"ssam-{version}-setup.exe","sha256":"{a}","size":10}},
+            "portable":{{"name":"ssam-{version}-portable.exe","sha256":"{b}","size":20}}}}"#,
             a = "a".repeat(64),
             b = "B".repeat(64)
         )
@@ -386,12 +386,12 @@ mod tests {
     fn manifest() {
         let m = parse_manifest(&format!("\u{feff}{}", manifest_json("1.2.0"))).unwrap();
         assert_eq!(m.version, "1.2.0");
-        assert_eq!(m.file(true).name, "pyeongeo-1.2.0-portable.exe");
+        assert_eq!(m.file(true).name, "ssam-1.2.0-portable.exe");
         assert_eq!(m.file(false).size, 10);
         assert!(verify(&"b".repeat(64), m.file(true)).is_ok());
         assert!(verify(&"a".repeat(64), m.file(true)).is_err());
 
-        let bad_name = manifest_json("1.2.0").replace("pyeongeo-1.2.0-setup.exe", "..\\\\x.exe");
+        let bad_name = manifest_json("1.2.0").replace("ssam-1.2.0-setup.exe", "..\\\\x.exe");
         assert!(parse_manifest(&bad_name).is_err());
         let bad_hash = manifest_json("1.2.0").replace(&"a".repeat(64), "abc");
         assert!(parse_manifest(&bad_hash).is_err());
@@ -403,11 +403,11 @@ mod tests {
     fn urls() {
         assert_eq!(
             manifest_url(GITHUB, RELEASES_REPO),
-            "https://github.com/doguri25/nice-releases/releases/latest/download/latest.json"
+            "https://github.com/doguri25/ssam-assistant/releases/latest/download/latest.json"
         );
         assert_eq!(
             file_url(GITHUB, RELEASES_REPO, "1.2.0", "a.exe"),
-            "https://github.com/doguri25/nice-releases/releases/download/v1.2.0/a.exe"
+            "https://github.com/doguri25/ssam-assistant/releases/download/v1.2.0/a.exe"
         );
     }
 
@@ -416,16 +416,16 @@ mod tests {
         let dir = Path::new("/x/y");
         assert_eq!(
             portable_target(
-                &dir.join("pyeongeo-1.1.0-portable.exe"),
-                "pyeongeo-1.2.0-portable.exe"
+                &dir.join("ssam-1.1.0-portable.exe"),
+                "ssam-1.2.0-portable.exe"
             ),
-            dir.join("pyeongeo-1.1.0-portable.exe")
+            dir.join("ssam-1.1.0-portable.exe")
         );
         assert_eq!(
-            portable_target(&dir.join("평어 만들기.exe"), "pyeongeo-1.2.0-portable.exe"),
-            dir.join("평어 만들기.exe")
+            portable_target(&dir.join("쌤비서.exe"), "ssam-1.2.0-portable.exe"),
+            dir.join("쌤비서.exe")
         );
-        assert_eq!(old_path(&dir.join("a.exe")), dir.join("a.exe.pyeongeo-old"));
+        assert_eq!(old_path(&dir.join("a.exe")), dir.join("a.exe.ssam-old"));
     }
 
     #[test]
@@ -434,19 +434,19 @@ mod tests {
         assert!(launch_setup(Path::new("/no/such/setup.exe")).is_err());
         assert!(launch_updated(Path::new("/no/such/app.exe")).is_err());
         // 옛 파일이 지워지면 바로 끝남
-        let base = std::env::temp_dir().join(format!("pyeongeo-wait-test-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("ssam-wait-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
-        let exe = base.join("pyeongeo-1.3.1-portable.exe");
+        let exe = base.join("ssam-1.3.1-portable.exe");
         std::fs::write(&exe, b"new").unwrap();
         std::fs::write(
-            base.join("pyeongeo-1.3.0-portable.exe.pyeongeo-old"),
+            base.join("ssam-1.3.0-portable.exe.ssam-old"),
             b"old",
         )
         .unwrap();
         assert!(wait_old_gone(&exe, Duration::from_secs(2)));
         assert!(!base
-            .join("pyeongeo-1.3.0-portable.exe.pyeongeo-old")
+            .join("ssam-1.3.0-portable.exe.ssam-old")
             .exists());
         assert!(exe.exists());
         let _ = std::fs::remove_dir_all(&base);
@@ -495,7 +495,7 @@ mod tests {
             .map(|b| format!("{b:02x}"))
             .collect();
         let manifest = format!(
-            r#"{{"version":"1.3.0","notes":"- 새 기능","published":"","setup":{{"name":"pyeongeo-1.3.0-setup.exe","sha256":"{}","size":1}},"portable":{{"name":"pyeongeo-1.3.0-portable.exe","sha256":"{hash}","size":{}}}}}"#,
+            r#"{{"version":"1.3.0","notes":"- 새 기능","published":"","setup":{{"name":"ssam-1.3.0-setup.exe","sha256":"{}","size":1}},"portable":{{"name":"ssam-1.3.0-portable.exe","sha256":"{hash}","size":{}}}}}"#,
             "0".repeat(64),
             exe.len()
         );
@@ -514,21 +514,21 @@ mod tests {
                 manifest.clone().into_bytes(),
             ),
             (
-                "/o/r/releases/download/v1.3.0/pyeongeo-1.3.0-portable.exe",
+                "/o/r/releases/download/v1.3.0/ssam-1.3.0-portable.exe",
                 200,
                 format!("Content-Length: {}\r\n", exe.len()),
                 exe.clone(),
             ),
             // 끝까지 오지 않는 파일
             (
-                "/o/r/releases/download/v1.3.0/pyeongeo-1.3.0-setup.exe",
+                "/o/r/releases/download/v1.3.0/ssam-1.3.0-setup.exe",
                 200,
                 format!("Content-Length: {}\r\n", exe.len() + 10),
                 exe.clone(),
             ),
         ]);
         let client = reqwest::Client::builder().no_proxy().build().unwrap();
-        let dir = std::env::temp_dir().join(format!("pyeongeo-net-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("ssam-net-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
 
         tauri::async_runtime::block_on(async {
@@ -543,7 +543,7 @@ mod tests {
             let entry = m.file(true).clone();
             let dest = dir
                 .join("a")
-                .join(format!("{}.pyeongeo-download", entry.name));
+                .join(format!("{}.ssam-download", entry.name));
             let mut calls = 0u32;
             let mut last = (0u64, 0u64);
             let got = download(
@@ -568,7 +568,7 @@ mod tests {
             let dest2 = dir.join("setup.exe");
             let err = download(
                 &client,
-                &file_url(&base, "o/r", "1.3.0", "pyeongeo-1.3.0-setup.exe"),
+                &file_url(&base, "o/r", "1.3.0", "ssam-1.3.0-setup.exe"),
                 &dest2,
                 |_, _| {},
             )
@@ -592,16 +592,16 @@ mod tests {
 
     #[test]
     fn swap_and_cleanup() {
-        let base = std::env::temp_dir().join(format!("pyeongeo-swap-test-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("ssam-swap-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
 
         // 이름에 버전이 있어도 지금 이름 그대로 (바로가기가 끊기지 않게)
-        let exe = base.join("pyeongeo-1.1.0-portable.exe");
+        let exe = base.join("ssam-1.1.0-portable.exe");
         std::fs::write(&exe, b"old").unwrap();
-        let dl = base.join("pyeongeo-1.2.0-portable.exe.pyeongeo-download");
+        let dl = base.join("ssam-1.2.0-portable.exe.ssam-download");
         std::fs::write(&dl, b"new").unwrap();
-        let target = portable_target(&exe, "pyeongeo-1.2.0-portable.exe");
+        let target = portable_target(&exe, "ssam-1.2.0-portable.exe");
         assert_eq!(target, exe);
         let old = swap_portable(&exe, &dl, &target).unwrap();
         assert_eq!(std::fs::read(&exe).unwrap(), b"new");
@@ -609,11 +609,11 @@ mod tests {
         assert_eq!(std::fs::read(&old).unwrap(), b"old");
 
         // 이름을 바꾼 파일 → 같은 이름 그대로
-        let exe2 = base.join("평어 만들기.exe");
+        let exe2 = base.join("쌤비서.exe");
         std::fs::write(&exe2, b"old2").unwrap();
-        let dl2 = base.join("x.pyeongeo-download");
+        let dl2 = base.join("x.ssam-download");
         std::fs::write(&dl2, b"new2").unwrap();
-        let t2 = portable_target(&exe2, "pyeongeo-1.2.0-portable.exe");
+        let t2 = portable_target(&exe2, "ssam-1.2.0-portable.exe");
         assert_eq!(t2, exe2);
         swap_portable(&exe2, &dl2, &t2).unwrap();
         assert_eq!(std::fs::read(&exe2).unwrap(), b"new2");

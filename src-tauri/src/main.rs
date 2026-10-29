@@ -1,4 +1,4 @@
-// 평어 만들기 · Windows 데스크톱 앱 (Tauri)
+// 쌤비서 · Windows 데스크톱 앱 (Tauri)
 // 릴리즈 빌드에서는 뒤에 검은 콘솔 창이 뜨지 않게 함
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -197,7 +197,7 @@ async fn install_update_inner(app: &tauri::AppHandle) -> Result<String, String> 
     // 실행 파일판은 같은 폴더에 받아서(쓰기 되는지도 확인) 이름만 바꿔 끼움
     let (dest, target) = if portable {
         let target = updater::portable_target(&exe, &entry.name);
-        let dest = exe.with_file_name(format!("{}.pyeongeo-download", entry.name));
+        let dest = exe.with_file_name(format!("{}.ssam-download", entry.name));
         (dest, Some(target))
     } else {
         let dest = std::env::temp_dir()
@@ -302,5 +302,5 @@ fn main() {
             ai_proxy::ai_proxy
         ])
         .run(tauri::generate_context!())
-        .expect("평어 만들기를 실행하지 못했어요");
+        .expect("쌤비서를 실행하지 못했어요");
 }
