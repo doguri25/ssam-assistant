@@ -15,6 +15,10 @@ await mockClaude(page, ({ prompt }) => {
     const withLast = !prompt.includes('보완안은 만들지 마세요');
     return JSON.stringify({ options: withLast ? [opt('보완안', '개회식(대기 줄임)'), opt('새로운 안', '가족 릴레이'), opt('새로운 안', '놀이 부스')] : [opt('새로운 안', '가족 릴레이'), opt('새로운 안', '놀이 부스')] });
   }
+  if (prompt.startsWith('[행사 문서]')) return JSON.stringify({
+    plan: '1. 운영 방침\n학년별로 나누어 운영한다.', safety: '- 응급 처치 인원 배치\n- 그늘막 설치', letter: '가을 운동회 안내\n일시: 2027년 5월 6일\n준비물: 물병\n복장: 체육복', rain: '',
+    roles: [{ name: '김교사', roles: ['사회', '음향', '안전', '기록', '시상'] }, { name: '이교사', roles: ['안전'] }, { name: '박교사', roles: ['기록'] }, { name: '없는 교사', roles: ['x'] }]
+  });
   return '{}';
 });
 const V = 'section[data-menu="plan"]';
@@ -76,7 +80,52 @@ await run('event-plan', [
     assert(prompts.at(-1).includes('보완안은 만들지 마세요'), '프롬프트');
     assert(await page.locator(`${V} .ev-opt[data-opt]`).count() === 2, '안 수');
   }],
-  // (Task 5·6 시험이 여기 이어짐)
+  ['3단계 문서: 4개 탭, 역할이 많은 사람 표시', async () => {
+    await page.click(`${V} #evList [data-ev]:has-text("가을 운동회")`);
+    await page.click(`${V} ol.steps [data-step="1"]`);
+    for (const [i, n, d] of [[0, '김교사', '체육부'], [1, '이교사', '보건'], [2, '박교사', '6학년']]) {
+      await page.click(`${V} [data-e="staffAdd"]`);
+      await page.fill(`${V} [data-staff="${i}"][data-f="name"]`, n); await page.fill(`${V} [data-staff="${i}"][data-f="duty"]`, d);
+    }
+    await page.click(`${V} ol.steps [data-step="2"]`);
+    await page.click(`${V} [data-e="next"]`);
+    await page.click(`${V} [data-e="docs"]`);
+    await page.waitForSelector(`${V} [data-doc="roles"]`, { timeout: 8000 });
+    assert(await page.locator(`${V} [data-doc]`).count() === 4, '문서 탭 수');
+    const pr = prompts.at(-1);
+    assert(pr.startsWith('[행사 문서]') && pr.includes('김교사') && pr.includes('가족 릴레이(학년별)'), '프롬프트');
+    await page.click(`${V} [data-doc="roles"]`);
+    assert(await page.locator(`${V} #evRoles [data-role]`).count() === 3, '명단에 없는 사람이 들어감');
+    assert(await page.locator(`${V} #evRoles [data-role="0"].ev-over`).count() === 1, '김교사 표시 없음');
+  }],
+  ['가정통신문: 문의처가 빠지면 [완성]이 꺼지고, 더하면 켜짐', async () => {
+    await page.click(`${V} [data-doc="letter"]`);
+    assert((await page.textContent(`${V} #evLetterMissing`)).includes('문의처'), '빠진 항목 표시');
+    assert(await page.isDisabled(`${V} [data-e="letterDone"]`), '[완성]이 켜져 있음');
+    const ta = `${V} textarea[data-docf="letter"]`;
+    await page.fill(ta, (await page.inputValue(ta)) + '\n문의: 교무실 000-0000');
+    assert(await page.locator(`${V} #evLetterMissing`).count() === 0 || await page.isHidden(`${V} #evLetterMissing`), '빠진 항목이 남음');
+    assert(await page.isEnabled(`${V} [data-e="letterDone"]`), '[완성]이 꺼져 있음');
+    await page.click(`${V} [data-e="letterDone"]`);
+  }],
+  ['문서마다 한글 파일·복사', async () => {
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click(`${V} [data-e="hwpx"]`)]);
+    assert(dl.suggestedFilename() === '가을 운동회 안내.hwpx', '이름: ' + dl.suggestedFilename());
+    await page.click(`${V} [data-e="copyDoc"]`);
+    await page.waitForTimeout(150);
+    assert((await page.evaluate(() => navigator.clipboard.readText())).includes('문의: 교무실 000-0000'), '클립보드');
+  }],
+  ['품의로 이어 가기: 행사 운영 품의에 칸과 예산 줄이 채워짐', async () => {
+    await page.click(`${V} [data-e="purchase"]`);
+    assert(await page.textContent('header.app-top h1') === '품의', '품의로 안 감');
+    const P = 'section[data-menu="purchase"]';
+    assert(await page.getAttribute(`${P} [data-pctype="event"]`, 'aria-pressed') === 'true', '종류');
+    assert(await page.inputValue(`${P} #pcProject`) === '가을 운동회', '사업명');
+    assert(await page.inputValue(`${P} #pcDate`) === '2027-05-06' && await page.inputValue(`${P} #pcTarget`) === '전교생' && await page.inputValue(`${P} #pcPlace`) === '운동장', '일시·대상·장소');
+    assert(await page.inputValue(`${P} [data-item="0"][data-f="name"]`) === '상품' && await page.inputValue(`${P} [data-item="0"][data-f="price"]`) === '300000', '품목');
+    await go();
+  }],
+  // (Task 6 시험이 여기 이어짐)
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();

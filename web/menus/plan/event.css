@@ -16,3 +16,7 @@
 .ev-opt .btn{align-self:flex-start;margin-top:auto}
 .yp-tag.new{background:var(--accent-soft);color:var(--accent-ink)}
 @media (max-width:600px){ .ev-staff-row{grid-template-columns:minmax(0,1fr) 44px} .ev-staff-row [data-f="duty"]{grid-column:1/2} .ev-staff-row .icon-btn{grid-row:1;grid-column:2} }
+.ev-docs{flex-wrap:wrap}
+.ev-doc{width:100%;box-sizing:border-box;line-height:1.65;resize:vertical}
+#evRoles tr.ev-over td{background:var(--warn-soft)}
+.ev-over-t{display:inline-block;margin-top:4px;font-size:12.5px;font-weight:700;color:var(--warn)}

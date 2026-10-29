@@ -1,6 +1,6 @@
 /* 품의 메뉴 › 새 품의: 왼쪽 「메모」(입력) → 오른쪽 「에듀파인에 붙여넣을 초안」.
    AI는 제목과 사유 첫 문장만 쓰고, 가~라 줄·금액·합계는 앱이 만든다 (PRD 5.2) */
-import { onEnter } from '../../core/shell.js';
+import { onEnter, go } from '../../core/shell.js';
 import { get, set } from '../../core/store.js';
 import * as ai from '../../core/ai.js';
 import { makeHwpx } from '../../core/hwpx.js';
@@ -40,6 +40,13 @@ const save = () => set(CUR_KEY, st);
 export const getForm = () => JSON.parse(JSON.stringify(st.form));
 export const getDraft = () => (st.draft ? { ...st.draft } : null);
 export function setForm(form) { st.form = normForm(form); save(); if (curTab === 'new' && box && box.isConnected) render(); }
+/* 행사계획에서 [품의로 이어 가기] (P-10): 종류 「행사 운영」으로 칸을 채우고 품의 › 새 품의로 감 */
+export function openPurchase(prefill) {
+  st.form = normForm({ ...emptyForm('event'), ...(prefill || {}), type: 'event' });
+  st.draft = null; msg = ''; tried = false;
+  save();
+  go('purchase', 'new');
+}
 export function setDraft(draft) { st.draft = normDraft(draft); save(); if (curTab === 'new' && box && box.isConnected) renderDraft(); }
 
 /* ---------- 그리기 ---------- */
