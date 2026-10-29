@@ -77,3 +77,8 @@ test('한글 문서', () => {
   assert.equal(docDoc(e, 'letter').title, '가을 운동회 안내');
   assert.ok(docDoc({ ...e, outdoor: true }, 'safety').blocks.some(b => b.type === 'p' && b.text.includes('우천 시 강당')));
 });
+
+test('저장 공간이 모자라면 saveEvent는 null', () => {
+  store.useStorage({ ...mem(), setItem: () => { throw new Error('QuotaExceededError'); } });
+  assert.equal(saveEvent({ ...newEvent(), name: '큰 행사' }), null);
+});

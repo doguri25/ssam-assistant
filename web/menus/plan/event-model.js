@@ -90,7 +90,8 @@ export function saveEvent(ev) {
   if (!e) return null;
   const list = listEventPlans();
   e.updatedAt = Math.max(Date.now(), ...list.map(x => x.updatedAt + 1));
-  set(LIST_KEY, [e, ...list.filter(x => x.id !== e.id)]);
+  // 저장 공간이 모자라면 null (화면이 알림)
+  if (!set(LIST_KEY, [e, ...list.filter(x => x.id !== e.id)])) return null;
   return e;
 }
 export function deleteEvent(id) { set(LIST_KEY, listEventPlans().filter(e => e.id !== id)); }

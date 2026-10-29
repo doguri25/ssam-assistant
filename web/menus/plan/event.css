@@ -1,0 +1,18 @@
+/* 행사계획 (연간계획의 plan.css 틀 위에) */
+.ev-kinds{flex-wrap:wrap}
+.ev-staff{display:flex;flex-direction:column;gap:6px}
+.ev-staff-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) 44px;gap:6px;align-items:center}
+.ev-staff-row .field{min-width:0;width:100%;box-sizing:border-box}
+#evDateWarn .btn{min-height:32px;padding:0 10px;font-size:13px;margin:4px 4px 0 0}
+.ev-opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.ev-opt{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m);padding:16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.ev-opt.picked{border:2px solid var(--accent);padding:15px}
+.ev-opt p{margin:0;font-size:13.5px}
+.ev-opt-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ev-picked{color:var(--accent);font-size:13px}
+.ev-sum{font-weight:600;font-size:14.5px!important}
+.ev-tt{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:3px;font-size:13.5px}
+.ev-tt .num{display:inline-block;min-width:44px;color:var(--ink3);font-variant-numeric:tabular-nums}
+.ev-opt .btn{align-self:flex-start;margin-top:auto}
+.yp-tag.new{background:var(--accent-soft);color:var(--accent-ink)}
+@media (max-width:600px){ .ev-staff-row{grid-template-columns:minmax(0,1fr) 44px} .ev-staff-row [data-f="duty"]{grid-column:1/2} .ev-staff-row .icon-btn{grid-row:1;grid-column:2} }

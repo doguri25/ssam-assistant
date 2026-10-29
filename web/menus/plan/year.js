@@ -521,12 +521,10 @@ document.addEventListener('click', e => {
   else if (a === 'school') goMenu('settings', 'school');
 });
 
-function renderEvent() {
-  box.innerHTML = '<div class="m-page"><div class="m-head"><h2>행사계획</h2><p class="muted">곧 만들어요.</p></div></div>';
-}
-
 onEnter('plan', (tab, section) => {
   if (!box || !section.contains(box)) { box = document.createElement('div'); box.className = 'yp-box'; section.prepend(box); }
   curTab = tab;
-  if (tab === 'year') { const p = getPlan(plan.id); if (p) plan = p; render(); } else renderEvent();
+  // 행사계획 탭은 event.js가 그림
+  box.hidden = tab !== 'year';
+  if (tab === 'year') { const p = getPlan(plan.id); if (p) plan = p; render(); }
 });
