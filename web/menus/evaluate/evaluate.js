@@ -1264,10 +1264,12 @@ async function flushDoc(path) {
   }
   busy.delete(path);
 }
-let saveWarned = false;
+// 저장 실패 알림: 한 번만이 아니라 20초에 한 번까지 (fails: 넣는 일이 끝난 뒤 실패했는지 보려고 셈)
+let saveWarnedAt = -1e9, saveFails = 0;
 function saveFailed(e) {
-  try { if (typeof saveWarned === 'undefined') return; } catch (er) { return; }
-  if (saveWarned) return; saveWarned = true;
+  try { if (typeof saveWarnedAt === 'undefined') return; } catch (er) { return; }
+  saveFails++;
+  if (Date.now() - saveWarnedAt < 20000) return; saveWarnedAt = Date.now();
   const c = e && e.code;
   toast(c === 'quota_exceeded' ? '저장 공간이 가득 찼어요. 쓰지 않는 평가계획을 지워 주세요.' : '저장하지 못한 내용이 있어요. 페이지를 닫기 전에 다시 확인해 주세요.', 5000);
 }
@@ -2323,11 +2325,14 @@ async function adoptPlan(plan) {
   importNote(null);
   renderAll();
   await storeReady;
-  Store.savePlan(id, plan); Store.rememberLocal(id); Store.setPrefs({ current: id, settings: S.settings });
+  const fails = saveFails;
+  await Store.savePlan(id, plan); Store.rememberLocal(id); Store.setPrefs({ current: id, settings: S.settings });
   const summary = plan.subjects.map(s => `${s.name} ${s.units.length}`).join(', ');
+  // 저장하지 못했으면 「찾았어요」로 덮지 않음 (지금 화면에서는 쓸 수 있지만 다시 열면 없음)
+  const lost = saveFails > fails ? `평가요소 ${n}개를 찾았지만 저장 공간이 모자라 저장하지 못했어요. 쓰지 않는 평가계획을 지워 주세요.` : '';
   if (cap.sample === undefined) { await capP.sample; settleEngine(); }
-  if (engineReady()) toast(`평가요소 ${n}개를 찾았어요 (${summary}). 오른쪽 위 「평어 만들기」를 눌러 과목을 골라 주세요.`, 6000);
-  else { S.autoStart = true; toast(`평가요소 ${n}개를 찾았어요 (${summary}). 평어를 만들 API 키를 넣어 주세요.`, 5000); openSettings(); }
+  if (engineReady()) toast(lost || `평가요소 ${n}개를 찾았어요 (${summary}). 오른쪽 위 「평어 만들기」를 눌러 과목을 골라 주세요.`, lost ? 8000 : 6000);
+  else { S.autoStart = true; toast(lost || `평가요소 ${n}개를 찾았어요 (${summary}). 평어를 만들 API 키를 넣어 주세요.`, lost ? 8000 : 5000); openSettings(); }
 }
 function busyImport(on, text) {
   ['#srcDrive', '#srcFile', '#srcPaste', '#pasteGo'].forEach(s => { const b = $(s); if (b) b.disabled = on; });

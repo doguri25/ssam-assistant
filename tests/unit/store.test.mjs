@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { get, set, remove, list, useStorage } from '../../web/core/store.js';
+import * as store from '../../web/core/store.js';
 
 function fake(init = {}) {
   const m = new Map(Object.entries(init));
@@ -51,4 +52,16 @@ test('저장소가 없으면 읽기는 기본값, 쓰기는 false', () => {
   useStorage(null);
   assert.equal(get('a', 3), 3);
   assert.equal(set('a', 1), false);
+});
+
+test('저장이 실패하면(저장 공간 꽉 참) 알림 함수를 부름, 멈춰 둔 동안은 부르지 않음', () => {
+  const m = new Map(), seen = [];
+  store.useStorage({ getItem: k => m.get(k) ?? null, setItem: (k, v) => { if (k.includes('big')) throw new Error('QuotaExceededError'); m.set(k, v); }, removeItem: k => m.delete(k), key: () => null, length: 0 });
+  const off = store.onFail(k => seen.push(k));
+  assert.equal(store.set('ok', 1), true);
+  assert.equal(store.set('big', 1), false);
+  store.freeze(); store.set('big', 2); store.unfreeze();
+  off();
+  store.set('big', 3);
+  assert.deepEqual(seen, ['big']);
 });

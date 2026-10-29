@@ -8,10 +8,12 @@ import { parseRoster } from '../../core/roster.js';
 import { saveFile } from '../../core/ui.js';
 import { getYears, snapshot, carryOver, makeBackup, parseBackup } from '../../core/years.js';
 import { switchYear, switchError, getArchive, safeLS } from '../../core/year-switch.js';
+import { FULL_MSG } from '../../core/store.js';
 
 const SSAM = () => window.SSAM || {};
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const toast = (m, ms) => SSAM().toast && SSAM().toast(m, ms);
+const FULL = FULL_MSG;
 const won = n => Number(n).toLocaleString('ko-KR');
 
 // 테마 미리보기 색 (core/theme.css와 같은 값): 틀, 바탕, 카드, 포인트
@@ -266,10 +268,14 @@ document.addEventListener('click', e => {
       const empty = s.breaks.find(x => !x.from || !x.to);
       if (bad) { msg = `「${bad.label || '이름 없는 기간'}」의 시작일이 끝일보다 늦어요.`; school = s; again(); return; }
       if (empty) { msg = `「${empty.label || '이름 없는 기간'}」의 시작일과 끝일을 모두 넣어 주세요.`; school = s; again(); return; }
-      msg = ''; school = setSchool(s); again(); toast('학교 정보를 저장했어요');
+      const saved = setSchool(s);
+      if (!saved) { msg = FULL; school = s; again(); return; }
+      msg = ''; school = saved; again(); toast('학교 정보를 저장했어요');
     } else if (a === 'saveLimit') {
       const v = box.querySelector('#limitWon').value;
-      if (!setPurchaseLimit(v)) { msg = '기준 금액은 1원 이상으로 넣어 주세요.'; again(); return; }
+      const r = setPurchaseLimit(v);
+      if (r === 'full') { msg = FULL; again(); return; }
+      if (!r) { msg = '기준 금액은 1원 이상으로 넣어 주세요.'; again(); return; }
       msg = ''; again(); toast(`계약 기준 금액을 ${won(getPurchaseLimit())}원으로 정했어요`);
     }
     return;

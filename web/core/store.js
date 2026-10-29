@@ -18,10 +18,15 @@ let frozen = false;
 export const freeze = () => { frozen = true; };
 export const unfreeze = () => { frozen = false; };
 
+export const FULL_MSG = '저장 공간이 모자라 저장하지 못했어요. 설정 › 학년도에서 백업한 뒤 쓰지 않는 자료를 지워 주세요.';
+/* 저장이 실패하면(저장 공간이 꽉 참 등) 부를 함수: 창 틀이 알림을 띄움. 돌려받은 함수를 부르면 뺌 */
+const failHooks = new Set();
+export function onFail(fn) { failHooks.add(fn); return () => failHooks.delete(fn); }
+
 export function set(key, value) {
   if (frozen) return false;
   try { if (!storage) return false; storage.setItem(PREFIX + key, JSON.stringify(value)); return true; }
-  catch (e) { return false; }
+  catch (e) { for (const fn of failHooks) { try { fn(key, e); } catch (er) {} } return false; }
 }
 
 export function remove(key) {

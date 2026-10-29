@@ -3,7 +3,7 @@
 import { icon } from './icons.js';
 import { renderPlaceholder } from '../menus/placeholder.js';
 import { ensureYears } from './years.js';
-import { freeze } from './store.js';
+import { freeze, onFail, FULL_MSG } from './store.js';
 
 export const MENUS = [
   { id: 'evaluate', label: '평가', tabs: [['pyeongeo', '교과 평어'], ['cc', '창의적 체험활동'], ['hk', '행동특성'], ['gr', '평가지 채점'], ['unit', '단원평가']] },
@@ -125,6 +125,13 @@ function init() {
     if (e.key !== 'ssam:years' && e.key !== null) return;
     freeze(); if (SSAM().freeze) SSAM().freeze(true);
     location.reload();
+  });
+  // 저장 공간이 꽉 차 저장하지 못하면 알림 (20초에 한 번까지: 쓰는 동안 계속 뜨지 않게)
+  let failAt = -1e9;
+  onFail(() => {
+    if (Date.now() - failAt < 20000) return;
+    failAt = Date.now();
+    if (SSAM().toast) SSAM().toast(FULL_MSG, 8000);
   });
   // 설정 시트를 닫으면 AI 이름을 다시 읽음
   const root = $('#sheetRoot');

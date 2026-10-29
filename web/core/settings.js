@@ -37,8 +37,8 @@ export function setSchool(obj) {
     students: obj.students != null ? int0(obj.students) : cur.students,
     breaks: obj.breaks != null ? cleanBreaks(obj.breaks) : cur.breaks
   };
-  set('school', next);
-  return next;
+  // 저장하지 못하면 null (화면이 알림)
+  return set('school', next) ? next : null;
 }
 
 export function getPurchaseLimit() {
@@ -46,9 +46,9 @@ export function getPurchaseLimit() {
   return Number.isFinite(v) && v > 0 ? v : LIMIT_DEFAULT;
 }
 
-/* 1원 이상 정수만 받음. 받으면 true */
+/* 1원 이상 정수만 받음. 받으면 true, 값이 틀리면 false, 저장 공간이 모자라면 'full' */
 export function setPurchaseLimit(won) {
   const v = Number(won);
   if (!Number.isFinite(v) || v < 1) return false;
-  return set('purchaseLimit', Math.floor(v));
+  return set('purchaseLimit', Math.floor(v)) || 'full';
 }

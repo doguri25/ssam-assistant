@@ -52,3 +52,11 @@ test('학급 수·학생 수는 0 이상 정수로', () => {
   assert.equal(s.classes, 0);
   assert.equal(s.students, 12);
 });
+
+test('학교 정보를 저장하지 못하면 null, 기준 금액은 값이 맞아도 저장 못 하면 false가 아닌 「full」', async () => {
+  const store = await import('../../web/core/store.js');
+  store.useStorage({ getItem: () => null, setItem: () => { throw new Error('QuotaExceededError'); }, removeItem: () => {}, key: () => null, length: 0 });
+  assert.equal(setSchool({ name: '쌤초' }), null);
+  assert.equal(setPurchaseLimit(30000000), 'full');
+  assert.equal(setPurchaseLimit(-1), false);
+});
