@@ -174,7 +174,7 @@ await run('event-plan', [
     assert((await page.inputValue(`${V} textarea#evNext`)).includes('그늘막'), '내년 메모');
     assert(prompts.at(-1).startsWith('[설문 결과]') && prompts.at(-1).includes('행사가 즐거웠나요?'), '프롬프트');
     await up('survey-4.csv');
-    await page.waitForFunction(s => document.querySelector(`${s} textarea#evReport`).value.startsWith('응답이 적어요(4명)'), V, { timeout: 8000 });
+    await page.waitForFunction(s => { const el = document.querySelector(`${s} textarea#evReport`); return el && el.value.startsWith('응답이 적어요(4명)'); }, V, { timeout: 8000 });
     assert((await page.inputValue(`${V} textarea#evReport`)).startsWith('응답이 적어요(4명). 결과를 일반화하기 어려워요'), '적은 응답 문장');
   }],
   ['같은 종류 새 행사에서 지난 행사 개선 메모를 작년 설문으로 불러옴', async () => {

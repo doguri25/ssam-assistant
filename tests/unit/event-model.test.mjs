@@ -82,3 +82,19 @@ test('저장 공간이 모자라면 saveEvent는 null', () => {
   store.useStorage({ ...mem(), setItem: () => { throw new Error('QuotaExceededError'); } });
   assert.equal(saveEvent({ ...newEvent(), name: '큰 행사' }), null);
 });
+
+test('저장된 설문 결과가 망가져도 읽을 수 있는 것만, 서술형은 300개까지(개수는 그대로)', () => {
+  store.useStorage(mem());
+  const many = Array.from({ length: 450 }, (_, i) => '답 ' + i);
+  store.set('events', [{ id: 'e1', name: '운동회', survey: { result: { n: 450, few: false, questions: [
+    { q: '좋았나요?', type: 'scale', counts: [1, 2, 3, 4, 5], mean: 3.67 },
+    { q: '망가진 척도', type: 'scale', counts: 'x', mean: 3 },
+    { q: '좋았던 점', type: 'text', answers: many },
+    null, 'x'] } } }]);
+  const r = getEvent('e1').survey.result;
+  assert.deepEqual(r.questions.map(q => q.q), ['좋았나요?', '좋았던 점']);
+  assert.equal(r.questions[1].answers.length, 300);
+  assert.equal(r.questions[1].count, 450);
+  store.set('events', [{ id: 'e2', name: 'x', survey: { result: { n: 'x', questions: 1 } } }]);
+  assert.equal(getEvent('e2').survey.result, null);
+});

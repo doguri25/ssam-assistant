@@ -12,7 +12,9 @@ export function scaleValue(v) {
   return WORDS[s] || null;
 }
 
-const SKIP = /타임스탬프|timestamp|이메일|email/i;
+const SKIP = /타임스탬프|timestamp|이메일|e-?mail/i;
+// 이름·학번·학년·반·번호·연락처 열은 문항이 아님 (개인정보는 AI로 보내지 않음)
+const PERSONAL = /^(학생\s*)?(이름|성명|학번|학년|반|번호|학년\s*반|학년\/반|연락처|전화\s*번호|휴대\s*폰(\s*번호)?|보호자(\s*이름)?)(\s*\(.*\))?$/;
 const round2 = n => Math.round(n * 100) / 100;
 
 /* rows: 첫 줄은 머리. 답의 80% 이상이 척도로 읽히면 척도 문항 */
@@ -23,7 +25,7 @@ export function summarize(rows) {
   const body = list.slice(1).filter(r => Array.isArray(r) && r.some(c => String(c || '').trim()));
   const questions = [];
   head.forEach((q, i) => {
-    if (!q || SKIP.test(q)) return;
+    if (!q || SKIP.test(q) || PERSONAL.test(q.replace(/\s+/g, ' ').trim())) return;
     const answers = body.map(r => String(r[i] == null ? '' : r[i]).trim()).filter(Boolean);
     const vals = answers.map(scaleValue);
     const ok = vals.filter(v => v != null);

@@ -33,7 +33,14 @@ let showMemos = false; // 1단계 「지난 행사 개선 메모 불러오기」
 const qrCache = {}; // 폼 주소 → QR 그림(data URL)
 const TARGETS = [['student', '학생'], ['parent', '학부모'], ['staff', '교직원']];
 const FEW = n => `응답이 적어요(${n}명). 결과를 일반화하기 어려워요.`;
-const survey = () => ev.survey || (ev.survey = { target: 'student', items: [], formUrl: '', result: null, textSummary: '', report: '', nextMemo: '' });
+const blankSurvey = () => ({ target: 'student', items: [], formUrl: '', result: null, textSummary: '', report: '', nextMemo: '' });
+const survey = () => ev.survey || (ev.survey = blankSurvey());
+/* 확정한 행사의 정보·문서를 고치면 다시 「작성 중」, 학사일정에서도 뺌(다시 확정하면 새로 넣음) */
+function unconfirm() {
+  if (ev.status !== 'final') return;
+  ev.status = 'draft';
+  removeEvents('event:' + ev.id);
+}
 
 function persist() {
   if (!saved && !ev.name.trim()) return;
@@ -58,8 +65,15 @@ function apply(id, fn) {
 function finish(id, kind) {
   delete busy[id];
   if (!visible() || ev.id !== id) return;
-  if (ev.step === STEP_OF[kind]) renderMain();
-  else if (errs[id]) toast(errs[id], 6000);
+  if (ev.step !== STEP_OF[kind]) { if (errs[id]) toast(errs[id], 6000); return; }
+  // 4단계는 결과가 나온 카드만 다시 그림 (폼 링크 등 다른 칸에 치는 글이 끊기지 않게)
+  if (kind === 'items' || kind === 'result') { renderCard(kind); if (errs[id]) toast(errs[id], 6000); }
+  else renderMain();
+}
+function renderCard(kind) {
+  const el = box && box.querySelector(kind === 'items' ? '#evItemsCard' : '#evResultCard');
+  if (!el) { renderMain(); return; }
+  el.outerHTML = kind === 'items' ? itemsCardHTML() : resultCardHTML();
 }
 const visible = () => curTab === 'event' && box && box.isConnected && !box.hidden && !box.closest('[hidden]');
 const calCtx = () => ({ breaks: getSchool().breaks, events: listCalendar(), source: 'event:' + ev.id });
@@ -201,11 +215,11 @@ function step3() {
       <textarea class="field" id="evRain" rows="3" placeholder="예) 비가 오면 강당에서 학년별로 나누어 운영">${esc(d.rain)}</textarea></label>`;
     if (curDoc === 'letter') {
       const miss = letterMissing(d.letter);
-      body += `<div id="evLetterBox">${letterBoxHTML(miss)}</div>`;
+      body += `<div id="evLetterBox">${letterBoxHTML(miss)}</div><div class="ev-qr" id="evLetterQr">${letterQrHTML()}</div>`;
     }
   }
   return `<div class="yp-card">${tabs}${body}
-      <div class="row yp-out">${curDoc !== 'roles' ? '<button class="btn" type="button" data-e="copyDoc">복사</button>' : ''}<button class="btn" type="button" data-e="hwpx">한글 파일로 내려받기</button><span class="grow"></span>
+      <div class="row yp-out"><button class="btn" type="button" data-e="copyDoc">복사</button><button class="btn" type="button" data-e="hwpx">한글 파일로 내려받기</button><span class="grow"></span>
         <button class="btn text" type="button" data-e="docs">다시 만들기 (고친 내용은 사라져요)</button></div></div>
     <div class="yp-card"><h3>품의로 이어 가기</h3><p class="muted">품의 › 새 품의로 넘어가며 행사 정보와 고른 안의 예산 줄을 채워요.</p>
       <div class="row"><button class="btn" type="button" data-e="purchase">품의로 이어 가기</button></div></div>`;
@@ -222,27 +236,32 @@ function step4() {
       ${blockers.length ? `<div class="banner warn"><span class="grow">확정하려면 채워 주세요:<ul id="evBlockers" class="yp-ul">${blockers.map(b => `<li>${esc(b)}</li>`).join('')}</ul></span></div>` : ''}
       ${fin ? '<p class="banner ok"><span class="grow">확정한 행사예요. 문서를 고치면 다시 「작성 중」이 돼요.</span></p>' : ''}
       <div class="row"><button class="btn primary" type="button" data-e="final">${fin ? '다시 확정' : '확정'}</button></div></div>`;
+  const qrCard = `<div class="yp-card"><h3>폼 링크와 QR</h3>
+      <label class="yp-f"><span class="lab">구글 폼 링크</span><input class="field" id="evForm" type="url" value="${esc(sv.formUrl)}" placeholder="https://forms.gle/…" autocomplete="off"></label>
+      <div class="ev-qr" id="evQr">${qrHTML()}</div></div>`;
+  return confirmCard + itemsCardHTML() + qrCard + resultCardHTML();
+}
+function itemsCardHTML() {
+  const sv = survey(), bz = busy[ev.id];
   const items = sv.items.length ? `<ol class="ev-items" id="evItems">${sv.items.map(it => `<li>${esc(it.q)} <span class="yp-tag ${it.type === 'scale' ? 'new' : 'ok'}">${it.type === 'scale' ? '5점 척도' : '서술형'}</span></li>`).join('')}</ol>` : '';
-  const itemsCard = `<div class="yp-card"><h3>만족도 설문 문항</h3>
+  return `<div class="yp-card" id="evItemsCard"><h3>만족도 설문 문항</h3>
       <div class="seg" role="radiogroup" aria-label="설문 대상">${TARGETS.map(([id, l]) => `<button type="button" role="radio" data-target="${id}" aria-pressed="${sv.target === id}" aria-checked="${sv.target === id}">${l}</button>`).join('')}</div>
       ${bz === 'items' ? '<p class="muted"><span class="spin"></span> 문항을 만들고 있어요…</p>' : items}
       <div class="row yp-out"><button class="btn${sv.items.length ? '' : ' primary'}" type="button" data-e="items">${sv.items.length ? '문항 다시 만들기' : '문항 만들기'}</button>
         ${sv.items.length ? '<button class="btn" type="button" data-e="formCopy">구글 폼용 복사</button>' : ''}</div>
       <p class="muted">구글 폼에서 새 설문을 만들고 복사한 문항을 붙여넣은 뒤, 보내기 링크를 아래에 넣으면 QR을 만들어요.</p></div>`;
-  const qrCard = `<div class="yp-card"><h3>폼 링크와 QR</h3>
-      <label class="yp-f"><span class="lab">구글 폼 링크</span><input class="field" id="evForm" type="url" value="${esc(sv.formUrl)}" placeholder="https://forms.gle/…" autocomplete="off"></label>
-      <div class="ev-qr" id="evQr">${qrHTML()}</div></div>`;
-  const r = sv.result;
-  const resultCard = `<div class="yp-card"><h3>설문 결과</h3>
+}
+function resultCardHTML() {
+  const sv = survey(), bz = busy[ev.id], r = sv.result;
+  return `<div class="yp-card" id="evResultCard"><h3>설문 결과</h3>
       <p class="muted">구글 폼 응답을 CSV로 내려받아 올리면 문항별 결과·서술형 요약·결과 보고서 초안·내년 개선 메모를 만들어요.</p>
       <div class="row"><button class="btn" type="button" data-e="csv">응답 CSV 올리기</button></div>
       ${bz === 'result' ? '<p class="muted"><span class="spin"></span> 결과 보고서를 쓰고 있어요…</p>' : ''}
       ${r ? resultHTML(r) : ''}
-      ${r ? `<label class="yp-f"><span class="lab">결과 보고서</span><textarea class="field ev-doc" id="evReport" rows="12">${esc(sv.report)}</textarea></label>
+      ${r && bz !== 'result' ? `<label class="yp-f"><span class="lab">결과 보고서</span><textarea class="field ev-doc" id="evReport" rows="12">${esc(sv.report)}</textarea></label>
         <div class="row yp-out"><button class="btn" type="button" data-e="reportCopy">복사</button><button class="btn" type="button" data-e="reportHwpx">한글 파일로 내려받기</button></div>
         <label class="yp-f"><span class="lab">내년 개선 메모 <span class="muted">(다음 해 같은 종류 행사의 「작년 설문 결과」로 불러올 수 있어요)</span></span><textarea class="field" id="evNext" rows="4">${esc(sv.nextMemo)}</textarea></label>` : ''}
       <input type="file" id="evCsv" accept=".csv,.xlsx" hidden></div>`;
-  return confirmCard + itemsCard + qrCard + resultCard;
 }
 function qrHTML() {
   const url = survey().formUrl.trim();
@@ -252,20 +271,29 @@ function qrHTML() {
   return `<img src="${qrCache[url]}" alt="설문 QR: ${esc(url)}" width="180" height="180">
     <div class="row yp-out"><button class="btn" type="button" data-e="qrDown">QR 내려받기</button><button class="btn" type="button" data-e="qrLetter">가정통신문에 넣기</button></div>`;
 }
+/* 가정통신문 탭의 QR 미리보기 (한글 파일에는 링크 글만 들어감) */
+function letterQrHTML() {
+  const url = survey().formUrl.trim();
+  if (!url) return '';
+  if (!qrCache[url]) { makeQr(url); return ''; }
+  if (qrCache[url] === 'error') return '';
+  return `<img src="${qrCache[url]}" alt="설문 QR: ${esc(url)}" width="120" height="120"><span class="muted">설문 QR 미리보기 · 한글 파일에는 링크 글만 들어가요. QR 그림은 4단계에서 내려받아 붙여 주세요.</span>`;
+}
 async function makeQr(url) {
   try {
     const blob = await qrPng(url, 8);
     qrCache[url] = await new Promise(ok => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(blob); });
   } catch (e) { qrCache[url] = 'error'; }
-  const q = box && box.querySelector('#evQr');
-  if (q && survey().formUrl.trim() === url) q.innerHTML = qrHTML();
+  if (!box || survey().formUrl.trim() !== url) return;
+  const q = box.querySelector('#evQr'); if (q) q.innerHTML = qrHTML();
+  const lq = box.querySelector('#evLetterQr'); if (lq) lq.innerHTML = letterQrHTML();
 }
 function resultHTML(r) {
   const qs = r.questions.map(q => q.type === 'scale'
     ? `<div class="ev-q"><b>${esc(q.q)}</b> <span class="muted">평균 ${q.mean}점</span>
         <div class="ev-bars">${q.counts.map((c, i) => `<div class="ev-bar-row"><span class="ev-bar-l">${i + 1}</span><span class="ev-bar" style="width:${r.n ? Math.round((c / r.n) * 100) : 0}%"></span><span class="ev-bar-n">${c}</span></div>`).join('')}</div></div>`
-    : `<div class="ev-q"><b>${esc(q.q)}</b> <span class="muted">서술형 ${q.answers.length}개</span>
-        <ul class="yp-ul">${q.answers.slice(0, 5).map(a => `<li>${esc(a)}</li>`).join('')}${q.answers.length > 5 ? `<li class="muted">외 ${q.answers.length - 5}개</li>` : ''}</ul></div>`).join('');
+    : `<div class="ev-q"><b>${esc(q.q)}</b> <span class="muted">서술형 ${q.count ?? q.answers.length}개</span>
+        <ul class="yp-ul">${q.answers.slice(0, 5).map(a => `<li>${esc(a)}</li>`).join('')}${(q.count ?? q.answers.length) > 5 ? `<li class="muted">외 ${(q.count ?? q.answers.length) - 5}개</li>` : ''}</ul></div>`).join('');
   return `<div id="evResult" class="ev-result"><p><b>응답 ${r.n}명</b>${r.few ? ` · <span class="ev-few">${FEW(r.n)}</span>` : ''}</p>${qs}
     ${survey().textSummary ? `<p class="ev-sumtext"><b>서술형 요약</b><br>${esc(survey().textSummary)}</p>` : ''}</div>`;
 }
@@ -286,7 +314,7 @@ async function runItems() {
   renderMain();
   try {
     const v = await ai.generateJSON(itemsPrompt(ev), { valid: x => x && normItems(x.items).length >= 3 });
-    apply(id, e => { e.survey = { ...(e.survey || survey()), items: normItems(v.items) }; });
+    apply(id, e => { e.survey = { ...blankSurvey(), ...(e.survey || {}), items: normItems(v.items) }; });
   } catch (err) { errs[id] = ai.errorMessage(err && err.code, err); }
   finish(id, 'items');
 }
@@ -308,13 +336,15 @@ async function addCsv(file) {
   try { r = summarize(await readTable(file.name, new Uint8Array(await file.arrayBuffer()))); }
   catch (err) { toast('CSV를 읽지 못했어요. 구글 폼 응답의 「CSV 다운로드」 파일인지 확인해 주세요.', 6000); return; }
   if (!r.n || !r.questions.length) { toast('응답을 찾지 못했어요. 첫 줄이 문항 제목인 CSV인지 확인해 주세요.', 6000); return; }
-  apply(id, e => { e.survey = { ...(e.survey || {}), ...(ev.id === id ? survey() : {}), result: r, textSummary: '', report: r.few ? FEW(r.n) : '', nextMemo: '' }; });
+  apply(id, e => { e.survey = { ...blankSurvey(), ...(e.survey || {}), result: r, textSummary: '', report: r.few ? FEW(r.n) : '', nextMemo: '' }; });
   if (ev.id === id && visible()) renderMain();
+  const target = getEvent(id); // 그사이 다른 행사로 갔어도 프롬프트는 이 행사
+  if (!target) return;
   if (!ai.ready()) { errs[id] = '보고서를 쓸 AI를 정하면 결과 보고서 초안도 만들어요. 왼쪽 아래 AI에서 정할 수 있어요.'; if (visible()) renderMain(); return; }
   busy[id] = 'result'; delete errs[id];
-  if (visible()) renderMain();
+  if (visible() && ev.id === id) renderMain();
   try {
-    const v = await ai.generateJSON(resultPrompt(ev, r), { valid: x => x && typeof x.report === 'string' });
+    const v = await ai.generateJSON(resultPrompt(target, r), { valid: x => x && typeof x.report === 'string' });
     const t = x => (Array.isArray(x) ? x.filter(y => typeof y === 'string').join('\n') : typeof x === 'string' ? x : '');
     apply(id, e => { e.survey = { ...e.survey, textSummary: t(v.textSummary), report: (r.few ? FEW(r.n) + '\n\n' : '') + t(v.report), nextMemo: t(v.nextMemo) }; });
   } catch (err) { errs[id] = ai.errorMessage(err && err.code, err); }
@@ -451,7 +481,7 @@ function askDelete() {
 document.addEventListener('input', e => {
   if (!box || !box.contains(e.target) || curTab !== 'event') return;
   const el = e.target;
-  if (el.dataset.ek && el.type !== 'date') { ev[el.dataset.ek] = el.value; if (el.value.trim()) el.classList.remove('bad'); }
+  if (el.dataset.ek && el.type !== 'date') { ev[el.dataset.ek] = el.value; if (el.value.trim()) el.classList.remove('bad'); unconfirm(); }
   else if (el.id === 'evLast') { if (el.value.length > MAX_SRC) { el.value = cap(el.value); toast('앞 6만 자만 저장해요', 4000); } ev.lastSurvey = el.value; }
   else if (el.dataset.staff != null) { const s = ev.staff[+el.dataset.staff]; if (s) s[el.dataset.f] = el.value; }
   else if (el.dataset.tt != null) { const t = picked() && picked().timetable[+el.dataset.tt]; if (t) t[el.dataset.f] = el.value; }
@@ -469,7 +499,7 @@ document.addEventListener('input', e => {
     const over = roleLoad(ev.docs.roles);
     box.querySelectorAll('#evRoles tr[data-role]').forEach(tr => { const x = ev.docs.roles[+tr.dataset.role]; tr.classList.toggle('ev-over', !!x && over.includes(x.name)); });
   } else return;
-  if (ev.status === 'final' && (el.dataset.docf || el.dataset.rf || el.id === 'evRain')) ev.status = 'draft';
+  if (el.dataset.docf || el.dataset.rf || el.id === 'evRain') unconfirm();
   persist();
 });
 document.addEventListener('change', e => {
@@ -477,6 +507,7 @@ document.addEventListener('change', e => {
   const el = e.target;
   if (el.id === 'evDate') {
     ev.date = el.value; if (isDate(el.value)) el.classList.remove('bad');
+    unconfirm();
     persist();
     const b = box.querySelector('#evDateBox'); if (b) b.innerHTML = dateWarnHTML();
   } else if (el.id === 'evCsv') {
@@ -506,11 +537,11 @@ document.addEventListener('click', e => {
   const st = e.target.closest('[data-step]');
   if (st) { const n = +st.dataset.step; if (n <= ev.maxStep) goStep(n); return; }
   const k = e.target.closest('[data-kind]');
-  if (k) { ev.kind = k.dataset.kind; persist(); box.querySelectorAll('[data-kind]').forEach(b => { const on = b === k; b.setAttribute('aria-pressed', on); b.setAttribute('aria-checked', on); }); return; }
+  if (k) { ev.kind = k.dataset.kind; unconfirm(); persist(); box.querySelectorAll('[data-kind]').forEach(b => { const on = b === k; b.setAttribute('aria-pressed', on); b.setAttribute('aria-checked', on); }); return; }
   const od = e.target.closest('[data-outdoor]');
-  if (od) { ev.outdoor = od.dataset.outdoor === '1'; persist(); box.querySelectorAll('[data-outdoor]').forEach(b => { const on = b === od; b.setAttribute('aria-pressed', on); b.setAttribute('aria-checked', on); }); return; }
+  if (od) { ev.outdoor = od.dataset.outdoor === '1'; unconfirm(); persist(); box.querySelectorAll('[data-outdoor]').forEach(b => { const on = b === od; b.setAttribute('aria-pressed', on); b.setAttribute('aria-checked', on); }); return; }
   const sg = e.target.closest('[data-suggest]');
-  if (sg) { ev.date = sg.dataset.suggest; persist(); const d = box.querySelector('#evDate'); if (d) d.value = ev.date; const b = box.querySelector('#evDateBox'); if (b) b.innerHTML = dateWarnHTML(); return; }
+  if (sg) { ev.date = sg.dataset.suggest; unconfirm(); persist(); const d = box.querySelector('#evDate'); if (d) d.value = ev.date; const b = box.querySelector('#evDateBox'); if (b) b.innerHTML = dateWarnHTML(); return; }
   const sd = e.target.closest('[data-staffdel]');
   if (sd) { ev.staff.splice(+sd.dataset.staffdel, 1); persist(); renderMain(); return; }
   const tg = e.target.closest('[data-target]');
@@ -542,7 +573,10 @@ document.addEventListener('click', e => {
   else if (a === 'docs') runDocs();
   else if (a === 'roleAdd') { ev.docs.roles.push({ name: '', roles: [] }); persist(); renderMain(); }
   else if (a === 'letterDone') { if (!letterMissing(ev.docs.letter).length) { ev.docs.done = true; persist(); const lb = box.querySelector('#evLetterBox'); if (lb) lb.innerHTML = letterBoxHTML([]); toast('가정통신문을 완성했어요'); } }
-  else if (a === 'copyDoc') copyText(ev.docs[curDoc] || '').then(ok => toast(ok ? '복사했어요' : '복사하지 못했어요'));
+  else if (a === 'copyDoc') {
+    const text = curDoc === 'roles' ? ['이름\t맡은 역할', ...ev.docs.roles.map(r => `${r.name}\t${r.roles.join(', ')}`)].join('\n') : (ev.docs[curDoc] || '');
+    copyText(text).then(ok => toast(ok ? '복사했어요' : '복사하지 못했어요'));
+  }
   else if (a === 'hwpx') downloadDoc();
   else if (a === 'purchase') toPurchase();
   else if (a === 'final') confirmEvent();

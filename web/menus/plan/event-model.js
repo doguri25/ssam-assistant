@@ -50,12 +50,30 @@ export function normItems(v) {
     .map(i => ({ type: i.type === 'scale' ? 'scale' : 'text', q: str(i.q).trim() }));
 }
 
+/* 저장된 설문 결과: 읽을 수 있는 문항만, 서술형 답은 300개까지 저장(개수 count는 그대로) */
+const MAX_ANSWERS = 300;
+function normResult(v) {
+  if (!isObj(v) || !Number.isInteger(v.n) || !Array.isArray(v.questions)) return null;
+  const questions = v.questions.filter(q => isObj(q) && str(q.q).trim()).map(q => {
+    if (q.type === 'scale') {
+      const ok = Array.isArray(q.counts) && q.counts.length === 5 && q.counts.every(c => Number.isInteger(c) && c >= 0) && Number.isFinite(q.mean);
+      return ok ? { q: str(q.q), type: 'scale', counts: q.counts.slice(), mean: q.mean } : null;
+    }
+    if (q.type === 'text' && Array.isArray(q.answers)) {
+      const answers = q.answers.filter(a => typeof a === 'string');
+      return { q: str(q.q), type: 'text', answers: answers.slice(0, MAX_ANSWERS), count: Number.isInteger(q.count) ? q.count : answers.length };
+    }
+    return null;
+  }).filter(Boolean);
+  return { n: v.n, questions, few: v.n < 10 };
+}
+
 function normSurvey(v) {
   if (!isObj(v)) return null;
   return {
     target: ['student', 'parent', 'staff'].includes(v.target) ? v.target : 'student',
     items: normItems(v.items), formUrl: str(v.formUrl).trim(),
-    result: isObj(v.result) && Number.isInteger(v.result.n) && Array.isArray(v.result.questions) ? v.result : null,
+    result: normResult(v.result),
     textSummary: str(v.textSummary), report: str(v.report), nextMemo: str(v.nextMemo)
   };
 }
