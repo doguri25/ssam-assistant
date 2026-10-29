@@ -2,6 +2,7 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { makeHwpx } from '../web/core/hwpx.js';
 import { TYPES, composeReason, purchaseDoc } from '../web/menus/purchase/rules.js';
+import { sampleJindoDoc, sampleTimetableDoc } from '../web/menus/class/class-sample.js';
 
 const out = new URL('../samples/', import.meta.url);
 mkdirSync(out, { recursive: true });
@@ -14,3 +15,9 @@ const draft = {
 };
 writeFileSync(new URL('품의-예시.hwpx', out), makeHwpx(purchaseDoc(form, draft)));
 console.log('samples/품의-예시.hwpx');
+
+// 학급 예시: 교과·창체 진도표(연간지도계획 표 모양), 학년별 기초시간표(두 반 나란히)
+writeFileSync(new URL('진도표-예시.hwpx', out), makeHwpx(sampleJindoDoc()));
+console.log('samples/진도표-예시.hwpx');
+writeFileSync(new URL('시간표-예시.hwpx', out), makeHwpx(sampleTimetableDoc()));
+console.log('samples/시간표-예시.hwpx');

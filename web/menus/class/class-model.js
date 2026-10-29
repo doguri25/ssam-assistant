@@ -1,6 +1,6 @@
 /* 학급 자료와 계산 (화면 없음 — Node 시험에서도 씀). 스펙: docs/superpowers/specs/2026-10-29-class-menu-design.md
    저장: class:info · class:timetable · class:subjects · class:log · class:weekly:<월요일>. 요일 0=월…4=금, 교시는 1부터 */
-import { get, set, remove } from '../../core/store.js';
+import { get, set, remove, list } from '../../core/store.js';
 import { isDate, addDays, weekday, dayIssues } from '../../core/calendar.js';
 import { getSchool } from '../../core/settings.js';
 import { normName, periodStart } from './class-import.js';
@@ -56,6 +56,12 @@ export function saveSubject(s) {
   return set('class:subjects', list) ? e : null;
 }
 export const removeSubject = id => set('class:subjects', listSubjects().filter(s => s.id !== id));
+export const setSubjects = subs => set('class:subjects', (subs || []).map(normSubject).filter(Boolean));
+/* 체크 기록과 주간학습안내를 모두 지움(예시로 바꿀 때) */
+export function resetRecords() {
+  remove('class:log');
+  for (const k of list('class:weekly:')) remove(k);
+}
 
 export function getLog() {
   const v = get('class:log', {});

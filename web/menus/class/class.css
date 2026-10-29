@@ -1,0 +1,46 @@
+/* 학급 메뉴(오늘 수업·진도표·시수·주간학습안내) */
+.cls-setup-page{padding-top:0}
+.cls-h2{font-size:20px !important}
+.cls-card-h{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap}
+.cls-card-h h3{margin:0;font:700 16px/1.3 var(--f-display)}
+.cls-note{margin:0;font-size:13px}
+.cls-inline{display:flex;align-items:center;gap:6px;font-size:14px}
+.cls-inline .field{min-width:0;flex:none}
+.cls-class .yp-f{flex:0 0 140px}
+.cls-class .field{min-width:0;width:100%;box-sizing:border-box}
+.cls-tbl-wrap,.cls-tt-wrap,.cls-ed-wrap{overflow-x:auto;max-width:100%}
+/* 요약 표 */
+.cls-sum{border-collapse:collapse;width:100%}
+.cls-sum th,.cls-sum td{padding:10px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;font-size:14.5px}
+.cls-sum thead th{color:var(--ink3);font-weight:600;font-size:13px}
+.cls-sum td.num{font-variant-numeric:tabular-nums}
+.cls-bar{display:inline-block;width:64px;height:6px;border-radius:3px;background:var(--surface2);vertical-align:middle;margin-right:8px;overflow:hidden}
+.cls-bar i{display:block;height:100%;background:var(--accent)}
+.cls-ahead{color:var(--ok)}
+.cls-behind{color:var(--err)}
+.cls-tag{margin-left:6px;font-size:12px;padding:2px 8px;border-radius:999px;background:var(--surface2);color:var(--ink3);font-weight:500}
+/* 시간표 */
+.cls-tt{border-collapse:collapse;width:100%;min-width:420px}
+.cls-tt th{font-size:13px;color:var(--ink3);font-weight:600;padding:4px}
+.cls-tt td{padding:3px}
+.cls-tt .field{min-width:0;width:100%;box-sizing:border-box;text-align:center;padding:8px 4px}
+/* 교과 목록 */
+.cls-subs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.cls-sub{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:10px 0;border-top:1px solid var(--line)}
+.cls-sub:first-child{border-top:0}
+.cls-sub b{min-width:48px}
+.cls-sub label{display:flex;align-items:center;gap:6px;font-size:14px}
+.cls-sub .field{min-width:0;flex:none}
+.cls-sub .num{width:76px}
+/* 진도표 고치기 시트 */
+.cls-ed{border-collapse:collapse;min-width:720px;width:100%}
+.cls-ed th{font-size:12.5px;color:var(--ink3);font-weight:600;text-align:left;padding:4px}
+.cls-ed td{padding:2px}
+.cls-ed .field{min-width:0;width:100%;box-sizing:border-box;padding:7px 8px;font-size:13.5px}
+.cls-ed .field.num{width:52px}
+.cls-ed .field.wide{min-width:220px}
+.cls-page .grow,.sheet .row > .grow{flex:1}
+.cls-class{align-items:flex-end}
+.cls-class .field{height:42px}
+.cls-tt th{white-space:nowrap}
+.cls-tt thead th:first-child,.cls-tt tbody th{width:40px}
