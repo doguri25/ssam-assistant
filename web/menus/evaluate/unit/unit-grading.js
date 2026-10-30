@@ -9,6 +9,7 @@ import { registerInbox } from '../../../core/inbox.js';
 import { go } from '../../../core/shell.js';
 import { gradePrompt, normGrade, validGrade } from './unit-ai.js';
 import { arrangePages } from './unit-pages.js';
+import { readNos, openNoCheck, rosterAllowed, byNoOrder } from '../../../core/student-no.js';
 import { esc, SS, AI_KEY, registerStep, inStep, cur, curId, commit, saveOrWarn, refresh, render, goStep, getBox, openTest } from './unit.js';
 
 const TYPE = Object.fromEntries(ITEM_TYPES);
@@ -84,8 +85,11 @@ function step2HTML(t) {
       <div class="row"><label class="switch"><input type="checkbox" id="unTwoUp"${set.twoUp ? ' checked' : ''}>모아찍기(한 면에 2쪽)</label>
         <label class="switch"><input type="checkbox" id="unFlipBack"${set.flipBack ? ' checked' : ''}>양면 스캔 뒷면이 거꾸로</label>
         <span class="muted">모아찍기면 가로로 긴 장을 왼쪽·오른쪽 쪽으로 나눠요. 학생 한 명 쪽 수는 나눈 뒤 쪽 수(문제지 쪽 수)로 적어 주세요.</span></div>
-      <div class="row"><label class="cls-inline">결석 번호 <input class="field" id="unAbsent" value="${esc((t.absent || []).join(', '))}" placeholder="예: 5, 12" aria-describedby="unAbsentNote"></label>
-        <span class="muted" id="unAbsentNote">시험을 보지 않은 학생 번호를 적으면 뒤 번호가 한 칸씩 밀려요.</span></div>
+      <div class="row"><label class="switch"><input type="checkbox" id="unByNo"${set.byNo ? ' checked' : ''}>적힌 번호로 학생 맞추기</label>
+        ${set.byNo ? `<button class="btn" type="button" data-un="noBox"${hasPages(t.id) ? '' : ' disabled'}>번호 칸 정하기</button>
+        <span class="muted">${t.noBox ? '번호 칸을 정했어요. 채점 전에 번호를 읽어 확인해요.' : '학생이 번호를 쓰는 칸을 정해 주세요.'}</span>` : '<span class="muted">걷은 순서와 상관없이 첫 쪽에 쓴 번호를 읽어 학생을 맞춰요(AI는 번호 칸만 봐요).</span>'}</div>
+      ${set.byNo ? '' : `<div class="row"><label class="cls-inline">결석 번호 <input class="field" id="unAbsent" value="${esc((t.absent || []).join(', '))}" placeholder="예: 5, 12" aria-describedby="unAbsentNote"></label>
+        <span class="muted" id="unAbsentNote">시험을 보지 않은 학생 번호를 적으면 뒤 번호가 한 칸씩 밀려요.</span></div>`}
       <div class="row"><label class="switch"><input type="checkbox" id="unMaskOn"${set.maskOn ? ' checked' : ''}>이름 칸을 가리고 보내기</label>
         <button class="btn" type="button" data-un="mask"${hasPages(t.id) ? '' : ' disabled'}>이름 칸 정하기</button>
         <span class="muted">${m && m.mask.length ? `가릴 곳 ${m.mask.length}개${m.all ? ' · 모든 쪽' : ' · 첫 쪽'}` : '가릴 곳을 아직 정하지 않았어요'}</span></div>
@@ -104,6 +108,49 @@ function openMask(t) {
     t2.mask = mask; t2.maskAll = all; commit(t2);
     saveSet({ ...getSet(), mask, maskAll: all });
     render();
+  } });
+}
+
+/* ---------- 적힌 번호로 학생 맞추기 ---------- */
+/* 번호 칸은 평가지마다 자리가 달라 평가마다 따로 둠(지난 평가에서 정한 곳을 먼저 보여 줌) */
+function openNoBox(t, then) {
+  const set = getSet(), box = t.noBox || set.noBox;
+  const shots = t.students.map((s, i) => ({ s, pg: pagesOf(t.id, i) })).filter(x => x.pg.length).map(x => ({ url: G.pages[x.pg[0]].url, label: `${x.s.no}번 첫 쪽` }));
+  if (!shots.length || !SS().openMaskEditor) return;
+  SS().openMaskEditor({ kind: 'no', shots, mask: box ? [box] : [], all: false, what: '평가지', save: mask => {
+    const t2 = getTest(t.id) || t;
+    if (mask.length) { t2.noBox = mask[mask.length - 1]; saveSet({ ...getSet(), noBox: t2.noBox }); } else delete t2.noBox;
+    commit(t2); render();
+    if (then && t2.noBox) then();
+  } });
+}
+/* 읽어 확인한 번호가 지금 스캔·학생 차례와 같은지 (스캔을 다시 올리거나 번호를 바꾸면 다시 읽음) */
+const noSig = t => G.idx.map((p, i) => `${p[0]}-${t.students[i] ? t.students[i].no : ''}`).join(',');
+const nosOk = t => !!G.noOk && G.noOk.pages === G.pages && G.noOk.sig === noSig(t);
+async function askNos(t, then) {
+  if (!t.noBox) { toast('학생이 번호를 쓰는 칸을 먼저 정해 주세요.', 5000); openNoBox(t, () => askNos(getTest(t.id), then)); return; }
+  if (G.noBusy) return;
+  const id = t.id, list = t.students.map((s, i) => ({ i, pg: pagesOf(id, i) })).filter(x => x.pg.length);
+  const set = getSet(), m = maskOf(t);
+  G.noBusy = true;
+  toast('학생이 쓴 번호를 읽는 중이에요…', 4000);
+  let r;
+  try { r = await readNos(list.map(x => G.pages[x.pg[0]]), { box: t.noBox, mask: set.maskOn && m ? m.mask : [] }); }
+  catch (e) { toast(e && e.code === 'NO_AI' ? AI_KEY : ai.errorMessage(e && e.code, e), 6000); return; }
+  finally { G.noBusy = false; }
+  if (G.testId !== id) return;
+  openNoCheck({ rows: list.map((x, k) => ({ crop: r.crops[k], ...r.nos[k] })), allowed: rosterAllowed(), onOk: nos => {
+    const t2 = getTest(id) || t;
+    if (G.testId !== id || busy(id)) return;
+    // 번호 차례로 학생과 그 학생의 쪽을 함께 늘어놓음 (스캔이 없는 학생은 뒤에 그대로)
+    const order = byNoOrder(nos), studs = list.map(x => t2.students[x.i]), idx = list.map(x => G.idx[x.i]);
+    const restS = t2.students.filter((s, i) => !list.some(x => x.i === i)), restI = G.idx.filter((p, i) => !list.some(x => x.i === i));
+    t2.students = [...order.map(k => ({ ...studs[k], no: nos[k] })), ...restS];
+    G.idx = [...order.map(k => idx[k]), ...restI];
+    commit(t2);
+    G.noOk = { pages: G.pages, sig: noSig(t2) };
+    refresh(id);
+    then();
   } });
 }
 
@@ -173,6 +220,7 @@ function startGrading(only) {
   if (busyOther(id)) { toast('다른 평가를 채점하는 중이에요. 끝나거나 멈춘 뒤에 채점해 주세요.', 5000); return; }
   if (!hasPages(id)) { toast('답안 스캔을 먼저 올려 주세요(2단계)', 5000); return; }
   if (G.arranging) { toast('답안 스캔을 다시 나누는 중이에요. 끝난 뒤에 채점해 주세요.', 5000); return; }
+  if (getSet().byNo && !nosOk(t)) { askNos(t, () => startGrading(only)); return; }
   const all = t.students.map((s, i) => ({ s, i })).filter(x => !x.s.skip && pagesOf(id, x.i).length);
   if (only != null) { const x = all.find(y => y.s.no === only); if (x) askMask(() => runQueue(id, [x.i])); return; }
   const todo = all.filter(x => x.s.status !== 'done');
@@ -305,6 +353,7 @@ document.addEventListener('click', e => {
   const t = cur();
   if (a === 'ansFile') box.querySelector('#unAnsFile').click();
   else if (a === 'mask') openMask(t);
+  else if (a === 'noBox') openNoBox(t);
   else if (a === 'skip') { const s = t.students[Number(b.dataset.i)]; if (s) { s.skip = !s.skip; commit(t); render(); } }
   else if (a === 'toGrade') goStep(3);
   else if (a === 'grade') startGrading();
@@ -328,8 +377,10 @@ document.addEventListener('change', e => {
     saveSet({ ...getSet(), [el.id === 'unTwoUp' ? 'twoUp' : 'flipBack']: el.checked });
     // 쪽 모양·방향이 바뀌면 정해 둔 이름 칸 자리가 맞지 않아 이름이 AI로 갈 수 있음: 지우고 다시 정하게
     if (maskOf(t) && maskOf(t).mask.length) { delete t.mask; delete t.maskAll; commit(t); toast('쪽 모양이 바뀌어 이름 칸을 지웠어요. [이름 칸 정하기]로 다시 정해 주세요.', 6000); }
+    if (t.noBox) { delete t.noBox; commit(t); }
     rearrange(t);
   } else if (el.id === 'unMaskOn') { saveSet({ ...getSet(), maskOn: el.checked }); render(); }
+  else if (el.id === 'unByNo') { saveSet({ ...getSet(), byNo: el.checked }); render(); }
   else if (el.id === 'unAbsent') {
     // 답안 차례(채점 결과)는 그대로 두고 번호만 다시 매김
     t.absent = parseNos(el.value);
@@ -339,7 +390,10 @@ document.addEventListener('change', e => {
   else if (el.dataset.stno != null) {
     const i = Number(el.dataset.stno), v = Math.round(Number(el.value));
     if (!(v >= 1 && v <= 99) || t.students.some((s, j) => j !== i && s.no === v)) { toast('번호가 비었거나 겹쳐요'); render(); return; }
-    t.students[i].no = v; commit(t); render();
+    const ok = nosOk(t);
+    t.students[i].no = v; commit(t);
+    if (ok) G.noOk.sig = noSig(t); // 확인한 번호를 손으로 고친 것은 다시 읽지 않음
+    render();
   }
 });
 

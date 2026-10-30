@@ -3040,7 +3040,8 @@ const GR = {
   // critDocs: 한글 정답표에서 읽은 글 [{ name, text }]
   pages: [],          // [{ name, blob, url, w, h }] — 이 화면에만 있고 저장하지 않음
   students: [],       // [{ id, no, pages:[i], skip, status, score, score0, level, manual, summary, evidence, strengths, improve, unreadable, text, d, stale, err }]
-  settings: { pagesPer: 1, startNo: 1, except: [], ratio: { top: 10, high: 30, mid: 40, low: 20 }, maskOn: true, maskAll: false, mask: [], mix: 'mix' },
+  settings: { pagesPer: 1, startNo: 1, except: [], ratio: { top: 10, high: 30, mid: 40, low: 20 }, maskOn: true, maskAll: false, mask: [], mix: 'mix', byNo: false, noBox: null },
+  // byNo·noBox: 적힌 번호로 학생 맞추기(걷은 순서와 상관없이, core/student-no.js) · 번호 칸 { x, y, w, h }
   // mix: 평어 내용 — 'plan' 평가계획 위주 · 'mix' 섞어서(기본) · 'sheet' 평가지 위주
   phase: 'setup',     // setup | grading | ranking | writing | done
   queue: [], running: new Map(), err: '', loading: '', view: 'no', calibrated: false, history: [], showRes: false
@@ -3113,6 +3114,8 @@ const GRStore = {
 function grLoadLastSettings() {
   const v = Store.lsGet('ssam:grset', null);
   if (v) { Object.assign(GR.settings, v); if (v.ratio) GR.settings.ratio = { ...v.ratio }; GR.settings.mask = Array.isArray(v.mask) ? v.mask : []; }
+  GR.settings.byNo = !!GR.settings.byNo;
+  if (!(GR.settings.noBox && typeof GR.settings.noBox.x === 'number')) GR.settings.noBox = null;
   GR.settings.except = Array.isArray(GR.settings.except) ? GR.settings.except.map(Number).filter(n => n > 0) : [];
   if (CLASS.loaded) GR.settings.except = CLASS.except.slice(); // 학급 명단의 예외 번호
   GR.settings.startNo = 1; // 채점은 늘 1번부터 (이번 채점 안에서만 바꿀 수 있음)
@@ -3553,6 +3556,8 @@ async function grStart() {
   if (!GR.unitId && !GR.title.trim()) { toast('평가요소를 고르거나 수행평가 제목을 넣어 주세요'); $('#grTitle') && $('#grTitle').focus(); return; }
   const sum = LV_KEYS.reduce((a, k) => a + (+GR.settings.ratio[k] || 0), 0);
   if (sum !== 100) { toast(`비율의 합이 ${sum}%예요. 100%로 맞춰 주세요`); return; }
+  // 적힌 번호로 학생 맞추기: 번호를 읽어 확인한 뒤에 채점 (스캔·번호가 바뀌면 다시 읽음)
+  if (GR.settings.byNo && GR.noSig !== grNoSig()) { grAskNos(); return; }
   if (!GR.id) { GR.id = Date.now().toString(36); GR.createdAt = Date.now(); }
   if (neisIsGr() && (NEIS.state === 'armed' || NEIS.state === 'arming')) neisClose();
   GR.err = ''; GR.calibrated = false; GR._critCache = null;
@@ -3780,6 +3785,8 @@ function renderGRSetup() {
       </div>
       <label class="lab" for="grExcept">예외 번호 <span class="muted">(전출처럼 나이스에 칸이 없는 번호 · 학급 명단과 같이 씀)</span></label>
       <input class="field" id="grExcept" placeholder="예) 7, 15" value="${esc((st.except || []).join(', '))}" ${locked ? 'disabled' : ''} autocomplete="off" inputmode="numeric">
+      <label class="switch"><input type="checkbox" id="grByNo" ${st.byNo ? 'checked' : ''} ${locked ? 'disabled' : ''}>적힌 번호로 학생 맞추기 <span class="muted">(걷은 순서와 상관없이 첫 쪽에 쓴 번호로)</span></label>
+      ${st.byNo ? `<div class="row"><button class="btn ${st.noBox ? '' : 'tonal'}" type="button" data-gr="noBox" ${GR.pages.length && !locked ? '' : 'disabled'}>${st.noBox ? '번호 칸 · 고치기' : '번호 칸 정하기'}</button><span class="muted">${st.noBox ? '채점 전에 번호를 읽어 확인해요(AI는 번호 칸만 봐요)' : '학생이 번호를 쓰는 칸을 정해 주세요'}</span></div>` : ''}
       ${GR.pages.length ? `<p class="muted">학생 ${GR.students.length}명 (${GR.students[0] ? GR.students[0].no : st.startNo}~${GR.students.length ? GR.students[GR.students.length - 1].no : ''}번${grExceptIn().length ? `, ${grExceptIn().join('·')}번 제외` : ''})${rem ? ` · 마지막 학생은 ${rem}쪽뿐이에요` : ''} <button class="btn text tiny" type="button" data-gr="reverse" ${locked ? 'disabled' : ''}>쪽 순서 거꾸로</button> <button class="btn text tiny" type="button" data-gr="clearPages" ${locked ? 'disabled' : ''}>모두 빼기</button></p>` : ''}
     </div>
     <div class="gr-step">
@@ -3907,15 +3914,17 @@ function renderGRResults() {
 
 /* ---------- 이름 칸 정하기 ---------- */
 // shots: 학생마다 첫 쪽 [{ url, label }] · mask, all: 지금 가릴 곳 · what: '평가지'·'학습지' · save(mask, all)
-function openMaskEditor({ shots, mask, all, what, save }) {
+// kind: 'name'(이름 칸 가리기) · 'no'(적힌 번호를 읽을 번호 칸 — 상자 하나, 모든 쪽 칸 없음)
+function openMaskEditor({ shots, mask, all, what, save, kind = 'name' }) {
   if (!shots.length) return;
   let at = 0;
+  const isNo = kind === 'no';
   const draft = mask.map(r => ({ ...r }));
-  openSheet(`<h3>이름 칸 가리기</h3>
-    <p class="muted" style="margin:0">${what}에서 이름이 적힌 곳을 끌어서 상자로 표시하세요. 여러 곳을 표시할 수 있어요. 모든 학생의 같은 자리에 똑같이 가려요.</p>
+  openSheet(`<h3>${isNo ? '번호 칸 정하기' : '이름 칸 가리기'}</h3>
+    <p class="muted" style="margin:0">${isNo ? `${what}에서 학생이 번호를 쓰는 칸을 끌어서 상자로 표시하세요. 모든 학생의 같은 자리를 잘라 번호만 읽어요. 이름이 들어가지 않게 번호 칸만 표시해 주세요.` : `${what}에서 이름이 적힌 곳을 끌어서 상자로 표시하세요. 여러 곳을 표시할 수 있어요. 모든 학생의 같은 자리에 똑같이 가려요.`}</p>
     <div class="row" style="justify-content:space-between"><span class="row"><button class="icon-btn" type="button" id="mkPrev" aria-label="앞 학생">${ICON.back}</button><b class="num" id="mkWho"></b><button class="icon-btn" type="button" id="mkNext" aria-label="다음 학생">${ICON.chev}</button></span><button class="btn text tiny" type="button" id="mkClear">모두 지우기</button></div>
     <div class="mask-stage" id="mkStage"><div class="mk-inner" id="mkInner"><img id="mkImg" alt="${what}" draggable="false"><div id="mkBoxes"></div></div></div>
-    <label class="switch"><input type="checkbox" id="mkAll" ${all ? 'checked' : ''}>학생의 모든 쪽에서 가리기 (끄면 첫 쪽만)</label>
+    ${isNo ? '' : `<label class="switch"><input type="checkbox" id="mkAll" ${all ? 'checked' : ''}>학생의 모든 쪽에서 가리기 (끄면 첫 쪽만)</label>`}
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="mkOk">다 했어요</button></div>`,
     sh => {
       sh.classList.add('wide');
@@ -3933,7 +3942,7 @@ function openMaskEditor({ shots, mask, all, what, save }) {
       stage.addEventListener('pointerdown', e => {
         if (e.target.closest('[data-mkdel]')) return;
         e.preventDefault(); stage.setPointerCapture(e.pointerId);
-        start = pos(e); cur = { x: start.x, y: start.y, w: 0, h: 0 }; draft.push(cur); draw();
+        start = pos(e); cur = { x: start.x, y: start.y, w: 0, h: 0 }; if (isNo) draft.length = 0; draft.push(cur); draw();
       });
       stage.addEventListener('pointermove', e => {
         if (!start) return;
@@ -3949,8 +3958,8 @@ function openMaskEditor({ shots, mask, all, what, save }) {
       sh.querySelector('#mkClear').addEventListener('click', () => { draft.length = 0; draw(); });
       sh.querySelector('#mkOk').addEventListener('click', () => {
         const m = draft.map(r => ({ x: +r.x.toFixed(4), y: +r.y.toFixed(4), w: +r.w.toFixed(4), h: +r.h.toFixed(4) }));
-        closeSheet(); save(m, sh.querySelector('#mkAll').checked);
-        toast(m.length ? `가릴 곳 ${m.length}개를 정했어요` : '가릴 곳을 지웠어요');
+        closeSheet(); save(m, isNo ? false : sh.querySelector('#mkAll').checked);
+        toast(isNo ? (m.length ? '번호 칸을 정했어요' : '번호 칸을 지웠어요') : m.length ? `가릴 곳 ${m.length}개를 정했어요` : '가릴 곳을 지웠어요');
       });
       show();
     });
@@ -3963,6 +3972,38 @@ function openGRMask() {
     mask: GR.settings.mask, all: GR.settings.maskAll, what: '평가지',
     save: (mask, all) => { GR.settings.mask = mask; GR.settings.maskAll = all; grSaveSettings(); renderGR(); }
   });
+}
+/* ---------- 적힌 번호로 학생 맞추기 (core/student-no.js가 window.SSAM.studentNo로 줌) ---------- */
+function openGRNoBox(then) {
+  if (!GR.pages.length) return;
+  openMaskEditor({
+    kind: 'no', what: '평가지', all: false,
+    shots: GR.students.map(s => ({ url: GR.pages[s.pages[0]].url, label: `${s.no}번 첫 쪽` })),
+    mask: GR.settings.noBox ? [GR.settings.noBox] : [],
+    save: m => { GR.settings.noBox = m.length ? m[m.length - 1] : null; grSaveSettings(); renderGR(); if (then && GR.settings.noBox) then(); }
+  });
+}
+// 읽어 확인한 번호가 지금 쪽·학생과 같은지 (쪽을 더하거나 거꾸로 하거나 번호를 다시 매기면 달라짐)
+const grNoSig = () => GR.students.map(s => `${GR.pages[s.pages[0]] ? GR.pages[s.pages[0]].url : ''}-${s.no}`).join(',');
+async function grAskNos() {
+  const N = window.SSAM.studentNo;
+  if (!N) { toast('번호 읽기를 불러오지 못했어요. 새로고침해 주세요'); return; }
+  if (!GR.settings.noBox) { toast('학생이 번호를 쓰는 칸을 먼저 정해 주세요'); openGRNoBox(() => grStart()); return; }
+  if (GR.noBusy) return;
+  GR.noBusy = true;
+  toast('학생이 쓴 번호를 읽는 중이에요…', 4000);
+  const list = GR.students.slice();
+  let r;
+  try { r = await N.readNos(list.map(s => GR.pages[s.pages[0]]), { box: GR.settings.noBox, mask: GR.settings.maskOn ? GR.settings.mask : [] }); }
+  catch (e) { toast(e && e.code === 'NO_AI' ? 'AI 키를 먼저 넣어 주세요' : errMsg(e && e.code, e), 6000); return; }
+  finally { GR.noBusy = false; }
+  N.openNoCheck({ rows: list.map((s, k) => ({ crop: r.crops[k], ...r.nos[k] })), allowed: N.rosterAllowed(GR.settings.except), onOk: nos => {
+    // 그 사이 쪽을 바꾸거나 채점을 시작했으면 버림
+    if (GR.students.length !== list.length || GR.students.some((s, i) => s !== list[i]) || ['grading', 'ranking', 'writing'].includes(GR.phase)) return;
+    GR.students = N.byNoOrder(nos).map(k => ({ ...list[k], no: nos[k] }));
+    GR.noSig = grNoSig();
+    GRStore.save(); renderGR(); grStart();
+  } });
 }
 function openGRView(id) {
   const s = grStudent(id); if (!s) return;
@@ -4054,6 +4095,7 @@ document.addEventListener('click', async e => {
     else if (a === 'stop') { grStop(); toast('멈췄어요. 채점한 결과는 그대로 있어요.'); }
     else if (a === 'new') { grNew(false); GR.title = ''; GR.criteria = ''; GR.critImgs = []; GR.critDocs = []; renderGR(); }
     else if (a === 'mask') openGRMask();
+    else if (a === 'noBox') openGRNoBox();
     else if (a === 'reverse') { GR.pages.reverse(); grBuildStudents(); renderGR(); toast('쪽 순서를 거꾸로 바꿨어요'); }
     else if (a === 'clearPages') { grNew(false); renderGR(); }
     else if (a === 'critImg') {
@@ -4141,6 +4183,7 @@ document.addEventListener('change', e => {
     toast(GR.settings.except.length ? `${GR.settings.except.join(', ')}번을 건너뛰고 번호를 매겼어요` : '예외 번호를 지웠어요');
   }
   else if (id === 'grMaskOn') { GR.settings.maskOn = el.checked; grSaveSettings(); renderGR(); }
+  else if (id === 'grByNo') { GR.settings.byNo = el.checked; grSaveSettings(); renderGR(); }
   else if (/^grR_/.test(id)) { GR.settings.ratio[id.slice(4)] = Math.max(0, Math.min(100, Math.round(+el.value || 0))); grSaveSettings(); renderGRSetup(); }
   else if (el.matches('[data-grlv]')) {
     const s = grStudent(el.dataset.grlv); if (!s) return;

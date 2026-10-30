@@ -525,3 +525,10 @@ i.mk.edit button svg{width:14px;height:14px}
   .hk-meta{padding:8px 10px}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+/* 적힌 번호로 학생 맞추기: 번호 확인 표 (core/student-no.js) */
+.no-check{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;max-height:55vh;overflow:auto}
+.no-check li{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:6px 8px;border-radius:var(--r-s,8px);border:1px solid var(--line)}
+.no-check li.warn{background:#fff4c2;border-color:#e0b400;color:#5c4700}
+.no-check img{height:40px;max-width:220px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:4px}
+.no-check .field.num{width:64px}
+.no-why{font-size:13px;font-weight:600}
