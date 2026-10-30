@@ -10,7 +10,7 @@ const csv = readFileSync(join(FIXTURES, 'roster-sample.csv'), 'utf8');
 await page.addInitScript(csv => {
   window.__calls = []; window.__ls = {};
   window.__TAURI__ = {
-    core: { invoke: (cmd, args) => { window.__calls.push([cmd, args]); if (cmd === 'inbox_read') return Promise.resolve(new TextEncoder().encode(csv).buffer); if (cmd === 'bubble_config') return Promise.resolve(null); return Promise.reject('stub'); } },
+    core: { invoke: (cmd, args) => { window.__calls.push([cmd, args]); if (cmd === 'inbox_read') { if (/실패/.test(args.path) && !window.__failed) { window.__failed = 1; return Promise.reject('READ_FAILED'); } return Promise.resolve(new TextEncoder().encode(csv).buffer); } if (cmd === 'bubble_config') return Promise.resolve(null); return Promise.reject('stub'); } },
     event: { listen: (name, cb) => { window.__ls[name] = cb; return Promise.resolve(() => {}); } }
   };
 }, csv);
@@ -30,6 +30,15 @@ await run('inbox-bridge', [
     await page.waitForSelector(`${sheet} #ibRun`);
     assert((await page.textContent(sheet)).includes('명단.csv') && (await page.textContent(sheet)).includes('학급 명단'), await page.textContent(sheet));
     assert(JSON.stringify((await calls('inbox_read'))[0][1]) === JSON.stringify({ path: 'C:\\자료\\명단.csv' }), JSON.stringify(await calls('inbox_read')));
+    await page.click(`${sheet} [data-close]`);
+  }],
+  ['읽기에 실패한 파일은 곧바로 다시 놓아도 다시 읽음(10초 거름에 막히지 않음)', async () => {
+    const f = { path: 'C:\\자료\\실패.csv', name: '실패.csv', size: 120 };
+    await page.evaluate(f => window.__ls['inbox:files']({ payload: [f] }), f);
+    await page.waitForFunction(() => /실패\.csv.*읽지 못했어요/.test(document.body.textContent));
+    await page.evaluate(f => window.__ls['inbox:files']({ payload: [f] }), f);
+    await page.waitForSelector(`${sheet} #ibRun`);
+    assert((await calls('inbox_read')).filter(c => c[1].path === f.path).length === 2, JSON.stringify(await calls('inbox_read')));
     await page.click(`${sheet} [data-close]`);
   }],
   ['버튼 창이 같은 파일을 잇달아 알려도(다시 놓기) 10초 안이면 한 번만 읽고 카드도 하나', async () => {

@@ -3992,15 +3992,18 @@ async function grAskNos() {
   if (GR.noBusy) return;
   GR.noBusy = true;
   toast('학생이 쓴 번호를 읽는 중이에요…', 4000);
-  const list = GR.students.slice();
+  // 「채점 안 함」 학생은 번호를 묻지 않고 맨 뒤에 그대로
+  const list = GR.students.filter(s => !s.skip), skipped = GR.students.filter(s => s.skip);
+  if (!list.length) return;
   let r;
   try { r = await N.readNos(list.map(s => GR.pages[s.pages[0]]), { box: GR.settings.noBox, mask: GR.settings.maskOn ? GR.settings.mask : [] }); }
   catch (e) { toast(e && e.code === 'NO_AI' ? 'AI 키를 먼저 넣어 주세요' : errMsg(e && e.code, e), 6000); return; }
   finally { GR.noBusy = false; }
   N.openNoCheck({ rows: list.map((s, k) => ({ crop: r.crops[k], ...r.nos[k] })), allowed: N.rosterAllowed(GR.settings.except), onOk: nos => {
     // 그 사이 쪽을 바꾸거나 채점을 시작했으면 버림
-    if (GR.students.length !== list.length || GR.students.some((s, i) => s !== list[i]) || ['grading', 'ranking', 'writing'].includes(GR.phase)) return;
-    GR.students = N.byNoOrder(nos).map(k => ({ ...list[k], no: nos[k] }));
+    const now = GR.students.filter(s => !s.skip);
+    if (now.length !== list.length || now.some((s, i) => s !== list[i]) || ['grading', 'ranking', 'writing'].includes(GR.phase)) { toast('번호를 읽는 동안 평가지가 바뀌었어요. 다시 눌러 주세요'); return; }
+    GR.students = [...N.byNoOrder(nos).map(k => ({ ...list[k], no: nos[k] })), ...skipped];
     GR.noSig = grNoSig();
     GRStore.save(); renderGR(); grStart();
   } });
@@ -4178,9 +4181,10 @@ document.addEventListener('change', e => {
   }
   else if (id === 'grExcept') {
     GR.settings.except = grParseNos(el.value);
-    grRenumber(); grSaveSettings(); renderGR();
+    if (!GR.settings.byNo) grRenumber(); // 적힌 번호로 맞추면 읽은 번호를 그대로 둠(예외 번호는 명단 점검에만 씀)
+    grSaveSettings(); renderGR();
     setClass(CLASS.count, GR.settings.except, 'gr'); // 학급 명단과 같이 씀
-    toast(GR.settings.except.length ? `${GR.settings.except.join(', ')}번을 건너뛰고 번호를 매겼어요` : '예외 번호를 지웠어요');
+    toast(GR.settings.byNo ? '예외 번호를 바꿨어요. 읽은 번호는 그대로예요' : GR.settings.except.length ? `${GR.settings.except.join(', ')}번을 건너뛰고 번호를 매겼어요` : '예외 번호를 지웠어요');
   }
   else if (id === 'grMaskOn') { GR.settings.maskOn = el.checked; grSaveSettings(); renderGR(); }
   else if (id === 'grByNo') { GR.settings.byNo = el.checked; grSaveSettings(); renderGR(); }

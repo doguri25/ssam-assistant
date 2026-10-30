@@ -9,12 +9,13 @@ await page.addInitScript(() => {
   if (!localStorage.getItem('ssam:engine')) localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true }));
 });
 const sent = [];
-let reads = [3, 1, 2];
+let reads = [3, 1, 2], noDelay = 0;
 await page.route('https://api.anthropic.com/**', async route => {
   const c = JSON.parse(route.request().postData()).messages[0].content;
   const prompt = typeof c === 'string' ? c : c.find(x => x.type === 'text').text;
   sent.push({ prompt, images: typeof c === 'string' ? [] : c.filter(x => x.type === 'image').map(x => x.source.data) });
   let out = '{}';
+  if (prompt.startsWith('[번호 읽기]') && noDelay) await new Promise(r => setTimeout(r, noDelay));
   if (prompt.startsWith('[번호 읽기]')) out = JSON.stringify({ nos: reads.map((no, i) => ({ i: i + 1, no, sure: true })) });
   else if (prompt.startsWith('[단원평가 채점]')) out = JSON.stringify({ items: SAMPLE_ITEMS.map((it, i) => ({ no: i + 1, read: '', points: 0, sure: true, why: '' })) });
   else if (prompt.includes('수행평가를 채점하는')) out = JSON.stringify({ score: 80, summary: '바르게 풀었음', evidence: ['풀이가 맞음'], strengths: '꼼꼼함', improve: '검산', unreadable: false });
@@ -83,6 +84,20 @@ await run('student-no', [
     await until(async () => (await T(A)).students.every(s => s.status === 'done'));
     assert((await T(A)).students.map(s => s.no).join(',') === '1,2,3', (await T(A)).students.map(s => s.no).join(','));
   }],
+  ['번호로 맞춘 평가에 같은 스캔을 다시 올려 다시 읽어도 채점 결과는 그 번호 학생에 그대로(스캔 차례로 섞이지 않음)', async () => {
+    await page.evaluate(id => { const k = 'ssam:unit:t:' + id, x = JSON.parse(localStorage.getItem(k)); x.students.forEach(s => { s.good = 'g' + s.no; }); localStorage.setItem(k, JSON.stringify(x)); }, A);
+    await page.click(`${V} .steps [data-step="2"]`);
+    await page.setInputFiles(`${V} #unAnsFile`, files);
+    await page.waitForFunction(() => /3쪽/.test((document.querySelector('.unit-box #unAnsMsg') || {}).textContent || ''));
+    await page.click(`${V} [data-un="toGrade"]`);
+    await page.click(`${V} [data-un="grade"]`);
+    await page.waitForSelector('#sheetRoot #noOk');
+    await page.click('#sheetRoot #noOk');
+    await page.waitForSelector('#sheetRoot #unRegradeOk');
+    const st = (await T(A)).students.map(s => `${s.no}:${s.good}:${s.status}`).join(',');
+    assert(st === '1:g1:done,2:g2:done,3:g3:done', st);
+    await page.click('#sheetRoot [data-close]');
+  }],
   ['번호 칸을 정하지 않고 채점하면 번호 칸 정하기부터, 겹치거나 못 읽은 번호는 노란 줄이고 고쳐야 채점', async () => {
     reads = [1, 1, null];
     const n0 = grades().length;
@@ -103,6 +118,29 @@ await run('student-no', [
     assert(grades().length === n0, '확인 전에 채점함');
     await page.click('#sheetRoot #noOk');
     await until(() => grades().length === n0 + 3);
+  }],
+  ['번호를 읽는 동안 새 스캔을 올리면 앞서 읽은 번호는 버리고 다시 하라고 안내(새 스캔에 옛 번호를 붙이지 않음)', async () => {
+    reads = [3, 1, 2]; noDelay = 1500;
+    await page.click(`${V} .steps [data-step="2"]`);
+    await page.setInputFiles(`${V} #unAnsFile`, files);
+    await page.waitForTimeout(500);
+    await page.click(`${V} [data-un="toGrade"]`);
+    await page.click(`${V} [data-un="grade"]`);
+    await page.waitForTimeout(200);
+    await page.click(`${V} .steps [data-step="2"]`);
+    await page.setInputFiles(`${V} #unAnsFile`, [files[2], files[0], files[1]]);
+    await page.waitForFunction(() => /스캔이 바뀌었/.test(document.body.textContent), null, { timeout: 6000 });
+    await page.waitForTimeout(300);
+    assert(await page.locator('#sheetRoot #noOk').count() === 0, '옛 번호 확인 표가 뜸');
+    noDelay = 0;
+  }],
+  ['「채점 안 함」 학생은 번호 확인 표에서 빼고(번호를 묻지 않음) 맨 뒤에 그대로', async () => {
+    await page.click(`${V} [data-un="skip"][data-i="0"]`);
+    await page.click(`${V} [data-un="toGrade"]`);
+    await page.click(`${V} [data-un="grade"]`);
+    await page.waitForSelector('#sheetRoot #noOk');
+    assert(await page.locator('#sheetRoot [data-noi]').count() === 2, String(await page.locator('#sheetRoot [data-noi]').count()));
+    await page.click('#sheetRoot [data-close]');
   }],
   ['평가지 채점도 같은 방법: 번호 칸을 정하고 채점하면 확인 표(2·3·1) → 번호 차례로, 학생마다 맞는 평가지', async () => {
     reads = [2, 3, 1];
@@ -131,6 +169,13 @@ await run('student-no', [
     await page.waitForFunction(() => document.querySelectorAll('[data-grview1] img').length === 3);
     const rows = await page.$$eval('[data-grview1]', els => els.map(e => [e.getAttribute('aria-label').match(/^(\d+)번/)[1], e.querySelector('img').naturalHeight]));
     assert(JSON.stringify(rows) === JSON.stringify([['1', 263], ['2', 280], ['3', 271]]), JSON.stringify(rows));
+  }],
+  ['평가지 채점: 번호로 맞춘 뒤 예외 번호를 바꿔도 읽은 번호는 그대로(차례로 다시 매기지 않음)', async () => {
+    await page.waitForSelector('#grExcept:not([disabled])', { timeout: 15000 });
+    await page.fill('#grExcept', '2'); await page.dispatchEvent('#grExcept', 'change');
+    await page.waitForTimeout(300);
+    const rows = await page.$$eval('[data-grview1]', els => els.map(e => e.getAttribute('aria-label').match(/^(\d+)번/)[1]));
+    assert(rows.join(',') === '1,2,3', rows.join(','));
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

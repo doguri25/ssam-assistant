@@ -24,7 +24,8 @@ const busyOther = id => !!G.run && G.run.id !== id && busy(G.run.id);
 function split(t, pageCount, per) {
   const n = Math.ceil(pageCount / per);
   G.idx = Array.from({ length: n }, (_, i) => Array.from({ length: Math.min(per, pageCount - i * per) }, (_, j) => i * per + j));
-  if (t.students.length === n) return; // 이미 나눈 학생에 차례대로 다시 붙임
+  if (t.students.length === n) return; // 이미 나눈 학생에 차례대로 다시 붙임 (번호로 맞춘 평가는 번호를 다시 읽을 때 번호로 붙임)
+  delete t.noOrdered;
   t.students = numbersFor(n, [...rosterExcept(), ...(t.absent || [])]).map(no => ({ no, skip: false, status: 'idle', items: {}, good: '', cheer: '' }));
 }
 const rosterExcept = () => (store.get('class', null) || {}).except || [];
@@ -127,26 +128,46 @@ function openNoBox(t, then) {
 /* 읽어 확인한 번호가 지금 스캔·학생 차례와 같은지 (스캔을 다시 올리거나 번호를 바꾸면 다시 읽음) */
 const noSig = t => G.idx.map((p, i) => `${p[0]}-${t.students[i] ? t.students[i].no : ''}`).join(',');
 const nosOk = t => !!G.noOk && G.noOk.pages === G.pages && G.noOk.sig === noSig(t);
+const CHANGED = '번호를 읽는 동안 답안 스캔이 바뀌었어요. 채점 시작을 다시 눌러 주세요.';
+const freshStudent = no => ({ no, skip: false, status: 'idle', items: {}, good: '', cheer: '' });
+const hasResult = s => s.status === 'done' || Object.keys(s.items || {}).length > 0;
 async function askNos(t, then) {
   if (!t.noBox) { toast('학생이 번호를 쓰는 칸을 먼저 정해 주세요.', 5000); openNoBox(t, () => askNos(getTest(t.id), then)); return; }
   if (G.noBusy) return;
-  const id = t.id, list = t.students.map((s, i) => ({ i, pg: pagesOf(id, i) })).filter(x => x.pg.length);
-  const set = getSet(), m = maskOf(t);
+  // 「채점 안 함」 학생은 번호를 묻지 않음 (빈 답안지 등)
+  const id = t.id, list = t.students.map((s, i) => ({ i, pg: pagesOf(id, i) })).filter(x => x.pg.length && !t.students[x.i].skip);
+  if (!list.length) return;
+  const set = getSet(), m = maskOf(t), pages0 = G.pages, idx0 = G.idx;
+  const stale = () => G.testId !== id || G.pages !== pages0 || G.idx !== idx0;
   G.noBusy = true;
   toast('학생이 쓴 번호를 읽는 중이에요…', 4000);
   let r;
   try { r = await readNos(list.map(x => G.pages[x.pg[0]]), { box: t.noBox, mask: set.maskOn && m ? m.mask : [] }); }
   catch (e) { toast(e && e.code === 'NO_AI' ? AI_KEY : ai.errorMessage(e && e.code, e), 6000); return; }
   finally { G.noBusy = false; }
-  if (G.testId !== id) return;
+  if (stale()) { if (G.testId === id) toast(CHANGED, 6000); return; }
   openNoCheck({ rows: list.map((x, k) => ({ crop: r.crops[k], ...r.nos[k] })), allowed: rosterAllowed(), onOk: nos => {
     const t2 = getTest(id) || t;
-    if (G.testId !== id || busy(id)) return;
-    // 번호 차례로 학생과 그 학생의 쪽을 함께 늘어놓음 (스캔이 없는 학생은 뒤에 그대로)
-    const order = byNoOrder(nos), studs = list.map(x => t2.students[x.i]), idx = list.map(x => G.idx[x.i]);
-    const restS = t2.students.filter((s, i) => !list.some(x => x.i === i)), restI = G.idx.filter((p, i) => !list.some(x => x.i === i));
-    t2.students = [...order.map(k => ({ ...studs[k], no: nos[k] })), ...restS];
-    G.idx = [...order.map(k => idx[k]), ...restI];
+    if (stale() || busy(id)) { toast(CHANGED, 6000); return; }
+    // 번호 차례로 학생과 그 학생의 쪽을 함께 늘어놓음
+    const order = byNoOrder(nos), inList = new Set(list.map(x => x.i));
+    let head, tail, tailIdx;
+    if (t2.noOrdered) {
+      // 번호로 맞춘 적이 있는 평가에 다시 올린 스캔은 걷은 순서: 결과는 자리가 아니라 번호로 이어 붙임
+      const byNum = new Map(t2.students.map(s => [s.no, s]));
+      head = order.map(k => byNum.get(nos[k]) || freshStudent(nos[k]));
+      const used = new Set(head);
+      // 이번에 읽히지 않은 학생 중 결과가 있거나(결석 등) 「채점 안 함」인 학생은 뒤에 남김
+      const rest = t2.students.map((s, i) => ({ s, i })).filter(x => !used.has(x.s) && (x.s.skip || hasResult(x.s)));
+      tail = rest.map(x => x.s); tailIdx = rest.map(x => (x.s.skip && !inList.has(x.i) && G.idx[x.i]) || []);
+    } else {
+      head = order.map(k => t2.students[list[k].i]);
+      const rest = t2.students.map((s, i) => ({ s, i })).filter(x => !inList.has(x.i));
+      tail = rest.map(x => x.s); tailIdx = rest.map(x => G.idx[x.i] || []);
+    }
+    t2.students = [...order.map((k, j) => ({ ...head[j], no: nos[k] })), ...tail];
+    G.idx = [...order.map(k => G.idx[list[k].i]), ...tailIdx];
+    t2.noOrdered = true;
     commit(t2);
     G.noOk = { pages: G.pages, sig: noSig(t2) };
     refresh(id);
