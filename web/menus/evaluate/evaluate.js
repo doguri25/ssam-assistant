@@ -5280,6 +5280,15 @@ storeReady.then(() => setTimeout(() => {
    평가 화면 바꾸기, AI 부르기, 학급 명단, 알림·시트를 밖에 내보냄 */
 var modeHooks = [];
 window.SSAM = {
+  // 떠 있는 버튼: 교과 평어 평가계획 넣기, 평가지 채점에 쪽 넣기
+  inbox: {
+    async evalPlan(file) {
+      try { await adoptPlan(await readBytes(new Uint8Array(await file.arrayBuffer()), file.name, '파일')); }
+      catch (e) { toast(READ_MSG[e && e.message] || '평가계획을 읽지 못했어요. 교과 평어에서 표를 붙여넣어 보세요.', 6000); }
+    },
+    grPages: files => grAddPages(files),
+    grBusy: () => GR.running.size > 0 || ['grading', 'ranking', 'writing'].includes(GR.phase)
+  },
   setMode, getMode: () => S.mode,
   onModeChange: fn => { modeHooks.push(fn); },
   ai: { generate, engineReady, engineName, providerName: () => E.engine === 'account' ? 'Claude 계정' : (PROVIDERS[E.engine] ? PROVIDERS[E.engine].name : ''), errMsg, openSettings },

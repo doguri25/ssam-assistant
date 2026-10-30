@@ -1,5 +1,6 @@
 /* 떠 있는 버튼: 아무 파일이나 넣으면 종류를 판단해(AI 없음) 확인 카드 뒤 그 메뉴의 기능으로 (스펙 2026-10-30-inbox-button).
-   메뉴 모듈은 registerInbox(kind, { act(files), fields?(files), run(files, values, opts) })로 자기 일을 등록.
+   메뉴 모듈은 registerInbox(kind, { act(files, ctx), fields?(files, ctx), run(files, values, opts) })로 자기 일을 등록.
+   ctx = opts = { texts: Map(파일 → 읽은 글) } (+ opts.plan) — 처리 함수가 파일을 다시 읽지 않아도 되게
    웹판·Windows 쌤비서 창 안에서는 오른쪽 아래 버튼(누르면 파일 고르기, 끌고 오면 놓기 판) */
 import { get, set } from './store.js';
 import { readText, fileMessage } from './files.js';
@@ -30,7 +31,7 @@ export function setInboxSettings(patch) {
 /* ---------- 처리 함수 등록 ---------- */
 const handlers = {};
 export function registerInbox(kind, handler) { handlers[kind] = handler; }
-const actOf = (kind, files) => (handlers[kind] && handlers[kind].act ? handlers[kind].act(files) : (KINDS.find(k => k[0] === kind) || [])[2] || '');
+const actOf = (kind, files, ctx) => (handlers[kind] && handlers[kind].act ? handlers[kind].act(files, ctx) : (KINDS.find(k => k[0] === kind) || [])[2] || '');
 
 /* ---------- 받기: 줄 세워 한 번에 한 묶음씩 ---------- */
 const queue = [];
@@ -61,31 +62,32 @@ async function handleBatch(files) {
   const notes = bad.map(r => `「${r.file.name}」: ${r.error}`);
   if (!ok.length) { await askCard({ files: bad.map(r => r.file), notes }); return; }
   const info = new Map(ok.map(r => [r.file, classify({ name: r.file.name, text: r.text, scan: r.scan })]));
+  const ctx = { texts: new Map(ok.map(r => [r.file, r.text || ''])) };
   const groups = groupFiles(ok.map(r => ({ file: r.file, kind: info.get(r.file).kind })));
-  for (const [i, g] of groups.entries()) await handleGroup(g, info.get(g.files[0]), i ? [] : notes);
+  for (const [i, g] of groups.entries()) await handleGroup(g, info.get(g.files[0]), i ? [] : notes, ctx);
 }
 
-async function handleGroup({ kind, files }, guess, notes) {
+async function handleGroup({ kind, files }, guess, notes, ctx) {
   const s = getInboxSettings();
   let pick = { kind, values: {} };
-  const fields = await fieldsOf(kind, files);
+  const fields = await fieldsOf(kind, files, ctx);
   const direct = s.mode === 'direct' && kind !== 'unknown' && handlers[kind] && !notes.length && !fields.some(f => f.required && !String(f.value || '').trim());
   if (direct) fields.forEach(f => { pick.values[f.key] = f.value == null ? '' : f.value; });
   else {
-    pick = await askCard({ files, kind, guess, notes });
+    pick = await askCard({ files, kind, guess, notes, ctx });
     if (!pick) return;
   }
   const h = handlers[pick.kind];
   if (!h) return;
   try {
-    const msg = await h.run(files, pick.values, { plan: s.plan });
+    const msg = await h.run(files, pick.values, { plan: s.plan, texts: ctx.texts });
     if (msg) toast(msg, 6000);
   } catch (e) { toast(`하지 못했어요: ${String((e && e.message) || e || '')}`.trim(), 6000); }
 }
-async function fieldsOf(kind, files) {
+async function fieldsOf(kind, files, ctx) {
   const h = handlers[kind];
   if (!h || !h.fields) return [];
-  try { return (await h.fields(files)) || []; } catch (e) { return []; }
+  try { return (await h.fields(files, ctx)) || []; } catch (e) { return []; }
 }
 
 /* ---------- 확인 카드 ---------- */
@@ -96,7 +98,7 @@ const fieldHTML = f => {
     : `<input class="field" ${id} type="${f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'}" value="${esc(v)}" autocomplete="off">`;
   return `<label class="yp-f"><span class="lab">${esc(f.label)}${f.required ? ' *' : ''}</span>${input}</label>`;
 };
-function askCard({ files, kind = '', guess = null, notes = [] }) {
+function askCard({ files, kind = '', guess = null, notes = [], ctx = { texts: new Map() } }) {
   return new Promise(resolve => {
     let done = false;
     const finish = v => { if (!done) { done = true; resolve(v); } };
@@ -108,7 +110,7 @@ function askCard({ files, kind = '', guess = null, notes = [] }) {
       ${guess ? `<p class="ib-guess"><b>${esc(kind === 'unknown' ? '모르는 파일' : kindLabel(kind))}</b>${kind === 'unknown' ? '' : '(으)로 보여요.'} <span class="muted">${esc(guess.why)}</span></p>
       <label class="yp-f"><span class="lab">할 일</span><select class="field" id="ibKind">
         ${kind === 'unknown' || !handlers[kind] ? '<option value="">골라 주세요</option>' : ''}
-        ${kinds.map(([k, label]) => `<option value="${k}"${k === kind ? ' selected' : ''}>${esc(label)} — ${esc(actOf(k, files))}</option>`).join('')}</select></label>
+        ${kinds.map(([k, label]) => `<option value="${k}"${k === kind ? ' selected' : ''}>${esc(label)} — ${esc(actOf(k, files, ctx))}</option>`).join('')}</select></label>
       <div id="ibFields" class="ib-fields"></div>
       <p class="set-msg err" role="alert" id="ibErr" hidden></p>` : ''}
       <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>${guess ? '그만두기' : '닫기'}</button>${guess ? '<button class="btn primary" type="button" id="ibRun">실행</button>' : ''}</div>`;
@@ -123,7 +125,7 @@ function askCard({ files, kind = '', guess = null, notes = [] }) {
         const k = sel.value;
         run.disabled = !k;
         err.hidden = true;
-        fields = k ? await fieldsOf(k, files) : [];
+        fields = k ? await fieldsOf(k, files, ctx) : [];
         if (sel.value === k) box.innerHTML = fields.map(fieldHTML).join('');
       };
       sel.addEventListener('change', draw);

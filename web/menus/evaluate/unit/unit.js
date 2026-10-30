@@ -1,7 +1,8 @@
 /* 평가 › 단원평가 (스펙 2): 평가 목록 · 결과 모아 보기, 평가마다 4단계.
    이 파일은 탭 진입·목록·단계 틀·1단계(정답지·평가지). 2·3단계는 unit-grading.js, 4단계는 unit-feedback.js,
    결과 모아 보기는 unit-results.js가 registerStep·registerResults로 붙임 */
-import { onEnter } from '../../../core/shell.js';
+import { onEnter, go } from '../../../core/shell.js';
+import { registerInbox } from '../../../core/inbox.js';
 import { toast } from '../../../core/ui.js';
 import * as ai from '../../../core/ai.js';
 import { readText, fileMessage } from '../../../core/files.js';
@@ -273,6 +274,36 @@ document.addEventListener('change', e => {
   else if (el.id === 'unPaperFile' && el.files[0]) { const f = el.files[0]; el.value = ''; loadPaper(f); }
   else if (META_IDS[el.id]) editMeta(el);
   else if (el.dataset.k) editItem(el);
+});
+
+/* 떠 있는 버튼: 정답지(합본 포함)는 새 단원평가로, 문제지는 정답지는 있고 평가지가 없는 최근 단원평가에(없으면 새로) */
+/* 문제지와 교과(·단원)가 같은 것을 먼저, 없으면 최근 것 */
+function paperless(text) {
+  const m = parsePaper(splitCombined(text || '').paper || text || '').meta;
+  const list = listTests().map(s => getTest(s.id)).filter(t => t && t.key.items.length && !(t.paper && t.paper.text));
+  const same = t => m.subject && t.meta.subject === m.subject && (!m.unitNo || !t.meta.unitNo || t.meta.unitNo === m.unitNo);
+  return list.find(same) || list[0] || null;
+}
+function openNew() {
+  const t = newTest();
+  U.view = 'test'; U.id = null; U.draft = t; U.step = 1; U.msg = { id: t.id, key: '', paper: '' };
+  render();
+}
+registerInbox('unit-key', {
+  act: files => (files.length > 1 ? `새 단원평가 ${files.length}개를 만들어 정답지로 넣기` : '새 단원평가를 만들어 정답지로 넣기'),
+  async run(files) {
+    go('evaluate', 'unit');
+    for (const f of files) { openNew(); await loadKey(f); }
+  }
+});
+registerInbox('unit-paper', {
+  act: (files, ctx) => { const t = paperless(ctx.texts.get(files[0])); return t ? `「${makeTitle(t.meta)}」의 평가지로 넣기` : '새 단원평가를 만들어 평가지로 넣기'; },
+  async run(files, v, opts) {
+    go('evaluate', 'unit');
+    const t = paperless(opts.texts.get(files[0]));
+    if (t) openTest(t.id, 1); else openNew();
+    await loadPaper(files[0]);
+  }
 });
 
 onEnter('evaluate', (tab, section) => {

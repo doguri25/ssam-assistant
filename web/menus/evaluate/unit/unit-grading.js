@@ -4,9 +4,11 @@ import { toast } from '../../../core/ui.js';
 import * as ai from '../../../core/ai.js';
 import * as store from '../../../core/store.js';
 import { ITEM_TYPES, autoJudge, gradeCell, mergeCells, needsCheck, studentTotal } from './unit-grade.js';
-import { getTest, getSet, saveSet, numbersFor, parseNos, renumber, maskOf } from './unit-model.js';
+import { getTest, getSet, saveSet, numbersFor, parseNos, renumber, maskOf, listTests } from './unit-model.js';
+import { registerInbox } from '../../../core/inbox.js';
+import { go } from '../../../core/shell.js';
 import { gradePrompt, normGrade, validGrade } from './unit-ai.js';
-import { esc, SS, AI_KEY, registerStep, inStep, cur, curId, commit, saveOrWarn, refresh, render, goStep, getBox } from './unit.js';
+import { esc, SS, AI_KEY, registerStep, inStep, cur, curId, commit, saveOrWarn, refresh, render, goStep, getBox, openTest } from './unit.js';
 
 const TYPE = Object.fromEntries(ITEM_TYPES);
 /* 세션 상태: 올린 스캔은 한 평가에만 붙음. 채점은 한 번에 한 평가만(run: 그 평가의 차례·멈춤) */
@@ -321,5 +323,33 @@ document.addEventListener('change', e => {
     const i = Number(el.dataset.stno), v = Math.round(Number(el.value));
     if (!(v >= 1 && v <= 99) || t.students.some((s, j) => j !== i && s.no === v)) { toast('번호가 비었거나 겹쳐요'); render(); return; }
     t.students[i].no = v; commit(t); render();
+  }
+});
+
+/* 떠 있는 버튼: 학생 답안 스캔 → 정답지를 넣은 단원평가(최근 것이 먼저)에 넣고 채점 시작. 그런 평가가 없으면 평가 › 평가지 채점 */
+const keyed = () => listTests().filter(s => s.total > 0);
+async function legacyGrade(files) {
+  const L = SS().inbox;
+  if (!L) return '';
+  if (L.grBusy()) return '평가지 채점이 채점하는 중이에요. 끝난 뒤에 다시 넣어 주세요.';
+  go('evaluate', 'gr');
+  await L.grPages(files);
+  return '';
+}
+registerInbox('unit-scan', {
+  act: () => (keyed().length ? '단원평가 답안으로 넣고 채점하기' : '평가 › 평가지 채점에 넣기 (정답지를 넣은 단원평가가 없어요)'),
+  fields: () => {
+    const l = keyed();
+    return l.length ? [{ key: 'test', label: '채점할 단원평가', type: 'select', options: l.map(s => [s.id, s.title]), value: l[0].id, required: true }] : [];
+  },
+  async run(files, v) {
+    if (!v.test || !getTest(v.test)) return legacyGrade(files);
+    go('evaluate', 'unit');
+    openTest(v.test, 2);
+    await loadAnswers(files);
+    if (!hasPages(v.test)) return '';
+    goStep(3);
+    startGrading();
+    return '';
   }
 });
