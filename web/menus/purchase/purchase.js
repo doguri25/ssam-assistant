@@ -7,6 +7,8 @@ import { makeHwpx } from '../../core/hwpx.js';
 import { copyText, saveFile, toast } from '../../core/ui.js';
 import { getPurchaseLimit } from '../../core/settings.js';
 import { TYPES, emptyForm, emptyItem, itemAmount, cleanItems, sumItems, checkPurchase, itemsTSV, composeReason, purchaseDoc, toNumber, findPersonal } from './rules.js';
+import { readQuote } from './quote.js';
+import { registerInbox } from '../../core/inbox.js';
 
 const CUR_KEY = 'purchase:current';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -89,7 +91,7 @@ function render() {
         </div>
         <div class="pc-sub"><span class="lab">품목 <b class="req" aria-hidden="true">*</b></span></div>
         <div class="pc-items" id="pcItems">${itemsHTML()}</div>
-        <div class="row pc-iact"><button class="btn text" type="button" data-pc="addItem">+ 품목 더하기</button><span class="pc-quote-slot"></span><span class="grow"></span><b class="pc-sum num" id="pcSum">합계 ${won(sumItems(st.form.items))}원</b></div>
+        <div class="row pc-iact"><button class="btn text" type="button" data-pc="addItem">+ 품목 더하기</button><span class="pc-quote-slot"><button class="btn text" type="button" data-pc="quote">견적서 넣기</button><input type="file" id="pcQuoteFile" accept=".xlsx,.csv,.hwp,.hwpx,.txt,.pdf,.png,.jpg,.jpeg,.webp" hidden></span><span class="grow"></span><b class="pc-sum num" id="pcSum">합계 ${won(sumItems(st.form.items))}원</b></div>
         ${field('memo', '메모 (선택)', { ph: '그 밖에 초안에 넣을 내용', wide: true, area: true })}
         <div class="row pc-go"><button class="btn primary" type="button" data-pc="draft" ${busy ? 'disabled' : ''}>${busy ? '<span class="spin"></span>쓰는 중…' : '초안 만들기'}</button></div>
       </section>
@@ -264,6 +266,44 @@ document.addEventListener('click', e => {
     save(); renderItems();
   } else if (a === 'draft') makeDraft();
   else if (a === 'hwpx') downloadHwpx();
+  else if (a === 'quote') box.querySelector('#pcQuoteFile').click();
+});
+document.addEventListener('change', e => {
+  if (!box || e.target.id !== 'pcQuoteFile' || !box.contains(e.target)) return;
+  const f = e.target.files[0]; e.target.value = '';
+  if (f) addQuote(f);
+});
+
+/* 견적서의 품목을 품목 표에 넣음: 빈 줄을 먼저 채우고 모자라면 더함. 초안은 만들지 않음 */
+export async function addQuote(file) {
+  let r;
+  try { r = await readQuote(file); }
+  catch (e) {
+    toast(e && e.code === 'NO_AI' ? '사진·PDF 견적서는 AI가 읽어요. 설정 › AI에서 키를 넣어 주세요.' : e && e.code ? '견적서를 읽지 못했어요. 엑셀·CSV로 저장해 넣거나 직접 입력해 주세요.' : ai.errorMessage(e && e.code, e), 6000);
+    return 0;
+  }
+  if (!r.items.length) { toast('견적서에서 품목을 찾지 못했어요. 직접 입력해 주세요.', 6000); return 0; }
+  const rows = r.items.map(it => ({ name: it.name, spec: it.spec, qty: String(it.qty), price: String(it.price) }));
+  const items = st.form.items.slice();
+  for (const it of rows) { const i = items.findIndex(x => !x.name && !x.spec && !x.qty && !x.price); if (i >= 0) items[i] = it; else items.push(it); }
+  st.form.items = items;
+  save();
+  if (curTab === 'new' && box && box.isConnected) render();
+  toast(`견적서에서 품목 ${rows.length}개를 넣었어요${r.by === 'ai' ? '(AI가 읽었어요. 금액을 확인해 주세요)' : ''}.`, 6000);
+  return rows.length;
+}
+
+/* 떠 있는 버튼: 견적서 → 품의 › 새 품의 품목. 쓰던 품의가 있으면 더할지 새로 할지 고름 */
+const busyForm = () => !!(st.form.project.trim() || st.form.items.some(i => i.name.trim()));
+registerInbox('quote', {
+  act: () => '품의 › 새 품의의 품목으로 넣기',
+  fields: () => (busyForm() ? [{ key: 'where', label: '어디에 넣을까요', type: 'select', options: [['add', '지금 쓰는 품의에 더하기'], ['new', '새 품의로 (지금 쓰던 품의는 지워져요)']], value: 'add', required: true }] : []),
+  async run(files, v) {
+    if (v.where === 'new' || !busyForm()) { st.form = normForm(emptyForm('goods')); st.draft = null; msg = ''; tried = false; save(); }
+    go('purchase', 'new');
+    for (const f of files) await addQuote(f);
+    return '';
+  }
 });
 
 function renderOther(tab) {

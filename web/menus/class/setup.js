@@ -1,6 +1,7 @@
 /* 학급 › 진도표·시수 아래 「준비」: 학급, 시간표, 교과 진도표 목록·고치기, 예시 (스펙 2장).
    저장하면 'class:changed'를 보내고, 다른 학급 화면은 그것을 듣고 다시 그림 */
 import { onEnter, go } from '../../core/shell.js';
+import { registerInbox } from '../../core/inbox.js';
 import { getYears, prepYear } from '../../core/years.js';
 import { toast } from '../../core/ui.js';
 import * as ai from '../../core/ai.js';
@@ -379,4 +380,29 @@ document.addEventListener('click', e => {
     box.querySelector('#clsTtFile').click();
   }
   else if (c === 'jindoFile') box.querySelector('#clsJindoFile').click();
+});
+
+/* 떠 있는 버튼: 진도표 → 교과 고르기, 기초시간표 → 우리 반 시간표(학년·반이 없으면 입력 칸) */
+registerInbox('jindo', {
+  act: () => '학급 › 진도표·시수에 교과 진도표로 넣기',
+  async run(files) {
+    go('class', 'progress');
+    await importJindo(files[0]);
+    return files.length > 1 ? '진도표는 한 번에 하나씩 넣어요. 나머지 파일은 다시 넣어 주세요.' : '';
+  }
+});
+registerInbox('timetable', {
+  act: () => '학급 › 우리 반 시간표로 넣기',
+  fields: () => {
+    const i = getInfo();
+    return i.grade && i.room ? [] : [
+      { key: 'grade', label: '학년', type: 'select', options: [['', '고르기'], ...[1, 2, 3, 4, 5, 6].map(g => [String(g), `${g}학년`])], value: i.grade ? String(i.grade) : '', required: true },
+      { key: 'room', label: '반', type: 'number', value: i.room || '', required: true }];
+  },
+  async run(files, v) {
+    if (v.grade && v.room && !saved(setInfo({ grade: +v.grade, room: +v.room }))) return '';
+    go('class', 'progress');
+    await importTt(files[0]);
+    return '';
+  }
 });

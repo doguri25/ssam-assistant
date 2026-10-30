@@ -1,5 +1,5 @@
 /* 설정 메뉴: 학급 명단 · AI · 화면 · 학교 정보 · 학년도 · 품의 기준 */
-import { onEnter } from '../../core/shell.js';
+import { onEnter, go as goMenu } from '../../core/shell.js';
 import { THEMES, getTheme, setTheme } from '../../core/theme.js';
 import { getSchool, setSchool, getPurchaseLimit, setPurchaseLimit } from '../../core/settings.js';
 import * as ai from '../../core/ai.js';
@@ -9,7 +9,7 @@ import { saveFile } from '../../core/ui.js';
 import { getYears, snapshot, carryOver, makeBackup, parseBackup, prepYear } from '../../core/years.js';
 import { switchYear, switchError, getArchive, safeLS } from '../../core/year-switch.js';
 import { FULL_MSG, usage, get as sget, set as sset } from '../../core/store.js';
-import { getInboxSettings, setInboxSettings } from '../../core/inbox.js';
+import { getInboxSettings, setInboxSettings, registerInbox } from '../../core/inbox.js';
 
 const SSAM = () => window.SSAM || {};
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -347,3 +347,13 @@ if (sheetRoot) new MutationObserver(() => {
 }).observe(sheetRoot, { childList: true });
 
 onEnter('settings', render);
+
+/* 떠 있는 버튼: 학급 명단(명렬표 엑셀·CSV) → 설정 › 학급 명단 확인 창 */
+registerInbox('roster', {
+  act: () => '설정 › 학급 명단으로 넣기 (번호만 읽어요)',
+  async run(files) {
+    goMenu('settings', 'roster');
+    await importRoster(files[0]);
+    return '';
+  }
+});
