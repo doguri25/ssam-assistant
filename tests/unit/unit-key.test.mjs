@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseKey, parsePaper, itemType, keyTotal } from '../../web/menus/evaluate/unit/unit-key.js';
+import { parseKey, parsePaper, itemType, keyTotal, splitCombined } from '../../web/menus/evaluate/unit/unit-key.js';
 
 const fx = name => readFileSync(new URL(`../fixtures/${name}`, import.meta.url), 'utf8');
 
@@ -141,4 +141,80 @@ test('다듬기: 배점 「5점」, 문항 번호 「1.」·「1번」도 읽음
     '1. | 시 읽기 |  | ○ | ③ | 5점 |  | <국어> 36쪽', '2번 | 낱말 | ○ |  | ㉯ | 4.5 |  | <국어> 40쪽'].join('\n');
   const k = parseKey(text);
   assert.deepEqual(k.items.map(i => [i.no, i.points]), [[1, 5], [2, 4.5]]);
+});
+
+test('정답·해설지: 정답을 한 줄로 늘어놓은 꼴(01 ③ 02 ⑤ …), 예시 답안 표시·⑴ 번호, 상·중·하 채점 기준, 배점이 없으면 100점을 나눔', () => {
+  const k = parseKey(fx('unit-key-inline.txt'));
+  assert.deepEqual(k.meta, { term: 2, grade: 3, subject: '도덕', unitNo: 4, round: null });
+  assert.equal(k.items.length, 8);
+  assert.deepEqual(k.items.map(i => i.answer), ['③', '⑤', '(예) 약속을 지키면 서로 믿을 수 있다.', '②', '(1) ○, (2) ×, (3) ○', '(예) “차례를 지켜 줄을 선다.”', '①, ④', '㉡']);
+  assert.deepEqual(k.items.map(i => i.type), ['choice', 'choice', 'essay', 'choice', 'short', 'essay', 'choice', 'symbol']);
+  assert.deepEqual(k.items.map(i => i.points), [12, 12, 12, 12, 13, 13, 13, 13]);
+  assert.equal(keyTotal(k.items), 100);
+  assert.equal(k.pointsGuessed, true);
+  assert.ok(k.items[2].criteria.includes('1가지 이상 썼는지') && k.items[2].criteria.includes('상: 약속을 지키면 좋은 점을 까닭과 함께') && k.items[2].criteria.includes('하: 관련 없는'), k.items[2].criteria);
+  assert.equal(k.items[0].criteria, '');
+  assert.equal(k.items[4].criteria, '');
+});
+
+test('합본(문제지 + 정답 및 해설 + 이원 목적 분류표): 표의 정답·배점·채점 기준·평가 내용·평가 영역·쪽', () => {
+  const k = parseKey(fx('unit-combined.txt'));
+  assert.equal(k.items.length, 6);
+  assert.equal(keyTotal(k.items), 100);
+  assert.ok(!k.pointsGuessed);
+  assert.deepEqual(k.items[2], { no: 3, content: '물에 사는 동물 설명하기', domain: '지식·이해', type: 'essay', answer: '(예) 지느러미가 있고 몸이 매끄럽다.', points: 20, criteria: '‘지느러미’, ‘매끄럽다’는 내용이 있으면 정답 처리', pages: '80~81 쪽' });
+  assert.deepEqual(k.items.map(i => i.type), ['choice', 'short', 'essay', 'choice', 'short', 'short']);
+  assert.deepEqual(k.domains, ['지식·이해', '과정·기능']);
+  assert.equal(k.meta.subject, '과학');
+  assert.equal(k.meta.round, 2);
+  assert.equal(k.meta.unitNo, 3);
+});
+
+test('합본: 둘째 머리가 합친 칸만 적힌 꼴(배점 | 채점 기준)도 같은 표로 읽음', () => {
+  const src = fx('unit-combined.txt').replace(/번호 \| 정답 \| 배점 및 채점 기준 \| 배점 및 채점 기준[^\n]*\n번호 \| 정답 \| 배점 \| 채점 기준[^\n]*/,
+    '번호 | 정답 | 배점 및 채점 기준 | 평가 내용 | 평가 영역 | 난이도 | 교과서 관련 쪽수\n배점 | 채점 기준');
+  const k = parseKey(src);
+  assert.equal(keyTotal(k.items), 100);
+  assert.equal(k.items[2].answer, '(예) 지느러미가 있고 몸이 매끄럽다.');
+  assert.equal(k.items[3].content, '다리 수로 동물 분류하기');
+  assert.equal(k.items[5].pages, '84~85 쪽');
+});
+
+test('표 없이 정답 줄만 있으면(PDF 등): 「해설 참조」는 해설의 모범 답안, 채점 기준 표는 그 문항 기준', () => {
+  const src = fx('unit-combined.txt').split('\n | 『과학』 70 쪽~95 쪽\n중간 평가 | 2회 | 이원 목적 분류표')[0];
+  const k = parseKey(src);
+  assert.equal(k.items.length, 6);
+  assert.deepEqual(k.items.map(i => i.answer), ['③', '배', '(예) 지느러미가 있고 몸이 매끄럽다.', '②, ④', '㉠ 더듬이 ㉡ 날개', '(1) 날 (2) 없']);
+  assert.equal(k.items[2].type, 'essay');
+  assert.ok(k.items[2].criteria.includes('두 가지 쓴 경우: 100%') && k.items[2].criteria.includes('한 가지만 쓴 경우: 50%'), k.items[2].criteria);
+  assert.equal(keyTotal(k.items), 100);
+  assert.equal(k.pointsGuessed, true);
+});
+
+test('평가지: 「01」 번호 문항, 머리 줄이 흩어진 교과·학년-학기·단원', () => {
+  const p = parsePaper(fx('unit-paper-inline.txt'));
+  assert.deepEqual(p.meta, { subject: '도덕', grade: 3, term: 2, unitNo: 4, unitName: '함께 지키는 약속', round: null });
+  assert.equal(Object.keys(p.questions).length, 8);
+  assert.equal(p.questions[1], '다음 중 약속을 지키는 모습으로 알맞은 것은 무엇입니까?');
+  assert.equal(p.questions[8], '다음 중 모두가 함께 정한 약속은 무엇입니까?');
+});
+
+test('합본 나누기와 번호가 사라진 문제지(자동 번호): 발문 줄로 문항을 셈', () => {
+  const { paper, key } = splitCombined(fx('unit-combined.txt'));
+  assert.ok(paper.includes('곤충이 아닌 것') && !paper.includes('정답 및 해설') && key.startsWith('정답 및 해설'), paper.slice(-80));
+  const p = parsePaper(paper);
+  assert.equal(Object.keys(p.questions).length, 6);
+  assert.equal(p.questions[3], '물에 사는 동물의 생김새 특징을 쓰시오.');
+  assert.equal(p.questions[4], '다리가 여섯 개인 동물을 두 가지 고르시오.');
+  assert.deepEqual([p.meta.subject, p.meta.unitNo, p.meta.unitName, p.meta.round], ['과학', 3, '동물의 생활', 2]);
+  assert.deepEqual(splitCombined(fx('unit-key-inline.txt')).paper, '', '정답지만 있으면 문제지 부분 없음');
+});
+
+test('「01」 꼴 번호도 10번부터는 두 자리 그대로(정답 줄·문제지)', () => {
+  const ans = Array.from({ length: 12 }, (_, i) => `${String(i + 1).padStart(2, '0')} ${'①②③④⑤'[i % 5]}`).join(' ');
+  const k = parseKey(`정답\n${ans}`);
+  assert.equal(k.items.length, 12);
+  assert.deepEqual(k.items.slice(8).map(i => i.answer), ['④', '⑤', '①', '②']);
+  const p = parsePaper(Array.from({ length: 11 }, (_, i) => `${String(i + 1).padStart(2, '0')}  ${i + 1}번 문제입니까?\t(     )`).join('\n'));
+  assert.equal(Object.keys(p.questions).length, 11);
 });

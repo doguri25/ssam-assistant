@@ -23,7 +23,9 @@ export function matchMap(s) {
   return out;
 }
 
-export const normShort = s => String(s || '').replace(/[\s.,!?·'"“”‘’()[\]{}<>「」『』~\-…:;]/g, '').toLowerCase();
+// ⑴은 1로, ○× 표시(O·X·⭕·❌ 등)는 ○·×로 맞춤
+export const normShort = s => String(s || '').replace(/[⑴-⑽]/g, c => String(c.charCodeAt(0) - 0x2473)).replace(/[\s.,!?·'"“”‘’()[\]{}<>「」『』~\-…:;]/g, '').toLowerCase()
+  .replace(/[o◯⭕]/g, '○').replace(/[x✕✖❌]/g, '×');
 export function shortAnswers(answer) {
   const a = String(answer || '').replace(/^\s*\(\s*예\s*\)\s*/, '').replace(/\s*등\s*$/, '');
   return a.split(/\s*\/\s*|\s+또는\s+/).map(normShort).filter(Boolean);

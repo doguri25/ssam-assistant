@@ -124,3 +124,11 @@ test('검토 고침: 정답표를 고치면 채점한 칸을 다시 맞춤(고�
   assert.equal(t.students[0].items[3].pts, 5); assert.equal(t.students[0].items[3].flag, 'essay'); assert.equal(t.students[0].items[3].ok, false);
   assert.deepEqual(t.students[2].items, {});
 });
+
+test('○× 답: ⑴·(1)·1, O·X·⭕·❌ 표기가 달라도 같은 답', () => {
+  const it = { type: 'short', answer: '(1) ○, (2) ×, (3) ○', points: 10 };
+  assert.equal(autoJudge(it, '(1) O (2) X (3) O'), 10);
+  assert.equal(autoJudge(it, '1 ⭕ 2 ❌ 3 ⭕'), 10);
+  assert.equal(autoJudge(it, '⑴ ○ ⑵ × ⑶ ○'), 10);
+  assert.equal(autoJudge(it, '(1) ○ (2) ○ (3) ○'), null);
+});

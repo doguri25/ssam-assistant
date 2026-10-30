@@ -1,6 +1,6 @@
 // 평가 › 단원평가: 탭 끼우기, 평가 목록, 1단계(정답지·평가지 넣기, 정답표 고치기), 사진 정답지는 AI, 예시로 채우기, 다시 열기
 import { join } from 'node:path';
-import { open, run, assert, mockClaude, ROOT } from './helpers.mjs';
+import { open, run, assert, mockClaude, ROOT, FIXTURES } from './helpers.mjs';
 import { zipStore } from '../../web/core/zip.js';
 
 // 합친 칸이 있는 정답지(한글 파일): 평가 내용은 1~2번, 교과서 쪽수는 1~3번이 한 칸
@@ -134,6 +134,29 @@ await run('unit-key', [
     await page.waitForTimeout(150);
     assert(await cards() === 3 && !(await page.textContent(`${B} .un-list`)).includes('(예시)'), '카드 ' + await cards());
     assert(await page.locator(`${B} [data-un="sampleDel"]`).count() === 0, '단추가 남음');
+  }],
+  ['새 형식: 문제지·정답·이원 목적 분류표가 한 파일이면 정답지 넣기 하나로 둘 다(AI 없이, 평가지엔 정답 앞까지만)', async () => {
+    await page.click(`${B} #unNew`);
+    const n0 = prompts.length;
+    await page.setInputFiles(`${B} #unKeyFile`, join(FIXTURES, 'unit-combined.txt'));
+    await page.waitForFunction(() => (document.querySelector('.unit-box .un-sum') || {}).textContent?.includes('6문항 · 100점'));
+    assert(prompts.length === n0, 'AI를 부름');
+    assert((await page.textContent(`${B} #unKeyMsg`)).includes('평가지도'), await page.textContent(`${B} #unKeyMsg`));
+    assert(await page.inputValue(`${B} #unSubject`) === '과학' && await page.inputValue(`${B} #unUnitName`) === '동물의 생활', '평가 정보');
+    const paper = await page.evaluate(async () => { const m = await import('./menus/evaluate/unit/unit-model.js'); const s = m.listTests().find(x => x.subject === '과학'), t = s && m.getTest(s.id); return t && t.paper ? t.paper.text : 'paper 없음'; });
+    assert(paper.includes('곤충이 아닌 것') && !paper.includes('정답 및 해설'), paper.slice(-60));
+    await page.click(`${B} [data-un="back"]`);
+  }],
+  ['새 형식: 정답을 한 줄로 늘어놓은 정답·해설지(배점 없음 → 100점을 나누고 알림), 「01」 번호 문제지', async () => {
+    await page.click(`${B} #unNew`);
+    await page.setInputFiles(`${B} #unKeyFile`, join(FIXTURES, 'unit-key-inline.txt'));
+    await page.waitForFunction(() => (document.querySelector('.unit-box .un-sum') || {}).textContent?.includes('8문항 · 100점'));
+    assert((await page.textContent(`${B} #unKeyMsg`)).includes('배점'), await page.textContent(`${B} #unKeyMsg`));
+    assert(await page.inputValue(`${B} [data-k="3-type"]`) === 'essay' && await page.inputValue(`${B} [data-k="5-answer"]`) === '(1) ○, (2) ×, (3) ○', '3·5번');
+    await page.setInputFiles(`${B} #unPaperFile`, join(FIXTURES, 'unit-paper-inline.txt'));
+    await page.waitForFunction(() => document.querySelector('.unit-box #unUnitName').value === '함께 지키는 약속');
+    assert((await page.textContent(`${B} #unPaperMsg`)).includes('8문항'), await page.textContent(`${B} #unPaperMsg`));
+    await page.click(`${B} [data-un="back"]`);
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

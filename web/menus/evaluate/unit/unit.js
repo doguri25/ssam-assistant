@@ -6,7 +6,7 @@ import { toast } from '../../../core/ui.js';
 import * as ai from '../../../core/ai.js';
 import { readText, fileMessage } from '../../../core/files.js';
 import { stepsHTML } from '../../../core/steps.js';
-import { parseKey, parsePaper, keyTotal } from './unit-key.js';
+import { parseKey, parsePaper, keyTotal, splitCombined } from './unit-key.js';
 import { ITEM_TYPES, rescoreItem } from './unit-grade.js';
 import { listTests, getTest, saveTest, removeTest, newTest, makeTitle, graded } from './unit-model.js';
 import { keyPrompt, normKeyAI } from './unit-ai.js';
@@ -182,7 +182,12 @@ async function loadKey(file) {
   // 이미 채점한 평가에 정답지를 다시 넣으면 읽은 답으로 다시 맞춤
   for (const it of t.key.items) rescoreItem(t, it.no, 'answer');
   fill(t.meta, k.meta, ['subject', 'grade', 'term', 'unitNo', 'round']);
-  U.msg = { ...U.msg, id, key: `「${file.name}」에서 ${k.items.length}문항을 읽었어요` };
+  // 문제지와 정답이 한 파일이면 평가지도 (정답 앞까지만 — 정답이 채점 AI에 가지 않게)
+  const sp = text ? splitCombined(text) : { paper: '' };
+  const withPaper = !!(sp.paper && !(t.paper && t.paper.text));
+  if (withPaper) { t.paper = { text: sp.paper.slice(0, 12000) }; fill(t.meta, parsePaper(sp.paper).meta, ['subject', 'grade', 'term', 'unitNo', 'unitName', 'round']); }
+  U.msg = { ...U.msg, id, key: `「${file.name}」에서 ${k.items.length}문항을 읽었어요${withPaper ? '. 평가지도 함께 넣었어요' : ''}${k.pointsGuessed ? '. 배점이 없어 100점을 문항 수로 나눠 넣었어요(고칠 수 있어요)' : ''}` };
+  if (withPaper) U.msg.paper = `「${file.name}」 · ${Object.keys(parsePaper(sp.paper).questions).length}문항`;
   commit(t);
   refresh(id);
 }
@@ -191,6 +196,7 @@ async function loadPaper(file) {
   setMsg(id, 'paper', `「${file.name}」 읽는 중…`);
   let text;
   try { text = await readText(file); } catch (e) { setMsg(id, 'paper', fileMessage(e && e.code)); return; }
+  text = splitCombined(text).paper || text; // 정답이 붙은 문제지면 정답 앞까지만
   const p = parsePaper(text), t = testOf(id, t0);
   if (!t) return;
   t.paper = { text: text.slice(0, 12000) };
