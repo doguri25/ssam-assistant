@@ -156,8 +156,9 @@ pub fn menu_action(id: &str) -> Option<&str> {
     }
 }
 
-/// 버튼 창에서 오른쪽 클릭: 그 자리에 메뉴를 띄움 (Windows는 고를 때까지 기다렸다가 메뉴 이벤트로 알림)
-#[tauri::command]
+/// 버튼 창에서 오른쪽 클릭: 그 자리에 메뉴를 띄움 (Windows는 고를 때까지 기다렸다가 메뉴 이벤트로 알림).
+/// Tauri의 메뉴 popup처럼 async: 메뉴의 대기 루프가 WebView2 콜백 안에서 돌지 않게
+#[tauri::command(async)]
 pub fn bubble_menu(app: AppHandle, window: tauri::Window) -> Result<(), String> {
     use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
     let err = |e: tauri::Error| e.to_string();

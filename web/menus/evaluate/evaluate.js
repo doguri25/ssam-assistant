@@ -3996,8 +3996,8 @@ async function grAskNos() {
   GR.noBusy = true;
   const wait = N.openNoWait();
   let r;
-  try { r = await N.readNos(list.map(s => GR.pages[s.pages[0]]), { box: GR.settings.noBox, mask: GR.settings.maskOn ? GR.settings.mask : [] }); }
-  catch (e) { wait.close(); toast(e && e.code === 'NO_AI' ? 'AI 키를 먼저 넣어 주세요' : errMsg(e && e.code, e), 6000); return; }
+  try { r = await N.readNos(list.map(s => GR.pages[s.pages[0]]), { box: GR.settings.noBox, mask: GR.settings.maskOn ? GR.settings.mask : [], signal: wait.signal }); }
+  catch (e) { if (wait.gone()) return; wait.close(); toast(e && e.code === 'NO_AI' ? 'AI 키를 먼저 넣어 주세요' : errMsg(e && e.code, e), 6000); return; }
   finally { GR.noBusy = false; }
   if (wait.gone()) return; // 그만두기
   N.openNoCheck({ rows: list.map((s, k) => ({ crop: r.crops[k], ...r.nos[k] })), allowed: N.rosterAllowed(GR.settings.except), onOk: nos => {

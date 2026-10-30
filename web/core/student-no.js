@@ -105,21 +105,26 @@ export async function cropNos(pages, box, mask) {
 }
 
 /* 학생마다 첫 쪽에서 번호를 읽음 → { nos: [{ no, sure }], crops }. AI 오류는 { code }로 던짐 */
-export async function readNos(pages, { box, mask } = {}) {
+export async function readNos(pages, { box, mask, signal } = {}) {
   if (!ai.ready()) throw { code: 'NO_AI' };
   const { images, crops } = await cropNos(pages, box, mask);
-  const v = await ai.generateJSON(noPrompt(pages.length), { images, valid: x => Array.isArray(x) || !!(x && Array.isArray(x.nos)) });
+  if (signal && signal.aborted) throw { code: 'aborted' };
+  const v = await ai.generateJSON(noPrompt(pages.length), { images, signal, valid: x => Array.isArray(x) || !!(x && Array.isArray(x.nos)) });
   return { nos: normNos(v, pages.length), crops };
 }
 
 /* 읽는 동안 띄워 두는 창 (떠 있는 버튼의 다음 카드가 확인 표를 덮지 않게, 그만두기도 여기서).
-   → { gone(): 그만뒀는지(다른 창으로 바뀌었는지), close() } */
+   창이 닫히면(그만두기·다른 창) 읽기도 멈춤(signal) → 곧바로 다시 누를 수 있음
+   → { gone(): 그만뒀는지(다른 창으로 바뀌었는지), close(), signal } */
 export function openNoWait() {
   let sheet = null;
+  const ctrl = new AbortController(), root = document.getElementById('sheetRoot');
   window.SSAM.openSheet(`<h3>학생이 쓴 번호를 읽는 중이에요</h3>
     <p class="muted" style="margin:0">학생마다 번호 칸만 모아 AI가 읽고 있어요. 다 읽으면 확인 표가 떠요.</p>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>그만두기</button></div>`, sh => { sheet = sh; });
-  return { gone: () => !sheet || !sheet.isConnected, close: () => { if (sheet && sheet.isConnected) window.SSAM.closeSheet(); } };
+  const gone = () => !sheet || !sheet.isConnected;
+  if (root) { const obs = new MutationObserver(() => { if (gone()) { obs.disconnect(); ctrl.abort(); } }); obs.observe(root, { childList: true, subtree: true }); }
+  return { gone, close: () => { if (!gone()) window.SSAM.closeSheet(); }, signal: ctrl.signal };
 }
 
 /* ---------- 확인 표 ---------- */

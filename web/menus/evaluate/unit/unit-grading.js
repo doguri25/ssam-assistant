@@ -49,7 +49,7 @@ async function loadAnswers(fileList) {
   const n = Math.ceil(pages.length / per);
   const apply = () => {
     if (G.testId) freeScans();
-    G.testId = id; G.raw = r.pages; G.pages = pages;
+    G.testId = id; G.raw = r.pages; G.pages = pages; G.noMaskFor = null; // 새 스캔이면 이름 칸을 다시 물음
     split(t, pages.length, per);
     G.msg = pagesMsg(r.pages.length, pages.length, t.students.length, r.skipped.length);
     commit(t); refresh(id);
@@ -142,8 +142,8 @@ async function askNos(t, then) {
   G.noBusy = true;
   const wait = openNoWait();
   let r;
-  try { r = await readNos(list.map(x => G.pages[x.pg[0]]), { box: t.noBox, mask: set.maskOn && m ? m.mask : [] }); }
-  catch (e) { wait.close(); toast(e && e.code === 'NO_AI' ? AI_KEY : ai.errorMessage(e && e.code, e), 6000); return; }
+  try { r = await readNos(list.map(x => G.pages[x.pg[0]]), { box: t.noBox, mask: set.maskOn && m ? m.mask : [], signal: wait.signal }); }
+  catch (e) { if (wait.gone()) return; wait.close(); toast(e && e.code === 'NO_AI' ? AI_KEY : ai.errorMessage(e && e.code, e), 6000); return; }
   finally { G.noBusy = false; }
   if (wait.gone()) return; // 그만두기
   if (stale()) { wait.close(); if (G.testId === id) toast(CHANGED, 6000); return; }

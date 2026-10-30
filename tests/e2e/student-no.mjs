@@ -21,7 +21,7 @@ await page.route('https://api.anthropic.com/**', async route => {
   else if (prompt.includes('수행평가를 채점하는')) out = JSON.stringify({ score: 80, summary: '바르게 풀었음', evidence: ['풀이가 맞음'], strengths: '꼼꼼함', improve: '검산', unreadable: false });
   else { const nos = [...prompt.matchAll(/"no": (\d+)/g)].map(m => +m[1]); out = JSON.stringify((nos.length ? nos : [1]).map(no => ({ no, score: 80, text: '수를 바르게 계산함.' }))); }
   const ev = [{ type: 'content_block_delta', delta: { type: 'text_delta', text: out } }, { type: 'message_delta', delta: { stop_reason: 'end_turn' } }];
-  await route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body: ev.map(e => 'data: ' + JSON.stringify(e) + '\n\n').join('') });
+  await route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body: ev.map(e => 'data: ' + JSON.stringify(e) + '\n\n').join('') }).catch(() => {}); // 그만두기로 끊은 요청
 });
 const V = 'section[data-menu="evaluate"] .unit-box';
 const T = id => page.evaluate(id => JSON.parse(localStorage.getItem('ssam:unit:t:' + id)), id);
@@ -131,9 +131,13 @@ await run('student-no', [
     await page.click(`${V} [data-un="grade"]`);
     await page.waitForFunction(() => /번호를 읽는 중/.test(document.querySelector('#sheetRoot').textContent));
     await page.click('#sheetRoot [data-close]');
-    await page.waitForTimeout(2000);
-    assert(await page.locator('#sheetRoot #noOk').count() === 0, '그만뒀는데 확인 표가 뜸');
+    // 그만두면 읽기도 멈춰서 곧바로 다시 누를 수 있음
     noDelay = 0;
+    await page.click(`${V} [data-un="grade"]`);
+    await page.waitForSelector('#sheetRoot #noOk', { timeout: 4000 });
+    await page.click('#sheetRoot [data-close]');
+    await page.waitForTimeout(1800);
+    assert(await page.locator('#sheetRoot #noOk').count() === 0, '그만둔 읽기의 확인 표가 늦게 뜸');
   }],
   ['「채점 안 함」 학생은 번호 확인 표에서 빼고(번호를 묻지 않음) 맨 뒤에 그대로', async () => {
     await page.click(`${V} .steps [data-step="2"]`);
@@ -157,6 +161,14 @@ await run('student-no', [
     await page.waitForSelector('#sheetRoot #noOk');
     await page.click('#sheetRoot #noOk');
     await page.waitForSelector('#sheetRoot #unRegradeOk');
+    await page.click('#sheetRoot [data-close]');
+    // 새 스캔을 올리면 다시 물음
+    await page.click(`${V} .steps [data-step="2"]`);
+    await page.setInputFiles(`${V} #unAnsFile`, files);
+    await page.waitForTimeout(500);
+    await page.click(`${V} [data-un="toGrade"]`);
+    await page.click(`${V} [data-un="grade"]`);
+    await page.waitForSelector('#sheetRoot #unNoMaskOk');
     await page.click('#sheetRoot [data-close]');
     await page.click(`${V} .steps [data-step="2"]`);
     await page.uncheck(`${V} #unMaskOn`);
