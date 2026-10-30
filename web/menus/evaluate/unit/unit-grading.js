@@ -8,11 +8,12 @@ import { getTest, getSet, saveSet, numbersFor, parseNos, renumber, maskOf, listT
 import { registerInbox } from '../../../core/inbox.js';
 import { go } from '../../../core/shell.js';
 import { gradePrompt, normGrade, validGrade } from './unit-ai.js';
+import { arrangePages } from './unit-pages.js';
 import { esc, SS, AI_KEY, registerStep, inStep, cur, curId, commit, saveOrWarn, refresh, render, goStep, getBox, openTest } from './unit.js';
 
 const TYPE = Object.fromEntries(ITEM_TYPES);
-/* 세션 상태: 올린 스캔은 한 평가에만 붙음. 채점은 한 번에 한 평가만(run: 그 평가의 차례·멈춤) */
-const G = { testId: null, pages: [], idx: [], msg: '', running: new Map(), run: null };
+/* 세션 상태: 올린 스캔은 한 평가에만 붙음(raw: 올린 장, pages: 모아찍기를 자르고 뒷면을 돌린 쪽). 채점은 한 번에 한 평가만(run: 그 평가의 차례·멈춤) */
+const G = { testId: null, raw: [], pages: [], idx: [], msg: '', running: new Map(), run: null };
 const pagesOf = (id, i) => (G.testId === id && G.idx[i]) || [];
 const hasPages = id => G.testId === id && G.pages.length > 0;
 const busy = id => !!G.run && G.run.id === id && (G.run.queue.length > 0 || G.running.size > 0);
@@ -26,6 +27,9 @@ function split(t, pageCount, per) {
   t.students = numbersFor(n, [...rosterExcept(), ...(t.absent || [])]).map(no => ({ no, skip: false, status: 'idle', items: {}, good: '', cheer: '' }));
 }
 const rosterExcept = () => (store.get('class', null) || {}).except || [];
+const arrange = raw => { const s = getSet(); return arrangePages(raw, { twoUp: !!s.twoUp, flipBack: !!s.flipBack }); };
+const pagesMsg = (raw, pages, n, skipped = 0) => `${raw === pages ? `${pages}쪽` : `스캔 ${raw}장 → ${pages}쪽`} · 학생 ${n}명${skipped ? ` · 읽지 못한 파일 ${skipped}개` : ''}`;
+function freeScans() { SS().files.freePages(G.pages); SS().files.freePages(G.raw); G.pages = []; G.raw = []; }
 async function loadAnswers(fileList) {
   const t0 = cur(), id = t0.id, per = Math.max(1, getSet().pagesPer | 0);
   const say = m => { G.msg = m; const el = getBox() && getBox().querySelector('#unAnsMsg'); if (el) el.textContent = m; };
@@ -36,13 +40,16 @@ async function loadAnswers(fileList) {
   try { r = await SS().files.readPages(fileList, say); }
   catch (e) { say(e && e.message === 'PDFJS' ? 'PDF를 읽는 도구를 불러오지 못했어요. 인터넷 연결을 확인하거나 사진으로 올려 주세요.' : '파일을 읽지 못했어요.'); return; }
   if (!r.pages.length) { say('읽을 수 있는 PDF·사진이 없어요.'); return; }
+  let pages;
+  try { pages = await arrange(r.pages); }
+  catch (e) { SS().files.freePages(r.pages); say('스캔을 나누지 못했어요. 다시 올려 주세요.'); return; }
   const t = getTest(id) || t0;
-  const n = Math.ceil(r.pages.length / per);
+  const n = Math.ceil(pages.length / per);
   const apply = () => {
-    if (G.testId) SS().files.freePages(G.pages);
-    G.testId = id; G.pages = r.pages;
-    split(t, r.pages.length, per);
-    G.msg = `${r.pages.length}쪽 · 학생 ${t.students.length}명${r.skipped.length ? ` · 읽지 못한 파일 ${r.skipped.length}개` : ''}`;
+    if (G.testId) freeScans();
+    G.testId = id; G.raw = r.pages; G.pages = pages;
+    split(t, pages.length, per);
+    G.msg = pagesMsg(r.pages.length, pages.length, t.students.length, r.skipped.length);
     commit(t); refresh(id);
   };
   if (G.run && busy(G.run.id)) { say('채점하는 중이에요. 끝나거나 멈춘 뒤에 다시 올려 주세요.'); return; }
@@ -73,6 +80,9 @@ function step2HTML(t) {
         <label class="cls-inline">학생 한 명 <input class="field num" type="number" id="unPagesPer" min="1" max="8" value="${set.pagesPer}"> 쪽</label>
         <span class="muted" id="unAnsMsg">${esc(G.testId === t.id ? G.msg : '')}</span></div>
       <input type="file" id="unAnsFile" accept=".pdf,.png,.jpg,.jpeg,.webp" multiple hidden>
+      <div class="row"><label class="switch"><input type="checkbox" id="unTwoUp"${set.twoUp ? ' checked' : ''}>모아찍기(한 면에 2쪽)</label>
+        <label class="switch"><input type="checkbox" id="unFlipBack"${set.flipBack ? ' checked' : ''}>양면 스캔 뒷면이 거꾸로</label>
+        <span class="muted">모아찍기면 가로로 긴 장을 왼쪽·오른쪽 쪽으로 나눠요. 학생 한 명 쪽 수는 나눈 뒤 쪽 수(문제지 쪽 수)로 적어 주세요.</span></div>
       <div class="row"><label class="cls-inline">결석 번호 <input class="field" id="unAbsent" value="${esc((t.absent || []).join(', '))}" placeholder="예: 5, 12" aria-describedby="unAbsentNote"></label>
         <span class="muted" id="unAbsentNote">시험을 보지 않은 학생 번호를 적으면 뒤 번호가 한 칸씩 밀려요.</span></div>
       <div class="row"><label class="switch"><input type="checkbox" id="unMaskOn"${set.maskOn ? ' checked' : ''}>이름 칸을 가리고 보내기</label>
@@ -312,6 +322,9 @@ document.addEventListener('change', e => {
     if (hasPages(t.id) && !t.students.some(s => s.status === 'done')) { t.students = []; split(t, G.pages.length, per); commit(t); }
     else if (t.students.some(s => s.status === 'done')) toast('이미 채점한 학생이 있어서 지금 나눈 것은 그대로예요. 답안 스캔을 다시 올리면 새 쪽 수로 나눠요.', 6000);
     render();
+  } else if (el.id === 'unTwoUp' || el.id === 'unFlipBack') {
+    saveSet({ ...getSet(), [el.id === 'unTwoUp' ? 'twoUp' : 'flipBack']: el.checked });
+    rearrange(t);
   } else if (el.id === 'unMaskOn') { saveSet({ ...getSet(), maskOn: el.checked }); render(); }
   else if (el.id === 'unAbsent') {
     // 답안 차례(채점 결과)는 그대로 두고 번호만 다시 매김
@@ -325,6 +338,25 @@ document.addEventListener('change', e => {
     t.students[i].no = v; commit(t); render();
   }
 });
+
+/* 모아찍기·뒷면 설정을 바꾸면 올린 스캔을 다시 나눔 (채점한 학생이 있으면 그대로 두고 안내) */
+async function rearrange(t) {
+  if (!hasPages(t.id) || busy(t.id)) { render(); return; }
+  if (t.students.some(s => s.status === 'done')) { toast('이미 채점한 학생이 있어서 지금 나눈 것은 그대로예요. 답안 스캔을 다시 올리면 새 설정으로 나눠요.', 6000); render(); return; }
+  const raw = G.raw, seq = G.seq = (G.seq || 0) + 1;
+  G.msg = '스캔을 다시 나누는 중…';
+  const el = getBox() && getBox().querySelector('#unAnsMsg'); if (el) el.textContent = G.msg;
+  let pages;
+  try { pages = await arrange(raw); } catch (e) { toast('스캔을 나누지 못했어요. 다시 올려 주세요.'); return; }
+  // 그 사이 새 스캔을 올렸거나 설정을 또 바꿈: 이 결과는 버림
+  if (G.raw !== raw || G.seq !== seq) { SS().files.freePages(pages.filter(p => !raw.includes(p))); return; }
+  SS().files.freePages(G.pages.filter(p => !raw.includes(p)));
+  G.pages = pages;
+  const t2 = getTest(t.id) || t;
+  t2.students = []; split(t2, pages.length, Math.max(1, getSet().pagesPer | 0));
+  G.msg = pagesMsg(raw.length, pages.length, t2.students.length);
+  commit(t2); refresh(t2.id);
+}
 
 /* 떠 있는 버튼: 학생 답안 스캔 → 정답지를 넣은 단원평가(최근 것이 먼저)에 넣고 채점 시작. 그런 평가가 없으면 평가 › 평가지 채점 */
 const keyed = () => listTests().filter(s => s.total > 0);

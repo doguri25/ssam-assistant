@@ -3192,6 +3192,33 @@ async function readPdfPages(file, onPage) {
   } finally { doc.destroy(); }
   return out;
 }
+/* PDF 한 쪽의 글 층 → 글. 2쪽 모아찍기(가로 쪽, 가운데 세로 띠가 비고 양쪽에 3줄 넘게)면 왼쪽 단을 다 읽고 오른쪽 단
+   (글 층이 줄마다 왼쪽·오른쪽을 번갈아 내도). 표처럼 가운데를 건너는 글이 있으면 그대로 */
+function pdfPageText(items, w, h) {
+  const flat = () => items.map(it => (it.str || '') + (it.hasEOL ? '\n' : '')).join('');
+  if (!(w > h)) return flat();
+  const mid = w / 2, band = w * 0.02, L = [], R = [];
+  for (const it of items) {
+    const s = it.str || '';
+    if (!s || !it.transform) continue;
+    const x = it.transform[4], x2 = x + (it.width || 0);
+    if (x2 <= mid - band) L.push(it);
+    else if (x >= mid + band) R.push(it);
+    else if (s.trim()) return flat();
+  }
+  const lines = list => new Set(list.filter(it => it.str.trim()).map(it => Math.round(it.transform[5]))).size;
+  if (lines(L) < 3 || lines(R) < 3) return flat();
+  const col = list => {
+    let out = '', y = null;
+    for (const it of list) {
+      const y2 = it.transform[5], fh = Math.abs(it.transform[3]) || it.height || 10;
+      if (y != null && Math.abs(y2 - y) > fh * 0.5) out += '\n';
+      out += it.str; y = y2;
+    }
+    return out;
+  };
+  return col(L) + '\n' + col(R);
+}
 async function readImagePage(file) {
   const bmp = await loadBitmap(file);
   const s = Math.min(1, 1800 / Math.max(bmp.width, bmp.height));
@@ -5322,8 +5349,8 @@ window.SSAM = {
       try {
         for (let i = 1; i <= doc.numPages; i++) {
           const pg = await doc.getPage(i);
-          const c = await pg.getTextContent();
-          out.push(c.items.map(it => (it.str || '') + (it.hasEOL ? '\n' : '')).join(''));
+          const c = await pg.getTextContent(), v = pg.getViewport({ scale: 1 });
+          out.push(pdfPageText(c.items, v.width, v.height));
           pg.cleanup();
         }
       } finally { doc.destroy(); }
