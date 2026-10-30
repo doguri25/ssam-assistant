@@ -38,20 +38,8 @@ function start() {
   });
   el.addEventListener('click', () => { invoke('bubble_action', { action: 'open' }); down = null; });
 
-  // 오른쪽 클릭 메뉴
-  el.addEventListener('contextmenu', async e => {
-    e.preventDefault();
-    const act = action => () => invoke('bubble_action', { action });
-    try {
-      const menu = await T.menu.Menu.new({ items: [
-        { id: 'open', text: '쌤비서 열기', action: act('open') },
-        { id: 'pick', text: '파일 고르기…', action: act('pick') },
-        { id: 'hide', text: '버튼 숨기기', action: act('hide') },
-        { id: 'quit', text: '쌤비서 끝내기', action: act('quit') }
-      ] });
-      await menu.popup();
-    } catch (err) {}
-  });
+  // 오른쪽 클릭 메뉴: Rust가 띄우고 누른 항목도 Rust가 받음 (화면 쪽 메뉴 항목 동작은 Tauri가 이어 주지 않음)
+  el.addEventListener('contextmenu', e => { e.preventDefault(); down = null; invoke('bubble_menu'); });
 
   // 파일을 끌어 오면 초록, 놓으면 경로를 넘김
   T.webview.getCurrentWebview().onDragDropEvent(({ payload }) => {

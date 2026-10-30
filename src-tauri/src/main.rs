@@ -311,6 +311,7 @@ fn main() {
             Ok(())
         })
         .on_window_event(bubble::on_window_event)
+        .on_menu_event(bubble::on_menu_event)
         .invoke_handler(tauri::generate_handler![
             uninstall_info,
             run_uninstall,
@@ -324,7 +325,8 @@ fn main() {
             bubble::bubble_config,
             bubble::inbox_take,
             bubble::inbox_read,
-            bubble::bubble_action
+            bubble::bubble_action,
+            bubble::bubble_menu
         ])
         .run(tauri::generate_context!())
         .expect("쌤비서를 실행하지 못했어요");

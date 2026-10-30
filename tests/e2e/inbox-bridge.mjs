@@ -102,7 +102,10 @@ await run('inbox-bridge', [
     await b.waitForFunction(() => typeof window.__dd === 'function');
     await b.evaluate(() => window.__dd({ payload: { type: 'drop', paths: ['C:\\자료\\정답지.hwp'], position: { x: 1, y: 1 } } }));
     await b.click('#bubble');
+    // 오른쪽 클릭 메뉴는 Rust가 띄우고 받음(bubble_menu) — 화면 쪽 메뉴 항목 동작은 Tauri가 버려서 눌러도 반응이 없었음
+    await b.click('#bubble', { button: 'right' });
     const c = await b.evaluate(() => window.__calls);
+    assert(c.some(x => x[0] === 'bubble_menu'), '오른쪽 클릭 메뉴: ' + JSON.stringify(c));
     assert(c.some(x => x[0] === 'inbox_take' && x[1].paths[0] === 'C:\\자료\\정답지.hwp'), JSON.stringify(c));
     assert(c.some(x => x[0] === 'bubble_action' && x[1].action === 'open'), JSON.stringify(c));
     // 지난 자리로 옮기고, 옮기면 쌤비서와 같은 저장소(ssam:bubble)에 적음

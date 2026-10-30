@@ -138,16 +138,62 @@ pub fn inbox_read(state: State<Bubble>, path: String) -> Result<tauri::ipc::Resp
     read_allowed(&state.allowed, Path::new(&path), MAX_BYTES).map(tauri::ipc::Response::new)
 }
 
+/// 오른쪽 클릭 메뉴 (항목 id, 글). 화면(JS)에서 만든 메뉴 항목의 동작은 Tauri가 이어 주지 않아 눌러도 반응이 없었음:
+/// Rust가 띄우고 누른 항목은 id로 받음(on_menu_event)
+pub const MENU: [(&str, &str); 4] = [
+    ("bubble:open", "쌤비서 열기"),
+    ("bubble:pick", "파일 고르기…"),
+    ("bubble:hide", "버튼 숨기기"),
+    ("bubble:quit", "쌤비서 끝내기"),
+];
+
+/// 메뉴 항목 id → 버튼 동작 (버튼 메뉴 항목이 아니면 None)
+pub fn menu_action(id: &str) -> Option<&str> {
+    if MENU.iter().any(|(m, _)| *m == id) {
+        id.strip_prefix("bubble:")
+    } else {
+        None
+    }
+}
+
+/// 버튼 창에서 오른쪽 클릭: 그 자리에 메뉴를 띄움 (Windows는 고를 때까지 기다렸다가 메뉴 이벤트로 알림)
+#[tauri::command]
+pub fn bubble_menu(app: AppHandle, window: tauri::Window) -> Result<(), String> {
+    use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
+    let err = |e: tauri::Error| e.to_string();
+    let items = MENU
+        .iter()
+        .map(|(id, text)| MenuItem::with_id(&app, *id, *text, true, None::<&str>))
+        .collect::<tauri::Result<Vec<_>>>()
+        .map_err(err)?;
+    let sep = PredefinedMenuItem::separator(&app).map_err(err)?;
+    // 쌤비서 열기 · 파일 고르기 | 버튼 숨기기 · 끝내기
+    let list: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![&items[0], &items[1], &sep, &items[2], &items[3]];
+    let menu = Menu::with_items(&app, &list).map_err(err)?;
+    window.popup_menu(&menu).map_err(err)
+}
+
+/// 앱 메뉴 이벤트 중 버튼 메뉴 항목만 처리
+pub fn on_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
+    if let Some(action) = menu_action(event.id().as_ref()) {
+        do_action(app, action);
+    }
+}
+
 /// 버튼 메뉴: open(쌤비서 열기) · pick(파일 고르기) · hide(버튼 숨기기) · quit(끝내기)
 #[tauri::command]
 pub fn bubble_action(app: AppHandle, action: String) {
-    match action.as_str() {
-        "open" => show_main(&app),
+    do_action(&app, &action);
+}
+
+fn do_action(app: &AppHandle, action: &str) {
+    match action {
+        "open" => show_main(app),
         "pick" => {
-            show_main(&app);
+            show_main(app);
             let _ = app.emit_to("main", "inbox:pick", ());
         }
-        "hide" => hide_bubble(&app),
+        "hide" => hide_bubble(app),
         "quit" => app.exit(0),
         _ => {}
     }
@@ -214,6 +260,17 @@ mod tests {
         read_allowed(&allowed, &c, MAX_BYTES).unwrap();
         assert_eq!(read_allowed(&allowed, &c, MAX_BYTES).unwrap_err(), "NOT_ALLOWED");
         let _ = std::fs::remove_file(c);
+    }
+
+    #[test]
+    fn 오른쪽_클릭_메뉴_항목은_버튼_동작으로() {
+        assert_eq!(menu_action("bubble:open"), Some("open"));
+        assert_eq!(menu_action("bubble:pick"), Some("pick"));
+        assert_eq!(menu_action("bubble:hide"), Some("hide"));
+        assert_eq!(menu_action("bubble:quit"), Some("quit"));
+        assert_eq!(menu_action("quit"), None);
+        assert_eq!(menu_action("other:open"), None);
+        assert_eq!(MENU.len(), 4);
     }
 
     #[test]
