@@ -183,3 +183,29 @@ function mount() {
   syncFab();
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
+
+/* ---------- Windows 앱: 바탕화면 위 버튼 창(bubble)과 잇기 ---------- */
+// 버튼 창은 끌어 놓은 경로만 Rust에 넘기고, Rust가 이 창에 inbox:files로 알림 → 그 경로만 inbox_read로 읽어 받음
+function askPick() {
+  SS().openSheet(`<h3>넣을 파일을 골라 주세요</h3><p class="muted" style="margin:0">어떤 파일이든 넣으면 쌤비서가 알아보고 그 메뉴에서 해 줘요.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>닫기</button><button class="btn primary" type="button" id="ibPick">파일 고르기</button></div>`,
+  sh => sh.querySelector('#ibPick').addEventListener('click', () => { SS().closeSheet(); if (input) input.click(); }));
+}
+function bridge() {
+  const T = window.__TAURI__;
+  if (!T || !T.core || !T.event) return;
+  const sync = s => { setFabHidden(true); Promise.resolve(T.core.invoke('bubble_config', { enabled: s.on, keepOnClose: s.keepOnClose, autostart: s.autostart })).catch(() => {}); };
+  sync(getInboxSettings());
+  document.addEventListener('inbox:settings', e => sync(e.detail));
+  T.event.listen('inbox:files', async ({ payload }) => {
+    const files = [];
+    for (const f of payload || []) {
+      try { files.push(new File([await T.core.invoke('inbox_read', { path: f.path })], f.name)); }
+      catch (e) { toast(`「${f.name}」을(를) 읽지 못했어요${String(e) === 'TOO_BIG' ? ' (60MB보다 커요)' : ''}.`, 6000); }
+    }
+    receive(files);
+  }).catch(() => {});
+  T.event.listen('bubble:off', () => { setInboxSettings({ on: false }); toast('떠 있는 버튼을 숨겼어요. 설정 › 화면에서 다시 켤 수 있어요.', 6000); }).catch(() => {});
+  T.event.listen('inbox:pick', () => askPick()).catch(() => {});
+}
+bridge();

@@ -19,7 +19,26 @@
         "minWidth": 380,
         "minHeight": 560,
         "center": true,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "visible": false
+      },
+      {
+        "label": "bubble",
+        "title": "쌤비서 버튼",
+        "url": "bubble.html",
+        "width": 72,
+        "height": 72,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "focus": false,
+        "visible": false,
+        "dragDropEnabled": true
       }
     ],
     "security": {

@@ -1,0 +1,7 @@
+/* 바탕화면 위 버튼 창(Windows 앱): 창은 투명, 가운데 둥근 「쌤」 */
+html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden;user-select:none}
+#bubble{position:absolute;inset:6px;border:0;border-radius:50%;cursor:grab;font:800 24px/1 "Noto Sans KR","Malgun Gothic",sans-serif;
+  color:#fff;background:#4f46e5;box-shadow:0 4px 12px rgba(0,0,0,.35);transition:transform .12s}
+#bubble:hover{transform:scale(1.05)}
+#bubble.over{background:#16a34a;transform:scale(1.12)}
+#bubble:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}

@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod ai_proxy;
+mod bubble;
 mod files;
 mod neis;
 mod updater;
@@ -283,6 +284,10 @@ fn main() {
     }
 
     tauri::Builder::default()
+        // 쌤비서를 또 켜면 새로 띄우지 않고 이미 켜진 창을 앞으로 (떠 있는 버튼만 남아 있을 때도)
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| bubble::show_main(app)))
+        // 떠 있는 버튼: 컴퓨터를 켜면 버튼만 띄우기(--bubble)
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--bubble"])))
         // API 키 받는 곳 같은 바깥 링크를 기본 브라우저로 열기
         .plugin(tauri_plugin_opener::init())
         // 나이스 자동 붙여넣기: 준비했을 때만 Ctrl+V(와 붙여넣는 동안 Esc)를 잠깐 맡음
@@ -292,6 +297,15 @@ fn main() {
                 .build(),
         )
         .manage(neis::Neis::default())
+        .manage(bubble::Bubble::default())
+        // 쌤비서 창은 숨긴 채 만들어 두고, 컴퓨터를 켜며 버튼만 띄운 경우(--bubble)가 아니면 보임
+        .setup(|app| {
+            if !std::env::args().any(|a| a == "--bubble") {
+                bubble::show_main(app.handle());
+            }
+            Ok(())
+        })
+        .on_window_event(bubble::on_window_event)
         .invoke_handler(tauri::generate_handler![
             uninstall_info,
             run_uninstall,
@@ -301,7 +315,11 @@ fn main() {
             neis::neis_arm,
             neis::neis_disarm,
             ai_proxy::ai_proxy,
-            files::save_download
+            files::save_download,
+            bubble::bubble_config,
+            bubble::inbox_take,
+            bubble::inbox_read,
+            bubble::bubble_action
         ])
         .run(tauri::generate_context!())
         .expect("쌤비서를 실행하지 못했어요");

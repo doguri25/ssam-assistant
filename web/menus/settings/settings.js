@@ -47,7 +47,10 @@ function inboxCard() {
   return card('떠 있는 버튼', `<p class="muted" style="margin-top:0">오른쪽 아래 「쌤」 버튼에 아무 파일이나 넣으면, 평가지인지 계획인지 알아보고 그 메뉴에서 해 줘요.</p>
     <label class="set-radio"><input type="checkbox" id="ibSetOn" data-ib-set="on"${s.on ? ' checked' : ''}> <b>버튼 보이기</b></label>
     <fieldset class="set-fs"><legend class="lab">알아본 뒤</legend>${radio('mode', 'ibSetModeConfirm', 'confirm', '확인 카드', '무엇으로 보이는지 보여 주고 [실행]을 누르면 해요')}${radio('mode', 'ibSetModeDirect', 'direct', '바로 실행', '모자란 값이 없으면 카드 없이 바로 해요')}</fieldset>
-    <fieldset class="set-fs"><legend class="lab">계획 파일</legend>${radio('plan', 'ibSetPlanDraft', 'draft', '초안까지', '새 계획을 만들고 AI 초안까지 써요')}${radio('plan', 'ibSetPlanOpen', 'open', '자료로만', '새 계획에 자료로만 넣고 열어요')}</fieldset>`);
+    <fieldset class="set-fs"><legend class="lab">계획 파일</legend>${radio('plan', 'ibSetPlanDraft', 'draft', '초안까지', '새 계획을 만들고 AI 초안까지 써요')}${radio('plan', 'ibSetPlanOpen', 'open', '자료로만', '새 계획에 자료로만 넣고 열어요')}</fieldset>
+    ${window.__TAURI__ ? `<p class="muted">Windows 앱에서는 버튼이 바탕화면 위에 떠 있어요. 끌어서 옮기고, 오른쪽 클릭으로 메뉴를 열어요.</p>
+    <label class="set-radio"><input type="checkbox" id="ibSetKeep" data-ib-set="keepOnClose"${s.keepOnClose ? ' checked' : ''}> <b>쌤비서 창을 닫아도 버튼은 남기기</b> <span class="muted">끄면 창을 닫을 때 버튼도 같이 닫혀요</span></label>
+    <label class="set-radio"><input type="checkbox" id="ibSetAuto" data-ib-set="autostart"${s.autostart ? ' checked' : ''}> <b>컴퓨터를 켜면 버튼 띄우기</b> <span class="muted">쌤비서 창은 열지 않고 버튼만 떠요</span></label>` : ''}`);
 }
 
 const VIEWS = {
@@ -334,7 +337,7 @@ document.addEventListener('click', e => {
 
 document.addEventListener('change', e => {
   const ib = e.target.dataset && e.target.dataset.ibSet;
-  if (ib && box && box.contains(e.target)) { setInboxSettings({ [ib]: ib === 'on' || e.target.type === 'checkbox' ? e.target.checked : e.target.value }); toast('떠 있는 버튼 설정을 바꿨어요'); return; }
+  if (ib && box && box.contains(e.target)) { setInboxSettings({ [ib]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }); toast('떠 있는 버튼 설정을 바꿨어요'); return; }
   if (!box || !box.contains(e.target) || !['rosterFile', 'backupFile'].includes(e.target.id)) return;
   const f = e.target.files[0], id = e.target.id; e.target.value = '';
   if (f) (id === 'rosterFile' ? importRoster : restoreFile)(f);

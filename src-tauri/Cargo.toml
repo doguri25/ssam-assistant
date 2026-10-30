@@ -20,6 +20,9 @@ reqwest = { version = "0.13", default-features = false, features = ["native-tls"
 sha2 = "0.10"
 # 나이스 자동 붙여넣기: 전역 단축키(Ctrl+V·Esc), 클립보드
 tauri-plugin-global-shortcut = "2.4"
+# 떠 있는 버튼: 또 켜면 이미 켜진 쌤비서를 앞으로, 컴퓨터를 켜면 버튼 띄우기
+tauri-plugin-single-instance = "2"
+tauri-plugin-autostart = "2"
 arboard = { version = "3.6", default-features = false }
 
 # 나이스 자동 붙여넣기: 키·글자 입력 보내기, 앞에 있는 창과 그 프로그램 확인 (Windows 기본 기능만 씀)

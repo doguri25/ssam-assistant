@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "bubble",
+  "description": "바탕화면 위 버튼 창: 끌어서 옮기기·위치·오른쪽 클릭 메뉴",
+  "windows": [
+    "bubble"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-position"
+  ]
+}
