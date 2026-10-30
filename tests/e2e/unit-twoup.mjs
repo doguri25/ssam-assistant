@@ -56,6 +56,7 @@ const look = b64s => page.evaluate(async b64s => {
   }
   return out;
 }, b64s);
+let twoUpPdf = null;
 const until = async (fn, ms = 8000) => { const end = Date.now() + ms; while (!(await fn())) { if (Date.now() > end) throw new Error('시간 초과'); await new Promise(r => setTimeout(r, 50)); } };
 
 await run('unit-twoup', [
@@ -85,19 +86,71 @@ await run('unit-twoup', [
   }],
   ['2쪽 모아찍기 PDF 문제지(왼쪽·오른쪽 단이 한 줄씩 섞인 글 층): 왼쪽 단 1~5번, 오른쪽 단 6~10번 차례로 읽음', async () => {
     // 왼쪽·오른쪽 단의 줄을 같은 높이에 나란히 둔 가로 쪽 → PDF (글 층은 위에서 아래로 줄마다 왼쪽·오른쪽이 번갈아 나옴)
-    const q = n => `<p>${n}. 다음 중 알맞은 것은 무엇입니까?</p><p>① 가 ② 나 ③ 다 ④ 라</p>`;
+    const q = n => `<p>${n}. 다음 중 ${['사과', '배', '감', '귤', '밤', '콩', '쌀', '팥', '무', '파'][n - 1]}에 알맞은 것은 무엇입니까?</p><p>① 가 ② 나 ③ 다 ④ 라</p>`;
     const html = `<html><body style="margin:0;font:16px sans-serif"><div style="display:grid;grid-template-columns:1fr 1fr;gap:60px;padding:30px">
       ${[1, 2, 3, 4, 5].map(n => `<div>${q(n)}</div><div>${q(n + 5)}</div>`).join('')}</div></body></html>`;
     const p2 = await t.ctx.newPage();
     await p2.setContent(html);
     const pdf = await p2.pdf({ width: '297mm', height: '210mm', printBackground: true });
     await p2.close();
-    const text = await page.evaluate(async b64 => {
-      const u8 = Uint8Array.from(atob(b64), ch => ch.charCodeAt(0));
-      return window.SSAM.files.pdfText(u8);
+    const [cols, plain] = await page.evaluate(async b64 => {
+      const u8 = () => Uint8Array.from(atob(b64), ch => ch.charCodeAt(0));
+      return [await window.SSAM.files.pdfText(u8(), { columns: true }), await window.SSAM.files.pdfText(u8())];
     }, pdf.toString('base64'));
-    const nos = [...text.matchAll(/(\d+)\. 다음/g)].map(m => Number(m[1]));
-    assert(nos.join(',') === '1,2,3,4,5,6,7,8,9,10', nos.join(','));
+    const nos = t => [...t.matchAll(/(\d+)\. 다음/g)].map(m => Number(m[1])).join(',');
+    assert(nos(cols) === '1,2,3,4,5,6,7,8,9,10', nos(cols));
+    // 다른 메뉴(계획서·견적서 표 등)는 단을 나누지 않고 글 층 그대로
+    assert(nos(plain) === '1,6,2,7,3,8,4,9,5,10', nos(plain));
+    twoUpPdf = pdf;
+  }],
+  ['단원평가 [평가지 넣기]에 2쪽 모아찍기 PDF: 10문항을 차례대로', async () => {
+    const id2 = await page.evaluate(async () => {
+      const m = await import('./menus/evaluate/unit/unit-model.js'), s = await import('./menus/evaluate/unit/unit-sample.js');
+      const x = m.newTest({ meta: { ...s.SAMPLE_META, round: 2, date: '2026-10-20' }, key: { domains: ['지식', '이해'], items: s.SAMPLE_ITEMS }, paper: { text: '' } });
+      m.saveTest(x); return x.id;
+    });
+    await page.reload(); await page.waitForTimeout(400);
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="unit"]');
+    await page.click(`${V} [data-un-open="${id2}"]`);
+    await page.click(`${V} .steps [data-step="1"]`);
+    await page.setInputFiles(`${V} #unPaperFile`, { name: '모아찍기 문제지.pdf', mimeType: 'application/pdf', buffer: twoUpPdf });
+    await page.waitForFunction(() => /10문항/.test((document.querySelector('.unit-box #unPaperMsg') || {}).textContent || ''));
+    const saved = await page.evaluate(id => JSON.parse(localStorage.getItem('ssam:unit:t:' + id)).paper.text, id2);
+    const qs = [...saved.matchAll(/(\d+)\. 다음/g)].map(m => m[1]).join(',');
+    assert(qs === '1,2,3,4,5,6,7,8,9,10', qs);
+  }],
+  ['떠 있는 버튼에 2쪽 모아찍기 PDF 문제지를 넣어도 단원평가 문제지로 알아봄', async () => {
+    await page.setInputFiles('#inboxFile', { name: '모아찍기.pdf', mimeType: 'application/pdf', buffer: twoUpPdf });
+    await page.waitForSelector('#sheetRoot .sheet #ibKind');
+    const kind = await page.inputValue('#sheetRoot .sheet #ibKind');
+    assert(kind === 'unit-paper', kind + ' · ' + await page.textContent('#sheetRoot .sheet'));
+    await page.click('#sheetRoot .sheet [data-close]');
+  }],
+  ['설정을 바꾸면 이 평가의 이름 칸은 지움(쪽 모양이 바뀌어 다시 정해야 함), 다시 나누는 동안 채점 시작은 기다리라고 함(AI 안 부름)', async () => {
+    const id3 = await page.evaluate(async () => {
+      const m = await import('./menus/evaluate/unit/unit-model.js'), s = await import('./menus/evaluate/unit/unit-sample.js');
+      const x = m.newTest({ meta: { ...s.SAMPLE_META, round: 3, date: '2026-10-21' }, key: { domains: ['지식', '이해'], items: s.SAMPLE_ITEMS }, paper: { text: '' } });
+      x.mask = [{ x: 0.05, y: 0.02, w: 0.2, h: 0.05 }]; x.maskAll = false;
+      m.saveTest(x); return x.id;
+    });
+    await page.reload(); await page.waitForTimeout(400);
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="unit"]');
+    await page.click(`${V} [data-un-open="${id3}"]`);
+    await page.setInputFiles(`${V} #unAnsFile`, files);
+    await page.waitForFunction(() => document.querySelectorAll('.unit-box [data-st]').length === 2);
+    // 그림 읽기를 느리게 해서 다시 나누는 동안 채점을 누름
+    await page.evaluate(() => { const real = window.createImageBitmap; window.createImageBitmap = async (...a) => { await new Promise(r => setTimeout(r, 300)); return real.apply(window, a); }; window.__realCIB = real; });
+    const n0 = sent.length;
+    await page.uncheck(`${V} #unFlipBack`);
+    const t3 = await page.evaluate(id => JSON.parse(localStorage.getItem('ssam:unit:t:' + id)), id3);
+    assert(!(t3.mask && t3.mask.length), '이름 칸이 남음: ' + JSON.stringify(t3.mask));
+    await page.click(`${V} [data-un="toGrade"]`);
+    await page.click(`${V} [data-un="grade"]`);
+    await page.waitForFunction(() => /나누는 중/.test(document.body.textContent));
+    await page.waitForTimeout(300);
+    assert(sent.length === n0, 'AI를 부름');
+    await page.evaluate(() => { window.createImageBitmap = window.__realCIB; });
+    await page.check(`${V} #unFlipBack`).catch(() => {});
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

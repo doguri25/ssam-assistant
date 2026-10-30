@@ -15,7 +15,8 @@ export const isFileCode = code => !!MSG[code];
 const bridge = () => (window.SSAM && window.SSAM.files) || {};
 const tidy = s => String(s || '').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 
-export async function readText(file) {
+/* opts.columns: 2쪽 모아찍기 PDF는 왼쪽 단을 먼저 (단원평가 문제지·정답지) */
+export async function readText(file, opts = {}) {
   const name = String(file && file.name || '');
   const ext = (/\.([a-z0-9]+)$/i.exec(name) || [, ''])[1].toLowerCase();
   if (!['hwp', 'hwpx', 'pdf', 'csv', 'xlsx', 'txt'].includes(ext)) throw { code: 'UNSUPPORTED' };
@@ -24,7 +25,7 @@ export async function readText(file) {
   try {
     if (ext === 'hwp' || ext === 'hwpx') return tidy(await bridge().readHwpText(u8));
     if (ext === 'pdf') {
-      const t = await bridge().pdfText(u8);
+      const t = await bridge().pdfText(u8, { columns: !!opts.columns });
       if (String(t).replace(/\s/g, '').length < 20) throw { code: 'PDF_NO_TEXT' };
       return tidy(t);
     }

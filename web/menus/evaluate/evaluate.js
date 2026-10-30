@@ -3192,11 +3192,11 @@ async function readPdfPages(file, onPage) {
   } finally { doc.destroy(); }
   return out;
 }
-/* PDF 한 쪽의 글 층 → 글. 2쪽 모아찍기(가로 쪽, 가운데 세로 띠가 비고 양쪽에 3줄 넘게)면 왼쪽 단을 다 읽고 오른쪽 단
-   (글 층이 줄마다 왼쪽·오른쪽을 번갈아 내도). 표처럼 가운데를 건너는 글이 있으면 그대로 */
-function pdfPageText(items, w, h) {
+/* PDF 한 쪽의 글 층 → 글. columns(단원평가 문제지·정답지만): 2쪽 모아찍기(가로 쪽, 가운데 세로 띠가 비고 양쪽에 3줄 넘게)면
+   왼쪽 단을 다 읽고 오른쪽 단(글 층이 줄마다 왼쪽·오른쪽을 번갈아 내도). 가운데를 건너는 글·돌린 쪽·기운 글이 있으면 그대로 */
+function pdfPageText(items, w, h, columns, rotate) {
   const flat = () => items.map(it => (it.str || '') + (it.hasEOL ? '\n' : '')).join('');
-  if (!(w > h)) return flat();
+  if (!columns || !(w > h) || rotate % 360 || items.some(it => it.transform && (it.transform[1] || it.transform[2]))) return flat();
   const mid = w / 2, band = w * 0.02, L = [], R = [];
   for (const it of items) {
     const s = it.str || '';
@@ -5341,8 +5341,8 @@ window.SSAM = {
     readHwpText: async u8 => blocksToText(u8[0] === 0xD0 && u8[1] === 0xCF ? await parseHWP(u8) : await parseHWPX(u8, DOMParser)),
     // 단원평가 정답지: 합친 칸을 풀어 쓴 표 글
     readHwpGridText: async u8 => blocksToGridText(u8[0] === 0xD0 && u8[1] === 0xCF ? await parseHWP(u8) : await parseHWPX(u8, DOMParser)),
-    // PDF의 글자 층 → 글 (쪽 사이는 빈 줄)
-    async pdfText(u8) {
+    // PDF의 글자 층 → 글 (쪽 사이는 빈 줄). { columns: true }면 2쪽 모아찍기 쪽은 왼쪽 단을 먼저
+    async pdfText(u8, opts = {}) {
       const lib = await loadPdfJs();
       const doc = await lib.getDocument({ data: u8, isEvalSupported: false }).promise;
       const out = [];
@@ -5350,7 +5350,7 @@ window.SSAM = {
         for (let i = 1; i <= doc.numPages; i++) {
           const pg = await doc.getPage(i);
           const c = await pg.getTextContent(), v = pg.getViewport({ scale: 1 });
-          out.push(pdfPageText(c.items, v.width, v.height));
+          out.push(pdfPageText(c.items, v.width, v.height, !!opts.columns, pg.rotate || 0));
           pg.cleanup();
         }
       } finally { doc.destroy(); }

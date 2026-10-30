@@ -746,8 +746,7 @@ registerInbox('event-plan', {
 });
 /* 떠 있는 버튼: 설문 응답 CSV → 행사 고르기(확정한 행사가 먼저) → 결과 보고서 */
 registerInbox('survey', {
-  one: true,
-  act: () => '행사 만족도 설문 결과로 넣고 결과 보고서 쓰기',
+  act: files => (files.length > 1 ? `행사 만족도 설문 결과로 넣고 결과 보고서 쓰기 (한 행사에 하나씩: 「${files[0].name}」만)` : '행사 만족도 설문 결과로 넣고 결과 보고서 쓰기'),
   fields: () => {
     const l = listEventPlans();
     if (!l.length) return [];
@@ -762,7 +761,8 @@ registerInbox('survey', {
     ev = e; saved = true; setCurrentEvent(e.id);
     ev.step = 4; ev.maxStep = Math.max(ev.maxStep, 4); persist(); render();
     await addCsv(files[0]);
-    return '';
+    // 한 행사의 설문 결과는 하나라 여러 파일을 차례로 넣으면 앞 결과를 덮음
+    return files.length > 1 ? `설문 CSV는 행사마다 하나씩 넣어요. 「${files[0].name}」만 넣었어요. 나머지는 다시 넣어 행사를 골라 주세요.` : '';
   }
 });
 /* 떠 있는 버튼 › 지침: 지금 행사의 참고 자료로 */

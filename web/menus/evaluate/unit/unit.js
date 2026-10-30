@@ -154,7 +154,7 @@ async function readKeyText(file) {
   if (/\.hwpx?$/i.test(file.name || '') && SS().files && SS().files.readHwpGridText) {
     try { return String(await SS().files.readHwpGridText(new Uint8Array(await file.arrayBuffer()))).replace(/\r\n?/g, '\n').trim(); } catch (e) { /* 아래로 */ }
   }
-  return readText(file);
+  return readText(file, { columns: true });
 }
 
 async function loadKey(file) {
@@ -196,7 +196,7 @@ async function loadPaper(file) {
   const t0 = cur(), id = t0.id;
   setMsg(id, 'paper', `「${file.name}」 읽는 중…`);
   let text;
-  try { text = await readText(file); } catch (e) { setMsg(id, 'paper', fileMessage(e && e.code)); return; }
+  try { text = await readText(file, { columns: true }); } catch (e) { setMsg(id, 'paper', fileMessage(e && e.code)); return; }
   text = splitCombined(text).paper || text; // 정답이 붙은 문제지면 정답 앞까지만
   const p = parsePaper(text), t = testOf(id, t0);
   if (!t) return;

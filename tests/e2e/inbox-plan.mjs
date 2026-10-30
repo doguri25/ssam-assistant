@@ -1,5 +1,6 @@
 // 떠 있는 버튼 › 계획: 작년 학급운영계획·업무 계획·행사 계획 → 새 계획(입력 칸) → 초안까지, 자료로만, AI 없음, 지침 → 어느 계획에, 설문 → 행사 결과
 import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { open, run, assert, mockClaude, FIXTURES } from './helpers.mjs';
 
 const t = await open();
@@ -110,6 +111,15 @@ await run('inbox-plan', [
     await runCard();
     await page.waitForFunction(async () => { const m = await import('./menus/plan/event-model.js'); const e = m.listEventPlans().find(x => x.name === '가을 운동회'); return e && e.survey && e.survey.report === '결과 보고서'; }, null, { timeout: 10000 });
     assert(await page.isVisible('#menuTabs [data-tab="event"][aria-current="page"]'), '행사계획 탭');
+  }],
+  ['설문 CSV 두 개를 함께 넣으면 고른 행사에 하나만 넣고 나머지는 다시 넣으라고 안내(앞 결과를 덮지 않음)', async () => {
+    const body = readFileSync(join(FIXTURES, 'survey-12.csv'));
+    const n0 = has('[설문 결과]');
+    await pick([{ name: '응답 가.csv', mimeType: 'text/csv', buffer: body }, { name: '응답 나.csv', mimeType: 'text/csv', buffer: body }]);
+    await runCard();
+    await page.waitForFunction(() => /하나씩/.test(document.body.textContent), null, { timeout: 10000 });
+    await page.waitForTimeout(800);
+    assert(has('[설문 결과]') - n0 === 1, String(has('[설문 결과]') - n0));
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

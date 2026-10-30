@@ -111,6 +111,18 @@ await run('inbox-eval', [
     assert(mine && mine[1].includes('2026-10-30') && mine[1].includes('2명 채점함'), JSON.stringify(opts));
     await page.click(`${sheet} [data-close]`);
   }],
+  ['채점한 평가에 학생 수가 다른 답안을 넣으면 「학생 수가 달라요」만 묻고 채점은 시작하지 않음', async () => {
+    const n0 = prompts.filter(p => p.startsWith('[단원평가 채점]')).length;
+    await pick([await shot(350, 470)]);
+    await page.waitForSelector(`${sheet} [data-ib-field="test"]`);
+    await page.selectOption(`${sheet} [data-ib-field="test"]`, S);
+    await runCard();
+    await page.waitForSelector('#sheetRoot #unRedoOk');
+    await page.waitForTimeout(500);
+    assert(prompts.filter(p => p.startsWith('[단원평가 채점]')).length === n0, 'AI를 부름');
+    assert((await page.textContent('.unit-box .steps [aria-current="step"]')).includes('답안'), '채점 단계로 감');
+    await page.click('#sheetRoot [data-close]');
+  }],
   ['교과 평가계획 → 교과 평어에 계획이 바뀜(카드에 바뀐다고 적음)', async () => {
     await pick(join(FIXTURES, 'eval-plan.txt'));
     await page.waitForSelector(sheet);

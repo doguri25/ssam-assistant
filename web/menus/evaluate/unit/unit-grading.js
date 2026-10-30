@@ -34,15 +34,15 @@ async function loadAnswers(fileList) {
   const t0 = cur(), id = t0.id, per = Math.max(1, getSet().pagesPer | 0);
   const say = m => { G.msg = m; const el = getBox() && getBox().querySelector('#unAnsMsg'); if (el) el.textContent = m; };
   // 채점하는 동안 스캔을 바꾸면 채점 중인 학생에게 다른 쪽이 붙음: 끝나거나 멈춘 뒤에
-  if (busyOther(id)) { say('다른 평가를 채점하는 중이에요. 그 채점이 끝나거나 멈춘 뒤에 올려 주세요.'); return; }
-  if (busy(id)) { say('채점하는 중이에요. 끝나거나 멈춘 뒤에 다시 올려 주세요.'); return; }
+  if (busyOther(id)) { say('다른 평가를 채점하는 중이에요. 그 채점이 끝나거나 멈춘 뒤에 올려 주세요.'); return false; }
+  if (busy(id)) { say('채점하는 중이에요. 끝나거나 멈춘 뒤에 다시 올려 주세요.'); return false; }
   let r;
   try { r = await SS().files.readPages(fileList, say); }
-  catch (e) { say(e && e.message === 'PDFJS' ? 'PDF를 읽는 도구를 불러오지 못했어요. 인터넷 연결을 확인하거나 사진으로 올려 주세요.' : '파일을 읽지 못했어요.'); return; }
-  if (!r.pages.length) { say('읽을 수 있는 PDF·사진이 없어요.'); return; }
+  catch (e) { say(e && e.message === 'PDFJS' ? 'PDF를 읽는 도구를 불러오지 못했어요. 인터넷 연결을 확인하거나 사진으로 올려 주세요.' : '파일을 읽지 못했어요.'); return false; }
+  if (!r.pages.length) { say('읽을 수 있는 PDF·사진이 없어요.'); return false; }
   let pages;
   try { pages = await arrange(r.pages); }
-  catch (e) { SS().files.freePages(r.pages); say('스캔을 나누지 못했어요. 다시 올려 주세요.'); return; }
+  catch (e) { SS().files.freePages(r.pages); say('스캔을 나누지 못했어요. 다시 올려 주세요.'); return false; }
   const t = getTest(id) || t0;
   const n = Math.ceil(pages.length / per);
   const apply = () => {
@@ -52,14 +52,15 @@ async function loadAnswers(fileList) {
     G.msg = pagesMsg(r.pages.length, pages.length, t.students.length, r.skipped.length);
     commit(t); refresh(id);
   };
-  if (G.run && busy(G.run.id)) { say('채점하는 중이에요. 끝나거나 멈춘 뒤에 다시 올려 주세요.'); return; }
+  if (G.run && busy(G.run.id)) { say('채점하는 중이에요. 끝나거나 멈춘 뒤에 다시 올려 주세요.'); return false; }
   if (t.students.length && t.students.length !== n && t.students.some(s => s.status === 'done')) {
     SS().openSheet(`<h3>학생 수가 달라요</h3><p class="muted" style="margin:0">채점한 학생은 ${t.students.length}명인데 새 스캔은 ${n}명이에요. 새로 나누면 채점한 결과가 지워져요.</p>
       <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="unRedoOk">새로 나누기</button></div>`,
     sh => sh.querySelector('#unRedoOk').addEventListener('click', () => { t.students = []; SS().closeSheet(); apply(); }));
-    return;
+    return false; // 새로 나눌지 묻는 중: 넣은 곳(떠 있는 버튼)이 채점을 시작하지 않게
   }
   apply();
+  return true;
 }
 function stuRow(t, s, i) {
   const pg = pagesOf(t.id, i), p0 = pg.length ? G.pages[pg[0]] : null;
@@ -171,6 +172,7 @@ function startGrading(only) {
   if (busy(id)) return;
   if (busyOther(id)) { toast('다른 평가를 채점하는 중이에요. 끝나거나 멈춘 뒤에 채점해 주세요.', 5000); return; }
   if (!hasPages(id)) { toast('답안 스캔을 먼저 올려 주세요(2단계)', 5000); return; }
+  if (G.arranging) { toast('답안 스캔을 다시 나누는 중이에요. 끝난 뒤에 채점해 주세요.', 5000); return; }
   const all = t.students.map((s, i) => ({ s, i })).filter(x => !x.s.skip && pagesOf(id, x.i).length);
   if (only != null) { const x = all.find(y => y.s.no === only); if (x) askMask(() => runQueue(id, [x.i])); return; }
   const todo = all.filter(x => x.s.status !== 'done');
@@ -324,6 +326,8 @@ document.addEventListener('change', e => {
     render();
   } else if (el.id === 'unTwoUp' || el.id === 'unFlipBack') {
     saveSet({ ...getSet(), [el.id === 'unTwoUp' ? 'twoUp' : 'flipBack']: el.checked });
+    // 쪽 모양·방향이 바뀌면 정해 둔 이름 칸 자리가 맞지 않아 이름이 AI로 갈 수 있음: 지우고 다시 정하게
+    if (maskOf(t) && maskOf(t).mask.length) { delete t.mask; delete t.maskAll; commit(t); toast('쪽 모양이 바뀌어 이름 칸을 지웠어요. [이름 칸 정하기]로 다시 정해 주세요.', 6000); }
     rearrange(t);
   } else if (el.id === 'unMaskOn') { saveSet({ ...getSet(), maskOn: el.checked }); render(); }
   else if (el.id === 'unAbsent') {
@@ -344,12 +348,18 @@ async function rearrange(t) {
   if (!hasPages(t.id) || busy(t.id)) { render(); return; }
   if (t.students.some(s => s.status === 'done')) { toast('이미 채점한 학생이 있어서 지금 나눈 것은 그대로예요. 답안 스캔을 다시 올리면 새 설정으로 나눠요.', 6000); render(); return; }
   const raw = G.raw, seq = G.seq = (G.seq || 0) + 1;
-  G.msg = '스캔을 다시 나누는 중…';
+  G.msg = '스캔을 다시 나누는 중…'; G.arranging = true;
   const el = getBox() && getBox().querySelector('#unAnsMsg'); if (el) el.textContent = G.msg;
   let pages;
-  try { pages = await arrange(raw); } catch (e) { toast('스캔을 나누지 못했어요. 다시 올려 주세요.'); return; }
-  // 그 사이 새 스캔을 올렸거나 설정을 또 바꿈: 이 결과는 버림
-  if (G.raw !== raw || G.seq !== seq) { SS().files.freePages(pages.filter(p => !raw.includes(p))); return; }
+  try { pages = await arrange(raw); } catch (e) { if (G.seq === seq) G.arranging = false; toast('스캔을 나누지 못했어요. 다시 올려 주세요.'); return; }
+  if (G.seq === seq) G.arranging = false;
+  // 그 사이 새 스캔을 올렸거나 설정을 또 바꿨거나 채점이 시작됨: 이 결과는 버림
+  const now = getTest(t.id);
+  if (G.raw !== raw || G.seq !== seq || busy(t.id) || (now && now.students.some(s => s.status === 'done'))) {
+    SS().files.freePages(pages.filter(p => !raw.includes(p)));
+    if (G.raw === raw && G.seq === seq) { G.msg = pagesMsg(raw.length, G.pages.length, (now || t).students.length); refresh(t.id); }
+    return;
+  }
   SS().files.freePages(G.pages.filter(p => !raw.includes(p)));
   G.pages = pages;
   const t2 = getTest(t.id) || t;
@@ -380,8 +390,7 @@ registerInbox('unit-scan', {
     if (!v.test || !getTest(v.test)) return legacyGrade(files);
     go('evaluate', 'unit');
     openTest(v.test, 2);
-    await loadAnswers(files);
-    if (!hasPages(v.test)) return '';
+    if (!(await loadAnswers(files)) || !hasPages(v.test)) return '';
     goStep(3);
     startGrading();
     return '';
