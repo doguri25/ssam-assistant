@@ -218,3 +218,9 @@ test('「01」 꼴 번호도 10번부터는 두 자리 그대로(정답 줄·문
   const p = parsePaper(Array.from({ length: 11 }, (_, i) => `${String(i + 1).padStart(2, '0')}  ${i + 1}번 문제입니까?\t(     )`).join('\n'));
   assert.equal(Object.keys(p.questions).length, 11);
 });
+
+test('「정답」 머리 없이 번호가 늘어선 글·표 줄(계획서의 중점 과제 등)은 정답 줄이 아님', () => {
+  assert.equal(parseKey('학교 교육의 중점\n1. 꿈 키우기 진로교육 | 2. 지덕체 능력 계발 | 3. 예술 교육 | 4. 안전교육'), null);
+  assert.equal(parseKey('올해 할 일\n1. 사과 2. 배 3. 감 4. 귤'), null);
+  assert.equal(parseKey('정답\n1. 사과 2. 배 3. 감 4. 귤').items.length, 4);
+});

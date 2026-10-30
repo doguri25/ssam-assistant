@@ -1,0 +1,65 @@
+// 떠 있는 버튼: 넣은 파일의 종류를 AI 없이 판단 (지어낸 글과 기존 시험 자료)
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { classify, groupFiles, KINDS } from '../../web/core/inbox-classify.js';
+
+const fx = name => readFileSync(new URL(`../fixtures/${name}`, import.meta.url), 'utf8');
+const kind = (name, text, scan = false) => classify({ name, text, scan }).kind;
+
+test('단원평가: 정답지(표·한 줄 정답·합본)와 문제지', () => {
+  assert.equal(kind('국어 정답.hwp', fx('unit-key.txt')), 'unit-key');
+  assert.equal(kind('도덕 해설.hwp', fx('unit-key-inline.txt')), 'unit-key');
+  assert.equal(kind('과학 중간평가.hwp', fx('unit-combined.txt')), 'unit-key');
+  assert.equal(kind('국어 2단원.hwp', fx('unit-paper.txt')), 'unit-paper');
+  assert.equal(kind('도덕 5단원.hwp', fx('unit-paper-inline.txt')), 'unit-paper');
+});
+
+test('사진·스캔 PDF는 이름으로만: 정답 → 정답지, 견적 → 견적서, 그 밖은 답안 스캔', () => {
+  assert.equal(kind('3반 답안.pdf', '', true), 'unit-scan');
+  assert.equal(kind('IMG_0001.jpg', '', true), 'unit-scan');
+  assert.equal(kind('정답지.jpg', '', true), 'unit-key');
+  assert.equal(kind('견적서.png', '', true), 'quote');
+});
+
+test('계획: 교과 평가계획, 작년 학급운영계획·행사 계획·업무 계획, 올해 지침·공문', () => {
+  assert.equal(kind('3학년 국어 평가계획.hwp', '2027학년도 3학년 국어과 평가 계획\n성취기준 | 평가 요소 | 평가 방법 | 평가 기준\n[4국02-01] | 중심 생각 찾기 | 서술형 | 상 | 중 | 하'), 'eval-plan');
+  assert.equal(kind('작년.hwp', fx('classplan-last.txt')), 'class-plan');
+  assert.equal(kind('운동회.hwp', '2026 가을 운동회 운영 계획\n1. 목적\n2. 일시 및 장소\n3. 경기 종목\n4. 안전 대책'), 'event-plan');
+  assert.equal(kind('독서.hwp', '2026학년도 독서교육 운영 계획\nⅠ. 목적\nⅡ. 방침\nⅢ. 세부 추진 계획\nⅣ. 예산'), 'year-plan');
+  assert.equal(kind('공문.hwp', 'OO교육지원청\n수신 OO초등학교장\n(경유)\n제목 2027학년도 학교 교육과정 운영 지침 안내\n발신 OO교육지원청교육장'), 'guide');
+});
+
+test('학급·명단·품의·설문', () => {
+  assert.equal(kind('진도표.hwp', fx('jindo-sample.txt')), 'jindo');
+  assert.equal(kind('시간표.hwp', fx('timetable-sample.txt')), 'timetable');
+  assert.equal(kind('명렬표.csv', fx('roster-sample.csv')), 'roster');
+  assert.equal(kind('견적.xlsx', '견 적 서\n품명 | 규격 | 수량 | 단가 | 금액\n비커 | 500ml | 2 | 3000 | 6000'), 'quote');
+  assert.equal(kind('응답.csv', fx('survey-12.csv')), 'survey');
+});
+
+test('모르는 파일은 unknown, 까닭은 늘 빈 글이 아님, 다른 후보', () => {
+  const r = classify({ name: '메모.txt', text: '안녕하세요. 오늘 회의는 3시입니다.', scan: false });
+  assert.equal(r.kind, 'unknown');
+  assert.ok(r.why);
+  const k = classify({ name: '국어 정답.hwp', text: fx('unit-key.txt'), scan: false });
+  assert.ok(k.why.length > 0 && Array.isArray(k.alts));
+  assert.ok(KINDS.every(([k, label]) => k && label));
+});
+
+test('여러 파일: 같은 종류는 묶고 정답지 → 문제지 → 답안 → 나머지 차례', () => {
+  const f = n => ({ name: n });
+  const g = groupFiles([{ file: f('a.jpg'), kind: 'unit-scan' }, { file: f('명단.csv'), kind: 'roster' }, { file: f('b.jpg'), kind: 'unit-scan' }, { file: f('문제.hwp'), kind: 'unit-paper' }, { file: f('정답.hwp'), kind: 'unit-key' }]);
+  assert.deepEqual(g.map(x => [x.kind, x.files.map(y => y.name)]), [['unit-key', ['정답.hwp']], ['unit-paper', ['문제.hwp']], ['unit-scan', ['a.jpg', 'b.jpg']], ['roster', ['명단.csv']]]);
+});
+
+test('번호가 늘어선 중점 과제 표 줄이 있는 계획서는 정답지가 아님', () => {
+  const t = fx('classplan-last.txt').replace('Ⅰ. 학급 현황', '1. 꿈 키우기 진로교육 | 2. 지덕체 능력 계발 | 3. 예술 교육 | 4. 안전교육\nⅠ. 학급 현황');
+  assert.equal(kind('작년.hwp', t), 'class-plan');
+});
+
+test('제목이 「교사 교육과정」이고 안에 진도표가 든 계획서는 학급운영계획, 진도표만 있는 파일은 진도표', () => {
+  const t = fx('classplan-last.txt').replace('-3학년 2반 학급 교육과정 운영 계획-', '-3학년 교사 교육과정-');
+  assert.equal(kind('2026 교사 교육과정.hwp', t), 'class-plan');
+  assert.equal(kind('진도표.hwp', fx('jindo-sample.txt')), 'jindo');
+});

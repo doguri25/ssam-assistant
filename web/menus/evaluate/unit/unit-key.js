@@ -126,10 +126,13 @@ function rubricRow(line) {
 
 /* 정답을 한 줄로 늘어놓은 정답·해설지(「01 ④ 02 ③ …」·「1. ③ 2. ④ …」)와 그 뒤 문항별 해설·채점 기준 표 */
 function inlineKey(lines) {
+  // 정답 줄: 표 줄(|)이 아니고, 그 줄이나 바로 위 몇 줄에 「정답」 머리가 있어야 함 (계획서의 번호 붙은 중점 과제 등은 빼려고)
+  const nearAnswerHead = i => lines.slice(Math.max(0, i - 5), i + 1).some(l => /정답/.test(l));
   let a = -1, mk = null;
   for (let i = 0; i < lines.length && a < 0; i++) {
+    if (lines[i].includes('|')) continue;
     const r = markers(lines[i], 1);
-    if (r.list.length >= 3 && r.list[0].at <= 1) { a = i; mk = r; }
+    if (r.list.length >= 3 && r.list[0].at <= 1 && nearAnswerHead(i)) { a = i; mk = r; }
   }
   if (a < 0) return null;
   const style = mk.style, answers = {};
