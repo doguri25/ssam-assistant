@@ -230,9 +230,14 @@ function bridge() {
   const sync = s => { setFabHidden(true); Promise.resolve(T.core.invoke('bubble_config', { enabled: s.on, keepOnClose: s.keepOnClose, autostart: s.on && s.autostart })).catch(() => {}); };
   sync(getInboxSettings());
   document.addEventListener('inbox:settings', e => sync(e.detail));
+  // 버튼 창은 놓을 때마다 알림(앞 알림을 놓쳤을 수 있어서): 10초 안에 또 온 같은 파일은 한 번만
+  const recent = new Map();
   T.event.listen('inbox:files', async ({ payload }) => {
-    const files = [];
+    const files = [], now = Date.now();
+    for (const [p, at] of recent) if (now - at > 10000) recent.delete(p);
     for (const f of payload || []) {
+      if (recent.has(f.path)) continue;
+      recent.set(f.path, now);
       try { files.push(new File([await T.core.invoke('inbox_read', { path: f.path })], f.name)); }
       catch (e) { toast(`「${f.name}」을(를) 읽지 못했어요${String(e) === 'TOO_BIG' ? ' (60MB보다 커요)' : ''}.`, 6000); }
     }

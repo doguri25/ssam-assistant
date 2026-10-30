@@ -2,16 +2,13 @@
 //! 버튼 창에 끌어 놓은 파일의 경로만 받아 허용 목록에 넣고 쌤비서 창(main)에 `inbox:files`로 알림.
 //! 쌤비서 화면은 허용 목록에 있는 경로만 `inbox_read`로 읽을 수 있음(한 번 읽으면 목록에서 빠짐, 60MB까지).
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 pub const MAX_BYTES: u64 = 60 * 1024 * 1024;
-/// 같은 파일을 잇달아 놓으면 아직 읽지 않은 동안(이만큼) 한 번만 알림
-pub const PENDING: Duration = Duration::from_secs(10);
-type Allowed = Mutex<HashMap<PathBuf, Instant>>;
+type Allowed = Mutex<HashSet<PathBuf>>;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Cfg {
@@ -38,20 +35,21 @@ pub struct Dropped {
     pub size: u64,
 }
 
-/// 끌어 놓은 경로 중 있는 파일만 허용 목록에 넣고 알릴 목록을 돌려줌 (폴더·없는 경로는 뺌, 아직 읽지 않은 같은 파일은 다시 알리지 않음)
+/// 끌어 놓은 경로 중 있는 파일만 허용 목록에 넣고 알릴 목록을 돌려줌 (폴더·없는 경로는 뺌, 한 번에 놓은 같은 경로는 하나로).
+/// 다시 놓으면 또 알림: 쌤비서 창이 앞 알림을 놓쳤을 수 있어서. 잇단 겹침은 받는 쪽(화면)이 거름
 pub fn allow(allowed: &Allowed, paths: &[String]) -> Vec<Dropped> {
     let mut list = Vec::new();
     let mut set = allowed.lock().unwrap();
-    let now = Instant::now();
+    let mut seen = HashSet::new();
     for p in paths {
         let pb = PathBuf::from(p);
+        if !seen.insert(pb.clone()) {
+            continue;
+        }
         if let Ok(meta) = std::fs::metadata(&pb) {
             if meta.is_file() {
-                if set.get(&pb).map_or(false, |t| now.duration_since(*t) < PENDING) {
-                    continue;
-                }
                 let name = pb.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                set.insert(pb, now);
+                set.insert(pb);
                 list.push(Dropped { path: p.clone(), name, size: meta.len() });
             }
         }
@@ -61,7 +59,7 @@ pub fn allow(allowed: &Allowed, paths: &[String]) -> Vec<Dropped> {
 
 /// 허용 목록에 있는 경로만 읽음. 읽으면 목록에서 뺌. 너무 크면 TOO_BIG, 목록에 없으면 NOT_ALLOWED
 pub fn read_allowed(allowed: &Allowed, path: &Path, max: u64) -> Result<Vec<u8>, String> {
-    if allowed.lock().unwrap().remove(path).is_none() {
+    if !allowed.lock().unwrap().remove(path) {
         return Err("NOT_ALLOWED".into());
     }
     let meta = std::fs::metadata(path).map_err(|_| "READ_FAILED".to_string())?;
@@ -194,7 +192,7 @@ mod tests {
 
     #[test]
     fn 끌어_놓은_파일만_한_번_읽음() {
-        let allowed = Mutex::new(HashMap::new());
+        let allowed = Mutex::new(HashSet::new());
         let a = temp("a.csv", b"1,2");
         let list = allow(&allowed, &[a.to_string_lossy().to_string(), "C:/없는/경로.hwp".into(), std::env::temp_dir().to_string_lossy().to_string()]);
         assert_eq!(list.len(), 1);
@@ -206,14 +204,15 @@ mod tests {
     }
 
     #[test]
-    fn 같은_파일을_잇달아_놓으면_한_번만_알림() {
-        let allowed = Mutex::new(HashMap::new());
+    fn 한_번에_놓은_같은_경로는_하나로_다시_놓으면_또_알림() {
+        // 쌤비서 창이 앞 알림을 놓쳤어도(막 켜지는 중) 다시 놓으면 받게: 겹침은 받는 쪽(화면)이 10초 안만 거름
+        let allowed = Mutex::new(HashSet::new());
         let c = temp("c.txt", b"x");
         let s = c.to_string_lossy().to_string();
         assert_eq!(allow(&allowed, &[s.clone(), s.clone()]).len(), 1);
-        assert_eq!(allow(&allowed, &[s.clone()]).len(), 0);
-        read_allowed(&allowed, &c, MAX_BYTES).unwrap();
         assert_eq!(allow(&allowed, &[s.clone()]).len(), 1);
+        read_allowed(&allowed, &c, MAX_BYTES).unwrap();
+        assert_eq!(read_allowed(&allowed, &c, MAX_BYTES).unwrap_err(), "NOT_ALLOWED");
         let _ = std::fs::remove_file(c);
     }
 
@@ -226,7 +225,7 @@ mod tests {
 
     #[test]
     fn 허용_안_된_경로와_큰_파일은_못_읽음() {
-        let allowed = Mutex::new(HashMap::new());
+        let allowed = Mutex::new(HashSet::new());
         let b = temp("b.txt", b"hello");
         assert_eq!(read_allowed(&allowed, &b, MAX_BYTES).unwrap_err(), "NOT_ALLOWED");
         allow(&allowed, &[b.to_string_lossy().to_string()]);

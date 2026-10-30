@@ -32,6 +32,16 @@ await run('inbox-bridge', [
     assert(JSON.stringify((await calls('inbox_read'))[0][1]) === JSON.stringify({ path: 'C:\\자료\\명단.csv' }), JSON.stringify(await calls('inbox_read')));
     await page.click(`${sheet} [data-close]`);
   }],
+  ['버튼 창이 같은 파일을 잇달아 알려도(다시 놓기) 10초 안이면 한 번만 읽고 카드도 하나', async () => {
+    const f = { path: 'C:\\자료\\명단2.csv', name: '명단2.csv', size: 120 };
+    await page.evaluate(f => { window.__ls['inbox:files']({ payload: [f] }); window.__ls['inbox:files']({ payload: [f] }); }, f);
+    await page.waitForSelector(`${sheet} #ibRun`);
+    await page.waitForTimeout(300);
+    assert((await calls('inbox_read')).filter(c => c[1].path === f.path).length === 1, JSON.stringify(await calls('inbox_read')));
+    await page.click(`${sheet} [data-close]`);
+    await page.waitForTimeout(300);
+    assert(await page.locator(sheet).count() === 0, '카드가 또 뜸');
+  }],
   ['설정 › 화면: Windows만의 칸(창을 닫으면·컴퓨터를 켜면), 바꾸면 bubble_config', async () => {
     await page.click('nav.app-side [data-menu-go="settings"]');
     await page.click('#menuTabs [data-tab="screen"]');
