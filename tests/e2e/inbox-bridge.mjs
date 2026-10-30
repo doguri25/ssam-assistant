@@ -77,6 +77,7 @@ await run('inbox-bridge', [
     await b.addInitScript(() => {
       window.__calls = []; window.__pos = [];
       if (!localStorage.getItem('ssam:bubble')) localStorage.setItem('ssam:bubble', JSON.stringify({ x: 50, y: 60 }));
+      localStorage.setItem('ssam:theme', JSON.stringify('soft'));
       const inv = (cmd, args) => { window.__calls.push([cmd, args]); return Promise.resolve(1); };
       window.__TAURI__ = {
         core: { invoke: inv },
@@ -100,6 +101,10 @@ await run('inbox-bridge', [
     assert(JSON.stringify(await b.evaluate(() => window.__pos)) === '[[50,60]]', JSON.stringify(await b.evaluate(() => window.__pos)));
     await b.evaluate(() => window.__moved({ payload: { x: 300, y: 400 } }));
     assert(await b.evaluate(() => localStorage.getItem('ssam:bubble')) === '{"x":300,"y":400}', '자리 저장');
+    // 버튼 색은 쌤비서 화면 테마를 따름(바꾸면 바로)
+    assert(await b.evaluate(() => document.documentElement.dataset.theme) === 'soft', '테마');
+    const acc = () => b.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());
+    assert(await acc() === '#2563eb', await acc());
     assert(errs.length === 0, errs.join(' | '));
     await b.close();
   }],

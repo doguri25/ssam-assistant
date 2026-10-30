@@ -4,6 +4,11 @@ import { get, set } from './core/store.js';
 
 const T = window.__TAURI__;
 const el = document.getElementById('bubble');
+// 버튼 색은 쌤비서 화면 테마를 따름 (쌤비서 창에서 테마를 바꾸면 저장소 알림으로 바로)
+const THEMES = ['dark-nav', 'mono', 'soft', 'paper', 'rail'];
+const applyTheme = () => { const t = get('theme', 'dark-nav'); document.documentElement.dataset.theme = THEMES.includes(t) ? t : 'dark-nav'; };
+applyTheme();
+window.addEventListener('storage', e => { if (e.key === 'ssam:theme') applyTheme(); });
 if (T && el) start();
 
 function start() {

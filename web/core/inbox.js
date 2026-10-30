@@ -172,6 +172,8 @@ function askCard({ files, kind = '', guess = null, notes = [], ctx = { texts: ne
 
 /* ---------- 오른쪽 아래 버튼과 놓기 판 ---------- */
 let fab = null, pad = null, input = null, hideFab = false;
+const DROP_ICON = '<svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>';
+const TRAY_ICON = '<svg viewBox="0 0 24 24"><path d="M12 3v10m0 0-4-4m4 4 4-4"/><path d="M4 14v3a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-3h-4.5a3.5 3.5 0 0 1-7 0H4z"/></svg>';
 const NEAR = { w: 340, h: 240 }; // 버튼 근처: 오른쪽 아래 이만큼 (판 280×170보다 조금 넓게)
 const hasFiles = e => !!(e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files'));
 /* Windows 버튼 창을 쓰면 창 안 버튼은 숨김 (Task 6) */
@@ -186,10 +188,10 @@ function mount() {
   if (fab || !document.body) return;
   fab = Object.assign(document.createElement('button'), { type: 'button', id: 'inboxFab', className: 'inbox-fab', title: '아무 파일이나 넣으면 쌤비서가 알아서 해요' });
   fab.setAttribute('aria-label', '파일 넣기 — 쌤비서가 알아서 해요');
-  fab.innerHTML = '<span aria-hidden="true">쌤</span>';
+  fab.innerHTML = `<span class="ib-glyph" aria-hidden="true">쌤</span><span class="ib-badge" aria-hidden="true">${DROP_ICON}</span>`;
   input = Object.assign(document.createElement('input'), { type: 'file', id: 'inboxFile', multiple: true, hidden: true });
   pad = Object.assign(document.createElement('div'), { id: 'inboxPad', className: 'inbox-pad', hidden: true });
-  pad.innerHTML = '<b>여기에 놓으면</b><span>쌤비서가 알아서 해요</span>';
+  pad.innerHTML = `<span class="ib-pad-icon" aria-hidden="true">${TRAY_ICON}</span><b>여기에 놓으면</b><span>쌤비서가 알아서 해요</span>`;
   document.body.append(fab, input, pad);
   fab.addEventListener('click', () => input.click());
   input.addEventListener('change', () => { const f = [...input.files]; input.value = ''; receive(f); });
