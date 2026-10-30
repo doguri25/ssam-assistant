@@ -2,6 +2,9 @@
 .inbox-fab{position:fixed;right:20px;bottom:20px;z-index:60;width:56px;height:56px;border-radius:50%;border:0;cursor:pointer;
   background:var(--accent,#4f46e5);color:var(--on-accent,#fff);font-weight:800;font-size:20px;box-shadow:0 6px 18px rgba(0,0,0,.25)}
 .inbox-fab:hover{filter:brightness(1.08)}
+.inbox-fab{transition:transform .15s}
+.inbox-fab.drag{transform:scale(1.18)}
+@media (prefers-reduced-motion:reduce){.inbox-fab{transition:none}}
 .inbox-fab:focus-visible{outline:3px solid var(--focus,#93c5fd);outline-offset:3px}
 .inbox-pad{position:fixed;right:16px;bottom:16px;z-index:61;width:min(280px,calc(100vw - 32px));height:170px;border-radius:18px;
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;

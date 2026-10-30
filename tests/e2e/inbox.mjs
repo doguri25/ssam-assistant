@@ -85,11 +85,34 @@ await run('inbox', [
     await page.click(`${sheet} [data-close]`);
     await page.evaluate(async () => (await import('./core/inbox.js')).setInboxSettings({ mode: 'confirm' }));
   }],
+  ['창 안으로 끌어 오면 버튼만 조금 커지고, 버튼 근처가 아닌 곳에서는 판이 뜨지 않음. 판·칸 밖에 놓아도 창이 파일로 넘어가지 않음', async () => {
+    await page.click('nav.app-side [data-menu-go="plan"]');
+    const dt = await page.evaluateHandle(() => { const d = new DataTransfer(); d.items.add(new File(['x'], 'a.csv')); return d; });
+    await page.dispatchEvent('body', 'dragenter', { dataTransfer: dt });
+    await page.dispatchEvent('body', 'dragover', { dataTransfer: dt, clientX: 200, clientY: 200 });
+    assert(await page.isHidden('#inboxPad'), '멀리서도 판이 뜸');
+    assert(await page.evaluate(() => document.getElementById('inboxFab').classList.contains('drag')), '버튼이 커지지 않음');
+    const prevented = await page.evaluate(() => ['dragover', 'drop'].map(type => {
+      const d = new DataTransfer(); d.items.add(new File(['x'], 'a.csv'));
+      const e = new DragEvent(type, { dataTransfer: d, bubbles: true, cancelable: true, clientX: 200, clientY: 200 });
+      document.querySelector('main, #app, body').dispatchEvent(e);
+      return e.defaultPrevented;
+    }));
+    assert(prevented.every(Boolean), '창이 파일로 넘어감: ' + prevented);
+    await page.dispatchEvent('body', 'dragover', { dataTransfer: dt, clientX: 1250, clientY: 830 });
+    await page.waitForSelector('#inboxPad:not([hidden])');
+    await page.dispatchEvent('body', 'dragover', { dataTransfer: dt, clientX: 300, clientY: 300 });
+    assert(await page.isHidden('#inboxPad'), '버튼에서 멀어져도 판이 남음');
+    await page.dispatchEvent('body', 'drop', { dataTransfer: dt });
+    assert(!(await page.evaluate(() => document.getElementById('inboxFab').classList.contains('drag'))), '놓은 뒤에도 커져 있음');
+    assert(await page.locator(sheet).count() === 0, '판 밖에 놓았는데 받음');
+  }],
   ['끌어 오면 놓기 판이 뜨고, 판에 놓으면 받음(창체 모드가 문서 전체 놓기를 막아도)', async () => {
     await page.evaluate(() => window.SSAM.setMode('cc'));
     await page.click('nav.app-side [data-menu-go="class"]');
     const dt = await page.evaluateHandle(() => { const d = new DataTransfer(); d.items.add(new File(['번호,성명\n1,가\n2,나'], '명단.csv', { type: 'text/csv' })); return d; });
     await page.dispatchEvent('body', 'dragenter', { dataTransfer: dt });
+    await page.dispatchEvent('body', 'dragover', { dataTransfer: dt, clientX: 1250, clientY: 830 });
     await page.waitForSelector('#inboxPad:not([hidden])');
     // 판에 온 끌기는 판이 받고(놓기 허용) 문서 전체 처리(창체의 놓기 막기 등)로 퍼지지 않음
     const seen = await page.evaluate(() => {
@@ -140,12 +163,27 @@ await run('inbox', [
     assert(b && b.x >= 0 && b.x + b.width <= 390, JSON.stringify(b));
     const dt = await page.evaluateHandle(() => { const d = new DataTransfer(); d.items.add(new File(['x'], 'a.csv')); return d; });
     await page.dispatchEvent('body', 'dragenter', { dataTransfer: dt });
+    await page.dispatchEvent('body', 'dragover', { dataTransfer: dt, clientX: 370, clientY: 820 });
+    await page.waitForSelector('#inboxPad:not([hidden])');
     const p = await page.locator('#inboxPad').boundingBox();
     assert(p && p.x >= 0 && p.x + p.width <= 390, JSON.stringify(p));
     await page.dispatchEvent('body', 'drop', { dataTransfer: dt });
     const w = await page.evaluate(() => [document.querySelector('#app').scrollWidth, document.querySelector('#app').clientWidth]);
     assert(w[0] <= w[1], '넘침: ' + w);
     await page.setViewportSize({ width: 1280, height: 860 });
+  }],
+  ['처리 중 문제가 난 파일은 안내만 하고, 줄 서 있던 다음 파일은 이어서', async () => {
+    await page.evaluate(async () => {
+      const m = await import('./core/inbox.js');
+      let n = 0;
+      m.registerInbox('guide', { act: () => { if (!n++) throw new Error('시험 오류'); return '시험: 지침'; }, run: async () => '' });
+    });
+    await pick(memo);
+    await pick({ name: '명단.csv', mimeType: 'text/csv', buffer: Buffer.from('번호,성명\n1,가\n2,나') });
+    await page.waitForFunction(() => /메모\.txt.*처리하지 못했어요/.test(document.body.textContent));
+    await page.waitForSelector(`${sheet} #ibRun`);
+    assert((await page.textContent(sheet)).includes('명단.csv'), '다음 파일 카드');
+    await page.click(`${sheet} [data-close]`);
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

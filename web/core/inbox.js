@@ -1,5 +1,6 @@
 /* 떠 있는 버튼: 아무 파일이나 넣으면 종류를 판단해(AI 없음) 확인 카드 뒤 그 메뉴의 기능으로 (스펙 2026-10-30-inbox-button).
-   메뉴 모듈은 registerInbox(kind, { act(files, ctx), fields?(files, ctx), run(files, values, opts) })로 자기 일을 등록.
+   메뉴 모듈은 registerInbox(kind, { act(files, ctx), fields?(files, ctx), run(files, values, opts), one? })로 자기 일을 등록.
+   one: 한 번에 파일 하나만 처리 — 여러 개면 카드는 한 번, run은 파일마다 차례로(메뉴가 띄운 창이 닫힌 뒤에 다음)
    입력 칸 { key, label, type, options?, value?, required?, ask? } — ask: 바로 실행이어도 카드로 물어봄(여럿 중 고르기)
    ctx = opts = { texts: Map(파일 → 읽은 글) } (+ opts.plan) — 처리 함수가 파일을 다시 읽지 않아도 되게
    웹판·Windows 쌤비서 창 안에서는 오른쪽 아래 버튼(누르면 파일 고르기, 끌고 오면 놓기 판) */
@@ -55,7 +56,13 @@ function sheetIdle() {
 }
 async function pump() {
   running = true;
-  try { while (queue.length) await handleBatch(queue.shift()); } finally { running = false; }
+  try {
+    while (queue.length) {
+      const files = queue.shift();
+      // 한 묶음에서 문제가 나도 다음 파일은 이어서
+      try { await handleBatch(files); } catch (e) { toast(`${files.map(f => `「${f.name}」`).join(', ')}을(를) 처리하지 못했어요.`, 6000); }
+    }
+  } finally { running = false; }
 }
 
 const isImage = f => /^image\//.test(f.type || '') || /\.(png|jpe?g|webp|bmp|gif|heic)$/i.test(f.name || '');
@@ -92,10 +99,14 @@ async function handleGroup({ kind, files }, guess, notes, ctx) {
   }
   const h = handlers[pick.kind];
   if (!h) return;
-  try {
-    const msg = await h.run(files, pick.values, { plan: s.plan, texts: ctx.texts });
-    if (msg) toast(msg, 6000);
-  } catch (e) { toast(`하지 못했어요: ${String((e && e.message) || e || '')}`.trim(), 6000); }
+  const opts = { plan: s.plan, texts: ctx.texts };
+  for (const [i, part] of (h.one && files.length > 1 ? files.map(f => [f]) : [files]).entries()) {
+    if (i) await sheetIdle();
+    try {
+      const msg = await h.run(part, pick.values, opts);
+      if (msg) toast(msg, 6000);
+    } catch (e) { toast(`하지 못했어요: ${String((e && e.message) || e || '')}`.trim(), 6000); }
+  }
   await sheetIdle();
 }
 async function fieldsOf(kind, files, ctx) {
@@ -161,6 +172,7 @@ function askCard({ files, kind = '', guess = null, notes = [], ctx = { texts: ne
 
 /* ---------- 오른쪽 아래 버튼과 놓기 판 ---------- */
 let fab = null, pad = null, input = null, hideFab = false;
+const NEAR = { w: 340, h: 240 }; // 버튼 근처: 오른쪽 아래 이만큼 (판 280×170보다 조금 넓게)
 const hasFiles = e => !!(e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files'));
 /* Windows 버튼 창을 쓰면 창 안 버튼은 숨김 (Task 6) */
 export function setFabHidden(v) { hideFab = !!v; syncFab(); }
@@ -189,11 +201,17 @@ function mount() {
     pad.hidden = true; pad.classList.remove('on');
     receive(e.dataTransfer ? [...e.dataTransfer.files] : []);
   });
-  // 창 안으로 파일을 끌고 오면 판을 띄우고, 창 밖으로 나가거나 놓으면 내림
+  // 창 안으로 파일을 끌고 오면 버튼만 조금 커지고, 오른쪽 아래 버튼 근처로 오면 판을 띄움 (다른 메뉴의 끌어 놓기 칸을 가리지 않게)
   let depth = 0;
-  window.addEventListener('dragenter', e => { if (!hasFiles(e) || fab.hidden) return; depth++; pad.hidden = false; }, true);
-  window.addEventListener('dragleave', e => { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) pad.hidden = true; }, true);
-  for (const ev of ['drop', 'dragend']) window.addEventListener(ev, () => { depth = 0; if (pad) { pad.hidden = true; pad.classList.remove('on'); } }, true);
+  const reset = () => { depth = 0; pad.hidden = true; pad.classList.remove('on'); fab.classList.remove('drag'); };
+  const near = e => e.clientX >= window.innerWidth - NEAR.w && e.clientY >= window.innerHeight - NEAR.h;
+  window.addEventListener('dragenter', e => { if (!hasFiles(e) || fab.hidden) return; depth++; fab.classList.add('drag'); }, true);
+  window.addEventListener('dragover', e => { if (hasFiles(e) && !fab.hidden) pad.hidden = !near(e); }, true);
+  window.addEventListener('dragleave', e => { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) reset(); }, true);
+  for (const ev of ['drop', 'dragend']) window.addEventListener(ev, reset, true);
+  // 판·메뉴의 칸이 아닌 곳에 놓으면 브라우저가 파일을 열어 창이 넘어감: 아무 칸도 받지 않은 끌어 놓기는 막음
+  window.addEventListener('dragover', e => { if (hasFiles(e) && !e.defaultPrevented) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'; } });
+  window.addEventListener('drop', e => { if (hasFiles(e) && !e.defaultPrevented) e.preventDefault(); });
   syncFab();
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();

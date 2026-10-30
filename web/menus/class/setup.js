@@ -384,14 +384,16 @@ document.addEventListener('click', e => {
 
 /* 떠 있는 버튼: 진도표 → 교과 고르기, 기초시간표 → 우리 반 시간표(학년·반이 없으면 입력 칸) */
 registerInbox('jindo', {
-  act: () => '학급 › 진도표·시수에 교과 진도표로 넣기',
+  one: true,
+  act: files => (files.length > 1 ? `학급 › 진도표·시수에 교과 진도표로 넣기 (${files.length}개를 하나씩)` : '학급 › 진도표·시수에 교과 진도표로 넣기'),
   async run(files) {
     go('class', 'progress');
     await importJindo(files[0]);
-    return files.length > 1 ? '진도표는 한 번에 하나씩 넣어요. 나머지 파일은 다시 넣어 주세요.' : '';
+    return '';
   }
 });
 registerInbox('timetable', {
+  one: true,
   act: () => '학급 › 우리 반 시간표로 넣기',
   fields: () => {
     const i = getInfo();

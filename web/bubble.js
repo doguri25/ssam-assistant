@@ -1,17 +1,19 @@
 /* 바탕화면 위 버튼 창(Windows 앱, 스펙 2026-10-30-inbox-button 8): 끌어 놓은 파일 경로만 Rust(inbox_take)에 넘김.
-   누르면 쌤비서 열기, 끌면 옮기기(위치는 쌤비서와 같은 저장소 ssam:bubble에), 오른쪽 클릭 메뉴 */
-(function () {
-  const T = window.__TAURI__;
-  const el = document.getElementById('bubble');
-  if (!T || !el) return;
+   누르면 쌤비서 열기, 끌면 옮기기(위치는 쌤비서와 같은 저장소의 bubble에), 오른쪽 클릭 메뉴 */
+import { get, set } from './core/store.js';
+
+const T = window.__TAURI__;
+const el = document.getElementById('bubble');
+if (T && el) start();
+
+function start() {
   const invoke = (cmd, args) => Promise.resolve(T.core.invoke(cmd, args)).catch(() => {});
   const win = T.window.getCurrentWindow();
-  const KEY = 'ssam:bubble';
+  const KEY = 'bubble';
 
   // 위치: 지난 자리(모니터 안일 때만), 없으면 첫 모니터 오른쪽 아래
   (async () => {
-    let pos = null;
-    try { pos = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
+    let pos = get(KEY, null);
     const mons = (await T.window.availableMonitors().catch(() => [])) || [];
     const inside = p => p && mons.some(m => p.x >= m.position.x && p.y >= m.position.y && p.x < m.position.x + m.size.width - 40 && p.y < m.position.y + m.size.height - 40);
     if (!inside(pos)) {
@@ -19,7 +21,7 @@
       pos = m ? { x: m.position.x + m.size.width - 140, y: m.position.y + m.size.height - 200 } : null;
     }
     if (pos) win.setPosition(new T.dpi.PhysicalPosition(pos.x, pos.y)).catch(() => {});
-    win.onMoved(({ payload }) => { try { localStorage.setItem(KEY, JSON.stringify({ x: payload.x, y: payload.y })); } catch (e) {} }).catch(() => {});
+    win.onMoved(({ payload }) => { set(KEY, { x: payload.x, y: payload.y }); }).catch(() => {});
   })();
 
   // 누르기·끌기: 조금 움직이면 창 옮기기, 그냥 떼면 쌤비서 열기
@@ -52,4 +54,4 @@
     else if (payload.type === 'leave') el.classList.remove('over');
     else if (payload.type === 'drop') { el.classList.remove('over'); if (payload.paths && payload.paths.length) invoke('inbox_take', { paths: payload.paths }); }
   }).catch(() => {});
-})();
+}

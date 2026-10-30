@@ -353,6 +353,7 @@ onEnter('settings', render);
 
 /* 떠 있는 버튼: 학급 명단(명렬표 엑셀·CSV) → 설정 › 학급 명단 확인 창 */
 registerInbox('roster', {
+  one: true,
   act: () => '설정 › 학급 명단으로 넣기 (번호만 읽어요)',
   async run(files) {
     goMenu('settings', 'roster');

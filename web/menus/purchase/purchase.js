@@ -8,6 +8,7 @@ import { copyText, saveFile, toast } from '../../core/ui.js';
 import { getPurchaseLimit } from '../../core/settings.js';
 import { TYPES, emptyForm, emptyItem, itemAmount, cleanItems, sumItems, checkPurchase, itemsTSV, composeReason, purchaseDoc, toNumber, findPersonal } from './rules.js';
 import { readQuote } from './quote.js';
+import { fileMessage, isFileCode } from '../../core/files.js';
 import { registerInbox } from '../../core/inbox.js';
 
 const CUR_KEY = 'purchase:current';
@@ -274,12 +275,20 @@ document.addEventListener('change', e => {
   if (f) addQuote(f);
 });
 
+/* 견적서를 못 읽은 까닭: 키 없음 · 파일(형식·암호·손상) · PDF 도구 · 그 밖은 AI 오류(키·한도·연결) */
+function quoteError(e) {
+  const code = e && e.code;
+  if (code === 'NO_AI') return '사진·PDF 견적서는 AI가 읽어요. 설정 › AI에서 키를 넣어 주세요.';
+  if (isFileCode(code)) return `${fileMessage(code)} 엑셀·CSV로 저장해 넣거나 직접 입력해도 돼요.`;
+  if (e && e.message === 'PDFJS') return 'PDF를 읽는 도구를 불러오지 못했어요. 인터넷 연결을 확인하거나 사진·엑셀로 넣어 주세요.';
+  return code ? ai.errorMessage(code, e) : '견적서를 읽지 못했어요. 엑셀·CSV로 저장해 넣거나 직접 입력해 주세요.';
+}
 /* 견적서의 품목을 품목 표에 넣음: 빈 줄을 먼저 채우고 모자라면 더함. 초안은 만들지 않음 */
 export async function addQuote(file) {
   let r;
   try { r = await readQuote(file); }
   catch (e) {
-    toast(e && e.code === 'NO_AI' ? '사진·PDF 견적서는 AI가 읽어요. 설정 › AI에서 키를 넣어 주세요.' : e && e.code ? '견적서를 읽지 못했어요. 엑셀·CSV로 저장해 넣거나 직접 입력해 주세요.' : ai.errorMessage(e && e.code, e), 6000);
+    toast(quoteError(e), 6000);
     return 0;
   }
   if (!r.items.length) { toast('견적서에서 품목을 찾지 못했어요. 직접 입력해 주세요.', 6000); return 0; }

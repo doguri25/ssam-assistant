@@ -10,6 +10,7 @@ const MSG = {
   READ_FAILED: '파일을 읽지 못했어요. 파일이 손상됐을 수 있어요. 내용을 복사해 붙여넣어 주세요.'
 };
 export const fileMessage = code => MSG[code] || MSG.READ_FAILED;
+export const isFileCode = code => !!MSG[code];
 
 const bridge = () => (window.SSAM && window.SSAM.files) || {};
 const tidy = s => String(s || '').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();

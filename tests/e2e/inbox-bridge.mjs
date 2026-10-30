@@ -65,12 +65,13 @@ await run('inbox-bridge', [
     const errs = [];
     b.on('pageerror', e => errs.push(String(e)));
     await b.addInitScript(() => {
-      window.__calls = [];
+      window.__calls = []; window.__pos = [];
+      if (!localStorage.getItem('ssam:bubble')) localStorage.setItem('ssam:bubble', JSON.stringify({ x: 50, y: 60 }));
       const inv = (cmd, args) => { window.__calls.push([cmd, args]); return Promise.resolve(1); };
       window.__TAURI__ = {
         core: { invoke: inv },
         event: { listen: () => Promise.resolve(() => {}) },
-        window: { getCurrentWindow: () => ({ onMoved: () => Promise.resolve(() => {}), setPosition: () => Promise.resolve(), startDragging: () => Promise.resolve(), outerSize: () => Promise.resolve({ width: 72, height: 72 }) }), currentMonitor: () => Promise.resolve(null), availableMonitors: () => Promise.resolve([]) },
+        window: { getCurrentWindow: () => ({ onMoved: cb => { window.__moved = cb; return Promise.resolve(() => {}); }, setPosition: p => { window.__pos.push([p.x, p.y]); return Promise.resolve(); }, startDragging: () => Promise.resolve(), outerSize: () => Promise.resolve({ width: 72, height: 72 }) }), currentMonitor: () => Promise.resolve(null), availableMonitors: () => Promise.resolve([{ position: { x: 0, y: 0 }, size: { width: 1920, height: 1080 } }]) },
         webview: { getCurrentWebview: () => ({ onDragDropEvent: cb => { window.__dd = cb; return Promise.resolve(() => {}); } }) },
         dpi: { PhysicalPosition: function (x, y) { this.x = x; this.y = y; } },
         menu: { Menu: { new: () => Promise.resolve({ popup: () => Promise.resolve() }) } }
@@ -84,6 +85,11 @@ await run('inbox-bridge', [
     const c = await b.evaluate(() => window.__calls);
     assert(c.some(x => x[0] === 'inbox_take' && x[1].paths[0] === 'C:\\자료\\정답지.hwp'), JSON.stringify(c));
     assert(c.some(x => x[0] === 'bubble_action' && x[1].action === 'open'), JSON.stringify(c));
+    // 지난 자리로 옮기고, 옮기면 쌤비서와 같은 저장소(ssam:bubble)에 적음
+    await b.waitForFunction(() => typeof window.__moved === 'function');
+    assert(JSON.stringify(await b.evaluate(() => window.__pos)) === '[[50,60]]', JSON.stringify(await b.evaluate(() => window.__pos)));
+    await b.evaluate(() => window.__moved({ payload: { x: 300, y: 400 } }));
+    assert(await b.evaluate(() => localStorage.getItem('ssam:bubble')) === '{"x":300,"y":400}', '자리 저장');
     assert(errs.length === 0, errs.join(' | '));
     await b.close();
   }],

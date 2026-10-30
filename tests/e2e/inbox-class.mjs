@@ -1,5 +1,6 @@
 // 떠 있는 버튼 › 학급·명단·품의: 진도표 → 교과 고르기, 시간표 → 학년·반 입력 칸, 명단 → 명단 확인, 견적서 CSV·사진 → 새 품의 품목, 품의 화면 [견적서 넣기]
 import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { open, run, assert, mockClaude, FIXTURES } from './helpers.mjs';
 
 const t = await open();
@@ -99,6 +100,32 @@ await run('inbox-class', [
     await page.waitForSelector(`${sheet} #ibRun`);
     assert((await page.textContent(sheet)).includes('견적서'), '다음 카드');
     await page.click(`${sheet} [data-close]`);
+  }],
+  ['품의 화면 [견적서 넣기]: AI가 키 오류(401)면 「키가 맞지 않아요」 안내(파일 탓으로 말하지 않음)', async () => {
+    const deny = r => r.fulfill({ status: 401, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }) });
+    await page.route('https://api.anthropic.com/**', deny);
+    await page.click('nav.app-side [data-menu-go="purchase"]');
+    const png = await page.screenshot({ clip: { x: 0, y: 0, width: 200, height: 120 } });
+    const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click('section[data-menu="purchase"] [data-pc="quote"]')]);
+    await fc.setFiles({ name: '견적서.png', mimeType: 'image/png', buffer: png });
+    await page.waitForFunction(() => /키가 맞지 않아요/.test(document.body.textContent), null, { timeout: 15000 });
+    assert(!/견적서를 읽지 못했어요/.test(await page.textContent('body')), '파일 탓으로 안내');
+    await page.unroute('https://api.anthropic.com/**', deny);
+    for (let i = errors.length - 1; i >= 0; i--) if (/status of 401/.test(errors[i])) errors.splice(i, 1);
+  }],
+  ['진도표 두 개를 함께 넣으면 카드는 한 번, 교과 고르기 창은 파일마다 차례로(앞 창을 닫은 뒤에 다음)', async () => {
+    const body = readFileSync(join(FIXTURES, 'jindo-sample.txt'));
+    await pick([{ name: '진도표 가.txt', mimeType: 'text/plain', buffer: body }, { name: '진도표 나.txt', mimeType: 'text/plain', buffer: body }]);
+    await page.waitForSelector(`${sheet} #ibRun`);
+    const card = await page.textContent(sheet);
+    assert(card.includes('진도표 가') && card.includes('진도표 나'), card);
+    await runCard();
+    await page.waitForFunction(() => /진도표 가/.test((document.querySelector('#sheetRoot') || {}).textContent || '') && document.querySelector('#sheetRoot [data-c="pickOk"]'));
+    await page.click('#sheetRoot [data-c="pickOk"]');
+    await page.waitForFunction(() => /진도표 나/.test((document.querySelector('#sheetRoot') || {}).textContent || '') && document.querySelector('#sheetRoot [data-c="pickOk"]'));
+    assert(await page.locator('#sheetRoot #ibRun').count() === 0, '카드가 또 나옴');
+    await page.click('#sheetRoot [data-c="pickOk"]');
+    await page.waitForFunction(() => !document.querySelector('#sheetRoot').childElementCount);
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

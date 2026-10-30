@@ -98,6 +98,19 @@ await run('inbox-eval', [
     await page.click(`${sheet} [data-close]`);
     await page.evaluate(async () => (await import('./core/inbox.js')).setInboxSettings({ mode: 'confirm' }));
   }],
+  ['채점할 단원평가 고르기: 이름·날짜·채점 상태가 보이고, 예시 평가는 빼고 보여 줌', async () => {
+    await page.evaluate(async () => {
+      const m = await import('./menus/evaluate/unit/unit-model.js'), s = await import('./menus/evaluate/unit/unit-sample.js');
+      m.saveTest(m.newTest({ meta: { ...s.SAMPLE_META, date: '2026-10-31', sample: true }, key: { domains: ['지식', '이해'], items: s.SAMPLE_ITEMS }, paper: { text: '' } }));
+    });
+    await pick([await shot(340, 460)]);
+    await page.waitForSelector(`${sheet} [data-ib-field="test"]`);
+    const opts = await page.$$eval(`${sheet} [data-ib-field="test"] option`, os => os.map(o => [o.value, o.textContent]));
+    assert(!opts.some(([, l]) => l.includes('(예시)')), JSON.stringify(opts));
+    const mine = opts.find(([v]) => v === S);
+    assert(mine && mine[1].includes('2026-10-30') && mine[1].includes('2명 채점함'), JSON.stringify(opts));
+    await page.click(`${sheet} [data-close]`);
+  }],
   ['교과 평가계획 → 교과 평어에 계획이 바뀜(카드에 바뀐다고 적음)', async () => {
     await pick(join(FIXTURES, 'eval-plan.txt'));
     await page.waitForSelector(sheet);

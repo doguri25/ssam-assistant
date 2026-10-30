@@ -76,6 +76,11 @@ fn run_uninstall(app: tauri::AppHandle, clear_data: bool) -> Result<String, Stri
     };
 
     if result.is_ok() {
+        // 컴퓨터를 켤 때 지운 프로그램을 띄우려 하지 않게 자동 시작을 끔
+        {
+            use tauri_plugin_autostart::ManagerExt;
+            let _ = app.autolaunch().disable();
+        }
         // 화면이 응답을 받을 틈을 준 뒤 앱을 닫아 파일 잠금을 풂
         let handle = app.clone();
         std::thread::spawn(move || {

@@ -3,7 +3,8 @@ import { registerInbox } from '../../core/inbox.js';
 import { go } from '../../core/shell.js';
 
 registerInbox('eval-plan', {
-  act: () => '교과 평어의 평가계획으로 넣기 (지금 평가계획을 이 계획으로 바꿔요)',
+  one: true,
+  act: files => (files.length > 1 ? `교과 평어의 평가계획으로 하나씩 넣기 (평가계획은 하나라 마지막 「${files[files.length - 1].name}」이 남아요)` : '교과 평어의 평가계획으로 넣기 (지금 평가계획을 이 계획으로 바꿔요)'),
   async run(files) {
     const L = window.SSAM && window.SSAM.inbox;
     if (!L) return '';

@@ -746,6 +746,7 @@ registerInbox('event-plan', {
 });
 /* 떠 있는 버튼: 설문 응답 CSV → 행사 고르기(확정한 행사가 먼저) → 결과 보고서 */
 registerInbox('survey', {
+  one: true,
   act: () => '행사 만족도 설문 결과로 넣고 결과 보고서 쓰기',
   fields: () => {
     const l = listEventPlans();

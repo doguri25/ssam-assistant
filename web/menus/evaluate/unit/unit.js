@@ -297,7 +297,11 @@ registerInbox('unit-key', {
   }
 });
 registerInbox('unit-paper', {
-  act: (files, ctx) => { const t = paperless(ctx.texts.get(files[0])); return t ? `「${makeTitle(t.meta)}」의 평가지로 넣기` : '새 단원평가를 만들어 평가지로 넣기'; },
+  one: true,
+  act: (files, ctx) => {
+    if (files.length > 1) return `평가지 ${files.length}개를 하나씩 교과·단원이 맞는 단원평가(없으면 새 단원평가)에 넣기`;
+    const t = paperless(ctx.texts.get(files[0])); return t ? `「${makeTitle(t.meta)}」의 평가지로 넣기` : '새 단원평가를 만들어 평가지로 넣기';
+  },
   async run(files, v, opts) {
     go('evaluate', 'unit');
     const t = paperless(opts.texts.get(files[0]));

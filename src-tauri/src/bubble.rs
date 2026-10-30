@@ -2,12 +2,16 @@
 //! 버튼 창에 끌어 놓은 파일의 경로만 받아 허용 목록에 넣고 쌤비서 창(main)에 `inbox:files`로 알림.
 //! 쌤비서 화면은 허용 목록에 있는 경로만 `inbox_read`로 읽을 수 있음(한 번 읽으면 목록에서 빠짐, 60MB까지).
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 pub const MAX_BYTES: u64 = 60 * 1024 * 1024;
+/// 같은 파일을 잇달아 놓으면 아직 읽지 않은 동안(이만큼) 한 번만 알림
+pub const PENDING: Duration = Duration::from_secs(10);
+type Allowed = Mutex<HashMap<PathBuf, Instant>>;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Cfg {
@@ -24,7 +28,7 @@ impl Default for Cfg {
 #[derive(Default)]
 pub struct Bubble {
     pub cfg: Mutex<Cfg>,
-    allowed: Mutex<HashSet<PathBuf>>,
+    allowed: Allowed,
 }
 
 #[derive(serde::Serialize, Clone, Debug, PartialEq)]
@@ -34,16 +38,20 @@ pub struct Dropped {
     pub size: u64,
 }
 
-/// 끌어 놓은 경로 중 있는 파일만 허용 목록에 넣고 알릴 목록을 돌려줌 (폴더·없는 경로는 뺌)
-pub fn allow(allowed: &Mutex<HashSet<PathBuf>>, paths: &[String]) -> Vec<Dropped> {
+/// 끌어 놓은 경로 중 있는 파일만 허용 목록에 넣고 알릴 목록을 돌려줌 (폴더·없는 경로는 뺌, 아직 읽지 않은 같은 파일은 다시 알리지 않음)
+pub fn allow(allowed: &Allowed, paths: &[String]) -> Vec<Dropped> {
     let mut list = Vec::new();
     let mut set = allowed.lock().unwrap();
+    let now = Instant::now();
     for p in paths {
         let pb = PathBuf::from(p);
         if let Ok(meta) = std::fs::metadata(&pb) {
             if meta.is_file() {
+                if set.get(&pb).map_or(false, |t| now.duration_since(*t) < PENDING) {
+                    continue;
+                }
                 let name = pb.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                set.insert(pb.clone());
+                set.insert(pb, now);
                 list.push(Dropped { path: p.clone(), name, size: meta.len() });
             }
         }
@@ -52,8 +60,8 @@ pub fn allow(allowed: &Mutex<HashSet<PathBuf>>, paths: &[String]) -> Vec<Dropped
 }
 
 /// 허용 목록에 있는 경로만 읽음. 읽으면 목록에서 뺌. 너무 크면 TOO_BIG, 목록에 없으면 NOT_ALLOWED
-pub fn read_allowed(allowed: &Mutex<HashSet<PathBuf>>, path: &Path, max: u64) -> Result<Vec<u8>, String> {
-    if !allowed.lock().unwrap().remove(path) {
+pub fn read_allowed(allowed: &Allowed, path: &Path, max: u64) -> Result<Vec<u8>, String> {
+    if allowed.lock().unwrap().remove(path).is_none() {
         return Err("NOT_ALLOWED".into());
     }
     let meta = std::fs::metadata(path).map_err(|_| "READ_FAILED".to_string())?;
@@ -70,6 +78,17 @@ pub fn from_bubble(label: &str) -> bool {
 
 fn main_hidden(app: &AppHandle) -> bool {
     app.get_webview_window("main").map(|w| !w.is_visible().unwrap_or(true)).unwrap_or(false)
+}
+
+/// 버튼 숨기기: 쌤비서 창이 숨어 있으면 보이고(창이 하나도 없는 채로 켜져 있지 않게, 다시 켜는 곳 안내도 보이게) 설정을 끄게 알림
+fn hide_bubble(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("bubble") {
+        let _ = w.hide();
+    }
+    if main_hidden(app) {
+        show_main(app);
+    }
+    let _ = app.emit_to("main", "bubble:off", ());
 }
 
 pub fn show_main(app: &AppHandle) {
@@ -130,35 +149,35 @@ pub fn bubble_action(app: AppHandle, action: String) {
             show_main(&app);
             let _ = app.emit_to("main", "inbox:pick", ());
         }
-        "hide" => {
-            if let Some(w) = app.get_webview_window("bubble") {
-                let _ = w.hide();
-            }
-            // 쌤비서 창이 숨어 있으면 보임 (창이 하나도 없는 채로 켜져 있지 않게, 다시 켜는 곳 안내도 보이게)
-            if main_hidden(&app) {
-                show_main(&app);
-            }
-            let _ = app.emit_to("main", "bubble:off", ());
-        }
+        "hide" => hide_bubble(&app),
         "quit" => app.exit(0),
         _ => {}
     }
 }
 
-/// 쌤비서 창을 닫을 때: 버튼이 켜져 있고 「버튼은 남기기」면 창만 숨김, 아니면 앱을 끝냄(숨은 버튼 창이 앱을 붙들지 않게)
+/// 창을 닫을 때
+/// - 쌤비서 창: 버튼이 켜져 있고 「버튼은 남기기」면 창만 숨김, 아니면 앱을 끝냄(숨은 버튼 창이 앱을 붙들지 않게)
+/// - 버튼 창(Alt+F4 등): 메뉴의 「버튼 숨기기」와 같게 (창은 남겨 두어 설정에서 다시 켤 수 있게)
 pub fn on_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
-    if window.label() != "main" {
+    let tauri::WindowEvent::CloseRequested { api, .. } = event else {
         return;
-    }
-    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-        let app = window.app_handle();
-        let cfg = *app.state::<Bubble>().cfg.lock().unwrap();
-        if cfg.enabled && cfg.keep_on_close {
-            api.prevent_close();
-            let _ = window.hide();
-        } else {
-            app.exit(0);
+    };
+    let app = window.app_handle();
+    match window.label() {
+        "main" => {
+            let cfg = *app.state::<Bubble>().cfg.lock().unwrap();
+            if cfg.enabled && cfg.keep_on_close {
+                api.prevent_close();
+                let _ = window.hide();
+            } else {
+                app.exit(0);
+            }
         }
+        "bubble" => {
+            api.prevent_close();
+            hide_bubble(app);
+        }
+        _ => {}
     }
 }
 
@@ -175,7 +194,7 @@ mod tests {
 
     #[test]
     fn 끌어_놓은_파일만_한_번_읽음() {
-        let allowed = Mutex::new(HashSet::new());
+        let allowed = Mutex::new(HashMap::new());
         let a = temp("a.csv", b"1,2");
         let list = allow(&allowed, &[a.to_string_lossy().to_string(), "C:/없는/경로.hwp".into(), std::env::temp_dir().to_string_lossy().to_string()]);
         assert_eq!(list.len(), 1);
@@ -187,6 +206,18 @@ mod tests {
     }
 
     #[test]
+    fn 같은_파일을_잇달아_놓으면_한_번만_알림() {
+        let allowed = Mutex::new(HashMap::new());
+        let c = temp("c.txt", b"x");
+        let s = c.to_string_lossy().to_string();
+        assert_eq!(allow(&allowed, &[s.clone(), s.clone()]).len(), 1);
+        assert_eq!(allow(&allowed, &[s.clone()]).len(), 0);
+        read_allowed(&allowed, &c, MAX_BYTES).unwrap();
+        assert_eq!(allow(&allowed, &[s.clone()]).len(), 1);
+        let _ = std::fs::remove_file(c);
+    }
+
+    #[test]
     fn 경로는_버튼_창만_넘길_수_있음() {
         assert!(from_bubble("bubble"));
         assert!(!from_bubble("main"));
@@ -195,7 +226,7 @@ mod tests {
 
     #[test]
     fn 허용_안_된_경로와_큰_파일은_못_읽음() {
-        let allowed = Mutex::new(HashSet::new());
+        let allowed = Mutex::new(HashMap::new());
         let b = temp("b.txt", b"hello");
         assert_eq!(read_allowed(&allowed, &b, MAX_BYTES).unwrap_err(), "NOT_ALLOWED");
         allow(&allowed, &[b.to_string_lossy().to_string()]);

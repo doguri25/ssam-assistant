@@ -359,7 +359,9 @@ async function rearrange(t) {
 }
 
 /* 떠 있는 버튼: 학생 답안 스캔 → 정답지를 넣은 단원평가(최근 것이 먼저)에 넣고 채점 시작. 그런 평가가 없으면 평가 › 평가지 채점 */
-const keyed = () => listTests().filter(s => s.total > 0);
+/* 정답지를 넣은 단원평가(최근 것이 먼저). 예시 평가는 그것만 있을 때만 */
+const keyed = () => { const l = listTests().filter(s => s.total > 0), real = l.filter(s => !s.sample); return real.length ? real : l; };
+const testLabel = s => [s.title, s.date, s.done ? '채점 마침' : s.n ? `${s.n}명 채점함` : '채점 전'].filter(Boolean).join(' · ');
 async function legacyGrade(files) {
   const L = SS().inbox;
   if (!L) return '';
@@ -372,7 +374,7 @@ registerInbox('unit-scan', {
   act: () => (keyed().length ? '단원평가 답안으로 넣고 채점하기' : '평가 › 평가지 채점에 넣기 (정답지를 넣은 단원평가가 없어요)'),
   fields: () => {
     const l = keyed();
-    return l.length ? [{ key: 'test', label: '채점할 단원평가', type: 'select', options: l.map(s => [s.id, s.title]), value: l[0].id, required: true, ask: l.length > 1 }] : [];
+    return l.length ? [{ key: 'test', label: '채점할 단원평가', type: 'select', options: l.map(s => [s.id, testLabel(s)]), value: l[0].id, required: true, ask: l.length > 1 }] : [];
   },
   async run(files, v) {
     if (!v.test || !getTest(v.test)) return legacyGrade(files);
