@@ -112,6 +112,16 @@ export async function readNos(pages, { box, mask } = {}) {
   return { nos: normNos(v, pages.length), crops };
 }
 
+/* 읽는 동안 띄워 두는 창 (떠 있는 버튼의 다음 카드가 확인 표를 덮지 않게, 그만두기도 여기서).
+   → { gone(): 그만뒀는지(다른 창으로 바뀌었는지), close() } */
+export function openNoWait() {
+  let sheet = null;
+  window.SSAM.openSheet(`<h3>학생이 쓴 번호를 읽는 중이에요</h3>
+    <p class="muted" style="margin:0">학생마다 번호 칸만 모아 AI가 읽고 있어요. 다 읽으면 확인 표가 떠요.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>그만두기</button></div>`, sh => { sheet = sh; });
+  return { gone: () => !sheet || !sheet.isConnected, close: () => { if (sheet && sheet.isConnected) window.SSAM.closeSheet(); } };
+}
+
 /* ---------- 확인 표 ---------- */
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 /* rows: [{ crop, no, sure }] · allowed: Set|null · onOk(번호들). 노란 줄을 다 고쳐야 [이대로 채점] */
@@ -149,4 +159,4 @@ export function openNoCheck({ rows, allowed, onOk }) {
 }
 
 // 옛 평가 화면(평가지 채점, evaluate.js)도 같은 기능을 씀
-if (typeof window !== 'undefined' && window.SSAM) window.SSAM.studentNo = { readNos, openNoCheck, rosterAllowed, byNoOrder };
+if (typeof window !== 'undefined' && window.SSAM) window.SSAM.studentNo = { readNos, openNoCheck, openNoWait, rosterAllowed, byNoOrder };

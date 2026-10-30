@@ -3990,15 +3990,16 @@ async function grAskNos() {
   if (!N) { toast('번호 읽기를 불러오지 못했어요. 새로고침해 주세요'); return; }
   if (!GR.settings.noBox) { toast('학생이 번호를 쓰는 칸을 먼저 정해 주세요'); openGRNoBox(() => grStart()); return; }
   if (GR.noBusy) return;
-  GR.noBusy = true;
-  toast('학생이 쓴 번호를 읽는 중이에요…', 4000);
   // 「채점 안 함」 학생은 번호를 묻지 않고 맨 뒤에 그대로
   const list = GR.students.filter(s => !s.skip), skipped = GR.students.filter(s => s.skip);
   if (!list.length) return;
+  GR.noBusy = true;
+  const wait = N.openNoWait();
   let r;
   try { r = await N.readNos(list.map(s => GR.pages[s.pages[0]]), { box: GR.settings.noBox, mask: GR.settings.maskOn ? GR.settings.mask : [] }); }
-  catch (e) { toast(e && e.code === 'NO_AI' ? 'AI 키를 먼저 넣어 주세요' : errMsg(e && e.code, e), 6000); return; }
+  catch (e) { wait.close(); toast(e && e.code === 'NO_AI' ? 'AI 키를 먼저 넣어 주세요' : errMsg(e && e.code, e), 6000); return; }
   finally { GR.noBusy = false; }
+  if (wait.gone()) return; // 그만두기
   N.openNoCheck({ rows: list.map((s, k) => ({ crop: r.crops[k], ...r.nos[k] })), allowed: N.rosterAllowed(GR.settings.except), onOk: nos => {
     // 그 사이 쪽을 바꾸거나 채점을 시작했으면 버림
     const now = GR.students.filter(s => !s.skip);

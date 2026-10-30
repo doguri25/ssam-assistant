@@ -9,7 +9,7 @@ import { registerInbox } from '../../../core/inbox.js';
 import { go } from '../../../core/shell.js';
 import { gradePrompt, normGrade, validGrade } from './unit-ai.js';
 import { arrangePages } from './unit-pages.js';
-import { readNos, openNoCheck, rosterAllowed, byNoOrder } from '../../../core/student-no.js';
+import { readNos, openNoCheck, openNoWait, rosterAllowed, byNoOrder } from '../../../core/student-no.js';
 import { esc, SS, AI_KEY, registerStep, inStep, cur, curId, commit, saveOrWarn, refresh, render, goStep, getBox, openTest } from './unit.js';
 
 const TYPE = Object.fromEntries(ITEM_TYPES);
@@ -94,7 +94,7 @@ function step2HTML(t) {
       <div class="row"><label class="switch"><input type="checkbox" id="unMaskOn"${set.maskOn ? ' checked' : ''}>이름 칸을 가리고 보내기</label>
         <button class="btn" type="button" data-un="mask"${hasPages(t.id) ? '' : ' disabled'}>이름 칸 정하기</button>
         <span class="muted">${m && m.mask.length ? `가릴 곳 ${m.mask.length}개${m.all ? ' · 모든 쪽' : ' · 첫 쪽'}` : '가릴 곳을 아직 정하지 않았어요'}</span></div>
-      ${note}
+      ${note}${set.byNo && t.noOrdered && hasPages(t.id) && !nosOk(t) ? '<p class="banner warn" style="margin:8px 0 0">번호를 다시 읽기 전이라 아래 번호와 쪽이 맞지 않을 수 있어요. 채점을 시작하면 번호를 먼저 읽어 맞춰요.</p>' : ''}
     </div>
     ${t.students.length ? `<div class="yp-card"><h3>학생 ${t.students.filter(s => !s.skip).length}명</h3><ul class="un-stus">${t.students.map((s, i) => stuRow(t, s, i)).join('')}</ul></div>` : ''}
     <div class="row un-next"><button class="btn primary" type="button" data-un="toGrade"${t.students.length ? '' : ' disabled'}>다음: 채점</button></div>`;
@@ -140,12 +140,13 @@ async function askNos(t, then) {
   const set = getSet(), m = maskOf(t), pages0 = G.pages, idx0 = G.idx;
   const stale = () => G.testId !== id || G.pages !== pages0 || G.idx !== idx0;
   G.noBusy = true;
-  toast('학생이 쓴 번호를 읽는 중이에요…', 4000);
+  const wait = openNoWait();
   let r;
   try { r = await readNos(list.map(x => G.pages[x.pg[0]]), { box: t.noBox, mask: set.maskOn && m ? m.mask : [] }); }
-  catch (e) { toast(e && e.code === 'NO_AI' ? AI_KEY : ai.errorMessage(e && e.code, e), 6000); return; }
+  catch (e) { wait.close(); toast(e && e.code === 'NO_AI' ? AI_KEY : ai.errorMessage(e && e.code, e), 6000); return; }
   finally { G.noBusy = false; }
-  if (stale()) { if (G.testId === id) toast(CHANGED, 6000); return; }
+  if (wait.gone()) return; // 그만두기
+  if (stale()) { wait.close(); if (G.testId === id) toast(CHANGED, 6000); return; }
   openNoCheck({ rows: list.map((x, k) => ({ crop: r.crops[k], ...r.nos[k] })), allowed: rosterAllowed(), onOk: nos => {
     const t2 = getTest(id) || t;
     if (stale() || busy(id)) { toast(CHANGED, 6000); return; }
@@ -224,12 +225,13 @@ async function runQueue(id, list) {
 /* 이 평가의 이름 칸을 정하지 않았으면 먼저 물어봄 (기본은 가리고 보내기) */
 function askMask(go) {
   const set = getSet(), m = maskOf(cur());
-  if (!set.maskOn || (m && m.mask.length)) { go(); return; }
+  if (!set.maskOn || (m && m.mask.length) || G.noMaskFor === curId()) { go(); return; }
   const last = set.mask.length ? ' 지난 평가에서 정한 곳을 먼저 보여 드려요. 이 평가지에서도 이름이 가려지는지 확인해 주세요.' : '';
   SS().openSheet(`<h3>이 평가의 이름 칸을 아직 정하지 않았어요</h3><p class="muted" style="margin:0">정하지 않으면 학생 이름이 그대로 AI 회사로 보내져요. [이름 칸 정하기]로 이름이 적힌 곳을 상자로 표시해 주세요.${last}</p>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn" type="button" id="unNoMaskOk">가리지 않고 채점</button><button class="btn primary" type="button" id="unMaskGo">이름 칸 정하기</button></div>`,
   sh => {
-    sh.querySelector('#unNoMaskOk').addEventListener('click', () => { SS().closeSheet(); go(); });
+    // 「가리지 않고 채점」은 이 평가에서 한 번만 물음 (번호 읽기 → 채점으로 이어질 때 또 묻지 않게)
+    sh.querySelector('#unNoMaskOk').addEventListener('click', () => { G.noMaskFor = curId(); SS().closeSheet(); go(); });
     sh.querySelector('#unMaskGo').addEventListener('click', () => { SS().closeSheet(); goStep(2); openMask(cur()); });
   });
 }
@@ -241,7 +243,8 @@ function startGrading(only) {
   if (busyOther(id)) { toast('다른 평가를 채점하는 중이에요. 끝나거나 멈춘 뒤에 채점해 주세요.', 5000); return; }
   if (!hasPages(id)) { toast('답안 스캔을 먼저 올려 주세요(2단계)', 5000); return; }
   if (G.arranging) { toast('답안 스캔을 다시 나누는 중이에요. 끝난 뒤에 채점해 주세요.', 5000); return; }
-  if (getSet().byNo && !nosOk(t)) { askNos(t, () => startGrading(only)); return; }
+  // 번호 칸 그림에도 이름이 들어갈 수 있어서 이름 칸을 먼저 묻고, 번호를 읽어 확인한 뒤 채점
+  if (getSet().byNo && !nosOk(t)) { askMask(() => askNos(t, () => startGrading(only))); return; }
   const all = t.students.map((s, i) => ({ s, i })).filter(x => !x.s.skip && pagesOf(id, x.i).length);
   if (only != null) { const x = all.find(y => y.s.no === only); if (x) askMask(() => runQueue(id, [x.i])); return; }
   const todo = all.filter(x => x.s.status !== 'done');

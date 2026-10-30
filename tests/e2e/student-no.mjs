@@ -89,6 +89,7 @@ await run('student-no', [
     await page.click(`${V} .steps [data-step="2"]`);
     await page.setInputFiles(`${V} #unAnsFile`, files);
     await page.waitForFunction(() => /3쪽/.test((document.querySelector('.unit-box #unAnsMsg') || {}).textContent || ''));
+    assert((await page.textContent(V)).includes('번호를 다시 읽기 전'), '다시 읽기 전 안내가 없음');
     await page.click(`${V} [data-un="toGrade"]`);
     await page.click(`${V} [data-un="grade"]`);
     await page.waitForSelector('#sheetRoot #noOk');
@@ -97,6 +98,8 @@ await run('student-no', [
     const st = (await T(A)).students.map(s => `${s.no}:${s.good}:${s.status}`).join(',');
     assert(st === '1:g1:done,2:g2:done,3:g3:done', st);
     await page.click('#sheetRoot [data-close]');
+    await page.click(`${V} .steps [data-step="2"]`);
+    assert(!(await page.textContent(V)).includes('번호를 다시 읽기 전'), '읽은 뒤에도 안내가 남음');
   }],
   ['번호 칸을 정하지 않고 채점하면 번호 칸 정하기부터, 겹치거나 못 읽은 번호는 노란 줄이고 고쳐야 채점', async () => {
     reads = [1, 1, null];
@@ -119,28 +122,44 @@ await run('student-no', [
     await page.click('#sheetRoot #noOk');
     await until(() => grades().length === n0 + 3);
   }],
-  ['번호를 읽는 동안 새 스캔을 올리면 앞서 읽은 번호는 버리고 다시 하라고 안내(새 스캔에 옛 번호를 붙이지 않음)', async () => {
+  ['번호를 읽는 동안에는 「읽는 중」 창이 떠 있고(스캔을 바꿀 수 없음), 그만두면 읽은 번호는 쓰지 않음', async () => {
     reads = [3, 1, 2]; noDelay = 1500;
     await page.click(`${V} .steps [data-step="2"]`);
     await page.setInputFiles(`${V} #unAnsFile`, files);
     await page.waitForTimeout(500);
     await page.click(`${V} [data-un="toGrade"]`);
     await page.click(`${V} [data-un="grade"]`);
-    await page.waitForTimeout(200);
-    await page.click(`${V} .steps [data-step="2"]`);
-    await page.setInputFiles(`${V} #unAnsFile`, [files[2], files[0], files[1]]);
-    await page.waitForFunction(() => /스캔이 바뀌었/.test(document.body.textContent), null, { timeout: 6000 });
-    await page.waitForTimeout(300);
-    assert(await page.locator('#sheetRoot #noOk').count() === 0, '옛 번호 확인 표가 뜸');
+    await page.waitForFunction(() => /번호를 읽는 중/.test(document.querySelector('#sheetRoot').textContent));
+    await page.click('#sheetRoot [data-close]');
+    await page.waitForTimeout(2000);
+    assert(await page.locator('#sheetRoot #noOk').count() === 0, '그만뒀는데 확인 표가 뜸');
     noDelay = 0;
   }],
   ['「채점 안 함」 학생은 번호 확인 표에서 빼고(번호를 묻지 않음) 맨 뒤에 그대로', async () => {
+    await page.click(`${V} .steps [data-step="2"]`);
     await page.click(`${V} [data-un="skip"][data-i="0"]`);
     await page.click(`${V} [data-un="toGrade"]`);
     await page.click(`${V} [data-un="grade"]`);
     await page.waitForSelector('#sheetRoot #noOk');
     assert(await page.locator('#sheetRoot [data-noi]').count() === 2, String(await page.locator('#sheetRoot [data-noi]').count()));
     await page.click('#sheetRoot [data-close]');
+  }],
+  ['이름 칸을 가리기로 했는데 정하지 않았으면 번호를 읽기 전에 먼저 묻고(AI 부르기 전), 「가리지 않고 채점」은 한 번만', async () => {
+    await page.click(`${V} .steps [data-step="2"]`);
+    await page.check(`${V} #unMaskOn`);
+    const n0 = sent.filter(s => s.prompt.startsWith('[번호 읽기]')).length;
+    await page.click(`${V} [data-un="toGrade"]`);
+    await page.click(`${V} [data-un="grade"]`);
+    await page.waitForSelector('#sheetRoot #unNoMaskOk');
+    await page.waitForTimeout(300);
+    assert(sent.filter(s => s.prompt.startsWith('[번호 읽기]')).length === n0, '이름 칸을 묻기 전에 번호를 읽음');
+    await page.click('#sheetRoot #unNoMaskOk');
+    await page.waitForSelector('#sheetRoot #noOk');
+    await page.click('#sheetRoot #noOk');
+    await page.waitForSelector('#sheetRoot #unRegradeOk');
+    await page.click('#sheetRoot [data-close]');
+    await page.click(`${V} .steps [data-step="2"]`);
+    await page.uncheck(`${V} #unMaskOn`);
   }],
   ['평가지 채점도 같은 방법: 번호 칸을 정하고 채점하면 확인 표(2·3·1) → 번호 차례로, 학생마다 맞는 평가지', async () => {
     reads = [2, 3, 1];
@@ -176,6 +195,22 @@ await run('student-no', [
     await page.waitForTimeout(300);
     const rows = await page.$$eval('[data-grview1]', els => els.map(e => e.getAttribute('aria-label').match(/^(\d+)번/)[1]));
     assert(rows.join(',') === '1,2,3', rows.join(','));
+  }],
+  ['떠 있는 버튼으로 넣은 답안: 번호를 읽는 동안 「읽는 중」 창, 확인 표를 닫은 뒤에 다음 파일 카드(덮이지 않음)', async () => {
+    reads = [3, 1, 2]; noDelay = 1200;
+    await page.setInputFiles('#inboxFile', [...files, { name: '명단.csv', mimeType: 'text/csv', buffer: Buffer.from('번호,성명\n1,가\n2,나\n3,다') }]);
+    await page.waitForSelector('#sheetRoot #ibRun:not([disabled])');
+    assert((await page.textContent('#sheetRoot')).includes('학생 답안 스캔'), await page.textContent('#sheetRoot'));
+    await page.click('#sheetRoot #ibRun');
+    await page.waitForFunction(() => /번호를 읽는 중/.test(document.querySelector('#sheetRoot').textContent));
+    await page.waitForSelector('#sheetRoot #noOk', { timeout: 8000 });
+    await page.waitForTimeout(300);
+    assert(await page.locator('#sheetRoot #noOk').count() === 1, '확인 표가 덮임');
+    await page.click('#sheetRoot [data-close]');
+    await page.waitForSelector('#sheetRoot #ibRun');
+    assert((await page.textContent('#sheetRoot')).includes('학급 명단'), '다음 카드: ' + await page.textContent('#sheetRoot'));
+    await page.click('#sheetRoot [data-close]');
+    noDelay = 0;
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
