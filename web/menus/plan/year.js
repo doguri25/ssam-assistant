@@ -2,6 +2,7 @@
    AI 답은 시작할 때의 계획 id에 저장해서, 그사이 다른 계획·메뉴로 가도 섞이지 않음 */
 import { onFlush } from '../../core/store.js';
 import { onEnter, go as goMenu } from '../../core/shell.js';
+import { registerInbox } from '../../core/inbox.js';
 import * as ai from '../../core/ai.js';
 import { readText, fileMessage } from '../../core/files.js';
 import { getSchool } from '../../core/settings.js';
@@ -542,3 +543,45 @@ onEnter('plan', (tab, section) => {
   flushSave();
   if (tab === 'year') { const p = getPlan(plan.id); if (p) plan = p; render(); }
 });
+
+/* 떠 있는 버튼: 작년 업무 계획 → 새 연간계획(업무명은 제목에서, 목표는 입력 칸) → 4단계 초안까지(설정에 따라 자료로만) */
+const titleName = t => {
+  const l = String(t || '').split('\n').map(x => x.trim()).find(Boolean) || '';
+  const m = /^(?:\d{4}\s*(?:학년도)?\s*)?(.+?)\s*(?:운영|추진|연간|사업|세부)?\s*계획/.exec(l);
+  return m ? m[1].trim().slice(0, 40) : '';
+};
+registerInbox('year-plan', {
+  act: () => '새 연간계획을 만들어 작년 계획서로 넣기',
+  fields: (files, ctx) => [
+    { key: 'name', label: '업무명', type: 'text', required: true, value: titleName(ctx.texts.get(files[0])) },
+    { key: 'goal', label: '올해 목표', type: 'text', required: true }],
+  async run(files, v, opts) {
+    goMenu('plan', 'year');
+    flushSave();
+    plan = newPlan(); saved = false; showPrev = false;
+    plan.name = String(v.name || '').trim(); plan.goal = String(v.goal || '').trim();
+    persist(); render();
+    await addFiles('lastPlan', files);
+    if (opts.plan !== 'draft') return '새 연간계획에 작년 계획서를 넣었어요.';
+    if (!ai.ready()) return '새 연간계획에 작년 계획서를 넣었어요. AI를 정하면 초안을 써요(왼쪽 아래 AI).';
+    goStep(4);
+    await runDraft();
+    return '';
+  }
+});
+/* 떠 있는 버튼 › 지침: 지금 연간계획의 「올해 지침·공문」으로 (초안까지면 지침 점검까지) */
+export const yearGuide = {
+  key: 'year', label: '연간계획',
+  current: () => { const p = getPlan(currentId()) || listPlans()[0]; return p ? { id: p.id, title: p.name || '이름 없는 계획' } : null; },
+  async add(id, files, opts) {
+    goMenu('plan', 'year');
+    flushSave();
+    const p = getPlan(id);
+    if (!p) return '그 연간계획을 찾지 못했어요.';
+    plan = p; saved = true; setCurrent(p.id);
+    plan.step = 1; render();
+    await addFiles('guide', files);
+    if (opts.plan === 'draft' && ai.ready()) { apply(id, x => { x.guide = null; }); goStep(3); }
+    return '연간계획의 올해 지침·공문으로 넣었어요.';
+  }
+};

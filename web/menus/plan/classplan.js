@@ -2,7 +2,8 @@
    작년 계획서 목차 그대로 올해 초안을 쓰고, 첨부한 진도표·평가계획을 읽어 표로 넣음.
    AI 답은 시작할 때의 계획 id에 저장해서, 그사이 다른 계획·메뉴로 가도 섞이지 않음 */
 import { onFlush, get } from '../../core/store.js';
-import { onEnter } from '../../core/shell.js';
+import { onEnter, go as goMenu } from '../../core/shell.js';
+import { registerInbox } from '../../core/inbox.js';
 import * as ai from '../../core/ai.js';
 import { readText, fileMessage } from '../../core/files.js';
 import { toast, saveFile } from '../../core/ui.js';
@@ -617,3 +618,44 @@ onEnter('plan', (tab, section) => {
   flushSave();
   if (tab === 'class') { const p = getPlan(plan.id); if (p) plan = p; render(); }
 });
+
+/* 떠 있는 버튼: 작년 학급운영계획 → 새 계획(학년·반은 학급 정보, 없으면 입력 칸) → 초안까지(설정에 따라 자료로만) */
+const NO_AI = ' AI를 정하면 초안을 써요(왼쪽 아래 AI).';
+registerInbox('class-plan', {
+  act: () => '새 학급운영계획을 만들어 작년 계획서로 넣기',
+  fields: () => {
+    const p = newPlan();
+    return p.grade && p.room ? [] : [
+      { key: 'grade', label: '학년', type: 'select', options: [['', '고르기'], ...[1, 2, 3, 4, 5, 6].map(g => [String(g), `${g}학년`])], value: p.grade ? String(p.grade) : '', required: true },
+      { key: 'room', label: '반', type: 'number', value: p.room || '', required: true }];
+  },
+  async run(files, v, opts) {
+    goMenu('plan', 'class');
+    flushSave();
+    plan = newPlan(); saved = false; showPrev = false; outlineNote = '';
+    if (v.grade) plan.grade = +v.grade;
+    if (v.room) plan.room = +v.room;
+    persist(); render();
+    await addFiles('lastPlan', files);
+    if (opts.plan !== 'draft') return '새 학급운영계획에 작년 계획서를 넣었어요.';
+    if (!ai.ready()) return '새 학급운영계획에 작년 계획서를 넣었어요.' + NO_AI;
+    goStep(2); goStep(3);
+    await runDraft();
+    return '';
+  }
+});
+/* 떠 있는 버튼 › 지침: 지금 학급운영계획의 「올해 지침」으로 */
+export const classGuide = {
+  key: 'class', label: '학급운영계획',
+  current: () => { const p = getPlan(currentId()) || listPlans()[0]; return p ? { id: p.id, title: planTitle(p) } : null; },
+  async add(id, files) {
+    goMenu('plan', 'class');
+    flushSave();
+    const p = getPlan(id);
+    if (!p) return '그 학급운영계획을 찾지 못했어요.';
+    plan = p; saved = true; outlineNote = ''; setCurrent(p.id);
+    plan.step = 1; render();
+    await addFiles('guide', files);
+    return '학급운영계획의 올해 지침으로 넣었어요. 초안을 쓸 때 지침 항목을 점검해요.';
+  }
+};

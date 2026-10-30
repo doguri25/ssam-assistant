@@ -1,7 +1,8 @@
 /* 계획 › 행사계획: 1 행사 정보 → 2 구성안 → 3 문서 → 4 설문·결과 (PRD 5.4).
    연간계획(year.js)과 같은 틀: 지난 행사 목록 + 단계. AI 답은 시작할 때의 행사 id에 저장 */
 import { onFlush } from '../../core/store.js';
-import { onEnter } from '../../core/shell.js';
+import { onEnter, go as goMenu } from '../../core/shell.js';
+import { registerInbox } from '../../core/inbox.js';
 import * as ai from '../../core/ai.js';
 import { readText, fileMessage } from '../../core/files.js';
 import { getSchool } from '../../core/settings.js';
@@ -706,3 +707,75 @@ onEnter('plan', (tab, section) => {
   flushSave();
   if (tab === 'event') { const x = getEvent(ev.id); if (x) ev = x; render(); }
 });
+
+/* 떠 있는 버튼: 작년 행사 계획 → 새 행사(행사명은 제목에서, 대상·날짜·장소는 입력 칸) + 참고 자료 → 구성안까지(설정에 따라 자료로만) */
+const eventTitle = t => {
+  const l = String(t || '').split('\n').map(x => x.trim()).find(Boolean) || '';
+  const m = /^(?:\d{4}\s*(?:학년도)?\s*)?(.+?)\s*(?:운영|추진|시행|세부)?\s*계획/.exec(l);
+  return m ? m[1].trim().slice(0, 40) : '';
+};
+const kindOf = name => (/운동회|체육/.test(name) ? 'sports' : /학예회|발표회|축제/.test(name) ? 'arts' : /체험|현장|수련/.test(name) ? 'field' : 'other');
+async function refsFrom(id, files, texts) {
+  for (const f of files) {
+    let text = texts && texts.get(f);
+    if (text == null) { try { text = await readText(f); } catch (e) { toast(fileMessage(e && e.code), 5000); continue; } }
+    addRef(id, { kind: guessKind(f.name), name: f.name, text });
+  }
+}
+registerInbox('event-plan', {
+  act: () => '새 행사계획을 만들어 참고 자료로 넣기',
+  fields: (files, ctx) => [
+    { key: 'name', label: '행사명', type: 'text', required: true, value: eventTitle(ctx.texts.get(files[0])) },
+    { key: 'grades', label: '대상', type: 'text', required: true },
+    { key: 'date', label: '날짜', type: 'date', required: true },
+    { key: 'place', label: '장소', type: 'text', required: true }],
+  async run(files, v, opts) {
+    goMenu('plan', 'event');
+    flushSave();
+    ev = newEvent(); saved = false; showMemos = false; showPlans = false;
+    Object.assign(ev, { name: String(v.name || '').trim(), grades: String(v.grades || '').trim(), date: v.date || '', place: String(v.place || '').trim() });
+    ev.kind = kindOf(ev.name);
+    persist(); render();
+    await refsFrom(ev.id, files, opts.texts);
+    if (opts.plan !== 'draft' || !isDate(ev.date)) return '새 행사계획에 참고 자료로 넣었어요.';
+    if (!ai.ready()) return '새 행사계획에 참고 자료로 넣었어요. AI를 정하면 구성안을 만들어요(왼쪽 아래 AI).';
+    ev.step = 2; ev.maxStep = Math.max(ev.maxStep, 2); persist(); renderMain();
+    await runOptions();
+    return '';
+  }
+});
+/* 떠 있는 버튼: 설문 응답 CSV → 행사 고르기(확정한 행사가 먼저) → 결과 보고서 */
+registerInbox('survey', {
+  act: () => '행사 만족도 설문 결과로 넣고 결과 보고서 쓰기',
+  fields: () => {
+    const l = listEventPlans();
+    if (!l.length) return [];
+    const first = l.find(e => e.id === currentEventId()) || l.find(e => e.status === 'final') || l[0];
+    return [{ key: 'event', label: '어느 행사의 설문인가요', type: 'select', options: l.map(e => [e.id, `${e.name || '이름 없는 행사'}${e.date ? ` (${e.date})` : ''}`]), value: first.id, required: true }];
+  },
+  async run(files, v) {
+    const e = v.event && getEvent(v.event);
+    if (!e) return '설문을 넣을 행사가 없어요. 행사계획을 먼저 만들어 주세요.';
+    goMenu('plan', 'event');
+    flushSave();
+    ev = e; saved = true; setCurrentEvent(e.id);
+    ev.step = 4; ev.maxStep = Math.max(ev.maxStep, 4); persist(); render();
+    await addCsv(files[0]);
+    return '';
+  }
+});
+/* 떠 있는 버튼 › 지침: 지금 행사의 참고 자료로 */
+export const eventGuide = {
+  key: 'event', label: '행사계획',
+  current: () => { const e = getEvent(currentEventId()) || listEventPlans()[0]; return e ? { id: e.id, title: e.name || '이름 없는 행사' } : null; },
+  async add(id, files, opts) {
+    goMenu('plan', 'event');
+    flushSave();
+    const e = getEvent(id);
+    if (!e) return '그 행사를 찾지 못했어요.';
+    ev = e; saved = true; setCurrentEvent(e.id);
+    ev.step = 1; render();
+    await refsFrom(id, files, opts.texts);
+    return '행사계획의 참고 자료로 넣었어요.';
+  }
+};
