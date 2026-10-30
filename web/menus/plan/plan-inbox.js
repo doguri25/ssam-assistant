@@ -10,7 +10,7 @@ const options = () => TARGETS.flatMap(t => { const c = t.current(); return c ? [
 
 registerInbox('guide', {
   act: () => (options().length ? '고른 계획의 지침·참고 자료로 넣기' : NONE),
-  fields: () => { const o = options(); return o.length ? [{ key: 'target', label: '어느 계획에 넣을까요', type: 'select', options: o, value: o[0][0], required: true }] : []; },
+  fields: () => { const o = options(); return o.length ? [{ key: 'target', label: '어느 계획에 넣을까요', type: 'select', options: o, value: o[0][0], required: true, ask: o.length > 1 }] : []; },
   async run(files, v, opts) {
     const [key, id] = String(v.target || '').split(':');
     const t = TARGETS.find(x => x.key === key);

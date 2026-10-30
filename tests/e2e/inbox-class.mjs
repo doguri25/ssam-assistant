@@ -81,6 +81,25 @@ await run('inbox-class', [
     await page.waitForFunction(() => document.querySelectorAll('section[data-menu="purchase"] [data-item][data-f="name"]').length === 3);
     assert(await page.inputValue('section[data-menu="purchase"] [data-item="0"][data-f="name"]') === '비커', '첫 줄');
   }],
+  ['진도표와 명단을 함께 넣으면 진도표의 교과 고르기 창이 끝난 뒤에 명단 카드(창이 덮이지 않음)', async () => {
+    await pick([join(FIXTURES, 'jindo-sample.txt'), join(FIXTURES, 'roster-sample.csv')]);
+    await runCard();
+    await page.waitForSelector('#sheetRoot [data-c="pickOk"]');
+    await page.waitForTimeout(500);
+    assert(await page.locator('#sheetRoot [data-c="pickOk"]').count() === 1, '교과 고르기 창이 덮임');
+    await page.click('#sheetRoot [data-c="pickOk"]');
+    await page.waitForSelector(`${sheet} #ibRun`);
+    assert((await page.textContent(sheet)).includes('학급 명단'), await page.textContent(sheet));
+    await runCard();
+    await page.waitForSelector('#sheetRoot #rosterOk');
+    await pick(join(FIXTURES, 'quote.csv'));
+    await page.waitForTimeout(500);
+    assert(await page.locator('#sheetRoot #rosterOk').count() === 1, '명단 확인 창이 덮임');
+    await page.click('#sheetRoot #rosterOk');
+    await page.waitForSelector(`${sheet} #ibRun`);
+    assert((await page.textContent(sheet)).includes('견적서'), '다음 카드');
+    await page.click(`${sheet} [data-close]`);
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();

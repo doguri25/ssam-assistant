@@ -277,12 +277,12 @@ document.addEventListener('change', e => {
 });
 
 /* 떠 있는 버튼: 정답지(합본 포함)는 새 단원평가로, 문제지는 정답지는 있고 평가지가 없는 최근 단원평가에(없으면 새로) */
-/* 문제지와 교과(·단원)가 같은 것을 먼저, 없으면 최근 것 */
+/* 문제지와 교과(·단원)가 같은 것. 문제지의 교과를 모를 때만 최근 것 — 다른 교과 평가에 붙이지 않음(그 평가지 글이 채점 AI로 감) */
 function paperless(text) {
   const m = parsePaper(splitCombined(text || '').paper || text || '').meta;
   const list = listTests().map(s => getTest(s.id)).filter(t => t && t.key.items.length && !(t.paper && t.paper.text));
-  const same = t => m.subject && t.meta.subject === m.subject && (!m.unitNo || !t.meta.unitNo || t.meta.unitNo === m.unitNo);
-  return list.find(same) || list[0] || null;
+  if (!m.subject) return list[0] || null;
+  return list.find(t => t.meta.subject === m.subject && (!m.unitNo || !t.meta.unitNo || t.meta.unitNo === m.unitNo)) || null;
 }
 function openNew() {
   const t = newTest();

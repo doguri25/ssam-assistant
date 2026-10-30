@@ -45,6 +45,12 @@ export function classify({ name = '', text = '', scan = false } = {}) {
     if (q >= 3 && /[①②③④⑤]|\(\s{2,}\)/.test(t)) add('unit-paper', 7, `문항 ${q}개와 답 칸이 있어요.`);
   }
   if (/문제지|평가지|단원\s*평가/.test(n)) add('unit-paper', 2, '파일 이름에 「평가지」가 있어요.');
+  // 글자 인식이 된 학생 답안 스캔(복사기 PDF 등): 이름에 답안·스캔, 이름 칸이 채워짐, 같은 문제가 여러 번(반 전체를 한 파일로)
+  // — 문제지로 잘못 보면 학생 이름·답이 평가지 글로 저장되고 채점 AI로 감
+  if (/답안|스캔|scan/i.test(n)) add('unit-scan', 12, '파일 이름에 「답안」이 있어요.');
+  if (/(이\s*름|성\s*명)\s*[:：]\s*[가-힣]{2,4}(?![가-힣])/.test(t)) add('unit-scan', 12, '이름이 적힌 학생 답안이에요.');
+  const q1 = parsePaper(t).questions[1];
+  if (q1 && q1.length >= 8 && t.split(q1).length > 2) add('unit-scan', 12, '같은 문제지가 여러 장 들어 있어요(학생 답안 묶음).');
 
   if (/성취\s*기준/.test(t) && /평가\s*(요소|기준|방법)/.test(t)) add('eval-plan', 4, '성취기준과 평가 기준이 있어요.');
   if (/평가\s*계획/.test(head)) add('eval-plan', 3, '제목에 「평가 계획」이 있어요.');

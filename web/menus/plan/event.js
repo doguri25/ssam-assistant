@@ -751,7 +751,7 @@ registerInbox('survey', {
     const l = listEventPlans();
     if (!l.length) return [];
     const first = l.find(e => e.id === currentEventId()) || l.find(e => e.status === 'final') || l[0];
-    return [{ key: 'event', label: '어느 행사의 설문인가요', type: 'select', options: l.map(e => [e.id, `${e.name || '이름 없는 행사'}${e.date ? ` (${e.date})` : ''}`]), value: first.id, required: true }];
+    return [{ key: 'event', label: '어느 행사의 설문인가요', type: 'select', options: l.map(e => [e.id, `${e.name || '이름 없는 행사'}${e.date ? ` (${e.date})` : ''}`]), value: first.id, required: true, ask: l.length > 1 }];
   },
   async run(files, v) {
     const e = v.event && getEvent(v.event);

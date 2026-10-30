@@ -340,7 +340,7 @@ registerInbox('unit-scan', {
   act: () => (keyed().length ? '단원평가 답안으로 넣고 채점하기' : '평가 › 평가지 채점에 넣기 (정답지를 넣은 단원평가가 없어요)'),
   fields: () => {
     const l = keyed();
-    return l.length ? [{ key: 'test', label: '채점할 단원평가', type: 'select', options: l.map(s => [s.id, s.title]), value: l[0].id, required: true }] : [];
+    return l.length ? [{ key: 'test', label: '채점할 단원평가', type: 'select', options: l.map(s => [s.id, s.title]), value: l[0].id, required: true, ask: l.length > 1 }] : [];
   },
   async run(files, v) {
     if (!v.test || !getTest(v.test)) return legacyGrade(files);

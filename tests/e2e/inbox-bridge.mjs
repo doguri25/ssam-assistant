@@ -41,6 +41,13 @@ await run('inbox-bridge', [
     await page.waitForTimeout(100);
     assert((await calls('bubble_config')).at(-1)[1].autostart === true, JSON.stringify((await calls('bubble_config')).at(-1)));
   }],
+  ['버튼을 끄면 «컴퓨터를 켜면 버튼 띄우기»가 켜져 있어도 자동 시작은 끔(창 없이 켜지지 않게)', async () => {
+    await page.evaluate(async () => (await import('./core/inbox.js')).setInboxSettings({ on: false, autostart: true }));
+    const c = (await calls('bubble_config')).at(-1)[1];
+    assert(c.enabled === false && c.autostart === false, JSON.stringify(c));
+    await page.evaluate(async () => (await import('./core/inbox.js')).setInboxSettings({ on: true, autostart: true }));
+    assert((await calls('bubble_config')).at(-1)[1].autostart === true, '다시 켜면');
+  }],
   ['버튼 메뉴 「버튼 숨기기」(bubble:off) → 설정이 꺼짐, 「파일 고르기」(inbox:pick) → 고르기 카드', async () => {
     await page.evaluate(() => window.__ls['bubble:off']({}));
     assert((await page.evaluate(async () => (await import('./core/inbox.js')).getInboxSettings())).on === false, '꺼지지 않음');

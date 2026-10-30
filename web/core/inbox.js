@@ -1,5 +1,6 @@
 /* 떠 있는 버튼: 아무 파일이나 넣으면 종류를 판단해(AI 없음) 확인 카드 뒤 그 메뉴의 기능으로 (스펙 2026-10-30-inbox-button).
    메뉴 모듈은 registerInbox(kind, { act(files, ctx), fields?(files, ctx), run(files, values, opts) })로 자기 일을 등록.
+   입력 칸 { key, label, type, options?, value?, required?, ask? } — ask: 바로 실행이어도 카드로 물어봄(여럿 중 고르기)
    ctx = opts = { texts: Map(파일 → 읽은 글) } (+ opts.plan) — 처리 함수가 파일을 다시 읽지 않아도 되게
    웹판·Windows 쌤비서 창 안에서는 오른쪽 아래 버튼(누르면 파일 고르기, 끌고 오면 놓기 판) */
 import { get, set } from './store.js';
@@ -39,8 +40,18 @@ let running = false;
 export function receive(files) {
   const list = [...(files || [])].filter(Boolean);
   if (!list.length) return;
+  if (running) toast('앞 파일을 마친 뒤 이어서 할게요.', 4000);
   queue.push(list);
   if (!running) pump();
+}
+/* 메뉴가 띄운 창(교과 고르기·명단 확인·이름 칸 등)이나 선생님이 연 창이 닫힐 때까지 기다림 — 다음 카드가 그 창을 덮지 않게 */
+function sheetIdle() {
+  const root = document.getElementById('sheetRoot');
+  if (!root || !root.childElementCount) return Promise.resolve();
+  return new Promise(res => {
+    const obs = new MutationObserver(() => { if (!root.childElementCount) { obs.disconnect(); res(); } });
+    obs.observe(root, { childList: true });
+  });
 }
 async function pump() {
   running = true;
@@ -60,7 +71,7 @@ async function handleBatch(files) {
   const read = await Promise.all(files.map(readOne));
   const bad = read.filter(r => r.error), ok = read.filter(r => !r.error);
   const notes = bad.map(r => `「${r.file.name}」: ${r.error}`);
-  if (!ok.length) { await askCard({ files: bad.map(r => r.file), notes }); return; }
+  if (!ok.length) { await sheetIdle(); await askCard({ files: bad.map(r => r.file), notes }); return; }
   const info = new Map(ok.map(r => [r.file, classify({ name: r.file.name, text: r.text, scan: r.scan })]));
   const ctx = { texts: new Map(ok.map(r => [r.file, r.text || ''])) };
   const groups = groupFiles(ok.map(r => ({ file: r.file, kind: info.get(r.file).kind })));
@@ -71,9 +82,11 @@ async function handleGroup({ kind, files }, guess, notes, ctx) {
   const s = getInboxSettings();
   let pick = { kind, values: {} };
   const fields = await fieldsOf(kind, files, ctx);
-  const direct = s.mode === 'direct' && kind !== 'unknown' && handlers[kind] && !notes.length && !fields.some(f => f.required && !String(f.value || '').trim());
+  // 바로 실행이어도 모자란 필수 값, 여럿 중 고를 것(ask: 어느 평가·계획·행사)이 있으면 카드
+  const direct = s.mode === 'direct' && kind !== 'unknown' && handlers[kind] && !notes.length && !fields.some(f => f.ask || (f.required && !String(f.value || '').trim()));
   if (direct) fields.forEach(f => { pick.values[f.key] = f.value == null ? '' : f.value; });
   else {
+    await sheetIdle();
     pick = await askCard({ files, kind, guess, notes, ctx });
     if (!pick) return;
   }
@@ -83,6 +96,7 @@ async function handleGroup({ kind, files }, guess, notes, ctx) {
     const msg = await h.run(files, pick.values, { plan: s.plan, texts: ctx.texts });
     if (msg) toast(msg, 6000);
   } catch (e) { toast(`하지 못했어요: ${String((e && e.message) || e || '')}`.trim(), 6000); }
+  await sheetIdle();
 }
 async function fieldsOf(kind, files, ctx) {
   const h = handlers[kind];
@@ -194,7 +208,8 @@ function askPick() {
 function bridge() {
   const T = window.__TAURI__;
   if (!T || !T.core || !T.event) return;
-  const sync = s => { setFabHidden(true); Promise.resolve(T.core.invoke('bubble_config', { enabled: s.on, keepOnClose: s.keepOnClose, autostart: s.autostart })).catch(() => {}); };
+  // 버튼을 끄면 자동 시작도 끔 (컴퓨터를 켤 때 창 없이 켜지지 않게)
+  const sync = s => { setFabHidden(true); Promise.resolve(T.core.invoke('bubble_config', { enabled: s.on, keepOnClose: s.keepOnClose, autostart: s.on && s.autostart })).catch(() => {}); };
   sync(getInboxSettings());
   document.addEventListener('inbox:settings', e => sync(e.detail));
   T.event.listen('inbox:files', async ({ payload }) => {

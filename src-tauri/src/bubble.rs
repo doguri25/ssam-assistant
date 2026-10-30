@@ -63,6 +63,15 @@ pub fn read_allowed(allowed: &Mutex<HashSet<PathBuf>>, path: &Path, max: u64) ->
     std::fs::read(path).map_err(|_| "READ_FAILED".to_string())
 }
 
+/// 경로를 넘길 수 있는 창은 버튼 창뿐 (쌤비서 화면이 아무 경로나 허용 목록에 넣고 읽지 못하게)
+pub fn from_bubble(label: &str) -> bool {
+    label == "bubble"
+}
+
+fn main_hidden(app: &AppHandle) -> bool {
+    app.get_webview_window("main").map(|w| !w.is_visible().unwrap_or(true)).unwrap_or(false)
+}
+
 pub fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.unminimize();
@@ -78,6 +87,10 @@ pub fn bubble_config(app: AppHandle, state: State<Bubble>, enabled: bool, keep_o
     if let Some(w) = app.get_webview_window("bubble") {
         let _ = if enabled { w.show() } else { w.hide() };
     }
+    // 버튼을 껐는데 쌤비서 창도 숨어 있으면 창이 하나도 없으므로 쌤비서 창을 보임
+    if !enabled && main_hidden(&app) {
+        show_main(&app);
+    }
     use tauri_plugin_autostart::ManagerExt;
     let launch = app.autolaunch();
     let on = launch.is_enabled().unwrap_or(false);
@@ -90,7 +103,10 @@ pub fn bubble_config(app: AppHandle, state: State<Bubble>, enabled: bool, keep_o
 
 /// 버튼 창에 끌어 놓은 경로 → 허용 목록, 쌤비서 창을 앞으로 하고 알림. 넘긴 파일 수를 돌려줌
 #[tauri::command]
-pub fn inbox_take(app: AppHandle, state: State<Bubble>, paths: Vec<String>) -> usize {
+pub fn inbox_take(app: AppHandle, webview: tauri::Webview, state: State<Bubble>, paths: Vec<String>) -> usize {
+    if !from_bubble(webview.label()) {
+        return 0;
+    }
     let list = allow(&state.allowed, &paths);
     if !list.is_empty() {
         show_main(&app);
@@ -117,6 +133,10 @@ pub fn bubble_action(app: AppHandle, action: String) {
         "hide" => {
             if let Some(w) = app.get_webview_window("bubble") {
                 let _ = w.hide();
+            }
+            // 쌤비서 창이 숨어 있으면 보임 (창이 하나도 없는 채로 켜져 있지 않게, 다시 켜는 곳 안내도 보이게)
+            if main_hidden(&app) {
+                show_main(&app);
             }
             let _ = app.emit_to("main", "bubble:off", ());
         }
@@ -164,6 +184,13 @@ mod tests {
         assert_eq!(read_allowed(&allowed, &a, MAX_BYTES).unwrap(), b"1,2");
         assert_eq!(read_allowed(&allowed, &a, MAX_BYTES).unwrap_err(), "NOT_ALLOWED");
         let _ = std::fs::remove_file(a);
+    }
+
+    #[test]
+    fn 경로는_버튼_창만_넘길_수_있음() {
+        assert!(from_bubble("bubble"));
+        assert!(!from_bubble("main"));
+        assert!(!from_bubble(""));
     }
 
     #[test]

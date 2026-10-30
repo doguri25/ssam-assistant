@@ -70,3 +70,11 @@ test('앱이 읽은 엑셀·CSV 글(칸을 탭으로 이음)도 같은 판단', 
   assert.equal(kind('견적.xlsx', '견 적 서\n품명\t규격\t수량\t단가\t금액\n비커\t500ml\t2\t3000\t6000'), 'quote');
   assert.equal(kind('시간표.xlsx', '학년별 기초시간표\n3-1\t월\t화\t수\t목\t금\n1\t국어\t수학\t국어\t수학\t국어'), 'timetable');
 });
+
+test('글자가 있는 답안 스캔 PDF(복사기 글자 인식): 이름 칸이 채워졌거나 1번 문항이 여러 번, 이름에 「답안」이면 답안 스캔', () => {
+  const paper = fx('unit-paper.txt');
+  assert.equal(kind('3반.pdf', paper.replace('이름:', '이름: 가람')), 'unit-scan');
+  assert.equal(kind('3반.pdf', paper + '\n' + paper), 'unit-scan');
+  assert.equal(kind('단원평가 답안.pdf', paper), 'unit-scan');
+  assert.equal(kind('국어 2단원.hwp', paper), 'unit-paper');
+});
