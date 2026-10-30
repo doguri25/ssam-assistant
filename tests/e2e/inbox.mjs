@@ -133,6 +133,20 @@ await run('inbox', [
     assert(await page.isVisible('#inboxFab'), '다시 켜도 안 보임');
     assert((await page.evaluate(async () => (await import('./core/inbox.js')).getInboxSettings())).on === true, '저장');
   }],
+  ['390px 폭: 버튼과 놓기 판이 화면 안, 가로로 넘치지 않음', async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(150);
+    const b = await page.locator('#inboxFab').boundingBox();
+    assert(b && b.x >= 0 && b.x + b.width <= 390, JSON.stringify(b));
+    const dt = await page.evaluateHandle(() => { const d = new DataTransfer(); d.items.add(new File(['x'], 'a.csv')); return d; });
+    await page.dispatchEvent('body', 'dragenter', { dataTransfer: dt });
+    const p = await page.locator('#inboxPad').boundingBox();
+    assert(p && p.x >= 0 && p.x + p.width <= 390, JSON.stringify(p));
+    await page.dispatchEvent('body', 'drop', { dataTransfer: dt });
+    const w = await page.evaluate(() => [document.querySelector('#app').scrollWidth, document.querySelector('#app').clientWidth]);
+    assert(w[0] <= w[1], '넘침: ' + w);
+    await page.setViewportSize({ width: 1280, height: 860 });
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();
