@@ -1,0 +1,183 @@
+/* 떠 있는 버튼: 아무 파일이나 넣으면 종류를 판단해(AI 없음) 확인 카드 뒤 그 메뉴의 기능으로 (스펙 2026-10-30-inbox-button).
+   메뉴 모듈은 registerInbox(kind, { act(files), fields?(files), run(files, values, opts) })로 자기 일을 등록.
+   웹판·Windows 쌤비서 창 안에서는 오른쪽 아래 버튼(누르면 파일 고르기, 끌고 오면 놓기 판) */
+import { get, set } from './store.js';
+import { readText, fileMessage } from './files.js';
+import { classify, groupFiles, KINDS, kindLabel } from './inbox-classify.js';
+
+const KEY = 'inbox';
+export const DEFAULTS = { on: true, mode: 'confirm', plan: 'draft', keepOnClose: true, autostart: false };
+const CHOICES = { mode: ['confirm', 'direct'], plan: ['draft', 'open'] };
+const SS = () => window.SSAM || {};
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const toast = (m, ms) => SS().toast && SS().toast(m, ms);
+
+/* ---------- 설정 ---------- */
+export function getInboxSettings() {
+  const v = get(KEY, null) || {}, s = { ...DEFAULTS };
+  for (const k of ['on', 'keepOnClose', 'autostart']) if (typeof v[k] === 'boolean') s[k] = v[k];
+  for (const k of Object.keys(CHOICES)) if (CHOICES[k].includes(v[k])) s[k] = v[k];
+  return s;
+}
+export function setInboxSettings(patch) {
+  const s = { ...getInboxSettings(), ...patch };
+  set(KEY, s);
+  document.dispatchEvent(new CustomEvent('inbox:settings', { detail: s }));
+  syncFab();
+  return s;
+}
+
+/* ---------- 처리 함수 등록 ---------- */
+const handlers = {};
+export function registerInbox(kind, handler) { handlers[kind] = handler; }
+const actOf = (kind, files) => (handlers[kind] && handlers[kind].act ? handlers[kind].act(files) : (KINDS.find(k => k[0] === kind) || [])[2] || '');
+
+/* ---------- 받기: 줄 세워 한 번에 한 묶음씩 ---------- */
+const queue = [];
+let running = false;
+export function receive(files) {
+  const list = [...(files || [])].filter(Boolean);
+  if (!list.length) return;
+  queue.push(list);
+  if (!running) pump();
+}
+async function pump() {
+  running = true;
+  try { while (queue.length) await handleBatch(queue.shift()); } finally { running = false; }
+}
+
+const isImage = f => /^image\//.test(f.type || '') || /\.(png|jpe?g|webp|bmp|gif|heic)$/i.test(f.name || '');
+async function readOne(file) {
+  if (isImage(file)) return { file, text: '', scan: true };
+  try { return { file, text: await readText(file), scan: false }; } catch (e) {
+    if (e && e.code === 'PDF_NO_TEXT') return { file, text: '', scan: true };
+    return { file, error: fileMessage(e && e.code) };
+  }
+}
+
+async function handleBatch(files) {
+  const read = await Promise.all(files.map(readOne));
+  const bad = read.filter(r => r.error), ok = read.filter(r => !r.error);
+  const notes = bad.map(r => `「${r.file.name}」: ${r.error}`);
+  if (!ok.length) { await askCard({ files: bad.map(r => r.file), notes }); return; }
+  const info = new Map(ok.map(r => [r.file, classify({ name: r.file.name, text: r.text, scan: r.scan })]));
+  const groups = groupFiles(ok.map(r => ({ file: r.file, kind: info.get(r.file).kind })));
+  for (const [i, g] of groups.entries()) await handleGroup(g, info.get(g.files[0]), i ? [] : notes);
+}
+
+async function handleGroup({ kind, files }, guess, notes) {
+  const s = getInboxSettings();
+  let pick = { kind, values: {} };
+  const fields = await fieldsOf(kind, files);
+  const direct = s.mode === 'direct' && kind !== 'unknown' && handlers[kind] && !notes.length && !fields.some(f => f.required && !String(f.value || '').trim());
+  if (direct) fields.forEach(f => { pick.values[f.key] = f.value == null ? '' : f.value; });
+  else {
+    pick = await askCard({ files, kind, guess, notes });
+    if (!pick) return;
+  }
+  const h = handlers[pick.kind];
+  if (!h) return;
+  try {
+    const msg = await h.run(files, pick.values, { plan: s.plan });
+    if (msg) toast(msg, 6000);
+  } catch (e) { toast(`하지 못했어요: ${String((e && e.message) || e || '')}`.trim(), 6000); }
+}
+async function fieldsOf(kind, files) {
+  const h = handlers[kind];
+  if (!h || !h.fields) return [];
+  try { return (await h.fields(files)) || []; } catch (e) { return []; }
+}
+
+/* ---------- 확인 카드 ---------- */
+const fieldHTML = f => {
+  const id = `data-ib-field="${esc(f.key)}"`, v = f.value == null ? '' : f.value;
+  const input = f.type === 'select'
+    ? `<select class="field" ${id}>${(f.options || []).map(([val, lab]) => `<option value="${esc(val)}"${String(val) === String(v) ? ' selected' : ''}>${esc(lab)}</option>`).join('')}</select>`
+    : `<input class="field" ${id} type="${f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'}" value="${esc(v)}" autocomplete="off">`;
+  return `<label class="yp-f"><span class="lab">${esc(f.label)}${f.required ? ' *' : ''}</span>${input}</label>`;
+};
+function askCard({ files, kind = '', guess = null, notes = [] }) {
+  return new Promise(resolve => {
+    let done = false;
+    const finish = v => { if (!done) { done = true; resolve(v); } };
+    const names = files.map(f => `「${esc(f.name)}」`).join(', ');
+    const kinds = KINDS.filter(([k]) => k !== 'unknown' && handlers[k]);
+    const html = `<h3>파일을 받았어요</h3>
+      <p class="muted" style="margin:0">${names}</p>
+      ${notes.length ? `<ul class="ib-notes">${notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
+      ${guess ? `<p class="ib-guess"><b>${esc(kind === 'unknown' ? '모르는 파일' : kindLabel(kind))}</b>${kind === 'unknown' ? '' : '(으)로 보여요.'} <span class="muted">${esc(guess.why)}</span></p>
+      <label class="yp-f"><span class="lab">할 일</span><select class="field" id="ibKind">
+        ${kind === 'unknown' || !handlers[kind] ? '<option value="">골라 주세요</option>' : ''}
+        ${kinds.map(([k, label]) => `<option value="${k}"${k === kind ? ' selected' : ''}>${esc(label)} — ${esc(actOf(k, files))}</option>`).join('')}</select></label>
+      <div id="ibFields" class="ib-fields"></div>
+      <p class="set-msg err" role="alert" id="ibErr" hidden></p>` : ''}
+      <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>${guess ? '그만두기' : '닫기'}</button>${guess ? '<button class="btn primary" type="button" id="ibRun">실행</button>' : ''}</div>`;
+    SS().openSheet(html, sh => {
+      const root = document.getElementById('sheetRoot');
+      const obs = new MutationObserver(() => { if (!sh.isConnected) { obs.disconnect(); finish(null); } });
+      if (root) obs.observe(root, { childList: true, subtree: true });
+      if (!guess) return;
+      const sel = sh.querySelector('#ibKind'), run = sh.querySelector('#ibRun'), err = sh.querySelector('#ibErr'), box = sh.querySelector('#ibFields');
+      let fields = [];
+      const draw = async () => {
+        const k = sel.value;
+        run.disabled = !k;
+        err.hidden = true;
+        fields = k ? await fieldsOf(k, files) : [];
+        if (sel.value === k) box.innerHTML = fields.map(fieldHTML).join('');
+      };
+      sel.addEventListener('change', draw);
+      draw();
+      run.addEventListener('click', () => {
+        const k = sel.value;
+        if (!k) return;
+        const values = {};
+        for (const f of fields) values[f.key] = (sh.querySelector(`[data-ib-field="${CSS.escape(f.key)}"]`) || {}).value ?? '';
+        const miss = fields.find(f => f.required && !String(values[f.key] || '').trim());
+        if (miss) { err.textContent = `「${miss.label}」을(를) 넣어 주세요.`; err.hidden = false; sh.querySelector(`[data-ib-field="${CSS.escape(miss.key)}"]`).focus(); return; }
+        obs.disconnect();
+        finish({ kind: k, values });
+        SS().closeSheet();
+      });
+    });
+  });
+}
+
+/* ---------- 오른쪽 아래 버튼과 놓기 판 ---------- */
+let fab = null, pad = null, input = null, hideFab = false;
+const hasFiles = e => !!(e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files'));
+/* Windows 버튼 창을 쓰면 창 안 버튼은 숨김 (Task 6) */
+export function setFabHidden(v) { hideFab = !!v; syncFab(); }
+function syncFab() {
+  if (!fab) return;
+  const show = getInboxSettings().on && !hideFab;
+  fab.hidden = !show;
+  if (!show) pad.hidden = true;
+}
+function mount() {
+  if (fab || !document.body) return;
+  fab = Object.assign(document.createElement('button'), { type: 'button', id: 'inboxFab', className: 'inbox-fab', title: '아무 파일이나 넣으면 쌤비서가 알아서 해요' });
+  fab.setAttribute('aria-label', '파일 넣기 — 쌤비서가 알아서 해요');
+  fab.innerHTML = '<span aria-hidden="true">쌤</span>';
+  input = Object.assign(document.createElement('input'), { type: 'file', id: 'inboxFile', multiple: true, hidden: true });
+  pad = Object.assign(document.createElement('div'), { id: 'inboxPad', className: 'inbox-pad', hidden: true });
+  pad.innerHTML = '<b>여기에 놓으면</b><span>쌤비서가 알아서 해요</span>';
+  document.body.append(fab, input, pad);
+  fab.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => { const f = [...input.files]; input.value = ''; receive(f); });
+  // 판은 자기에게 온 끌어 놓기만 받고 더 퍼뜨리지 않음 (다른 메뉴의 문서 전체 끌어 놓기 처리와 겹치지 않게)
+  for (const ev of ['dragenter', 'dragover']) pad.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; pad.classList.add('on'); });
+  pad.addEventListener('dragleave', e => { e.stopPropagation(); pad.classList.remove('on'); });
+  pad.addEventListener('drop', e => {
+    e.preventDefault(); e.stopPropagation();
+    pad.hidden = true; pad.classList.remove('on');
+    receive(e.dataTransfer ? [...e.dataTransfer.files] : []);
+  });
+  // 창 안으로 파일을 끌고 오면 판을 띄우고, 창 밖으로 나가거나 놓으면 내림
+  let depth = 0;
+  window.addEventListener('dragenter', e => { if (!hasFiles(e) || fab.hidden) return; depth++; pad.hidden = false; }, true);
+  window.addEventListener('dragleave', e => { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) pad.hidden = true; }, true);
+  for (const ev of ['drop', 'dragend']) window.addEventListener(ev, () => { depth = 0; if (pad) { pad.hidden = true; pad.classList.remove('on'); } }, true);
+  syncFab();
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();

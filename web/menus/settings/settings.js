@@ -9,6 +9,7 @@ import { saveFile } from '../../core/ui.js';
 import { getYears, snapshot, carryOver, makeBackup, parseBackup, prepYear } from '../../core/years.js';
 import { switchYear, switchError, getArchive, safeLS } from '../../core/year-switch.js';
 import { FULL_MSG, usage, get as sget, set as sset } from '../../core/store.js';
+import { getInboxSettings, setInboxSettings } from '../../core/inbox.js';
 
 const SSAM = () => window.SSAM || {};
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -39,6 +40,15 @@ function page(title, desc, body) {
   return `<div class="m-page set-page"><div class="m-head"><h2>${title}</h2>${desc ? `<p class="muted">${desc}</p>` : ''}</div>${body}</div>`;
 }
 const card = (title, body) => `<section class="set-card"><h3>${title}</h3>${body}</section>`;
+/* 떠 있는 버튼: 아무 파일이나 넣으면 쌤비서가 알아서 */
+function inboxCard() {
+  const s = getInboxSettings();
+  const radio = (name, id, value, label, desc) => `<label class="set-radio"><input type="radio" name="${name}" id="${id}" value="${value}" data-ib-set="${name}"${s[name] === value ? ' checked' : ''}> <b>${label}</b> <span class="muted">${desc}</span></label>`;
+  return card('떠 있는 버튼', `<p class="muted" style="margin-top:0">오른쪽 아래 「쌤」 버튼에 아무 파일이나 넣으면, 평가지인지 계획인지 알아보고 그 메뉴에서 해 줘요.</p>
+    <label class="set-radio"><input type="checkbox" id="ibSetOn" data-ib-set="on"${s.on ? ' checked' : ''}> <b>버튼 보이기</b></label>
+    <fieldset class="set-fs"><legend class="lab">알아본 뒤</legend>${radio('mode', 'ibSetModeConfirm', 'confirm', '확인 카드', '무엇으로 보이는지 보여 주고 [실행]을 누르면 해요')}${radio('mode', 'ibSetModeDirect', 'direct', '바로 실행', '모자란 값이 없으면 카드 없이 바로 해요')}</fieldset>
+    <fieldset class="set-fs"><legend class="lab">계획 파일</legend>${radio('plan', 'ibSetPlanDraft', 'draft', '초안까지', '새 계획을 만들고 AI 초안까지 써요')}${radio('plan', 'ibSetPlanOpen', 'open', '자료로만', '새 계획에 자료로만 넣고 열어요')}</fieldset>`);
+}
 
 const VIEWS = {
   roster: () => page('학급 명단', '창의적 체험활동·행동특성·평가지 채점이 같은 명단을 써요.',
@@ -64,7 +74,7 @@ const VIEWS = {
           <span class="tp${narrow}" aria-hidden="true" style="--tf:${f};--tp:${p};--tc:${c};--ta:${a};--tl:${l}"><i class="tp-side"></i><i class="tp-top"></i><i class="tp-body"><b></b><b class="acc"></b></i></span>
           <span class="tn"><input type="radio" name="theme" value="${t.id}" ${t.id === cur ? 'checked' : ''}>${esc(t.label)}${t.id === 'dark-nav' ? ' · 기본' : ''}</span>
           <span class="muted">${esc(t.desc)}</span></label>`;
-      }).join('')}</div>`));
+      }).join('')}</div>`) + inboxCard());
   },
   school: () => {
     const s = school || (school = getSchool());
@@ -323,6 +333,8 @@ document.addEventListener('click', e => {
 });
 
 document.addEventListener('change', e => {
+  const ib = e.target.dataset && e.target.dataset.ibSet;
+  if (ib && box && box.contains(e.target)) { setInboxSettings({ [ib]: ib === 'on' || e.target.type === 'checkbox' ? e.target.checked : e.target.value }); toast('떠 있는 버튼 설정을 바꿨어요'); return; }
   if (!box || !box.contains(e.target) || !['rosterFile', 'backupFile'].includes(e.target.id)) return;
   const f = e.target.files[0], id = e.target.id; e.target.value = '';
   if (f) (id === 'rosterFile' ? importRoster : restoreFile)(f);

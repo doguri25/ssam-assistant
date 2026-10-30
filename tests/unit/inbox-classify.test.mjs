@@ -63,3 +63,10 @@ test('제목이 「교사 교육과정」이고 안에 진도표가 든 계획�
   assert.equal(kind('2026 교사 교육과정.hwp', t), 'class-plan');
   assert.equal(kind('진도표.hwp', fx('jindo-sample.txt')), 'jindo');
 });
+
+test('앱이 읽은 엑셀·CSV 글(칸을 탭으로 이음)도 같은 판단', () => {
+  const tab = s => s.replace(/,/g, '\t');
+  assert.equal(kind('명렬표.csv', tab(fx('roster-sample.csv'))), 'roster');
+  assert.equal(kind('견적.xlsx', '견 적 서\n품명\t규격\t수량\t단가\t금액\n비커\t500ml\t2\t3000\t6000'), 'quote');
+  assert.equal(kind('시간표.xlsx', '학년별 기초시간표\n3-1\t월\t화\t수\t목\t금\n1\t국어\t수학\t국어\t수학\t국어'), 'timetable');
+});

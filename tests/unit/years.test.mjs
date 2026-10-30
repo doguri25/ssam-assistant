@@ -204,3 +204,8 @@ test('1·2월에 지난 학년도에서 학급 준비를 하면 새 학년도를
   assert.equal(prepYear('2027-02-20', 2027), 0); // 이미 새 학년도
   assert.equal(prepYear('2026-10-29', 2026), 0); // 학기 중
 });
+
+test('떠 있는 버튼 설정·위치는 학년도와 상관없음', () => {
+  assert.equal(isYearKey('inbox'), false);
+  assert.equal(isYearKey('bubble'), false);
+});
