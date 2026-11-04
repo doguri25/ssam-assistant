@@ -3,7 +3,8 @@
 import { parseTableLines } from '../../core/body-table.js';
 import { normDate, fmtDay } from './message-ai.js';
 import { relText } from '../plan/report-ai.js';
-import { findRoles, swapDate, DATE, isSign, isDateLine } from '../../core/hwpx-form.js';
+import { findRoles, swapDate, DATE, isSign, isDateLine, replyCells } from '../../core/hwpx-form.js';
+export { replyCells };
 import { cleanSheet } from '../evaluate/activity/activity-read.js';
 
 const PHONE = /0\d{1,2}[-.\s)]?\d{3,4}[-.\s]?\d{4}/g;
@@ -50,15 +51,6 @@ export function defaultPlain(school) {
   return { kind: 'plain', head: ['가 정 통 신 문', name || '○○초등학교'], sign: spaced(`${name || '○○초등학교'}장`), dateFmt: '{날짜}', sample: '' };
 }
 
-/* 회신서 칸 「이름: 내용」 → [이름, 내용]. □가 있으면 첫 □ 앞에서 나눔(회신서 모으기 replyOptions와 같게, 「1부(13:00~14:00): □ 신청」),
-   없으면 숫자 사이가 아닌 첫 콜론(「13:00」은 나누지 않음) */
-export function replyCells(f) {
-  const s = String(f || '').trim(), b = s.indexOf('□');
-  const head = b > 0 ? s.slice(0, b).replace(/[:：]\s*$/, '').trim() : '';
-  if (head) return [head, s.slice(b).trim()];
-  const m = /(?<!\d)[:：]|[:：](?!\d)/.exec(b === 0 ? '' : s);
-  return m && m.index > 0 ? [s.slice(0, m.index).trim(), s.slice(m.index + 1).trim()] : [s, ''];
-}
 /* 회신서 표의 줄: 학년 반 번호 · 학생 이름 · 칸마다 「이름: 내용」 → [이름, 내용] */
 export function replyRows(reply) {
   const fields = ((reply && reply.fields) || []).map(f => String(f || '').trim()).filter(Boolean);

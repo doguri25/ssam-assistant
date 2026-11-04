@@ -371,9 +371,17 @@ function boxWidth(xml, box) {
   }
   return textWidth(xml);
 }
+/* 회신서 칸 「이름: 내용」 → [이름, 내용]: □가 있으면 첫 □ 앞에서, 없으면 숫자 사이(13:00)가 아닌 첫 쌍점에서 나눔 */
+export function replyCells(f) {
+  const s = String(f || '').trim(), b = s.indexOf('□');
+  const head = b > 0 ? s.slice(0, b).replace(/[:：]\s*$/, '').trim() : '';
+  if (head) return [head, s.slice(b).trim()];
+  const m = /(?<!\d)[:：]|[:：](?!\d)/.exec(b === 0 ? '' : s);
+  return m && m.index > 0 ? [s.slice(0, m.index).trim(), s.slice(m.index + 1).trim()] : [s, ''];
+}
 function replyXml(reply, { normal, center, head, border, width, nid, year }) {
   const fields = (reply.fields || []).map(f => String(f || '').trim()).filter(Boolean);
-  const rows = [['학년 반 번호', '      학년        반        번'], ['학생 이름', ''], ...fields.map(f => { const i = f.indexOf(':'); return i > 0 ? [f.slice(0, i).trim(), f.slice(i + 1).trim()] : [f, '']; })];
+  const rows = [['학년 반 번호', '      학년        반        번'], ['학생 이름', ''], ...fields.map(replyCells)];
   const tblPara = tableXml(rows, { normal, border, width, nid, colW: [Math.round(width * 0.3), width - Math.round(width * 0.3)] });
   return [paraFrom(normal, '', nid()), paraFrom(center, '✂ - - - - - - - - - - - 자 르 는 선 - - - - - - - - - - -', nid(), { keepLead: false }),
     paraFrom(head, reply.title || '회신서', nid(), { keepLead: false }), tblPara,

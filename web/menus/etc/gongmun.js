@@ -6,7 +6,7 @@ import * as ai from '../../core/ai.js';
 import { toast } from '../../core/ui.js';
 import { readText, fileMessage } from '../../core/files.js';
 import { aiRowHTML } from '../../core/ai-roles.js';
-import { getSchool } from '../../core/settings.js';
+import { schoolYearOf } from '../../core/calendar.js';
 import { registerInbox } from '../../core/inbox.js';
 import { cleanSheet } from '../evaluate/activity/activity-read.js';
 import { KINDS, gongmunPrompt, normGongmun, dday, ddayText, validDue } from './gongmun-ai.js';
@@ -31,9 +31,9 @@ async function readDoc(id) {
   if (!ai.ready()) { toast('AI 키가 없어 제목·글만 넣었어요. 기한·할 일은 직접 적어 주세요(설정 › AI).', 6000); return; }
   S.reading.add(id); refresh();
   try {
-    const v = await ai.generateJSON(gongmunPrompt({ name: d0.name, text: d0.text, today: today(), year: getSchool().year }),
+    const v = await ai.generateJSON(gongmunPrompt({ name: d0.name, text: d0.text, today: today(), year: schoolYearOf(today()) }),
       { task: 'gongmun', valid: o => !!o && typeof o === 'object' && !Array.isArray(o) });
-    const n = normGongmun(v, { year: getSchool().year, today: today() }), d = getDoc(id);
+    const n = normGongmun(v, { year: schoolYearOf(today()), today: today() }), d = getDoc(id);
     // 읽는 동안 선생님이 고친 기한·할 일은 그대로
     if (d) putDoc({ ...d, ...n, title: n.title || d.title, due: d.touched && d.due ? d.due : n.due || d.due,
       tasks: d.touched && d.tasks.length ? d.tasks : n.tasks.length ? n.tasks : d.tasks, read: true });
