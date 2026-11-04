@@ -1,6 +1,6 @@
 /* 기타 › 공문 처리 (스펙 2026-11-04 5장): 공문 글 → AI 한 번 → 제목·발신·문서번호·날짜·제출 기한·요약·할 일·넘길 곳.
    기한 차례·D-n·달력 일정·오늘 수업 띠 규칙. 화면 없이 돌아감(시험) */
-import { normDate } from './message-ai.js';
+import { normDate, schoolDate } from './message-ai.js';
 
 export const KINDS = [['message', '쪽지'], ['letter', '가정통신문'], ['purchase', '품의'], ['report', '결과 보고']];
 const KIND_IDS = KINDS.map(k => k[0]);
@@ -24,19 +24,6 @@ export function gongmunPrompt({ name = '', text = '', today = '', year } = {}) {
 
 /* 기한 칸 값: 2000~2100년의 맞는 날만(키보드로 연도를 고치는 중간 값 「0002-…」은 버림) */
 export const validDue = v => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || '')); return !!m && +m[1] >= 2000 && +m[1] <= 2100 && normDate(v) === v; };
-const isoOf = (y, m, d) => { const t = new Date(Date.UTC(y, m - 1, d)); return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d ? `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}` : ''; };
-const addDaysIso = (iso, n) => { const t = new Date(`${iso}T00:00:00Z`); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
-/* 날짜: 연도가 없으면 학년도(1~2월은 다음 해), 그 날이 오늘보다 60일 넘게 앞이면 한 해 뒤(2월에 받은 새 학년도 공문) */
-function schoolDate(v, year, today = '') {
-  const s = String(v == null ? '' : v).trim();
-  if (/^\d{4}/.test(s) || !year) return normDate(s, year);
-  const m = /^(\d{1,2})\s*[-./월]\s*(\d{1,2})/.exec(s);
-  if (!m) return '';
-  const mo = +m[1], d = +m[2];
-  let y = mo <= 2 ? +year + 1 : +year, iso = isoOf(y, mo, d);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(today) && (!iso || iso < addDaysIso(today, -60))) { y++; iso = isoOf(y, mo, d); }
-  return iso;
-}
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 export function normGongmun(v, { year, today = '' } = {}) {
   const o = isObj(v) ? v : {};

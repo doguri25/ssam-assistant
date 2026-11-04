@@ -20,8 +20,8 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 const today = () => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
 const baseName = n => String(n || '').replace(/\.[^.]+$/, '').trim() || '공문';
 const dot = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || '')); return m ? `${+m[1]}. ${+m[2]}. ${+m[3]}.` : ''; };
-/* 화면에만: reading(AI로 읽는 문서 id), adding, showDone */
-const S = { reading: new Set(), adding: 0, showDone: false, files: new Map() }; // files: 이번에 넣은 원본 파일(쪽지 붙임용, 저장 안 함)
+/* 화면에만: reading(AI로 읽는 문서 id), adding, showDone, paste(붙여 넣기 칸 글), tadd(공문마다 쓰던 할 일 칸 글) */
+const S = { reading: new Set(), adding: 0, showDone: false, files: new Map(), paste: '', tadd: {} }; // files: 이번에 넣은 원본 파일(쪽지 붙임용, 저장 안 함)
 let box = null;
 
 /* ---------- 넣기 → AI ---------- */
@@ -29,7 +29,7 @@ async function readDoc(id) {
   const d0 = getDoc(id);
   if (!d0 || !d0.text.trim()) return;
   if (!ai.ready()) { toast('AI 키가 없어 제목·글만 넣었어요. 기한·할 일은 직접 적어 주세요(설정 › AI).', 6000); return; }
-  S.reading.add(id); render();
+  S.reading.add(id); refresh();
   try {
     const v = await ai.generateJSON(gongmunPrompt({ name: d0.name, text: d0.text, today: today(), year: getSchool().year }),
       { task: 'gongmun', valid: o => !!o && typeof o === 'object' && !Array.isArray(o) });
@@ -40,7 +40,7 @@ async function readDoc(id) {
   } catch (e) {
     toast(e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요. [AI로 읽기]를 눌러 주세요.' : ai.errorMessage(e && e.code, e), 6000);
   }
-  S.reading.delete(id); render();
+  S.reading.delete(id); refresh();
 }
 /* name이 없으면(붙여 넣은 글) 명단·전화번호 줄을 뺀 글의 첫 줄 */
 function addText(name, text) {
@@ -52,7 +52,7 @@ function addText(name, text) {
   return { id: d.id, cut: cl.cut || 0 };
 }
 export async function addFiles(files) {
-  S.adding++; render();
+  S.adding++; refresh();
   const ids = [], fails = [];
   let cut = 0;
   let scans = 0;
@@ -64,9 +64,9 @@ export async function addFiles(files) {
       else fails.push(`${f.name}(${fileMessage(e && e.code)})`);
     }
   }
-  S.adding--; render();
+  S.adding--; refresh();
   if (fails.length) toast(`읽지 못한 파일: ${fails.join(', ')}`, 7000);
-  else if (scans) toast(`글을 읽지 못한 스캔·사진 공문 ${scans}개를 넣었어요. 기한·할 일은 직접 적어 주세요. [쪽지]는 이 파일을 붙임으로 보내요.`, 8000);
+  else if (scans) toast(`글을 읽지 못한 스캔·사진 공문 ${scans}개를 넣었어요. 기한·할 일은 직접 적어 주세요. [쪽지]는 이 파일을 붙임으로 넣고, 그림 그대로 AI로 읽어 쪽지를 써요(이름·전화번호를 가리지 못해요).`, 9000);
   else if (cut) toast(`명단·전화번호가 적힌 줄 ${cut}곳은 빼고 넣었어요(AI로 보내지 않아요)`, 5000);
   for (const id of ids) await readDoc(id);
 }
@@ -102,24 +102,50 @@ function docHTML(d, t) {
     <div class="row gm-due"><label class="yp-f"><span class="lab">제출 기한${d.dueNote ? ` <span class="muted">(${esc(d.dueNote)})</span>` : ''}</span><input class="field" type="date" data-gm-due value="${esc(d.due)}"></label></div>
     <ul class="gm-tasks">${d.tasks.map((x, i) => `<li class="${x.done ? 'done' : ''}"><label><input type="checkbox" data-gm-task="${i}"${x.done ? ' checked' : ''}><span>${esc(x.text)}</span></label>
       ${x.due ? `<span class="muted">${esc(ddayText(dday(x.due, t)))}</span>` : ''}<button class="icon-btn tiny" type="button" data-gm-tdel="${i}" aria-label="할 일 빼기">✕</button></li>`).join('')}</ul>
-    <div class="row gm-add"><input class="field" data-gm-tadd placeholder="할 일 더하기(Enter)" aria-label="할 일 더하기" autocomplete="off"></div>
+    <div class="row gm-add"><input class="field" data-gm-tadd value="${esc(S.tadd[d.id] || '')}" placeholder="할 일 더하기(Enter)" aria-label="할 일 더하기" autocomplete="off"></div>
     <div class="row gm-go">${KINDS.map(([k, l]) => `<button class="btn${d.kinds.includes(k) ? ' primary' : ''}" type="button" data-gm-go="${k}">${l}</button>`).join('')}
       <span class="grow"></span>${d.read || reading ? '' : '<button class="btn text" type="button" data-gm-read>AI로 읽기</button>'}
       <button class="btn text" type="button" data-gm-done>${d.done ? '다시 열기' : '다 했어요'}</button><button class="btn text" type="button" data-gm-del>지우기</button></div></li>`;
 }
+const pickHTML = () => (S.adding ? '<span class="spin"></span>읽는 중…' : '파일 고르기');
+function listHTML() {
+  const all = listDocs(), open = all.filter(d => !d.done), done = all.filter(d => d.done), t = today();
+  return `<h3>할 공문 <span class="muted">${open.length}개</span></h3>
+      ${open.length ? `<ul class="gm-list">${open.map(d => docHTML(d, t)).join('')}</ul>` : '<p class="muted" style="margin:0">넣은 공문이 없어요.</p>'}
+      ${done.length ? `<details class="gm-done-box"${S.showDone ? ' open' : ''}><summary>다 한 공문 ${done.length}개</summary><ul class="gm-list">${done.map(d => docHTML(d, t)).join('')}</ul></details>` : ''}`;
+}
 export function render() {
   if (!box || box.hidden) return;
-  const all = listDocs(), open = all.filter(d => !d.done), done = all.filter(d => d.done), t = today();
   box.innerHTML = `<div class="m-page gm-page">
     <div class="m-head m-head-row"><div><h2>공문 처리</h2><p class="muted">공문을 넣으면 제출 기한과 할 일을 뽑아 기한 차례로 보여 줘요. 쪽지·가정통신문·품의·결과 보고로 바로 이어 써요.</p></div>
       <div class="m-head-act">${aiRowHTML('gongmun')}</div></div>
     <section class="pc-card"><div class="msg-drop" data-gm-drop><p class="muted" style="margin:0">공문 파일(한글·PDF·워드·글)을 여기에 끌어 놓거나 고르세요. 파일마다 하나씩 넣어요.</p>
-        <div class="row"><button class="btn text" type="button" data-gm="pick">${S.adding ? '<span class="spin"></span>읽는 중…' : '파일 고르기'}</button><input type="file" id="gmFile" multiple hidden accept=".hwp,.hwpx,.pdf,.docx,.txt"></div></div>
-      <label class="yp-f"><span class="lab">또는 공문 글 붙여 넣기</span><textarea class="field" id="gmPaste" rows="3" placeholder="공문 본문을 붙여 넣고 [넣기]"></textarea></label>
+        <div class="row"><button class="btn text" type="button" data-gm="pick">${pickHTML()}</button><input type="file" id="gmFile" multiple hidden accept=".hwp,.hwpx,.pdf,.docx,.txt"></div></div>
+      <label class="yp-f"><span class="lab">또는 공문 글 붙여 넣기</span><textarea class="field" id="gmPaste" rows="3" placeholder="공문 본문을 붙여 넣고 [넣기]">${esc(S.paste)}</textarea></label>
       <div class="row"><button class="btn primary" type="button" data-gm="paste">넣기</button></div></section>
-    <section class="pc-card"><h3>할 공문 <span class="muted">${open.length}개</span></h3>
-      ${open.length ? `<ul class="gm-list">${open.map(d => docHTML(d, t)).join('')}</ul>` : '<p class="muted" style="margin:0">넣은 공문이 없어요.</p>'}
-      ${done.length ? `<details class="gm-done-box"${S.showDone ? ' open' : ''}><summary>다 한 공문 ${done.length}개</summary><ul class="gm-list">${done.map(d => docHTML(d, t)).join('')}</ul></details>` : ''}</section></div>`;
+    <section class="pc-card" id="gmLists">${listHTML()}</section></div>`;
+}
+/* AI 읽기·파일 넣기 앞뒤: 넣기 칸은 두고 단추와 목록만 고침. 공문 칸(할 일·기한)에 초점이 있으면 그 공문은 두고 다른 공문만 고치고,
+   그 칸을 떠날 때 차례를 맞춤(쓰던 글·한글 조합이 끊기지 않게) */
+function refresh() {
+  if (!box || box.hidden) return;
+  const pk = box.querySelector('[data-gm="pick"]'), el = box.querySelector('#gmLists');
+  if (!pk || !el) { render(); return; }
+  pk.innerHTML = pickHTML();
+  const a = document.activeElement, li = a && el.contains(a) ? a.closest('[data-gm-id]') : null;
+  if (!li) { S.listDirty = false; el.innerHTML = listHTML(); return; }
+  const t = today(), shown = new Set();
+  el.querySelectorAll('[data-gm-id]').forEach(x => {
+    shown.add(x.dataset.gmId);
+    if (x === li) return;
+    const d = getDoc(x.dataset.gmId);
+    if (d) x.outerHTML = docHTML(d, t); else x.remove();
+  });
+  // 새로 넣은 공문은 할 공문 목록 끝에(차례는 칸을 떠날 때)
+  const ul = el.querySelector(':scope > .gm-list'), n = box.querySelector('#gmLists > h3 .muted'), open = listDocs().filter(d => !d.done);
+  if (ul) for (const d of open) if (!shown.has(d.id)) ul.insertAdjacentHTML('beforeend', docHTML(d, t));
+  if (n) n.textContent = `${open.length}개`;
+  S.listDirty = true;
 }
 
 /* ---------- 누르기·입력 ---------- */
@@ -141,7 +167,7 @@ document.addEventListener('click', e => {
   else if (b.dataset.gm === 'paste') {
     const ta = box.querySelector('#gmPaste'), t = ta.value;
     if (!t.trim()) { toast('공문 글을 붙여 넣어 주세요.'); return; }
-    const r = addText(null, t); ta.value = '';
+    const r = addText(null, t); ta.value = ''; S.paste = '';
     if (r.cut) toast(`명단·전화번호가 적힌 줄 ${r.cut}곳은 빼고 넣었어요(AI로 보내지 않아요)`, 5000);
     render(); readDoc(r.id);
   }
@@ -158,13 +184,26 @@ document.addEventListener('change', e => {
     if (document.activeElement === el) S.dueDirty = true; else render();
   }
 });
-document.addEventListener('focusout', e => { if (mine(e) && e.target.dataset && e.target.dataset.gmDue != null && S.dueDirty) { S.dueDirty = false; setTimeout(render, 0); } });
+document.addEventListener('focusout', e => {
+  if (!mine(e)) return;
+  const due = e.target.dataset && e.target.dataset.gmDue != null && S.dueDirty;
+  if (!due && !S.listDirty) return;
+  S.dueDirty = false;
+  setTimeout(refresh, 0);
+});
+// 붙여 넣기 칸·할 일 칸 글은 다시 그려도 남게
+document.addEventListener('input', e => {
+  if (!mine(e)) return;
+  const el = e.target;
+  if (el.id === 'gmPaste') S.paste = el.value;
+  else if (el.dataset.gmTadd != null) { const li = el.closest('[data-gm-id]'); if (li) S.tadd[li.dataset.gmId] = el.value; }
+});
 document.addEventListener('keydown', e => {
   if (!mine(e) || e.key !== 'Enter' || e.isComposing) return;
   const el = e.target, d = docOf(el);
   if (el.dataset.gmTadd == null || !d || !el.value.trim()) return;
   e.preventDefault();
-  d.tasks.push({ text: el.value.trim().slice(0, 120), due: '', done: false }); d.touched = true; putDoc(d); render();
+  d.tasks.push({ text: el.value.trim().slice(0, 120), due: '', done: false }); d.touched = true; putDoc(d); delete S.tadd[d.id]; render();
 });
 document.addEventListener('toggle', e => { if (box && e.target.classList && e.target.classList.contains('gm-done-box')) S.showDone = e.target.open; }, true);
 document.addEventListener('dragover', e => { const z = box && e.target.closest && e.target.closest('[data-gm-drop]'); if (z && box.contains(z)) { e.preventDefault(); z.classList.add('over'); } });

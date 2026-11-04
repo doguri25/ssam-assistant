@@ -50,10 +50,19 @@ export function defaultPlain(school) {
   return { kind: 'plain', head: ['가 정 통 신 문', name || '○○초등학교'], sign: spaced(`${name || '○○초등학교'}장`), dateFmt: '{날짜}', sample: '' };
 }
 
+/* 회신서 칸 「이름: 내용」 → [이름, 내용]. □가 있으면 첫 □ 앞에서 나눔(회신서 모으기 replyOptions와 같게, 「1부(13:00~14:00): □ 신청」),
+   없으면 숫자 사이가 아닌 첫 콜론(「13:00」은 나누지 않음) */
+export function replyCells(f) {
+  const s = String(f || '').trim(), b = s.indexOf('□');
+  const head = b > 0 ? s.slice(0, b).replace(/[:：]\s*$/, '').trim() : '';
+  if (head) return [head, s.slice(b).trim()];
+  const m = /(?<!\d)[:：]|[:：](?!\d)/.exec(b === 0 ? '' : s);
+  return m && m.index > 0 ? [s.slice(0, m.index).trim(), s.slice(m.index + 1).trim()] : [s, ''];
+}
 /* 회신서 표의 줄: 학년 반 번호 · 학생 이름 · 칸마다 「이름: 내용」 → [이름, 내용] */
 export function replyRows(reply) {
   const fields = ((reply && reply.fields) || []).map(f => String(f || '').trim()).filter(Boolean);
-  return [['학년 반 번호', '      학년        반        번'], ['학생 이름', ''], ...fields.map(f => { const i = f.indexOf(':'); return i > 0 ? [f.slice(0, i).trim(), f.slice(i + 1).trim()] : [f, '']; })];
+  return [['학년 반 번호', '      학년        반        번'], ['학생 이름', ''], ...fields.map(replyCells)];
 }
 
 /* 글 짜임 양식 + 가정통신문 → 쌤비서 문서(한글·워드·PDF) */
