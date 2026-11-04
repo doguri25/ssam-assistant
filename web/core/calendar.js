@@ -39,6 +39,8 @@ export function schoolYearOf(date) {
   const y = +String(date).slice(0, 4), m = +String(date).slice(5, 7);
   return m <= 2 ? y - 1 : y;
 }
+/* 연도 없는 날(달·일)의 해: 학년도 year의 3~12월은 그해, 1~2월은 다음 해 */
+export const yearOfMonth = (mon, year) => (+mon <= 2 ? +year + 1 : +year);
 export const weekday = s => new Date(toUTC(s)).getUTCDay();
 
 /* ---------- 학사일정 ---------- */

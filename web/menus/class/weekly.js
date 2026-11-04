@@ -18,6 +18,7 @@ const dotted = d => `${+d.slice(5, 7)}.${+d.slice(8, 10)}`;
 const FULL = '저장 공간이 모자라 저장하지 못했어요';
 const AI_KEYS = ['prep', 'safety', 'homework', 'notice'];
 let box = null, curTab = null, monday = null;
+let stale = false; // 글을 치는 동안 표 모양이 바뀌어 칸을 벗어나면 다시 그릴 것
 migrateWeeklyEvents();
 const busy = {}; // 월요일 → AI가 쓰는 중
 const rvState = {}; // 월요일 → 'busy' | 'fail' (검토 AI)
@@ -53,6 +54,7 @@ const save = (mon, w) => { if (!saveWeekly(mon, w)) toast(FULL, 6000); };
 
 function render() {
   if (!box) return;
+  stale = false;
   const ctx = makeCtx();
   const head = '<div class="m-head"><h2>주간학습안내</h2><p class="muted">진도표대로 이어지는 다음 주 학습 내용과 요일별 알림을 한 장으로 만들어요. 칸은 모두 고칠 수 있어요.</p></div>';
   if (!hasTimetable(ctx.tt)) {
@@ -204,7 +206,22 @@ onEnter('class', (tab, section) => {
   box.hidden = tab !== 'weekly';
   if (tab === 'weekly') render();
 });
-document.addEventListener('class:changed', () => { if (visible()) render(); });
+/* 다른 화면(준비의 AI 등)이 학급 자료를 바꿈: 이 화면 칸에 글을 치는 중이면 칸을 다시 만들지 않고(포커스·한글 조합이 끊기지 않게)
+   다른 칸 글만 바꾸고, 표 모양(교시 수·시간표 있음)이 바뀌었으면 칸을 벗어날 때 다시 그림 */
+const typing = () => { const a = document.activeElement; return a && box && box.contains(a) && a.matches('input, textarea') ? a : null; };
+function refresh(active) {
+  const ctx = makeCtx(), cells = box.querySelectorAll('textarea[data-wc]');
+  if (!hasTimetable(ctx.tt) || cells.length !== 5 * ctx.tt.periods) { stale = true; return; }
+  const { days, w, notes, title } = sheet(monday);
+  cells.forEach(t => { if (t !== active) { const [d, p] = t.dataset.wc.split('-').map(Number); t.value = weekCell(days, w, d, p); } });
+  box.querySelectorAll('textarea[data-wn]').forEach(t => { if (t !== active) { const [d, k] = t.dataset.wn.split('-'); t.value = notes[d][k]; } });
+  const ti = box.querySelector('#clsWTitle'); if (ti && ti !== active) ti.value = title;
+}
+document.addEventListener('class:changed', () => { if (!visible()) return; const a = typing(); if (a) refresh(a); else render(); });
+document.addEventListener('focusout', e => {
+  if (!stale || !box || !box.contains(e.target)) return;
+  setTimeout(() => { if (stale && visible() && !typing()) render(); }, 0);
+});
 document.addEventListener('input', e => { if (box && box.contains(e.target) && visible()) onInput(e.target); });
 document.addEventListener('click', e => {
   if (!box || !box.contains(e.target) || !visible()) return;

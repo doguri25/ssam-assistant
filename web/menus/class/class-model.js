@@ -40,6 +40,8 @@ function normSubject(v) {
   if (!isObj(v) || typeof v.id !== 'string' || !v.id || !normName(v.name)) return null;
   return {
     id: v.id, name: normName(v.name), start: isDate(v.start) ? v.start : '',
+    // since: 이 날 앞의 체크 기록은 이 진도표에 세지 않음(다음 학기 진도표로 바꾼 교과)
+    ...(isDate(v.since) ? { since: v.since } : {}),
     offset: Number.isInteger(v.offset) ? v.offset : 0,
     total: Number.isInteger(v.total) && v.total >= 0 ? v.total : null,
     lessons: (Array.isArray(v.lessons) ? v.lessons : []).map(normLesson).filter(Boolean)
@@ -165,6 +167,7 @@ const before = (d1, p1, d2, p2) => d1 < d2 || (d1 === d2 && p1 < p2);
 function records(ctx, sub) {
   const out = [];
   for (const [date, day] of Object.entries(ctx.log)) {
+    if (sub.since && date < sub.since) continue;
     for (const [p, r] of Object.entries(day)) if (isOf(ctx, r.subject, sub)) out.push({ date, period: +p, status: r.status });
   }
   return out;
@@ -271,12 +274,23 @@ export function progressOf(ctx, sub) {
 export const summary = ctx => ctx.subjects.map(s => progressOf(ctx, s));
 /* 진도표대로라면 지금 할 차시를 다음 차시로 */
 export const alignToPlan = (ctx, sub) => setNext(ctx, sub, progressOf(ctx, sub).expected + 1);
-/* 진도표에서 고른 교과 넣기: 있는 교과는 차시 목록만 바꾸고(체크 기록 그대로), 새 교과는 계획 진도에 맞춤. 하나라도 저장하지 못하면 false */
+/* 있는 교과를 새 진도표로 바꿀 때 기준일(since): 새 진도표의 첫날 앞에 이 교과 체크 기록이 있으면(다음 학기 진도표) 그 첫날.
+   첫날이 지금 기준일보다 앞이면(앞 학기 진도표로 되돌림) 기준일을 없앰(''), 그 밖에는 그대로(null) */
+export function termStart(ctx, old, lessons) {
+  const first = (lessons || []).map(l => l && l.from).filter(isDate).sort()[0];
+  if (!first) return null;
+  const back = !!old.since && first < old.since, base = back ? { ...old, since: '' } : old;
+  return records(ctx, base).some(r => r.date < first) ? first : back ? '' : null;
+}
+/* 진도표에서 고른 교과 넣기: 있는 교과는 차시 목록만 바꾸고(체크 기록 그대로), 새 교과는 계획 진도에 맞춤.
+   다음 학기 진도표면 그 첫날 앞의 기록은 세지 않고 새 교과처럼 계획 진도에 맞춤. 하나라도 저장하지 못하면 false */
 export function importSubjects(picked) {
   let ok = true;
   for (const s of picked) {
     const old = listSubjects().find(h => h.name === s.name);
-    if (old) { ok = !!saveSubject({ ...old, total: s.total, lessons: s.lessons }) && ok; continue; }
+    const since = old ? termStart(makeCtx(), old, s.lessons) : null;
+    if (since) { const neu = saveSubject({ ...old, since, offset: 0, total: s.total, lessons: s.lessons }); ok = !!(neu && saveSubject(alignToPlan(makeCtx(), neu))) && ok; continue; }
+    if (old) { ok = !!saveSubject({ ...old, ...(since === '' ? { since: '' } : {}), total: s.total, lessons: s.lessons }) && ok; continue; }
     const neu = saveSubject({ name: s.name, start: today(), offset: 0, total: s.total, lessons: s.lessons });
     ok = !!(neu && saveSubject(alignToPlan(makeCtx(), neu))) && ok;
   }

@@ -19,6 +19,7 @@ import {
 import { overlap } from './year-model.js';
 import { guidePrompt, draftPrompt, evalPrompt } from './classplan-ai.js';
 import { parseJindo } from '../class/class-import.js';
+import { currentYear } from '../../core/years.js';
 import { listSubjects, importSubjects, today } from '../class/class-model.js';
 import { sampleSources } from './classplan-sample.js';
 
@@ -170,7 +171,7 @@ function attachHTML() {
 /* 첨부 읽기: 종류 짐작, 진도표는 교과별 시수, 평가계획은 이름 줄 뺀 글을 지님 → { att, privacy(평가계획만) } */
 function attachFrom(name, raw) {
   const r = stripNames(raw), kind = attachKind(name, raw), id = newId();
-  const j = parseJindo(raw, { today: today() });
+  const j = parseJindo(raw, { today: today(), year: currentYear() });
   attMem[id] = { text: r.text, jindo: j.subjects.length ? j : null };
   return { att: { id, name, kind, text: kind === 'eval' ? r.text : '', summary: { subjects: kind === 'jindo' ? jindoSubjects(attMem[id].jindo) : [] } }, privacy: kind === 'eval' ? r : null };
 }
@@ -464,7 +465,7 @@ function toClass(aid) {
   if (!a || !r || !S().openSheet) return;
   const have = listSubjects();
   S().openSheet(`<h3>학급 › 진도표·시수에 넣을 교과</h3>
-    <p class="muted" style="margin:0">「${esc(a.name)}」에서 읽은 교과예요. 이미 있는 교과는 차시 목록만 바꾸고 체크 기록은 그대로 둬요. 창체는 영역별 표 대신 합계 표를 골라 두었어요.</p>
+    <p class="muted" style="margin:0">「${esc(a.name)}」에서 읽은 교과예요. 이미 있는 교과는 차시 목록만 바꾸고 체크 기록은 그대로 둬요(다음 학기 진도표면 그 첫날 앞 기록은 세지 않아요). 창체는 영역별 표 대신 합계 표를 골라 두었어요.</p>
     <ul class="cls-pick">${r.subjects.map((s, i) => `<li><label><input type="checkbox" data-cpj="${i}"${s.pick ? ' checked' : ''}> <b>${esc(s.name)}</b>
       <span class="muted">${s.lessons.length}차시</span></label>${have.some(h => h.name === s.name) ? '<span class="cls-tag">이미 있어요 — 바꿔요</span>' : ''}</li>`).join('')}</ul>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" data-cpok>넣기</button></div>`,

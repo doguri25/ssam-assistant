@@ -2,15 +2,15 @@
    저장하면 'class:changed'를 보내고, 다른 학급 화면은 그것을 듣고 다시 그림 */
 import { onEnter, go } from '../../core/shell.js';
 import { registerInbox } from '../../core/inbox.js';
-import { getYears, prepYear } from '../../core/years.js';
+import { getYears, prepYear, currentYear } from '../../core/years.js';
 import { toast } from '../../core/ui.js';
 import * as ai from '../../core/ai.js';
 import { readText, fileMessage } from '../../core/files.js';
 import { getSchool } from '../../core/settings.js';
-import { normName, periodStart, schoolYearOf, parseJindo, parseTimetable } from './class-import.js';
+import { normName, periodStart, lessonYear, parseJindo, parseTimetable } from './class-import.js';
 import {
   getInfo, setInfo, getTimetable, setTimetable, listSubjects, saveSubject, removeSubject, setSubjects, resetRecords,
-  makeCtx, progressOf, setNext, alignToPlan, today, normLessons, normTimetableAI, hasTimetable, importSubjects
+  makeCtx, progressOf, setNext, alignToPlan, today, normLessons, normTimetableAI, hasTimetable, importSubjects, termStart
 } from './class-model.js';
 import { sampleData } from './class-sample.js';
 
@@ -143,7 +143,7 @@ async function importJindo(file) {
   let text;
   try { text = await readText(file); } catch (err) { toast(fileMessage(err && err.code), 5000); return; }
   lastFile = { name: file.name, text };
-  const r = parseJindo(text, { today: today() });
+  const r = parseJindo(text, { today: today(), year: currentYear() });
   if (!r.subjects.length) {
     toast('이 파일에서 연간지도계획 표를 찾지 못했어요. 교과 이름을 쓰고 AI로 뽑거나 직접 써 주세요.', 8000);
     openAdd();
@@ -152,11 +152,12 @@ async function importJindo(file) {
   openPick(r, file.name);
 }
 function openPick(r, fileName) {
-  const have = listSubjects();
+  const have = listSubjects(), ctx = makeCtx();
   const items = r.subjects.map((s, i) => {
     const n = s.lessons.length, first = s.lessons[0].period, lastP = s.lessons[n - 1].period;
     const warn = s.total != null && s.total !== n ? `<span class="cls-warn">파일에는 ${s.total}시간인데 ${n}줄을 읽었어요</span>` : '';
-    const dup = have.some(h => h.name === s.name) ? '<span class="cls-tag">이미 있어요 — 바꿀까요? 체크 기록은 그대로</span>' : '';
+    const old = have.find(h => h.name === s.name), since = old ? termStart(ctx, old, s.lessons) : '';
+    const dup = !old ? '' : `<span class="cls-tag">이미 있어요 — 바꿀까요? ${since ? `${+since.slice(5, 7)}/${+since.slice(8, 10)} 앞 체크 기록은 이 진도표에 세지 않아요` : '체크 기록은 그대로'}</span>`;
     return `<li><label><input type="checkbox" data-jpick="${i}"${s.pick ? ' checked' : ''}>
       <b>${esc(s.name)}</b>${s.source !== s.name ? ` <span class="muted">(${esc(s.source)})</span>` : ''}
       <span class="muted">${n}차시${first && lastP ? ` · ${esc(first)} ~ ${esc(lastP)}` : ''}</span></label>${warn}${dup}</li>`;
@@ -217,7 +218,7 @@ async function runLessonAi(token, name, text, msg, btn) {
   if (!text) { msg('진도표 파일을 올리거나 글을 붙여 넣어 주세요'); return; }
   if (text.length > MAX_SRC) toast('앞 6만 자만 AI에 보내요', 4000);
   const ym = /(\d{4})\s*학년도/.exec(text);
-  const year = ym ? +ym[1] : schoolYearOf(today());
+  const year = ym ? +ym[1] : currentYear(); // 파일에 학년도가 없으면 지금 자료의 학년도
   btn.disabled = true; msg('AI가 차시를 뽑는 중이에요…');
   let lessons;
   try {
@@ -311,7 +312,7 @@ function saveEditor() {
   if (!name) { toast('교과 이름을 넣어 주세요'); return; }
   if (listSubjects().some(s => s.name === name && s.id !== ed.id)) { toast(`「${name}」 교과가 이미 있어요`); return; }
   const known = ed.base.lessons.find(l => l.from);
-  const year = known ? schoolYearOf(known.from) : schoolYearOf(today());
+  const year = known ? lessonYear(known) : currentYear();
   const lessons = ed.lessons.filter(l => String(l.title || '').trim()).map(l => ({ ...l, from: periodStart(l.period, year) }));
   let s = saveSubject(ed.id ? { ...ed.base, name, lessons } : { name, start: today(), offset: 0, total: null, lessons });
   if (s && !ed.id) s = saveSubject(alignToPlan(makeCtx(), s));

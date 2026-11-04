@@ -1,6 +1,7 @@
 /* 계획 › 결과 보고 (스펙 2026-11-03 5장): 계획서·관련 공문·작년 보고서·한 일 메모·사진 → AI 한 번 → 칸.
    결과 보고 공문(에듀파인 기안 꼴)과 결과 보고서(개요 표·소제목·사진 자료)는 앱이 맞춤. 화면 없이 돌아감(시험) */
 import { normDate, fmtDay } from '../etc/message-ai.js';
+import { schoolYearOf, yearOfMonth } from '../../core/calendar.js';
 import { attachText } from '../purchase/rules.js';
 
 export const SOURCE_KINDS = [['plan', '계획서'], ['official', '관련 공문'], ['last', '작년 보고서'], ['etc', '기타']];
@@ -48,17 +49,22 @@ export function reportPrompt({ sources = [], memo = '', nPhotos = 0, nDocImages 
     .filter(l => l !== '').join('\n').replace('[출력]', '\n[출력]');
 }
 
-/* AI 답 → 결과 보고 칸. year: 연도 없는 날에 붙일 학년도 */
+/* 연도 없는 날(「10.15」)은 학년도 year로 읽음: 3~12월은 그해, 1~2월은 다음 해 */
+const schoolDay = (v, year) => {
+  const m = /^\s*(\d{1,2})\s*[-./월]/.exec(String(v == null ? '' : v));
+  return normDate(v, m && Number(year) ? yearOfMonth(+m[1], Number(year)) : year);
+};
+/* AI 답 → 결과 보고 칸. year: 연도 없는 날에 붙일 학년도(끝 날은 시작 날의 학년도) */
 export function normReport(v, { year } = {}) {
   const o = v && typeof v === 'object' && !Array.isArray(v) ? v : {};
   const p = o.period && typeof o.period === 'object' ? o.period : {};
-  const start = normDate(p.start, year);
-  let end = start ? normDate(p.end, Number(start.slice(0, 4))) : '';
+  const start = schoolDay(p.start, year);
+  let end = start ? schoolDay(p.end, schoolYearOf(start)) : '';
   if (end && end <= start) end = '';
   const arr = x => (Array.isArray(x) ? x : []);
   return {
     name: clean(o.name, 80),
-    related: arr(o.related).filter(x => x && typeof x === 'object').slice(0, 4).map(x => ({ no: clean(x.no, 40), date: normDate(x.date, year), title: clean(x.title, 100) })).filter(x => x.no || x.title),
+    related: arr(o.related).filter(x => x && typeof x === 'object').slice(0, 4).map(x => ({ no: clean(x.no, 40), date: schoolDay(x.date, year), title: clean(x.title, 100) })).filter(x => x.no || x.title),
     period: { start, end, time: clean(p.time, 40) },
     place: clean(o.place, 80), target: clean(o.target, 80), count: clean(o.count, 40), summary: clean(o.summary, 200),
     sections: arr(o.sections).filter(s => s && typeof s === 'object').map(s => ({ h: clean(s.h, 40), lines: arr(s.lines).map(l => clean(l, 300)).filter(Boolean).slice(0, 20) }))

@@ -1,5 +1,7 @@
 /* 설문 CSV(구글 폼 응답) 집계: 5점 척도는 평균·분포, 서술형은 답 모음. 구글 폼에 붙일 문항 글 */
-import { looksLikeName } from './privacy.js';
+import { looksLikeName, stripNames } from './privacy.js';
+import { readText } from './files.js';
+import { readTable } from './sheet.js';
 
 export const SCALE = ['전혀 그렇지 않다', '그렇지 않다', '보통이다', '그렇다', '매우 그렇다'];
 const WORDS = {
@@ -28,6 +30,53 @@ export function personalColumn(head, answers = []) {
   const distinct = new Set(a).size / a.length >= 0.8;
   if (distinct && share(a, x => /^\d{4,6}$/.test(x)) >= 0.8) return true;
   return a.length >= 3 && distinct && share(a, looksLikeName) >= 0.8;
+}
+/* 표(줄×칸)의 개인정보 열 지우기: 첫 줄이 머리 → { rows, cols(뺀 열 머리) } */
+function dropColumns(rows) {
+  const width = Math.max(0, ...rows.map(r => r.length)), drop = new Set(), cols = [];
+  for (let j = 0; j < width; j++) {
+    if (!personalColumn(rows[0][j], rows.slice(1).map(r => r[j]))) continue;
+    drop.add(j); cols.push(String(rows[0][j] || '').trim() || `${j + 1}번째 열`);
+  }
+  return { rows: drop.size ? rows.map(r => r.filter((c, j) => !drop.has(j))) : rows, cols };
+}
+const rowsText = rows => rows.map(r => r.join('\t').replace(/\t+$/, '')).join('\n');
+const done = (text, cols) => { const r = stripNames(text); return { text: r.text, cols, dropped: r.dropped, masked: r.masked }; };
+
+/* 넣은 글(작년 설문 결과 등)의 개인정보 빼기: 표(붙여 넣은 표·엑셀을 읽은 글 — 탭으로 나뉜 줄이 두 줄 넘게 이어짐)는 첫 줄을 머리로 보고
+   개인정보 열을 지우고, 그다음 명단·전화번호 줄은 빼고 이름은 가림(stripNames) → { text, cols(뺀 열 머리), dropped(뺀 줄), masked(가린 이름) } */
+export function stripPersonal(text) {
+  const ls = String(text || '').split('\n'), cols = [];
+  for (let a = 0; a < ls.length;) {
+    let b = a;
+    while (b < ls.length && ls[b].includes('\t')) b++;
+    if (b - a >= 2) {
+      const d = dropColumns(ls.slice(a, b).map(l => l.split('\t')));
+      if (d.cols.length) { cols.push(...d.cols); ls.splice(a, b - a, ...rowsText(d.rows).split('\n')); }
+    }
+    a = Math.max(b, a + 1);
+  }
+  return done(ls.join('\n'), cols);
+}
+/* CSV·엑셀 표 그대로: 위쪽 제목 줄(칸이 하나뿐) 아래 첫 줄이 머리. 칸 안 줄바꿈은 띄어쓰기로(한 줄 = 한 응답) */
+export function stripTable(rows) {
+  const R = (Array.isArray(rows) ? rows : []).map(r => (Array.isArray(r) ? r : []).map(c => String(c == null ? '' : c).replace(/\s*\n\s*/g, ' ').trim()));
+  let h = R.slice(0, 10).findIndex(r => r.filter(Boolean).length >= 2);
+  if (h < 0) h = R.length;
+  const d = dropColumns(R.slice(h));
+  return done(rowsText([...R.slice(0, h), ...d.rows]).trim(), d.cols);
+}
+/* 파일 → 개인정보를 뺀 글: CSV·엑셀은 표로 읽어 열을 빼고, 다른 파일은 글로 읽어 stripPersonal. 못 읽으면 { code }를 던짐(files.js) */
+export async function readStripped(file) {
+  const name = String(file && file.name || '');
+  if (!/\.(csv|xlsx)$/i.test(name)) return stripPersonal(await readText(file));
+  let rows;
+  try { rows = await readTable(name, new Uint8Array(await file.arrayBuffer())); } catch (e) { throw { code: 'READ_FAILED' }; }
+  return stripTable(rows);
+}
+export function personalMsg(r) {
+  const out = [r.cols.length ? `개인정보로 보이는 열 ${r.cols.length}개(${r.cols.join(', ')})` : '', r.dropped ? `이름·전화번호가 적힌 줄 ${r.dropped}개` : ''].filter(Boolean).join(', ');
+  return `${[out ? out + '는 빼고' : '', r.masked ? `이름 ${r.masked}개는 ○○○로 가려` : ''].filter(Boolean).join(', ')} 넣었어요(학생 이름은 저장하지도 AI로 보내지도 않아요).`;
 }
 const round2 = n => Math.round(n * 100) / 100;
 
