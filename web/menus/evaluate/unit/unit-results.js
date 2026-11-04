@@ -11,7 +11,7 @@ import {
 } from './unit-model.js';
 import { tableDoc, tableCsv } from './unit-docs.js';
 import { pyeongeoPrompt, normPyeongeo } from './unit-ai.js';
-import { U, esc, AI_KEY, registerResults, visible, render, getBox } from './unit.js';
+import { U, esc, AI_KEY, registerResults, visible, render, refresh, editing, getBox } from './unit.js';
 
 const R = { rv: 'table', subject: '', term: 0, stuNo: null, weakId: null, pySubject: null, pyRun: null };
 const pct = r => `${Math.round(r * 100)}%`;
@@ -155,7 +155,16 @@ async function writePyeongeo() {
 }
 /* AI가 끝났을 때: 그사이 다른 교과를 봐도 시작한 교과의 상태로 저장 */
 function pyStateFor(subject) { const keep = R.pySubject; R.pySubject = subject; const st = pyState(loaded(doneTests())); R.pySubject = keep; return st; }
-const refreshView = () => { if (inView()) render(); };
+/* 선생님이 칸에 쓰는 중이면 통째로 다시 그리지 않고(칸을 떠나면 그림), 쓰는 칸 말고 다른 학생 칸과 단추만 바로 바꿈 */
+function refreshView() {
+  if (!inView()) return;
+  refresh();
+  if (!editing()) return;
+  const box = getBox(), st = pyState(loaded(doneTests()));
+  for (const s of st.students) { const el = box.querySelector(`textarea[data-py="${s.no}"]`); if (el && el !== document.activeElement) el.value = s.text; }
+  const b = box.querySelector('[data-un="pyAI"]');
+  if (b) { b.disabled = !!R.pyRun; b.innerHTML = R.pyRun ? '<span class="spin"></span>쓰는 중…' : '평어 쓰기'; }
+}
 
 function html() {
   const all = doneTests(), list = filterTests(all, { subject: R.subject, term: R.term }), tests = loaded(list);

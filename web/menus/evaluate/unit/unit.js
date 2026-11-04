@@ -38,16 +38,20 @@ export function saveOrWarn(t) {
   if (!ok) toast('저장 공간이 모자라 저장하지 못했어요', 6000);
   return ok;
 }
+/* [새 단원평가]로 시작한 저장 전 평가: 정답지를 읽는 동안 목록으로 나가도 읽은 것을 넣어 저장함(저장하면 뺌) */
+const drafts = new WeakSet();
 /* 고친 평가 저장: 정답표가 생기기 전의 새 평가는 저장하지 않고 draft에 둠 */
 export function commit(t) {
-  if (!getTest(t.id) && !t.key.items.length) { U.draft = t; return true; }
+  // 목록으로 나간 뒤 끝난 읽기(시작한 새 평가)는 지금 보는 평가를 바꾸지 않음
+  if (!getTest(t.id) && !t.key.items.length) { if (curId() === t.id) U.draft = t; return true; }
   const ok = saveOrWarn(t);
+  if (ok) drafts.delete(t);
   if (ok && curId() === t.id) { U.id = t.id; U.draft = null; }
   return ok;
 }
 /* 같은 평가를 보고 있으면 다시 그림 (AI가 끝났을 때 등). 선생님이 칸에 쓰는 중이면 칸을 떠날 때까지 미룸 */
 let pendingRefresh = false;
-const editing = () => {
+export const editing = () => {
   const a = document.activeElement;
   return !!(a && box && box.contains(a) && (a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || (a.tagName === 'INPUT' && !/^(file|checkbox|radio|button)$/.test(a.type))));
 };
@@ -90,15 +94,16 @@ function metaHTML(m) {
     ${f('unDate', '날짜', m.date, 'type="date"')}
   </div>`;
 }
+const sumHTML = items => { const total = keyTotal(items), zero = items.filter(i => !i.points).map(i => i.no); return `${items.length}문항 · ${total}점${items.length && total !== 100 ? ' <span class="un-warn">배점 합이 100점이 아니에요</span>' : ''}${zero.length ? ` <span class="un-warn">배점이 빈 문항: ${zero.join(', ')}번</span>` : ''}`; };
 function keyTableHTML(t) {
-  const items = t.key.items, total = keyTotal(items), zero = items.filter(i => !i.points).map(i => i.no);
+  const items = t.key.items;
   const typeSel = it => `<select class="field" data-k="${it.no}-type" aria-label="${it.no}번 유형">${ITEM_TYPES.map(([k, l]) => `<option value="${k}"${k === it.type ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
   const inp = (it, f, attrs = '') => `<input class="field" data-k="${it.no}-${f}" value="${esc(it[f])}" aria-label="${it.no}번 ${f}" ${attrs}>`;
   const rows = items.map(it => `<tr><td class="no">${it.no}</td><td>${inp(it, 'content')}</td><td>${inp(it, 'domain')}</td><td>${typeSel(it)}</td>
     <td>${inp(it, 'answer')}</td><td>${inp(it, 'points', 'type="number" min="0" max="100"')}</td><td>${inp(it, 'criteria')}</td><td>${inp(it, 'pages')}</td>
     <td><button class="icon-btn" type="button" data-un="delItem" data-no="${it.no}" aria-label="${it.no}번 빼기">✕</button></td></tr>`).join('');
   return `<div class="yp-card">
-    <div class="un-sum">${items.length}문항 · ${total}점${items.length && total !== 100 ? ' <span class="un-warn">배점 합이 100점이 아니에요</span>' : ''}${zero.length ? ` <span class="un-warn">배점이 빈 문항: ${zero.join(', ')}번</span>` : ''}</div>
+    <div class="un-sum">${sumHTML(items)}</div>
     ${items.length ? `<div class="un-key-wrap"><table class="un-key"><thead><tr><th>번호</th><th>평가 내용</th><th>영역</th><th>유형</th><th>정답</th><th>배점</th><th>채점 기준</th><th>교과서 쪽</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">정답지를 넣으면 문항이 여기에 나와요. 직접 더해도 돼요.</p>'}
     <div class="row"><button class="btn" type="button" data-un="addItem">문항 더하기</button></div>
   </div>`;
@@ -149,7 +154,7 @@ function draw() {
 /* ---------- 1단계: 정답지·평가지 ---------- */
 const setMsg = (id, k, text) => { if (U.msg.id !== id) U.msg = { id, key: '', paper: '' }; U.msg[k] = text; const el = box && box.querySelector(k === 'key' ? '#unKeyMsg' : '#unPaperMsg'); if (el && curId() === id) el.textContent = text; };
 /* 파일을 읽는 동안 다른 평가로 가도, 결과는 시작한 평가에 넣음 */
-const testOf = (id, t0) => (curId() === id ? cur() : getTest(id) || null) || (U.draft === t0 ? t0 : null);
+const testOf = (id, t0) => (curId() === id ? cur() : getTest(id) || null) || (U.draft === t0 || drafts.has(t0) ? t0 : null);
 const fill = (meta, from, keys) => { for (const k of keys) if ((meta[k] == null || meta[k] === '') && from[k] != null && from[k] !== '') meta[k] = from[k]; };
 const isImage = f => /^image\//.test(f.type || '') || /\.(png|jpe?g|webp|bmp|gif)$/i.test(f.name || '');
 /* 정답지 한글 파일은 합친 칸을 풀어 읽음(칸 자리를 지킴). 안 되면 보통 글 읽기(오류 안내도 그쪽에서) */
@@ -196,7 +201,9 @@ function useKey(id, t0, k, text, name) {
   if (withPaper) { t.paper = { text: sp.paper.slice(0, 12000) }; fill(t.meta, parsePaper(sp.paper).meta, ['subject', 'grade', 'term', 'unitNo', 'unitName', 'round']); }
   U.msg = { ...U.msg, id, key: `「${name}」에서 ${k.items.length}문항을 읽었어요${withPaper ? '. 평가지도 함께 넣었어요' : ''}${k.pointsGuessed ? '. 배점이 없어 100점을 문항 수로 나눠 넣었어요(고칠 수 있어요)' : ''}` };
   if (withPaper) U.msg.paper = `「${name}」 · ${Object.keys(parsePaper(sp.paper).questions).length}문항`;
+  const made = !getTest(id);
   commit(t);
+  if (made && curId() !== id && getTest(id)) { toast(`「${name}」에서 정답지를 읽어 새 단원평가를 만들었어요`, 6000); if (visible() && U.view === 'list') render(); }
   refresh(id);
 }
 async function loadPaper(file) {
@@ -246,7 +253,7 @@ async function putBundle(files) {
   if (stu.length) {
     const t = testOf(id, t0);
     U.pending = { id: t ? t.id : id, pages: stu };
-    if (t && t.key.items.length) goStep(2);
+    if (t && t.key.items.length) { if (curId() === id) goStep(2); }
     else setMsg(id, 'paper', `답안 ${stu.length}쪽은 정답지를 넣으면 2단계에서 바로 나눠요`);
   }
 }
@@ -256,7 +263,10 @@ function editMeta(el) {
   const [k, kind] = META_IDS[el.id], t = cur();
   const v = el.value.trim();
   t.meta[k] = kind === 'n' ? (v === '' ? null : Number(v)) : v;
-  commit(t); render();
+  commit(t);
+  // 제목만 바로 바꾸고, 다시 그리기는 옮겨 간 칸을 떠날 때까지 미룸(아래 later)
+  const ti = box.querySelector('.un-title'); if (ti) ti.textContent = makeTitle(t.meta);
+  later(t.id);
 }
 function editItem(el) {
   const [no, f] = el.dataset.k.split('-'), t = cur();
@@ -265,8 +275,13 @@ function editItem(el) {
   it[f] = f === 'points' ? Math.max(0, Number(el.value) || 0) : el.value.trim();
   // 정답·유형·배점·채점 기준을 고치면 채점한 칸을 다시 맞춤 (선생님이 고친 칸은 배점 안으로만)
   if (['answer', 'type', 'points', 'criteria'].includes(f)) rescoreItem(t, it.no, f);
-  commit(t); render();
+  commit(t);
+  const sum = box.querySelector('.un-sum'); if (sum) sum.innerHTML = sumHTML(t.key.items);
+  later(t.id);
 }
+/* 칸을 고친 change는 Tab·다른 칸 누르기로 떠날 때 나고, 그때는 아직 옮겨 간 칸에 초점이 없음:
+   초점이 옮겨 간 뒤에 보아, 칸에 쓰는 중이면 그 칸을 떠날 때까지 다시 그리지 않음(옮겨 간 칸·한글 조합을 지킴) */
+const later = id => setTimeout(() => refresh(id), 0);
 
 /* ---------- 손잡이 ---------- */
 function askDelete(id) {
@@ -286,7 +301,7 @@ document.addEventListener('click', e => {
   if (!visible() || !box.contains(e.target)) return;
   const v = e.target.closest('[data-unv]');
   if (v) { U.view = v.dataset.unv; render(); return; }
-  if (e.target.closest('#unNew')) { const t = newTest(); U.view = 'test'; U.id = null; U.draft = t; U.step = 1; U.msg = { id: t.id, key: '', paper: '' }; render(); return; }
+  if (e.target.closest('#unNew')) { openNew(); return; }
   const st = e.target.closest('[data-step]');
   if (st && U.view === 'test') { goStep(Number(st.dataset.step)); return; }
   const b = e.target.closest('[data-un]');
@@ -337,6 +352,7 @@ function paperless(text) {
 }
 function openNew() {
   const t = newTest();
+  drafts.add(t);
   U.view = 'test'; U.id = null; U.draft = t; U.step = 1; U.msg = { id: t.id, key: '', paper: '' };
   render();
 }
