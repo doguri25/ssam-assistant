@@ -24,19 +24,30 @@ const MARKS = Object.keys(MARK);
 const rosterExcept = () => (store.get('class', null) || {}).except || [];
 const fresh = no => ({ no, skip: false, status: 'idle', marks: {}, good: '', next: '', level: '', levelWhy: '' });
 const busy = id => !!G.run && G.run.id === id;
-const maskOf = a => { const set = getSet(); return { on: set.maskOn !== false, mask: (a && a.mask && a.mask.length ? a.mask : set.mask) || [], all: a && a.mask && a.mask.length ? !!a.maskAll : !!set.maskAll }; };
+const busyOther = id => !!G.run && G.run.id !== id;
+// 채점하는 동안 스캔을 바꾸면 채점 중인 학생에게 다른 쪽이 붙거나(같은 활동지) 남은 학생의 쪽이 사라짐(다른 활동지): 끝나거나 멈춘 뒤에
+const upBusy = id => (busyOther(id) ? '다른 활동지를 채점하는 중이에요. 그 채점이 끝나거나 멈춘 뒤에 올려 주세요.' : busy(id) ? '채점하는 중이에요. 끝나거나 멈춘 뒤에 다시 올려 주세요.' : '');
+/* 이름 칸은 활동지마다 자리가 달라 활동지마다 따로 둠(단원평가와 같게). 채점·번호 읽기는 이 활동지에서 정한 칸만 씀.
+   lastMask: 정하지 않은 활동지는 지난 활동지에서 정한 칸을 먼저 보여 줌(편집기 처음 값·쪽 나누기 그림) */
+const ownMask = a => !!(a && a.mask && a.mask.length);
+const maskOf = a => ({ on: getSet().maskOn !== false, mask: ownMask(a) ? a.mask : [], all: ownMask(a) && !!a.maskAll });
+const lastMask = a => { const set = getSet(); return ownMask(a) ? { mask: a.mask, all: !!a.maskAll } : { mask: set.mask || [], all: !!set.maskAll }; };
+const hasResult = s => s.status === 'done' || Object.keys(s.marks || {}).length > 0;
 const pagesFor = (a, i) => (G.id === a.id && G.idx[i]) || [];
 
 /* ---------- 3단계: 올리기 ---------- */
 function split(a, n, per) {
   G.idx = Array.from({ length: n }, (_, i) => Array.from({ length: Math.min(per, G.pages.length - i * per) }, (_, j) => i * per + j));
-  if (a.students.length !== n) a.students = numbersFor(n, [...rosterExcept(), ...(a.absent || [])]).map(fresh);
+  if (a.students.length === n) return; // 이미 나눈 학생에 차례대로 다시 붙임 (번호로 맞춘 활동지는 번호를 다시 읽을 때 번호로 붙임)
+  delete a.noOrdered;
+  a.students = numbersFor(n, [...rosterExcept(), ...(a.absent || [])]).map(fresh);
 }
 /* onCancel: 학생 수가 달라 묻는 창을 닫으면(새로 나누지 않음) 부름 */
 export function loadPages(id, pages, raw = pages, onCancel = null) {
   const a = id === (curAct() && curAct().id) ? curAct() : getActivity(id);
   if (!a || !pages.length) return;
-  if (busy(id)) { toast('채점하는 중이에요. 끝나거나 멈춘 뒤에 다시 올려 주세요.', 5000); return; }
+  const why = upBusy(id);
+  if (why) { SS().files.freePages([...pages, ...raw].filter(p => !G.pages.includes(p) && !G.raw.includes(p))); toast(why, 5000); return; }
   const per = Math.max(1, getSet().pagesPer | 0), n = Math.ceil(pages.length / per);
   const apply = () => {
     // 정리 전 쪽과 정리한 쪽은 같은 것을 함께 쓸 수 있어, 새로 쓰는 쪽은 남기고 버림
@@ -68,9 +79,10 @@ async function putScans(files) {
   const a0 = curAct();
   if (!a0) return;
   const id = a0.id;
+  if (upBusy(id)) { toast(upBusy(id), 5000); return; }
   bundleMsg('act3', '읽는 중…');
   let b;
-  try { b = await readBundle(files, { say: m => bundleMsg('act3', m), mask: maskOf(a0).mask, expect: 'student' }); }
+  try { b = await readBundle(files, { say: m => bundleMsg('act3', m), mask: lastMask(a0).mask, expect: 'student' }); }
   catch (e) { bundleMsg('act3', ''); toast(e && e.message === 'PDFJS' ? 'PDF를 읽는 도구를 불러오지 못했어요. 인터넷 연결을 확인하거나 사진으로 올려 주세요.' : '파일을 읽지 못했어요.', 6000); return; }
   bundleMsg('act3', '');
   if (needsCard(b)) { const r = await openBundleCard(b, { what: '학생 활동지' }); if (!r) { SS().files.freePages(b.pages); return; } b = r; }
@@ -92,6 +104,7 @@ SS().activityInbox = {
   async put(id, files) {
     if (!getActivity(id)) return '그 활동지를 찾지 못했어요.';
     if (busy(id)) return '그 활동지를 채점하는 중이에요. 끝난 뒤에 다시 넣어 주세요.';
+    if (busyOther(id)) return '다른 활동지를 채점하는 중이에요. 그 채점이 끝나거나 멈춘 뒤에 다시 넣어 주세요.';
     go('evaluate', 'activity');
     openActivity(id, 3);
     await putScans(files);
@@ -102,7 +115,7 @@ SS().activityInbox = {
 function openMask(a) {
   const shots = a.students.map((s, i) => ({ s, pg: pagesFor(a, i) })).filter(x => !x.s.skip && x.pg.length).map(x => ({ url: G.pages[x.pg[0]].url, label: `${x.s.no}번 첫 쪽` }));
   if (!shots.length || !SS().openMaskEditor) { toast('학생 활동지를 먼저 올려 주세요.'); return; }
-  const m = maskOf(a);
+  const m = lastMask(a);
   SS().openMaskEditor({ shots, mask: m.mask, all: m.all, what: '활동지', save: (mask, all) => {
     const a2 = getActivity(a.id) || a;
     a2.mask = mask; a2.maskAll = all; commitAct(a2);
@@ -131,10 +144,25 @@ async function matchNos(a, then) {
   catch (e) { if (wait.gone()) return; wait.close(); toast(e && e.code === 'NO_AI' ? '설정 › AI에서 키를 넣어 주세요' : ai.errorMessage(e && e.code, e), 6000); return; }
   if (wait.gone() || G.pages !== pages0) return;
   openNoCheck({ rows: list.map((x, k) => ({ crop: r.crops[k], ...r.nos[k] })), allowed: rosterAllowed(), onOk: nos => {
+    if (G.id !== a.id || G.pages !== pages0 || busy(a.id)) { toast('번호를 읽는 동안 학생 스캔이 바뀌었어요. [채점 시작]을 다시 눌러 주세요.', 6000); return; }
     const a2 = getActivity(a.id) || a, order = byNoOrder(nos), inList = new Set(list.map(x => x.i));
-    const rest = a2.students.map((s, i) => ({ s, i })).filter(x => !inList.has(x.i));
-    a2.students = [...order.map(k => ({ ...a2.students[list[k].i], no: nos[k] })), ...rest.map(x => x.s)];
-    G.idx = [...order.map(k => G.idx[list[k].i]), ...rest.map(x => G.idx[x.i] || [])];
+    let head, tail, tailIdx;
+    if (a2.noOrdered) {
+      // 번호로 맞춘 적이 있는 활동지에 다시 올린 스캔은 걷은 순서: 결과는 자리가 아니라 번호로 이어 붙임(단원평가와 같게)
+      const byNum = new Map(a2.students.map(s => [s.no, s]));
+      head = order.map(k => byNum.get(nos[k]) || fresh(nos[k]));
+      const used = new Set(head);
+      // 이번에 읽히지 않은 학생 중 결과가 있거나(결석 등) 「채점 안 함」인 학생은 뒤에 남김
+      const rest = a2.students.map((s, i) => ({ s, i })).filter(x => !used.has(x.s) && (x.s.skip || hasResult(x.s)));
+      tail = rest.map(x => x.s); tailIdx = rest.map(x => (x.s.skip && !inList.has(x.i) && G.idx[x.i]) || []);
+    } else {
+      head = order.map(k => a2.students[list[k].i]);
+      const rest = a2.students.map((s, i) => ({ s, i })).filter(x => !inList.has(x.i));
+      tail = rest.map(x => x.s); tailIdx = rest.map(x => G.idx[x.i] || []);
+    }
+    a2.students = [...order.map((k, j) => ({ ...head[j], no: nos[k] })), ...tail];
+    G.idx = [...order.map(k => G.idx[list[k].i]), ...tailIdx];
+    a2.noOrdered = true;
     G.nosOk = true; commitAct(a2); refresh(a.id); then();
   } });
 }
@@ -149,7 +177,7 @@ function step3HTML(a) {
         <label class="switch"><input type="checkbox" id="acTwoUp"${set.twoUp ? ' checked' : ''}>모아찍기(한 면에 2쪽)</label>
         <label class="switch"><input type="checkbox" id="acFlipBack"${set.flipBack ? ' checked' : ''}>양면 스캔 뒷면이 거꾸로</label>
         <label class="switch"><input type="checkbox" id="acMaskOn"${m.on ? ' checked' : ''}>이름 칸 가리기</label>
-        <button class="btn text" type="button" data-ac="mask">이름 칸 정하기</button><span class="muted">${m.mask.length ? '정해 둠' : '아직 정하지 않음'}</span>
+        <button class="btn text" type="button" data-ac="mask">이름 칸 정하기</button><span class="muted">${m.mask.length ? '정해 둠' : (set.mask || []).length ? '아직 정하지 않음(지난 칸을 먼저 보여 드려요)' : '아직 정하지 않음'}</span>
         <label class="switch"><input type="checkbox" id="acByNo"${a.byNo ? ' checked' : ''}>적힌 번호로 학생 맞추기</label>
         ${a.byNo ? `<button class="btn text" type="button" data-ac="noBox">번호 칸 정하기</button>` : ''}
       </div>
@@ -188,7 +216,8 @@ async function gradeOne(id, i, meter) {
     if (!s || s.no !== no) return;
     // 선생님이 고친 칸은 그대로
     s.marks = Object.fromEntries(a.items.map(it => { const old = s.marks && s.marks[it.no]; return [it.no, old && old.manual ? old : judgeCell(it, r.marks[it.no])]; }));
-    s.good = r.good; s.next = r.next;
+    // 선생님이 고친 잘한 점·더 해 볼 점도 그대로(비운 칸은 AI 글로 채움)
+    for (const f of ['good', 'next']) if (!(s[f + 'Manual'] && s[f])) { s[f] = r[f]; delete s[f + 'Manual']; }
     if (!s.levelManual) { s.level = r.level; s.levelWhy = r.levelWhy; }
     s.status = 'done'; s.stale = false; s.err = ''; delete s.rvErr;
     commitAct(a); refresh(id);
@@ -215,7 +244,7 @@ async function reviewOne(id, i, no, images, signal, meter) {
   if (!cells.length) return;
   const parts = reviewParts(a, cells);
   const v = await reviewJSON('grade', parts.own, { shared: { text: parts.shared }, images, signal, valid: x => Array.isArray(x) || !!(x && Array.isArray(x.items)), meter });
-  if (!v) return;
+  if (!v || signal.aborted || v.error === 'cancelled') return; // 멈추기는 검토 실패가 아님
   const a2 = getActivity(id), s2 = a2 && a2.students[i];
   if (!s2 || s2.no !== no) return;
   if (v.error) { s2.rvErr = 1; commitAct(a2); refresh(id); return; }
@@ -225,10 +254,12 @@ async function reviewOne(id, i, no, images, signal, meter) {
 async function gradeAll(id) {
   const a = getActivity(id);
   if (!a || busy(id)) return;
+  if (busyOther(id)) { toast('다른 활동지를 채점하는 중이에요. 끝나거나 멈춘 뒤에 채점해 주세요.', 5000); return; }
   if (G.id !== id || !G.pages.length) { toast('스캔이 없어요. 3단계에서 학생 활동지를 올려 주세요.', 5000); return; }
   if (!ai.ready()) { toast('설정 › AI에서 키를 넣어 주세요', 5000); return; }
   const m = maskOf(a);
-  if (m.on && !m.mask.length) { toast('이름 칸을 먼저 정해 주세요(가리지 않으려면 3단계에서 「이름 칸 가리기」를 꺼요).', 6000); openMask(a); return; }
+  // 지난 활동지에서 정한 칸은 양식이 다르면 이름을 가리지 못해, 이 활동지에서 확인받음(편집기에 먼저 보여 줌)
+  if (m.on && !m.mask.length) { toast(lastMask(a).mask.length ? '이 활동지의 이름 칸을 먼저 정해 주세요. 지난 활동지에서 정한 칸을 먼저 보여 드려요. 이 활동지에서도 이름이 가려지는지 확인해 주세요.' : '이름 칸을 먼저 정해 주세요(가리지 않으려면 3단계에서 「이름 칸 가리기」를 꺼요).', 7000); openMask(a); return; }
   if (a.byNo && !G.nosOk) { matchNos(a, () => gradeAll(id)); return; }
   const queue = a.students.map((s, i) => ({ s, i })).filter(x => !x.s.skip && (x.s.status !== 'done' || x.s.stale)).map(x => x.i);
   if (!queue.length) { toast('채점할 학생이 없어요. 고칠 칸을 눌러 바꿀 수 있어요.', 5000); return; }
@@ -338,7 +369,7 @@ document.addEventListener('change', e => {
   else if (el.id === 'acTwoUp' || el.id === 'acFlipBack') {
     if (busy(a.id)) { toast('채점하는 중에는 바꿀 수 없어요.', 4000); render(); return; }
     // 쪽 모양·방향이 바뀌면 정해 둔 이름 칸 자리가 맞지 않아 이름이 AI로 갈 수 있음: 정한 칸(이 활동지·기본)은 지우고 다시 정하게
-    const had = maskOf(a).mask.length;
+    const had = lastMask(a).mask.length;
     saveSet({ ...getSet(), [el.id === 'acTwoUp' ? 'twoUp' : 'flipBack']: el.checked, mask: [], maskAll: false });
     delete a.mask; delete a.maskAll;
     if (had) toast('쪽 모양이 바뀌어 이름 칸을 지웠어요. [이름 칸 정하기]로 다시 정해 주세요.', 6000);
@@ -366,6 +397,6 @@ document.addEventListener('input', e => {
   if (!no) return;
   const s = a.students.find(x => x.no === no);
   if (!s) return;
-  if (el.dataset.good) s.good = el.value; else s.next = el.value;
+  if (el.dataset.good) { s.good = el.value; s.goodManual = true; } else { s.next = el.value; s.nextManual = true; }
   commitAct(a);
 });
