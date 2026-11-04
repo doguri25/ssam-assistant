@@ -1,9 +1,9 @@
 /* 품의 「한 칸 → 바로 초안」(스펙 2026-11-02 3장): 한 번에 초안 프롬프트·답 다듬기, 확인할 것 칩, 빠진 것 묻기. 화면 없이 돌아감(시험) */
-import { TYPES, draftMemo, findPersonal, cleanItems, toNumber } from './rules.js';
+import { TYPES, draftMemo, findPersonal, cleanItems, toNumber, plainOfficial } from './rules.js';
 import { hasContact, maskNames } from './intake.js';
 
 const VERB = { goods: '구입', lecturer: '지급', event: '운영', meeting: '운영' };
-const FIELD_NAME = { project: '사업명', purpose: '목적', date: '일시', target: '대상', place: '장소' };
+const FIELD_NAME = { related: '관련', project: '사업명', purpose: '목적', date: '일시', target: '대상', place: '장소' };
 export const GUESS_KEYS = Object.keys(FIELD_NAME);
 const TYPE_IDS = TYPES.map(t => t.id);
 const blank = v => String(v == null ? '' : v).trim() === '';
@@ -26,8 +26,11 @@ export function oneshotPrompt(form, text = '', { askType = false, today = '' } =
     ...(said ? ['', '[선생님이 넣은 글]', said] : []),
     ...(dayLine(today) ? ['', dayLine(today)] : []),
     '', '규칙:',
-    '- title: 한 줄, 30자 안쪽. 무엇을 왜 하는지 드러나게 씁니다. 예) 5학년 과학 실험 재료(용해와 용액) 구입',
-    `- intro: 한 문장. 「…을(를) 다음과 같이 ${askType ? '구입(물품)·지급(강사)·운영(행사·협의회)' : VERB[type]}하고자 합니다.」 꼴로 씁니다. 금액·날짜는 쓰지 않습니다.`,
+    '- 품의 사유는 에듀파인 기안문 꼴(1. 관련: … / 2. 첫 문장 / 가. 목적 …)이고, 앱이 번호와 가~ 줄을 붙입니다. 여러분은 제목과 2.의 첫 문장만 씁니다.',
+    '- 넣은 글의 1인칭·구어(「내가 필요한」「제가 쓸」「사 주세요」「좀」 등)는 옮기지 않고, 공문서 말투(명사형, 「~을 위하여」)로 바꿔 씁니다.',
+    '- title: 한 줄, 30자 안쪽. 무엇을 왜 하는지 드러나게 씁니다. 예) 5학년 과학 실험 재료(용해와 용액) 구입, 학급 문고 도서 구입',
+    `- intro: 한 문장, 번호 없이. 「(목적)을 위하여 …을(를) 다음과 같이 ${askType ? '구입(물품)·지급(강사)·운영(행사·협의회)' : VERB[type]}하고자 합니다.」 꼴로 씁니다. 금액·날짜는 쓰지 않습니다.`,
+    '- fields.related(관련): 넣은 글에 관련 계획·공문(이름·문서번호·날짜)이 있을 때만 씁니다. 예) ○○교육청 과학과-1234(2026. 11. 2.). 없으면 빼고 지어내지 않습니다.',
     ...(empty.length ? [`- fields: 메모·넣은 글에서 알 수 있을 때만 ${empty.map(k => `${k}(${FIELD_NAME[k]})`).join('·')}를 씁니다. purpose(목적)는 비어 있으면 품목·사업명으로 짐작해 짧게 써도 됩니다. 나머지는 알 수 없으면 빼고 지어내지 않습니다.`] : []),
     ...(askType ? ['- type: goods(물품 구입)·lecturer(강사 수당)·event(행사 운영)·meeting(협의회) 중 하나. 알 수 없으면 빈 글.'] : []),
     '- 메모에 없는 사실은 지어내지 않습니다. 사람 이름·전화번호·주소는 쓰지 않습니다.',
@@ -42,9 +45,10 @@ export function normOneshot(v, form) {
   for (const k of GUESS_KEYS) {
     const t = str(src[k], 200);
     if (!t || !blank(f[k]) || findPersonal(t) || hasContact(t)) continue;
-    fields[k] = t;
+    fields[k] = k === 'project' || k === 'purpose' ? plainOfficial(t) : t;
   }
-  return { title: str(o.title, 80), intro: str(o.intro, 300), fields, type: TYPE_IDS.includes(o.type) ? o.type : '' };
+  // 넣은 글에서 옮겨 온 「내가 필요한」 같은 1인칭 주어는 뺌, 첫 문장 앞 번호(「2.」)도 뺌(앱이 붙임)
+  return { title: plainOfficial(str(o.title, 80)), intro: plainOfficial(str(o.intro, 300).replace(/^\d+\.\s*/, '')), fields, type: TYPE_IDS.includes(o.type) ? o.type : '' };
 }
 
 /* 초안 위 「확인할 것」 칩: [{ key(누르면 갈 칸, ''면 칸 없음), text, level: 'warn'|'info' }] */
@@ -60,6 +64,8 @@ export function confirmChips(form, check, guessed = []) {
   if (f.typeGuessed) out.push({ key: 'type', text: `종류 · AI가 「${TYPE_LABEL[f.type] || f.type}」로 봄`, level: 'warn' });
   for (const w of (check && check.warnings) || []) if (!w.includes('예산 과목')) out.push({ key: '', text: w, level: 'warn' });
   if (blank(f.date) && blank(f.target)) out.push({ key: 'date', text: '일시·대상 없이 썼어요', level: 'info' });
+  // 관련 계획·공문을 몰라 기본값(학교 교육과정 운영 계획 등)으로 넣었음
+  if (blank(f.related)) out.push({ key: 'related', text: '관련 · 기본값으로 넣음', level: 'info' });
   return out;
 }
 

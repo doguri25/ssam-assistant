@@ -23,11 +23,13 @@ test('쪽지 날짜: 「11-12~11-13」·「2026-11-12~2026-11-13」 기간은 �
   assert.ok(messagePrompt('글').includes('"end"'), '프롬프트에 기간 끝');
 });
 
-test('쪽지 날짜: 기간은 본문에 「시작~끝(요일)」, 해가 다르면 끝도 연도까지', () => {
-  const b = composeMessage(normMessage({ title: '연수', when: [{ date: '2026-11-12', end: '2026-11-13', time: '09:00~16:00' }] })).body;
-  assert.ok(b.includes('□ 일시: 2026. 11. 12.(목)~11. 13.(금) 09:00~16:00'), b);
-  const b2 = composeMessage(normMessage({ title: '연수', when: [{ date: '2026-12-30', end: '2027-01-02' }] })).body;
-  assert.ok(b2.includes('□ 일시: 2026. 12. 30.(수)~2027. 1. 2.(토)'), b2);
+test('쪽지 날짜: 기간은 본문에 「시작~끝(요일)」, 올해는 연도 없이, 해가 다르면 끝도 연도까지', () => {
+  const b = composeMessage(normMessage({ title: '연수', when: [{ date: '2026-11-12', end: '2026-11-13', time: '09:00~16:00' }] }), { thisYear: 2026 }).body;
+  assert.ok(b.includes('□ 일시: 11. 12.(목)~11. 13.(금) 09:00~16:00'), b);
+  const b2 = composeMessage(normMessage({ title: '연수', when: [{ date: '2026-12-30', end: '2027-01-02' }] }), { thisYear: 2026 }).body;
+  assert.ok(b2.includes('□ 일시: 12. 30.(수)~2027. 1. 2.(토)'), b2);
+  const b3 = composeMessage(normMessage({ title: '연수', when: [{ date: '2026-11-12', end: '2026-11-13' }] }), { thisYear: 2025 }).body;
+  assert.ok(b3.includes('□ 일시: 2026. 11. 12.(목)~11. 13.(금)'), b3);
 });
 
 test('쪽지 날짜: 글로 온 일시도 넣고(날짜는 읽고 나머지는 시간), 일시 하나가 글이어도 됨', () => {

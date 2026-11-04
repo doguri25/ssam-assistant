@@ -45,7 +45,7 @@ export function messagePrompt(text, { nImages = 0 } = {}) {
     '- title: 짧은 제목(예: 2026 AI 활용 수업 연수). 「안내」·「알림」 같은 말과 기관 이름은 빼도 됩니다.',
     '- when: 일시마다 {"date":"YYYY-MM-DD","time":"15:00~16:30","note":""}. 여러 번이면 여러 개, 연도가 없으면 날짜만(MM-DD). 며칠에 걸친 기간이면 {"date":"시작","end":"끝"}.',
     '- place: 장소, target: 대상, apply: {"due":"YYYY-MM-DD"(신청·회신·제출 기한), "how":"방법(예: 이음 쪽지로 회신)"}',
-    '- bring: 준비물, notes: 유의 사항 한두 개(짧게), points: 주요 내용 최대 5줄(짧게)',
+    '- bring: 준비물, notes: 유의 사항 한 개(짧게), points: 주요 내용 최대 3줄(한 줄 20자 안쪽)',
     '- 글에 없는 것은 빈 글로 둡니다. 지어내지 않습니다. 사람 이름·전화번호·이메일은 쓰지 않습니다.',
     '', '[글]', String(text || '').slice(0, 12000),
     '', '[출력] JSON 하나만 출력합니다.',
@@ -73,37 +73,49 @@ export function normMessage(v, { year } = {}) {
     title: clean(o.title, 80), when, place: clean(o.place, 100), target: clean(o.target, 100),
     apply: { due, dueNote: due ? '' : clean(ap.due, 40), how: clean(ap.how, 100) },
     bring: clean(o.bring, 200), notes: clean(o.notes, 200),
-    points: (Array.isArray(o.points) ? o.points : []).map(p => clean(p, 120)).filter(Boolean).slice(0, 5)
+    points: (Array.isArray(o.points) ? o.points : []).map(p => clean(p, 120)).filter(Boolean).slice(0, 3)
   };
 }
 
 /* 받침 있으면 「을」, 없으면 「를」 */
 const eul = w => { const c = String(w || '').trim().slice(-1).charCodeAt(0) - 0xac00; return c >= 0 && c < 11172 ? (c % 28 ? '을' : '를') : '을(를)'; };
-const dayText = w => (w.end ? `${fmtDay(w.date)}~${fmtDay(w.end, { noYear: w.end.slice(0, 4) === w.date.slice(0, 4) })}` : fmtDay(w.date));
-const whenText = w => [dayText(w), w.time].filter(Boolean).join(' ') + (w.note ? (w.date || w.time ? ` (${w.note})` : w.note) : '');
+/* 올해(thisYear) 날짜는 연도 없이 「11. 12.(목)」 */
+const fmtIn = (iso, y) => fmtDay(iso, { noYear: !!iso && iso.slice(0, 4) === String(y) });
+const dayText = (w, y) => (w.end ? `${fmtIn(w.date, y)}~${fmtDay(w.end, { noYear: w.end.slice(0, 4) === w.date.slice(0, 4) })}` : fmtIn(w.date, y));
+const whenText = (w, y) => [dayText(w, y), w.time].filter(Boolean).join(' ') + (w.note ? (w.date || w.time ? ` (${w.note})` : w.note) : '');
 
-/* 쪽지 칸 → { title, body }. len: short(일시·장소·대상·신청) · base(+ 준비물·유의 사항) · long(+ 주요 내용)
-   이음 쪽지는 제목 칸이 없어 본문 첫 줄이 제목, 그다음 인사 「안녕하세요 선생님.」 (스펙 2026-11-03 2장) */
+/* 쪽지 칸 → { title, body }. 이음 쪽지는 제목 칸이 없어 본문 첫 줄이 제목, 그다음 인사 「안녕하세요 선생님.」 (스펙 2026-11-03 2장)
+   len: short(일시·장소 한 줄 + 신청, 끝인사 없음) · base(일시·장소 한 줄·대상·신청·준비물) · long(일시·장소 따로 + 유의 사항·주요 내용 3줄).
+   올해 날짜는 연도를 빼고, 빈 줄은 제목 뒤와 붙임 앞에만 */
 export const GREETING = '안녕하세요 선생님.';
-export function composeMessage(m, { len = 'base', attach = [], sender = '', again = false } = {}) {
-  const x = m || {}, title = String(x.title || '').trim();
+export function composeMessage(m, { len = 'base', attach = [], sender = '', again = false, thisYear = new Date().getFullYear() } = {}) {
+  const x = m || {}, title = String(x.title || '').trim(), short = len === 'short';
   const head = again ? '[다시 안내]' : `[${KINDS[x.kind] || KINDS.etc}]`;
   const full = title ? `${head} ${title}` : head;
-  const lines = [full, '', GREETING, `${title ? `${title}${eul(title)} ` : ''}${again ? '다시 한번 안내드립니다.' : '아래와 같이 안내드립니다.'}`, ''];
+  // 제목은 첫 줄에 있으니 다시 말하지 않고, 인사와 안내를 한 줄로(짧게는 인사만)
+  const lead = again ? '다시 한번 안내드립니다.' : short ? '' : '아래와 같이 안내드립니다.';
+  const lines = [full, '', lead ? `${GREETING} ${lead}` : GREETING];
   const row = (label, v) => { if (String(v || '').trim()) lines.push(`□ ${label}: ${String(v).trim()}`); };
-  const ws = (x.when || []).map(whenText).filter(Boolean);
-  if (ws.length) lines.push(`□ 일시: ${ws[0]}`, ...ws.slice(1).map(w => `        ${w}`));
-  row('장소', x.place);
-  row('대상', x.target);
+  const ws = (x.when || []).map(w => whenText(w, thisYear)).filter(Boolean);
+  const place = String(x.place || '').trim();
+  // 짧게는 늘, 기본은 일시가 하나일 때 일시·장소를 한 줄로
+  if (short || (len === 'base' && ws.length <= 1)) {
+    const when = ws.length ? ws[0] + (ws.length > 1 ? ` 외 ${ws.length - 1}회` : '') : '';
+    if (when && place) lines.push(`□ 일시·장소: ${when}, ${place}`); else row(when ? '일시' : '장소', when || place);
+  } else {
+    if (ws.length) lines.push(`□ 일시: ${ws[0]}`, ...ws.slice(1).map(w => `        ${w}`));
+    row('장소', place);
+  }
+  if (!short) row('대상', x.target);
   const ap = x.apply || {};
-  row('신청', [ap.due ? `${fmtDay(ap.due)}까지` : ap.dueNote || '', ap.how].filter(Boolean).join(' '));
-  if (len !== 'short') row('준비물·유의 사항', [x.bring, x.notes].filter(s => String(s || '').trim()).join(' / '));
-  if (len === 'long' && (x.points || []).length) lines.push('□ 주요 내용', ...x.points.map(p => `  - ${p}`));
+  row('신청', [ap.due ? `${fmtIn(ap.due, thisYear)}까지` : ap.dueNote || '', ap.how].filter(Boolean).join(' '));
+  if (len === 'base') row('준비물', x.bring);
+  if (len === 'long') row('준비물·유의 사항', [x.bring, x.notes].filter(s => String(s || '').trim()).join(' / '));
+  if (len === 'long' && (x.points || []).length) lines.push('□ 주요 내용', ...x.points.slice(0, 3).map(p => `  - ${p}`));
   const names = (attach || []).map(a => String(a || '').trim()).filter(Boolean);
-  if (names.length) lines.push('', attachText(names.map(n => (/\d+\s*부$/.test(n) ? n : `${n} 1부`))));
-  lines.push('');
+  if (names.length) lines.push(...(short ? [] : ['']), attachText(names.map(n => (/\d+\s*부$/.test(n) ? n : `${n} 1부`))));
   if (String(sender || '').trim()) lines.push(`문의: ${String(sender).trim()}`);
-  lines.push('감사합니다.');
+  if (!short) lines.push('감사합니다.');
   return { title: full, body: lines.join('\n').replace(/\n{3,}/g, '\n\n') };
 }
 

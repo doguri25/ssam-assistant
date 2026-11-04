@@ -1,7 +1,7 @@
 /* 품의 「아무거나 넣기」: 엑셀·견적서 파일, 장바구니·견적 캡처, 대충 쓴 줄글 → 품목과 빈 칸 (스펙 4.0).
    줄글은 먼저 앱이 규칙으로 읽고, 못 읽은 줄이 있으면 AI가 글 전체를 읽음. 캡처는 AI. 주문자·주소·전화는 받지 않음 */
 import * as ai from '../../core/ai.js';
-import { emptyItem, findPersonal, toNumber } from './rules.js';
+import { emptyItem, findPersonal, toNumber, plainItemName, plainOfficial } from './rules.js';
 import { readQuote } from './quote.js';
 import { findItems } from '../../core/sheet.js';
 import { readText } from '../../core/files.js';
@@ -54,8 +54,9 @@ function parseLine(raw) {
     const lo = Math.min(...amounts), hi = Math.max(...amounts);
     if (Math.abs(lo * qty - hi) <= Math.max(1, hi * 0.001)) price = lo;
   }
-  const name = s.replace(/[=@×*]|\(\s*\)|\[\s*\]/g, ' ').replace(/(^|\s)(?:x|X|각|개당|단가|금액)(?=\s|$)/g, ' ')
-    .replace(/[,:\-–·]+\s*$/, '').replace(/\s+/g, ' ').trim();
+  // 「내가 필요한 책」·「A4 용지 사주세요」 같은 1인칭·구어는 품명에서 뺌
+  const name = plainItemName(s.replace(/[=@×*]|\(\s*\)|\[\s*\]/g, ' ').replace(/(^|\s)(?:x|X|각|개당|단가|금액)(?=\s|$)/g, ' ')
+    .replace(/[,:\-–·]+\s*$/, '').replace(/\s+/g, ' ').trim());
   if (!name || price == null || !Number.isFinite(price)) return null;
   if (!unit && SHIP.test(name)) unit = '건';
   return { it: { ...emptyItem(), name, spec, unit, qty: String(qty), price: String(price) }, stated: total };
@@ -111,7 +112,7 @@ export function intakePrompt(kind, text = '') {
   return ['[품의 넣기]',
     kind === 'image' ? '첨부한 이미지는 학교에서 물품을 사려고 찍은 장바구니·견적서·주문서 화면입니다.' : '아래 글은 선생님이 품의(물품 구입)를 쓰려고 대충 적은 메모입니다.',
     '사려는 물품을 줄마다 뽑습니다.',
-    '- name: 상품 이름(짧게), spec: 옵션·규격, unit: 수량 단위(개·박스·세트 등), qty: 수량(숫자), price: 1개를 실제로 결제하는 단가(할인 뒤, 숫자·쉼표 없이)',
+    '- name: 상품 이름만 짧게(「내가 필요한」「제가 쓸」「사 주세요」 같은 1인칭·구어는 빼기), spec: 옵션·규격, unit: 수량 단위(개·박스·세트 등), qty: 수량(숫자), price: 1개를 실제로 결제하는 단가(할인 뒤, 숫자·쉼표 없이)',
     '- vendor: 판매처(쇼핑몰·업체 이름). 모르면 빈 글.',
     '- 배송비는 품목에 넣지 말고 shipping에 판매처별로 넣습니다(무료면 0).',
     '- 합계·소계·부가세·공급가액·할인 줄은 품목이 아닙니다.',
@@ -135,7 +136,7 @@ export function normIntake(v, kind = 'text') {
   const items = [];
   for (const x of listOf(v, 'items')) {
     if (!(x && typeof x === 'object') || blank(x.name) || TOTAL.test(str(x.name))) continue;
-    const it = { name: str(x.name, 120), spec: str(x.spec, 80), unit: str(x.unit, 10), qty: String(toNumber(x.qty) > 0 ? toNumber(x.qty) : 1), price: String(Math.max(0, Math.round(toNumber(x.price)))), vendor: str(x.vendor, 40) };
+    const it = { name: plainItemName(str(x.name, 120)), spec: str(x.spec, 80), unit: str(x.unit, 10), qty: String(toNumber(x.qty) > 0 ? toNumber(x.qty) : 1), price: String(Math.max(0, Math.round(toNumber(x.price)))), vendor: str(x.vendor, 40) };
     if (bad(it.name) || ['spec', 'unit', 'vendor'].some(k => findPersonal(it[k]))) { dropped++; continue; }
     for (const k of ['spec', 'unit', 'vendor']) if (hasContact(it[k])) { it[k] = ''; dropped++; }
     items.push(it);
@@ -147,7 +148,7 @@ export function normIntake(v, kind = 'text') {
     const t = str(f[k]);
     if (!t || (k === 'place' && kind === 'image')) continue;
     if (bad(t)) { dropped++; continue; }
-    fields[k] = t;
+    fields[k] = k === 'project' || k === 'purpose' ? plainOfficial(t) : t;
   }
   return { items, shipping, fields, ...(dropped ? { dropped } : {}) };
 }

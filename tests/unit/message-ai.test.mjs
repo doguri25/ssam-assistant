@@ -13,12 +13,12 @@ test('날짜 꼴: 2026. 11. 12.(목), 없는 날은 빈 글', () => {
   assert.equal(fmtDay(''), '');
 });
 
-test('답 다듬기: 연도 없는 날은 지금 학년도, 없는 날은 날짜를 비우고 글은 남김, 모르는 종류는 etc, 주요 내용 5줄, 전화번호 지움', () => {
+test('답 다듬기: 연도 없는 날은 지금 학년도, 없는 날은 날짜를 비우고 글은 남김, 모르는 종류는 etc, 주요 내용 3줄, 전화번호 지움', () => {
   const m = normMessage(RAW, { year: 2026 });
   assert.equal(m.kind, 'training');
   assert.deepEqual(m.when, [{ date: '2026-11-12', end: '', time: '15:00~16:30', note: '' }]);
   assert.equal(m.apply.due, '2026-11-06');
-  assert.equal(m.points.length, 5);
+  assert.equal(m.points.length, 3);
   const bad = normMessage({ kind: '?', when: [{ date: '2026-13-40', note: '13월 40일' }], place: '강당(문의 041-123-4567)' }, { year: 2026 });
   assert.equal(bad.kind, 'etc');
   assert.equal(bad.when[0].date, '');
@@ -30,38 +30,59 @@ test('답 다듬기: 연도 없는 날은 지금 학년도, 없는 날은 날짜
   assert.equal(KINDS.training, '연수 안내');
 });
 
-test('쪽지 글(기본): 제목 머리, 인사, □ 일시·장소·대상·신청·준비물, 붙임 번호·끝., 문의, 감사합니다', () => {
+test('쪽지 글(기본): 제목 줄, 인사와 「아래와 같이 안내드립니다.」 한 줄, □ 일시·장소(한 줄)·대상·신청·준비물(올해는 연도 없이), 붙임, 문의, 감사합니다', () => {
   const m = normMessage(RAW, { year: 2026 });
-  const r = composeMessage(m, { len: 'base', attach: ['AI 활용 연수 계획', '연수 공문'], sender: '교무부 ○○○(내선 123)' });
+  const r = composeMessage(m, { len: 'base', attach: ['AI 활용 연수 계획', '연수 공문'], sender: '교무부 ○○○(내선 123)', thisYear: 2026 });
   assert.equal(r.title, '[연수 안내] AI 활용 수업 연수');
   const b = r.body;
-  // 이음은 제목 칸이 없어 본문 첫 줄이 제목, 인사는 늘 「안녕하세요 선생님.」
-  assert.ok(b.startsWith('[연수 안내] AI 활용 수업 연수\n\n안녕하세요 선생님.\nAI 활용 수업 연수를 아래와 같이 안내드립니다.'), b.slice(0, 80));
-  for (const l of ['□ 일시: 2026. 11. 12.(목) 15:00~16:30', '□ 장소: 시청각실', '□ 대상: 전 교직원', '□ 신청: 2026. 11. 6.(금)까지 이음 쪽지로 회신', '□ 준비물·유의 사항: 개인 노트북 / 출장 처리 없음',
-    '붙임  1. AI 활용 연수 계획 1부.\n      2. 연수 공문 1부.  끝.', '문의: 교무부 ○○○(내선 123)']) assert.ok(b.includes(l), l + '\n---\n' + b);
+  // 이음은 제목 칸이 없어 본문 첫 줄이 제목. 제목을 다시 말하지 않고 인사와 안내를 한 줄로
+  assert.ok(b.startsWith('[연수 안내] AI 활용 수업 연수\n\n안녕하세요 선생님. 아래와 같이 안내드립니다.\n□ 일시·장소: 11. 12.(목) 15:00~16:30, 시청각실\n'), b.slice(0, 120));
+  for (const l of ['□ 대상: 전 교직원', '□ 신청: 11. 6.(금)까지 이음 쪽지로 회신', '□ 준비물: 개인 노트북',
+    '□ 준비물: 개인 노트북\n\n붙임  1. AI 활용 연수 계획 1부.\n      2. 연수 공문 1부.  끝.\n문의: 교무부 ○○○(내선 123)\n감사합니다.']) assert.ok(b.includes(l), l + '\n---\n' + b);
   assert.ok(b.trim().endsWith('감사합니다.'), b);
-  assert.ok(!b.includes('주요 내용'), '기본에 주요 내용');
+  assert.ok(!b.includes('주요 내용') && !b.includes('유의 사항') && !b.includes('2026.'), '기본에 주요 내용·유의 사항·올해 연도');
 });
 
-test('짧게·자세히·없는 줄 빼기·문의·붙임 없음·다시 안내', () => {
+test('짧게는 지금의 절반쯤: 일시·장소 한 줄, 신청(대상·준비물·안내 문장·끝인사 없음)', () => {
   const m = normMessage(RAW, { year: 2026 });
-  const short = composeMessage(m, { len: 'short' }).body;
-  assert.ok(!short.includes('준비물') && short.includes('□ 신청'), short);
-  const long = composeMessage(m, { len: 'long' }).body;
-  assert.ok(long.includes('□ 주요 내용\n  - 생성형 AI 소개'), long);
-  const noPlace = composeMessage({ ...m, place: '' }, {}).body;
-  assert.ok(!noPlace.includes('□ 장소'), noPlace);
-  const plain = composeMessage(m, { attach: [], sender: '' }).body;
+  const short = composeMessage(m, { len: 'short', thisYear: 2026 }).body;
+  assert.equal(short, '[연수 안내] AI 활용 수업 연수\n\n안녕하세요 선생님.\n□ 일시·장소: 11. 12.(목) 15:00~16:30, 시청각실\n□ 신청: 11. 6.(금)까지 이음 쪽지로 회신');
+  // 고치기 전 짧게(같은 내용)는 160자 · 11줄
+  assert.ok(short.length <= 104 && short.split('\n').length <= 5, `${short.length}자 ${short.split('\n').length}줄`);
+  const withMore = composeMessage(m, { len: 'short', attach: ['연수 계획'], sender: '교무부', thisYear: 2026 }).body;
+  assert.ok(withMore.endsWith('□ 신청: 11. 6.(금)까지 이음 쪽지로 회신\n붙임  연수 계획 1부.  끝.\n문의: 교무부'), withMore);
+  // 기본·자세히도 줄임(고치기 전 같은 내용 기본 191자 · 자세히 246자)
+  assert.ok(composeMessage(m, { len: 'base', thisYear: 2026 }).body.length <= 150, '기본');
+  assert.ok(composeMessage(m, { len: 'long', thisYear: 2026 }).body.length <= 205, '자세히');
+  const two = composeMessage({ ...m, when: [{ date: '2026-11-12', time: '15:00', note: '' }, { date: '2026-11-19', time: '15:00', note: '2차' }] }, { len: 'short', thisYear: 2026 }).body;
+  assert.ok(two.includes('□ 일시·장소: 11. 12.(목) 15:00 외 1회, 시청각실'), two);
+  const noPlace = composeMessage({ ...m, place: '' }, { len: 'short', thisYear: 2026 }).body;
+  assert.ok(noPlace.includes('□ 일시: 11. 12.(목) 15:00~16:30\n'), noPlace);
+  const again = composeMessage(m, { len: 'short', again: true, thisYear: 2026 }).body;
+  assert.ok(again.startsWith('[다시 안내] AI 활용 수업 연수\n\n안녕하세요 선생님. 다시 한번 안내드립니다.\n'), again);
+});
+
+test('자세히·없는 줄 빼기·문의·붙임 없음·다시 안내·다른 해 날짜', () => {
+  const m = normMessage(RAW, { year: 2026 });
+  const long = composeMessage(m, { len: 'long', thisYear: 2026 }).body;
+  assert.ok(long.includes('□ 준비물·유의 사항: 개인 노트북 / 출장 처리 없음') && long.includes('□ 주요 내용\n  - 생성형 AI 소개\n  - 수업 사례\n  - 실습'), long);
+  assert.equal((long.match(/\n  - /g) || []).length, 3, '주요 내용 3줄');
+  assert.ok(long.includes('□ 일시: 11. 12.(목) 15:00~16:30\n□ 장소: 시청각실\n□ 대상: 전 교직원'), long);
+  const noPlace = composeMessage({ ...m, place: '' }, { thisYear: 2026 }).body;
+  assert.ok(!noPlace.includes('장소') && noPlace.includes('□ 일시: 11. 12.(목) 15:00~16:30\n'), noPlace);
+  const plain = composeMessage(m, { attach: [], sender: '', thisYear: 2026 }).body;
   assert.ok(!plain.includes('붙임') && !plain.includes('문의'), plain);
-  const one = composeMessage(m, { attach: ['연수 계획'] }).body;
+  const one = composeMessage(m, { attach: ['연수 계획'], thisYear: 2026 }).body;
   assert.ok(one.includes('붙임  연수 계획 1부.  끝.'), one);
-  const again = composeMessage(m, { again: true });
+  const again = composeMessage(m, { again: true, thisYear: 2026 });
   assert.equal(again.title, '[다시 안내] AI 활용 수업 연수');
-  assert.ok(again.body.startsWith('[다시 안내] AI 활용 수업 연수\n\n안녕하세요 선생님.\n') && again.body.includes('다시 한번 안내드립니다.'), again.body);
-  assert.ok(composeMessage({ ...m, kind: 'etc', title: '' }, {}).body.startsWith('[안내]\n\n안녕하세요 선생님.\n아래와 같이 안내드립니다.'), '제목 없음');
-  const two = composeMessage({ ...m, when: [{ date: '2026-11-12', time: '15:00', note: '' }, { date: '2026-11-19', time: '15:00', note: '2차' }] }, {}).body;
-  assert.ok(two.includes('□ 일시: 2026. 11. 12.(목) 15:00\n        2026. 11. 19.(목) 15:00 (2차)'), two);
+  assert.ok(again.body.startsWith('[다시 안내] AI 활용 수업 연수\n\n안녕하세요 선생님. 다시 한번 안내드립니다.\n'), again.body);
+  assert.ok(composeMessage({ ...m, kind: 'etc', title: '' }, { thisYear: 2026 }).body.startsWith('[안내]\n\n안녕하세요 선생님. 아래와 같이 안내드립니다.'), '제목 없음');
+  const two = composeMessage({ ...m, when: [{ date: '2026-11-12', time: '15:00', note: '' }, { date: '2026-11-19', time: '15:00', note: '2차' }] }, { thisYear: 2026 }).body;
+  assert.ok(two.includes('□ 일시: 11. 12.(목) 15:00\n        11. 19.(목) 15:00 (2차)'), two);
   assert.equal(composeMessage({ ...m, kind: 'etc', title: '' }, {}).title, '[안내]');
+  // 올해가 아닌 날은 연도를 붙임
+  assert.ok(composeMessage(m, { thisYear: 2027 }).body.includes('2026. 11. 12.(목) 15:00~16:30') && composeMessage(m, { thisYear: 2027 }).body.includes('2026. 11. 6.(금)까지'), '다른 해');
 });
 
 test('안내 프롬프트: 머리·출력 모양·지어내지 않기·사람 이름·전화번호 쓰지 않기', () => {

@@ -31,7 +31,7 @@ export const ATTACH = {
 const attachOf = type => ATTACH[type] || ATTACH.goods;
 
 export function emptyForm(type = 'goods') {
-  return { type, project: '', purpose: '', date: '', target: '', place: '', budget: '', budgetUnknown: false, total: '', memo: '', items: [emptyItem()],
+  return { type, related: '', project: '', purpose: '', date: '', target: '', place: '', budget: '', budgetUnknown: false, total: '', memo: '', items: [emptyItem()],
     vat: true, income: 'other', attach: attachOf(type).filter(a => a.on).map(a => a.id), attachMore: [] };
 }
 export const defaultUnit = type => (type === 'lecturer' ? '시간' : type === 'meeting' ? '명' : '개');
@@ -213,7 +213,7 @@ export function draftMemo(form) {
     ? `강사 ${its.length}명, 모두 ${won(its.reduce((n, it) => n + toNumber(it.qty), 0))}시간`
     : its.map(it => `${it.name}${it.spec ? `(${it.spec})` : ''} ${won(toNumber(it.qty))}${String(it.unit || '').trim() || defaultUnit(type.id)} × ${won(toNumber(it.price))}원`).join(', ');
   const line = (k, v) => (String(v || '').trim() ? `- ${k}: ${String(v).trim()}\n` : '');
-  return line('종류', type.label) + line('사업명', f.project) + line('목적', f.purpose) + line('일시', f.date) + line('대상', f.target) + line('장소', f.place)
+  return line('종류', type.label) + line('관련', f.related) + line('사업명', f.project) + line('목적', f.purpose) + line('일시', f.date) + line('대상', f.target) + line('장소', f.place)
     + line('품목', items) + `- 합계: ${won(sumItems(f.items))}원\n` + line('그 밖의 메모', f.memo);
 }
 
@@ -226,12 +226,63 @@ export function reasonTail(form) {
   const budget = f.budgetUnknown || blank(f.budget) ? '' : f.budget;
   const rows = [['목적', f.purpose], ['일시', f.date], ['대상', f.target], ['장소', f.place],
     ['소요 예산', items.length ? `금${won(total)}원(${koreanWon(total)})` : ''], ['예산 과목', budget], ['산출 근거', items.length ? basis : '']]
-    .filter(([, v]) => !blank(v)).map(([l, v], i) => `${KO[i]}. ${l}: ${String(v).trim()}`);
+    .filter(([, v]) => !blank(v)).map(([l, v], i) => `  ${KO[i]}. ${l}: ${String(v).trim()}`);
   return `${rows.join('\n')}\n\n${attachText(attachLines(f))}`;
 }
-/* 품의 사유: AI가 쓴 첫 문장 + 앱이 만드는 부분 */
-export function composeReason({ intro, form }) {
-  return `${String(intro || '').trim()}\n\n${reasonTail(form)}`;
+/* 「1. 관련:」 줄: 선생님(또는 AI)이 적은 것 → 물품 외에는 「(학년도) 사업명 운영 계획」 → 「(학년도) 학교 교육과정 운영 계획」 */
+export function relatedLine(form, year) {
+  const f = form || {}, own = String(f.related || '').trim();
+  if (own) return own;
+  const y = Number.isInteger(year) ? `${year}학년도 ` : '';
+  const p = String(f.project || '').trim().replace(/\s*(?:운영\s*)?계획$/, '');
+  return p && (f.type || 'goods') !== 'goods' ? `${y}${p} 운영 계획` : `${y}학교 교육과정 운영 계획`;
+}
+const introText = s => String(s || '').trim().replace(/^\d+\.\s*/, '');
+/* 품의 사유(에듀파인 기안문 꼴): 1. 관련: … / 2. AI가 쓴 첫 문장 / 가. 나. 다.(앱이 만듦, 두 칸 들여 씀) / 붙임 … 끝. */
+export function composeReason({ intro, form, year }) {
+  const tail = reasonTail(form);
+  return `1. 관련: ${relatedLine(form, year)}\n2. ${introText(intro)}${tail.startsWith('\n') ? '' : '\n'}${tail}`;
+}
+const NEW_HEAD = /^\s*1\.\s*관련\s*:/;
+/* 사유에서 첫 문장: 새 꼴은 「2.」 줄, 예전 꼴(첫 문장 + 빈 줄 + 가~)은 첫 문단 */
+export function introOf(reason) {
+  const s = String(reason || '');
+  if (NEW_HEAD.test(s)) { const m = /\n[ \t]*2\.[ \t]*([^\n]*)/.exec(s); if (m) return m[1].trim(); }
+  return s.split(/\n\s*\n/)[0].trim();
+}
+/* 사유의 첫 문장만 바꿈(나머지는 그대로) */
+export function withIntro(reason, intro) {
+  const s = String(reason || ''), t = introText(intro);
+  if (NEW_HEAD.test(s)) {
+    const m = /\n([ \t]*)2\.[ \t]*[^\n]*/.exec(s);
+    if (m) return `${s.slice(0, m.index)}\n${m[1]}2. ${t}${s.slice(m.index + m[0].length)}`;
+  }
+  const m = /\n\s*\n/.exec(s);
+  return m ? t + s.slice(m.index) : t;
+}
+/* 사유 첫 줄의 관련(새 꼴이 아니면 '') */
+export const relatedOf = reason => { const m = /^\s*1\.\s*관련\s*:\s*([^\n]*)/.exec(String(reason || '')); return m ? m[1].trim() : ''; };
+
+/* 넣은 글의 1인칭·구어(「내가 필요한」「제가 쓸」「사 주세요」)는 품의에 넣지 않음 */
+const SUBJ = '(?:내가|제가|나는|저는|저희가|저희는|저희|우리가|우리는|우리\\s*반(?:에서|이|에|의)?)';
+const NEED = '(?:필요한|필요하는|쓸|쓰는|사용할|사용하는|사야\\s*할|살|구입할|구매할|주문할|사려는|사고\\s*싶은|원하는)';
+const ASK = '(?:좀\\s*)?(?:사\\s*주세요|사\\s*줘|구입해\\s*주세요|구매해\\s*주세요|주문해\\s*주세요|부탁(?:드립니다|합니다|해요)?|필요해요|필요합니다|필요함|구입|구매|주문|좀)';
+const LEAD_SUBJ = new RegExp(`^${SUBJ}\\s+`), LEAD_NEED = new RegExp(`^${NEED}\\s+`), TAIL_ASK = new RegExp(`\\s*(?:을|를)?\\s*${ASK}\\s*$`);
+/* 품명: 앞의 「내가 필요한」·「우리 반」, 뒤의 「사주세요」·「구입」을 뺌(다 지워지면 그대로) */
+export function plainItemName(name) {
+  const s = String(name == null ? '' : name).trim();
+  let t = s.replace(LEAD_SUBJ, '');
+  for (let i = 0; i < 2; i++) t = t.replace(LEAD_NEED, '');
+  for (let i = 0; i < 2; i++) t = t.replace(TAIL_ASK, '');
+  t = t.trim();
+  return t || s;
+}
+const ANY_SUBJ = new RegExp(`(^|\\s)${SUBJ}\\s+(?:${NEED}\\s+)?`, 'g');
+/* 제목·첫 문장·목적 같은 글: 「내가 (필요한)」 같은 1인칭 주어만 뺌(「구입」 같은 말은 그대로) */
+export function plainOfficial(text) {
+  const s = String(text == null ? '' : text);
+  const t = s.replace(ANY_SUBJ, '$1').replace(/\s{2,}/g, ' ').trim();
+  return t || s.trim();
 }
 
 /* 한글 파일(.hwpx)로 내보낼 문서: 제목, 1. 품의 사유, 2. 산출 내역 표, 예산 과목 */
@@ -247,8 +298,9 @@ export function purchaseDoc(form, draft) {
   return {
     title: String(d.title || f.project || '품의').trim(),
     blocks: [
-      { type: 'h', text: '1. 품의 사유' }, { type: 'p', text: d.reason || '' },
-      { type: 'h', text: '2. 산출 내역' }, { type: 'table', head: true, rows },
+      // 사유 안에 「1. 관련」·「2.」 번호가 있어 머리말에는 번호를 붙이지 않음
+      { type: 'h', text: '품의 사유' }, { type: 'p', text: d.reason || '' },
+      { type: 'h', text: '산출 내역' }, { type: 'table', head: true, rows },
       // 사유에 이미 있으면(앱이 만든 사유) 다시 쓰지 않음, 손으로 고쳐 빠졌으면 씀
       ...(reason.includes('산출 근거') ? [] : [{ type: 'p', text: `산출 근거: ${items.map(it => basisLine(it, type)).join(' / ')}` }]),
       ...(reason.includes('예산 과목') ? [] : [{ type: 'p', text: `예산 과목: ${budget}` }]),

@@ -123,12 +123,13 @@ test('붙임: 지출품의서 1부가 늘 먼저, 종류별 기본 체크, 직�
   assert.equal(attachText(['지출품의서 1부']), '붙임  지출품의서 1부.  끝.');
 });
 
-test('품의 사유: 첫 문장 + 가~ 줄(빈 줄 빼고 다시 매김) + 소요 예산·산출 근거 + 붙임', () => {
+test('품의 사유: 1. 관련 + 2. 첫 문장 + 가~ 줄(빈 줄 빼고 다시 매김, 두 칸 들여 씀) + 소요 예산·산출 근거 + 붙임', () => {
   const form = { ...emptyForm('goods'), purpose: '실험', date: '11월 10일', target: '5학년', place: '', items: [{ name: '비커', spec: '500ml', unit: '', qty: 2, price: 3000 }] };
   const r = composeReason({ intro: '실험 재료를 다음과 같이 구입하고자 합니다.', form });
   const lines = r.split('\n');
-  assert.equal(lines[0], '실험 재료를 다음과 같이 구입하고자 합니다.');
-  assert.deepEqual(lines.filter(l => /^[가-하]\. /.test(l)).map(l => l.slice(0, 7)), ['가. 목적: ', '나. 일시: ', '다. 대상: ', '라. 소요 예산', '마. 산출 근거'].map(x => x.slice(0, 7)));
+  assert.equal(lines[0], '1. 관련: 학교 교육과정 운영 계획');
+  assert.equal(lines[1], '2. 실험 재료를 다음과 같이 구입하고자 합니다.');
+  assert.deepEqual(lines.filter(l => /^  [가-하]\. /.test(l)).map(l => l.trim().slice(0, 7)), ['가. 목적: ', '나. 일시: ', '다. 대상: ', '라. 소요 예산', '마. 산출 근거'].map(x => x.slice(0, 7)));
   assert.ok(r.includes('라. 소요 예산: 금6,000원(금육천원)'));
   assert.ok(r.includes('마. 산출 근거: 비커(500ml) 3,000원 × 2개 = 6,000원'));
   assert.ok(r.endsWith('붙임  1. 지출품의서 1부.\n      2. 견적서 1부.  끝.'));
@@ -136,7 +137,7 @@ test('품의 사유: 첫 문장 + 가~ 줄(빈 줄 빼고 다시 매김) + 소�
   const r2 = composeReason({ intro: 'A', form: many });
   assert.ok(r2.includes('라. 장소: 과학실') && r2.includes('바. 예산 과목: 교육운영비'));
   assert.ok(r2.includes('사. 산출 근거: 물품1 1,000원 × 1개 = 1,000원 외 3건'));
-  assert.equal(composeReason({ intro: 'X', form: many }), 'X\n\n' + reasonTail(many));
+  assert.equal(composeReason({ intro: 'X', form: many, year: 2026 }), '1. 관련: 2026학년도 학교 교육과정 운영 계획\n2. X\n' + reasonTail(many));
 });
 
 test('예전 값(단위·붙임 없음)도 사유·문서가 만들어짐', () => {

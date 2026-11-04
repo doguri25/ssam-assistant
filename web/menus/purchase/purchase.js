@@ -7,6 +7,7 @@ import { copyText, toast } from '../../core/ui.js';
 import { getPurchaseLimit, getMeetCap, getPurchaseFlow } from '../../core/settings.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
 import { TYPES, emptyForm, emptyItem, itemAmount, cleanItems, sumItems, checkPurchase, itemsTSV, purchaseQueueItems, composeReason, reasonTail, purchaseDoc, toNumber, findPersonal,
+  introOf, withIntro, relatedLine, relatedOf,
   defaultUnit, quoteNote, withholding, INCOME, meetingItem, budgetHints, ATTACH, basisLine, draftMemo } from './rules.js';
 import { aiRowHTML, pick } from '../../core/ai-roles.js';
 import { reviewJSON, purchaseReviewPrompt, normPurchaseReview, opinionHTML, REVIEW_FAIL } from '../../core/ai-review.js';
@@ -15,6 +16,7 @@ import { oneshotPrompt, normOneshot, confirmChips, askNeeds, GUESS_KEYS } from '
 import { pushRecent, newId, listRecent, deleteRecent, listTemplates, saveTemplate, renameTemplate, deleteTemplate, templateForm } from './library.js';
 import { fileMessage, isFileCode } from '../../core/files.js';
 import { registerInbox } from '../../core/inbox.js';
+import { getYears } from '../../core/years.js';
 import { canQueue, openQueue } from '../../core/queue-paste.js';
 
 const CUR_KEY = 'purchase:current';
@@ -22,7 +24,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 const won = n => Number(n).toLocaleString('ko-KR');
 const SS = () => window.SSAM;
 const typeOf = id => TYPES.find(t => t.id === id) || TYPES[0];
-const LABEL = { project: '사업명', purpose: '목적', date: '일시', target: '대상', place: '장소', budget: '예산 과목', memo: '메모', items: '품목', attach: '붙임' };
+const LABEL = { related: '관련', project: '사업명', purpose: '목적', date: '일시', target: '대상', place: '장소', budget: '예산 과목', memo: '메모', items: '품목', attach: '붙임' };
 const VERB = { goods: '구입', lecturer: '지급', event: '운영', meeting: '운영' };
 
 /* 저장된 값이 망가져 있어도 쓸 수 있는 모양으로 */
@@ -45,7 +47,10 @@ function normForm(v) {
   return f;
 }
 /* 초안: 제목, AI가 쓴 첫 문장(intro), 사유 전체, 선생님이 사유를 손으로 고쳤는지(edited), 검토 의견(rv) */
-const firstPara = r => String(r || '').split(/\n\s*\n/)[0].trim();
+/* 사유의 첫 문장(새 꼴은 「2.」 줄, 예전 꼴은 첫 문단) */
+const firstPara = introOf;
+/* 품의 사유 「1. 관련:」에 쓰는 학년도 */
+const curYear = () => getYears(localStorage).current;
 const normRv = v => (Array.isArray(v) ? v.filter(x => x && (x.field === 'title' || x.field === 'intro') && typeof x.fix === 'string' && x.fix.trim())
   .map(x => ({ field: x.field, problem: String(x.problem || ''), fix: x.fix, ...(x.done === 'review' || x.done === 'main' ? { done: x.done } : {}) })) : []);
 /* tail: 사유를 앱이 마지막으로 맞췄을 때의 가~붙임(예전 초안은 연 때의 것) — 그 뒤 품목·붙임이 바뀌었는지 보려고 */
@@ -162,8 +167,9 @@ function render() {
             <input type="file" id="pcIntakeFile" accept=".xlsx,.csv,.hwp,.hwpx,.txt,.pdf,.png,.jpg,.jpeg,.webp" hidden><span class="muted" id="pcIntakeMsg" role="status"></span></div>
           <p class="muted pc-intake-note">${st.form.type === 'lecturer' ? '강사 수당은 강사 이름이 AI로 가지 않게 앱이 글만 읽어요(캡처·사진은 읽지 않아요).' : '[초안 만들기]를 누르면 넣은 것을 읽어 칸을 채우고 바로 초안을 써요. 목적·일시·장소도 글에 있으면 채워요.'} 이미 쓴 칸은 덮지 않아요.</p>
         </div>
-        <details class="pc-more" id="pcMore"${viewFull() ? ' open' : ''}><summary>자세히 고치기 <span class="muted">사업명·목적·일시·대상·장소·예산 과목·품목·붙임</span></summary>
+        <details class="pc-more" id="pcMore"${viewFull() ? ' open' : ''}><summary>자세히 고치기 <span class="muted">관련·사업명·목적·일시·대상·장소·예산 과목·품목·붙임</span></summary>
         <div class="pc-fields">
+          ${field('related', '관련 (계획·공문)', { ph: `비우면 「${relatedLine(st.form, curYear())}」`, wide: true })}
           ${field('project', '사업명', { ph: '예) ' + ex.project, wide: true })}
           ${field('purpose', '목적', { req: true, ph: '예) ' + ex.purpose, wide: true })}
           ${field('date', '일시', { ph: '예) ' + ex.date })}
@@ -303,7 +309,7 @@ async function runReview(memo) {
   if (curTab === 'new' && box && box.isConnected) updateRv();
 }
 /* 사유의 첫 문단만 바꿈 (가~붙임은 그대로) */
-const replaceFirst = (reason, s) => { const m = /\n\s*\n/.exec(reason); return m ? s + reason.slice(m.index) : s; };
+const replaceFirst = withIntro;
 
 /* 입력이 바뀌면 금액·합계·확인 목록·산출 내역만 고쳐 그림 (입력 칸은 다시 그리지 않음 — 한글 입력이 끊기지 않게) */
 function live() {
@@ -330,12 +336,13 @@ function live() {
   if (tried) markBad(checks());
 }
 /* 초안 뒤 입력이 바뀌면: 손대지 않은 사유는 가~붙임을 다시 맞추고, 손으로 고친 사유는 [사유 다시 맞추기]만 보임 */
-const tailOk = () => !st.draft || st.draft.reason.endsWith(reasonTail(st.form));
+// 손대지 않은 사유는 관련 줄까지 통째로 맞는지 봄(관련 칸을 고치면 첫 줄도 다시 맞춤)
+const tailOk = () => !st.draft || st.draft.reason === composeReason({ intro: st.draft.intro, form: st.form, year: curYear() });
 const resyncHTML = () => (st.draft && st.draft.edited && st.draft.tail !== reasonTail(st.form) ? '<p class="muted pc-resync">품목·붙임이 바뀌었어요 <button class="btn text tiny" type="button" data-pc="resync">사유 다시 맞추기</button></p>' : '');
 function syncReason() {
   if (!st.draft || !box) return;
   if (!st.draft.edited && !tailOk()) {
-    st.draft.reason = composeReason({ intro: st.draft.intro, form: st.form }); st.draft.tail = reasonTail(st.form);
+    st.draft.reason = composeReason({ intro: st.draft.intro, form: st.form, year: curYear() }); st.draft.tail = reasonTail(st.form);
     save();
     const ta = box.querySelector('#pcReason');
     if (ta && document.activeElement !== ta) ta.value = st.draft.reason;
@@ -398,7 +405,7 @@ async function makeDraft({ text = '' } = {}) {
     // 빈 칸만 채우고 AI가 채운 칸은 표시, 선생님이 종류를 고르지 않았으면 AI가 본 종류로
     for (const [k, val] of Object.entries(n.fields)) if (!String(mine.form[k] || '').trim()) { mine.form[k] = val; if (!mine.form.guessed.includes(k)) mine.form.guessed.push(k); }
     if (askType && !mine.form.typeSet && n.type && n.type !== mine.form.type && cleanItems(mine.form.items).length) { mine.form.type = n.type; mine.form.typeGuessed = true; mine.form.attach = (ATTACH[n.type] || []).filter(a => a.on).map(a => a.id); }
-    mine.draft = { title: n.title, intro: n.intro, reason: composeReason({ intro: n.intro, form: mine.form }), edited: false, tail: reasonTail(mine.form) };
+    mine.draft = { title: n.title, intro: n.intro, reason: composeReason({ intro: n.intro, form: mine.form, year: curYear() }), edited: false, tail: reasonTail(mine.form) };
     if (st === mine) {
       save();
       keepRecent();
@@ -479,9 +486,14 @@ document.addEventListener('input', e => {
     st.draft[el.dataset.d] = el.value;
     if (el.dataset.d === 'reason') {
       // 첫 문장만 고쳤으면(가~붙임은 앱이 만든 그대로) 계속 맞춤, 그 밖을 고쳤으면 손으로 고친 사유
-      const intro = firstPara(el.value);
-      if (intro && el.value.trim() === composeReason({ intro, form: st.form }).trim()) { st.draft.intro = intro; st.draft.edited = false; st.draft.tail = reasonTail(st.form); }
-      else st.draft.edited = true;
+      const intro = firstPara(el.value), rel = relatedOf(el.value);
+      const same = f => el.value.trim() === composeReason({ intro, form: f, year: curYear() }).trim();
+      if (intro && same(st.form)) { st.draft.intro = intro; st.draft.edited = false; st.draft.tail = reasonTail(st.form); }
+      // 「1. 관련:」 줄만 고쳤으면 관련 칸으로 옮기고 계속 맞춤
+      else if (intro && rel && rel !== relatedLine(st.form, curYear()) && same({ ...st.form, related: rel })) {
+        st.form.related = rel; st.draft.intro = intro; st.draft.edited = false; st.draft.tail = reasonTail(st.form);
+        const rf = box.querySelector('#pcRelated'); if (rf && document.activeElement !== rf) rf.value = rel;
+      } else st.draft.edited = true;
       const rb = box.querySelector('#pcResyncBox'); if (rb) rb.innerHTML = resyncHTML();
     }
     dropRv(el.dataset.d === 'title' ? 'title' : 'intro');
@@ -515,7 +527,7 @@ document.addEventListener('click', e => {
     const f = ru ? ru.dataset.rvUse : rk.dataset.rvKeep, r = openRv(f);
     if (!r) return;
     if (ru && f === 'title') st.draft.title = r.fix;
-    else if (ru) { st.draft.intro = r.fix; if (st.draft.edited) st.draft.reason = replaceFirst(st.draft.reason, r.fix); else { st.draft.reason = composeReason({ intro: r.fix, form: st.form }); st.draft.tail = reasonTail(st.form); } }
+    else if (ru) { st.draft.intro = r.fix; if (st.draft.edited) st.draft.reason = replaceFirst(st.draft.reason, r.fix); else { st.draft.reason = composeReason({ intro: r.fix, form: st.form, year: curYear() }); st.draft.tail = reasonTail(st.form); } }
     st.draft.rv = st.draft.rv.map(x => (x === r ? { ...x, done: ru ? 'review' : 'main' } : x));
     save(); renderDraft(); return;
   }
@@ -554,7 +566,7 @@ document.addEventListener('click', e => {
     save(); renderItems();
   } else if (a === 'resync' && st.draft) {
     st.draft.intro = firstPara(st.draft.reason) || st.draft.intro;
-    st.draft.reason = composeReason({ intro: st.draft.intro, form: st.form }); st.draft.edited = false; st.draft.tail = reasonTail(st.form);
+    st.draft.reason = composeReason({ intro: st.draft.intro, form: st.form, year: curYear() }); st.draft.edited = false; st.draft.tail = reasonTail(st.form);
     save(); renderDraft();
   }
   else if (a === 'intake') { const t = box.querySelector('#pcIntake').value; if (!t.trim()) { toast('넣을 글을 쓰거나 붙여넣어 주세요. 파일·캡처는 끌어 놓거나 붙여넣으면 바로 읽어요.'); return; } runIntake({ text: t }); }
@@ -677,7 +689,7 @@ export async function addQuote(file) {
 }
 
 /* 떠 있는 버튼: 견적서 → 품의 › 새 품의 품목. 쓰던 품의가 있으면 더할지 새로 할지 고름 */
-const FORM_TEXT = ['project', 'purpose', 'date', 'target', 'place', 'budget', 'total', 'memo'];
+const FORM_TEXT = ['related', 'project', 'purpose', 'date', 'target', 'place', 'budget', 'total', 'memo'];
 const busyForm = () => FORM_TEXT.some(k => String(st.form[k] || '').trim())
   || st.form.items.some(i => ['name', 'spec', 'qty', 'price'].some(k => String(i[k] || '').trim())) || st.form.attachMore.length > 0;
 /* 공문 처리 등: 새 품의 넣기 칸에 글을 넣고 바로 [초안 만들기](쓰던 품의는 최근 품의에 남김) */

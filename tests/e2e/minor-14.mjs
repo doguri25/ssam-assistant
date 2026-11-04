@@ -99,14 +99,15 @@ await run('minor-14', [
   }],
   ['쪽지: 파일을 더 넣어 다시 읽어도 선생님이 고친 칸은 그대로, 손으로 고친 본문도 그대로([칸으로 다시 맞추기])', async () => {
     await page.fill(`${E} [data-mf="place"]`, '강당');
-    await page.waitForFunction(s => document.querySelector(`${s} #msgBody`).value.includes('□ 장소: 강당'), E);
+    // 기본 쪽지는 일시·장소가 한 줄(「…, 강당」)
+    await page.waitForFunction(s => document.querySelector(`${s} #msgBody`).value.includes(', 강당'), E);
     const n0 = msgs().length;
     await page.setInputFiles(`${E} #msgFile`, [{ name: '연수 계획.txt', mimeType: 'text/plain', buffer: Buffer.from('연수 계획\n일시: 11. 12.\n장소: 시청각실') }]);
     for (let i = 0; i < 50 && msgs().length === n0; i++) await page.waitForTimeout(100);
     await page.waitForFunction(() => !document.querySelector('[data-msg="read"][disabled]'));
     await page.waitForTimeout(200);
     assert(msgs().length === n0 + 1, '다시 읽기');
-    assert(await page.inputValue(`${E} [data-mf="place"]`) === '강당' && (await page.inputValue(`${E} #msgBody`)).includes('□ 장소: 강당'), await page.inputValue(`${E} #msgBody`));
+    assert(await page.inputValue(`${E} [data-mf="place"]`) === '강당' && (await page.inputValue(`${E} #msgBody`)).includes(', 강당'), await page.inputValue(`${E} #msgBody`));
     const b0 = await page.inputValue(`${E} #msgBody`);
     await page.fill(`${E} #msgBody`, b0 + '\n덧붙인 한 줄');
     await page.waitForTimeout(150);

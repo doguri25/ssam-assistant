@@ -54,7 +54,7 @@ await run('purchase-more', [
     await page.click(`${P} [data-pc="attachAdd"]`);
     await draft();
     const r = await page.inputValue(`${P} #pcReason`);
-    assert(r.startsWith('교실 물품을 다음과 같이 구입하고자 합니다.'), r.slice(0, 40));
+    assert(r.startsWith('1. 관련: ') && r.split('\n')[1] === '2. 교실 물품을 다음과 같이 구입하고자 합니다.', r.slice(0, 80));
     assert(r.endsWith('붙임  1. 지출품의서 1부.\n      2. 견적서 1부.\n      3. 사업자등록증 사본 1부.\n      4. 참고 자료 1부.  끝.'), r);
     assert(r.includes('소요 예산: 금30,000원(금삼만원)') && r.includes('산출 근거: 실험 재료 3,000원 × 10개 = 30,000원') && r.includes('예산 과목: 교육운영비'), r);
   }],
@@ -62,7 +62,7 @@ await run('purchase-more', [
     await page.uncheck(`${P} [data-attach="bizreg"]`);
     await page.waitForTimeout(150);
     let r = await page.inputValue(`${P} #pcReason`);
-    assert(!r.includes('사업자등록증') && r.includes('3. 참고 자료 1부.  끝.') && r.startsWith('교실 물품을'), r);
+    assert(!r.includes('사업자등록증') && r.includes('3. 참고 자료 1부.  끝.') && r.includes('\n2. 교실 물품을'), r);
     await page.fill(`${P} #pcReason`, '선생님이 고친 첫 문장입니다.\n\n가. 목적: 수업 준비');
     await page.fill(`${P} [data-item="0"][data-f="qty"]`, '20');
     await page.waitForTimeout(150);
@@ -71,7 +71,8 @@ await run('purchase-more', [
     await page.waitForSelector(`${P} [data-pc="resync"]`);
     await page.click(`${P} [data-pc="resync"]`);
     r = await page.inputValue(`${P} #pcReason`);
-    assert(r.startsWith('선생님이 고친 첫 문장입니다.\n\n가. 목적: 수업 준비\n나. 일시') && r.includes('금60,000원'), r);
+    // 다시 맞추면 고친 첫 문장을 살려 새 꼴(1. 관련 / 2. 첫 문장 / 가~)로
+    assert(r.startsWith('1. 관련: ') && r.includes('\n2. 선생님이 고친 첫 문장입니다.\n  가. 목적: 수업 준비\n  나. 일시') && r.includes('금60,000원'), r);
   }],
   ['내려받기 ▾ 워드 → .docx, 본문에 산출 근거·붙임', async () => {
     await page.click(`${P} .exp-split:has([data-pc="export"]) [data-exp-menu]`);

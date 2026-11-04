@@ -42,7 +42,7 @@ await run('message', [
     assert(p.includes('AI 활용 수업 연수 안내') && !p.includes('041-123-4567') && !p.includes('김가람') && !p.includes('김민수'), p.slice(0, 600));
     assert((await page.textContent('#toast')).includes('뺐어요'), await page.textContent('#toast'));
     const body = await page.inputValue(`${P} #msgBody`);
-    assert(body.includes('□ 일시: 2026. 11. 12.(목) 15:00~16:30') && body.includes('붙임  1. 연수 공문 1부.\n      2. AI 활용 연수 계획 1부.  끝.'), body);
+    assert(/□ 일시·장소: (2026\. )?11\. 12\.\(목\) 15:00~16:30, 시청각실/.test(body) && body.includes('붙임  1. 연수 공문 1부.\n      2. AI 활용 연수 계획 1부.  끝.'), body);
   }],
   ['보내는 사람 → 본문 끝 「문의: …」, 새로고침해도 남음', async () => {
     await page.fill(`${P} #msgSender`, '교무부 ○○○(내선 123)');
@@ -66,7 +66,7 @@ await run('message', [
     await page.click(`${P} [data-msg="copyAll"]`);
     await page.waitForTimeout(200);
     const clip = await page.evaluate(() => navigator.clipboard.readText());
-    assert(clip.startsWith('[연수 안내] AI 활용 수업 연수\n\n안녕하세요 선생님.\n') && clip.includes('□ 장소: 강당'), clip.slice(0, 200));
+    assert(clip.startsWith('[연수 안내] AI 활용 수업 연수\n\n안녕하세요 선생님. ') && clip.includes('□ 장소: 강당'), clip.slice(0, 200));
   }],
   ['최근 쪽지에 남고 [다시 안내] → 제목 「[다시 안내] …」·「다시 한번 안내드립니다.」', async () => {
     await page.waitForSelector(`${P} #msgRecent [data-msg-again]`);

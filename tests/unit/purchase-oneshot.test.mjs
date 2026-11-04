@@ -20,7 +20,7 @@ test('필수는 목적·품목 1개(일시·대상은 아님), 목적은 AI가 �
 
 test('일시·대상이 비면 품의 사유에서 그 줄을 빼고 가·나·다를 다시 매김', () => {
   const t = reasonTail(base({ purpose: '과학 실험', place: '과학실' }));
-  assert.ok(t.startsWith('가. 목적: 과학 실험\n나. 장소: 과학실'), t);
+  assert.ok(t.startsWith('  가. 목적: 과학 실험\n  나. 장소: 과학실'), t);
   assert.ok(!t.includes('일시') && !t.includes('대상'), t);
 });
 

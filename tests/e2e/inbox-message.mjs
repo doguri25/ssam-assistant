@@ -31,7 +31,8 @@ await run('inbox-message', [
     await page.click(`${P} .gm-doc [data-gm-go="message"]`);
     await page.waitForFunction(s => ((document.querySelector(`${s} #msgBody`) || {}).value || '').startsWith('[연수 안내] 2026 AI 활용 수업 역량 강화 연수' + '\n'), P);
     const body = await page.inputValue(`${P} #msgBody`);
-    assert(body.includes('□ 일시: 2026. 11. 12.(목) 15:00~16:30') && body.includes('붙임  연수안내-공문-예시 1부.  끝.'), body);
+    // 기본 쪽지는 일시·장소를 한 줄로, 올해 날짜는 연도 없이(해가 바뀌어 돌려도 맞게 날짜 뒤만 봄)
+    assert(/□ 일시(·장소)?: (2026\. )?11\. 12\.\(목\) 15:00~16:30/.test(body) && body.includes('붙임  연수안내-공문-예시 1부.  끝.'), body);
     assert(await page.isVisible('#menuTabs [data-tab="message"][aria-current="page"]'), '쪽지 작성 탭');
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]

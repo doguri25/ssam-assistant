@@ -57,11 +57,12 @@ await run('purchase-fixes', [
   ['첫 문장만 고치면: 품목이 바뀌어도 고친 첫 문장 그대로 가~붙임은 계속 맞춤', async () => {
     await fresh(); await go(); await draft();
     const r = await reason();
-    await page.fill(`${P} #pcReason`, '선생님이 고친 첫 문장입니다.' + r.slice(r.indexOf('\n\n')));
+    // 「2.」 줄(첫 문장)만 고침
+    await page.fill(`${P} #pcReason`, r.replace(/\n2\. [^\n]*/, '\n2. 선생님이 고친 첫 문장입니다.'));
     await page.fill(`${P} [data-item="0"][data-f="qty"]`, '20');
     await page.waitForTimeout(150);
     const r2 = await reason();
-    assert(r2.startsWith('선생님이 고친 첫 문장입니다.\n\n') && r2.includes('금60,000원'), r2);
+    assert(r2.startsWith('1. 관련: ') && r2.split('\n')[1] === '2. 선생님이 고친 첫 문장입니다.' && r2.includes('금60,000원'), r2);
     assert(await tailOk(), '저장된 사유');
     assert(!(await page.$(`${P} [data-pc="resync"]`)), '다시 맞추기 단추');
   }],
