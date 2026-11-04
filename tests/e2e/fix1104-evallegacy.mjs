@@ -168,20 +168,30 @@ await run('fix1104-evallegacy', [
     }, pdf);
     assert(r.pages === 4 && !r.student && !r.teacher && r.roles.every(x => x === 'student'), JSON.stringify(r).slice(0, 300));
   }],
-  ['[gr-bundle-ocr-privacy] 「정답」 이름의 글자층 PDF는 학생이 아니라 정답·교사용 쪽(카드), 정답·기준으로 들어가는 묶음 글은 이름 줄을 뺌', async () => {
+  ['[gr-bundle-ocr-privacy] 「정답」 이름의 글자층 PDF는 학생이 아니라 정답·교사용(카드), 정답·기준으로 들어가는 묶음 글은 이름 줄을 뺌', async () => {
     await fresh();
     const key = await pdfOf(['<p>곱셈 평가</p><p>1. 92 (20 x 4 와 3 x 4 를 더함)</p><p>2. 128 (32 x 4)</p>']);
     const sum = await putBundle([{ name: '곱셈 정답.pdf', mimeType: 'application/pdf', buffer: key },
       { name: '채점 기준.txt', mimeType: 'text/plain', buffer: Buffer.from('[채점 기준]\n1번 정답 92, 까닭이 있으면 만점\n잘 쓴 예: 김민수 이서연 박지훈 최하은') }]);
-    assert(sum.includes('정답·교사용 1쪽') && !sum.includes('학생'), sum);
+    // 한글에서 내보낸 정답 PDF(글자층)는 정답·교사용 문서(쪽이 아님), 학생으로 세지 않음
+    assert(sum.includes('정답·교사용') && !sum.includes('학생'), sum);
     await page.waitForFunction(() => document.querySelector('#grCritBox').textContent.includes('한꺼번에 넣은 정답·기준'));
     const c = await chips();
-    assert(c.some(x => x.includes('곱셈 정답')) && !(await page.textContent('#grSetup')).includes('학생 1명'), JSON.stringify(c));
+    assert(c.some(x => x.includes('한꺼번에 넣은 정답·기준')) && !(await page.textContent('#grSetup')).includes('학생 1명'), JSON.stringify(c));
     await page.click('#grCritBox [data-grcritview="0"]');
     await page.waitForSelector('#sheetRoot #critDocText');
     const text = await page.inputValue('#sheetRoot #critDocText');
     assert(text.includes('1번 정답 92') && text.includes('128') && KIDS.every(([, nm]) => !text.includes(nm)), text);
     await page.click('#sheetRoot [data-close]').catch(() => page.mouse.click(5, 5));
+  }],
+  ['[gr-bundle-digital] 한글에서 내보낸 평가지 PDF(글자층, 이름 칸 비어 있음)는 학생이 아니라 정답·기준 글, 사진 답안 3장은 학생 3명', async () => {
+    await fresh();
+    roles = null;
+    const paper = await pdfOf(['<h2>3학년 수학 3단원 평가</h2><p>3학년 반 번 이름</p><p>1. 23 x 4 를 계산하고 까닭을 쓰시오.</p><p>2. 32 x 4 를 계산하시오.</p>']);
+    await putBundle([{ name: '3단원 평가지.pdf', mimeType: 'application/pdf', buffer: paper }, await shot(300, 'd-1.png'), await shot(310, 'd-2.png'), await shot(320, 'd-3.png')], false);
+    await page.waitForFunction(() => document.querySelector('#grSetup').textContent.includes('학생 3명'), null, { timeout: 15000 });
+    const c = await chips();
+    assert(c.some(x => x.includes('한꺼번에 넣은 정답·기준')), JSON.stringify(c));
   }],
   ['[gr-bundle-oldkey] A 묶음 채점 뒤 B 묶음 → 정답표는 B 것만, B 채점 요청에 A 정답 글·그림 없음', async () => {
     await fresh();

@@ -10,8 +10,9 @@ onBundle('gr', async files => {
   if (!SS().gr) return;
   bundleMsg('gr', '읽는 중…');
   let b;
-  // 평가지 채점에 넣는 스캔은 학생 평가지로 봄: 글자층이 있는 스캔(복사기 「검색 가능 PDF」)도 문서(정답·기준 글)로 바꾸지 않음
-  try { b = await readBundle(files, { say: m => bundleMsg('gr', m), mask: SS().gr.mask(), expect: 'student' }); }
+  // 평가지 채점 묶음에는 한글에서 내보낸 평가지·정답 PDF(글자층)도 들어오므로 expect는 정하지 않음.
+  // 글자층이 있는 학생 스캔(복사기 「검색 가능 PDF」)은 scanLike가 「이름 김민수」로 알아봐 쪽으로 남기고, 그래도 문서가 된 글은 아래에서 이름을 가림
+  try { b = await readBundle(files, { say: m => bundleMsg('gr', m), mask: SS().gr.mask() }); }
   catch (e) { bundleMsg('gr', ''); toast(e && e.message === 'PDFJS' ? 'PDF를 읽는 도구를 불러오지 못했어요. 인터넷 연결을 확인하거나 사진으로 넣어 주세요.' : '파일을 읽지 못했어요.', 6000); return; }
   bundleMsg('gr', '');
   if (needsCard(b)) { const r = await openBundleCard(b, { what: '평가지 채점' }); if (!r) { SS().files.freePages(b.pages); return; } b = r; }
