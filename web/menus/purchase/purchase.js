@@ -7,7 +7,7 @@ import { copyText, toast } from '../../core/ui.js';
 import { getPurchaseLimit, getMeetCap, getPurchaseFlow } from '../../core/settings.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
 import { TYPES, emptyForm, emptyItem, itemAmount, cleanItems, sumItems, checkPurchase, itemsTSV, purchaseQueueItems, composeReason, reasonTail, purchaseDoc, toNumber, findPersonal,
-  introOf, withIntro, relatedLine, relatedOf,
+  introOf, withIntro, relatedLine, relatedOf, withRelated,
   defaultUnit, quoteNote, withholding, INCOME, meetingItem, budgetHints, ATTACH, basisLine, draftMemo } from './rules.js';
 import { aiRowHTML, pick } from '../../core/ai-roles.js';
 import { reviewJSON, purchaseReviewPrompt, normPurchaseReview, opinionHTML, REVIEW_FAIL } from '../../core/ai-review.js';
@@ -53,12 +53,15 @@ const firstPara = introOf;
 const curYear = () => getYears(localStorage).current;
 const normRv = v => (Array.isArray(v) ? v.filter(x => x && (x.field === 'title' || x.field === 'intro') && typeof x.fix === 'string' && x.fix.trim())
   .map(x => ({ field: x.field, problem: String(x.problem || ''), fix: x.fix, ...(x.done === 'review' || x.done === 'main' ? { done: x.done } : {}) })) : []);
-/* tail: 사유를 앱이 마지막으로 맞췄을 때의 가~붙임(예전 초안은 연 때의 것) — 그 뒤 품목·붙임이 바뀌었는지 보려고 */
+/* tail: 사유를 앱이 마지막으로 맞췄을 때의 가~붙임(예전 초안은 연 때의 것) — 그 뒤 품목·붙임이 바뀌었는지 보려고.
+   rel: 그때 사유 첫 줄에 넣은 관련 — 그 뒤 관련 칸·사업명이 바뀌면 손으로 고친 사유도 첫 줄만 맞춤 */
 function normDraft(d, form) {
   if (!(d && typeof d === 'object' && typeof d.title === 'string')) return null;
-  const reason = String(d.reason == null ? '' : d.reason);
+  const reason = String(d.reason == null ? '' : d.reason), f = form || emptyForm('goods');
+  // rel이 없는 초안: 관련 칸이 차 있으면 사유 첫 줄의 것(칸이 따라 들어가게), 아니면 지금 관련(예전 꼴은 첫 줄이 없음)
+  const rel = typeof d.rel === 'string' ? d.rel : (String(f.related || '').trim() && relatedOf(reason)) || relatedLine(f, curYear());
   return { title: d.title, reason, intro: typeof d.intro === 'string' ? d.intro : firstPara(reason), edited: d.intro == null ? true : !!d.edited,
-    tail: typeof d.tail === 'string' ? d.tail : reasonTail(form || emptyForm('goods')), ...(normRv(d.rv).length ? { rv: normRv(d.rv) } : {}) };
+    tail: typeof d.tail === 'string' ? d.tail : reasonTail(f), rel, ...(normRv(d.rv).length ? { rv: normRv(d.rv) } : {}) };
 }
 function load() {
   const v = get(CUR_KEY, null), form = normForm(v && v.form);
@@ -145,10 +148,29 @@ function attachHTML() {
     <div class="row pc-attach-add"><input class="field" id="pcAttachMore" placeholder="다른 붙임 서류 (예: 참고 자료)" autocomplete="off"><button class="btn text" type="button" data-pc="attachAdd">+ 붙임 더하기</button></div></div>`;
 }
 
+/* 쓰던 칸(초점·커서): 다시 그린 뒤 같은 칸에 돌려줌. own: 저장하지 않는 칸(넣기 칸·붙임 더하기 등)이라 글도 돌려줌 */
+function focusOf() {
+  const el = document.activeElement;
+  if (!box || !el || !box.contains(el) || !/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return null;
+  const d = el.dataset;
+  const sel = el.id ? `#${el.id}` : d.item != null && d.f ? `[data-item="${d.item}"][data-f="${d.f}"]` : d.attach ? `[data-attach="${d.attach}"]` : '';
+  if (!sel) return null;
+  let a = null, b = null;
+  try { a = el.selectionStart; b = el.selectionEnd; } catch (e) { /* 커서가 없는 칸 */ }
+  return { sel, a, b, value: el.value, own: !(d.k || d.d || d.item != null) };
+}
+function refocus(f) {
+  const el = f && box && box.querySelector(f.sel);
+  if (!el || el === document.activeElement) return;
+  if (f.own && el.type !== 'checkbox') el.value = f.value;
+  el.focus({ preventScroll: true });
+  try { if (f.a != null) el.setSelectionRange(f.a, f.b); } catch (e) { /* 커서가 없는 칸 */ }
+}
+
 function render() {
   if (!box) return;
-  // 넣기 칸에 쓰던 글·초점은 다시 그려도 그대로(AI가 초안을 쓰는 동안 친 글)
-  const ta0 = box.querySelector('#pcIntake'), intake = ta0 ? ta0.value : '', typing = ta0 && document.activeElement === ta0;
+  // 넣기 칸에 쓰던 글, 쓰던 칸의 초점·커서는 다시 그려도 그대로(AI가 초안을 쓰거나 캡처를 읽는 동안 친 글)
+  const ta0 = box.querySelector('#pcIntake'), intake = ta0 ? ta0.value : '', typing = focusOf();
   const t = typeOf(st.form.type), ex = t.example;
   box.innerHTML = `<div class="m-page pc-page">
     <div class="m-head pc-head"><div><h2>새 품의</h2><p class="muted">사려는 것·견적서를 넣고 [초안 만들기]를 누르면 에듀파인에 붙여넣을 제목·품의 사유·산출 내역을 써요.</p></div>
@@ -197,7 +219,8 @@ function render() {
   syncReason();
   if (tried) markBad(checks());
   const ta = box.querySelector('#pcIntake');
-  if (ta && intake) { ta.value = intake; if (typing) ta.focus(); }
+  if (ta && intake) ta.value = intake;
+  refocus(typing);
 }
 
 function calcHTML() {
@@ -338,14 +361,29 @@ function live() {
 /* 초안 뒤 입력이 바뀌면: 손대지 않은 사유는 가~붙임을 다시 맞추고, 손으로 고친 사유는 [사유 다시 맞추기]만 보임 */
 // 손대지 않은 사유는 관련 줄까지 통째로 맞는지 봄(관련 칸을 고치면 첫 줄도 다시 맞춤)
 const tailOk = () => !st.draft || st.draft.reason === composeReason({ intro: st.draft.intro, form: st.form, year: curYear() });
-const resyncHTML = () => (st.draft && st.draft.edited && st.draft.tail !== reasonTail(st.form) ? '<p class="muted pc-resync">품목·붙임이 바뀌었어요 <button class="btn text tiny" type="button" data-pc="resync">사유 다시 맞추기</button></p>' : '');
+// 줄 앞 공백은 보지 않음(예전 꼴의 들여쓰기 없는 「가.」도 같은 것으로)
+const flat = s => String(s || '').replace(/^[ \t]+/gm, '');
+function resyncHTML() {
+  const d = st.draft;
+  if (!d || !d.edited) return '';
+  const tail = flat(d.tail) !== flat(reasonTail(st.form)), rel = d.rel !== relatedLine(st.form, curYear());
+  return tail || rel ? `<p class="muted pc-resync">${tail ? '품목·붙임' : '관련'}이 바뀌었어요 <button class="btn text tiny" type="button" data-pc="resync">사유 다시 맞추기</button></p>` : '';
+}
 function syncReason() {
   if (!st.draft || !box) return;
+  const ta = box.querySelector('#pcReason'), rel = relatedLine(st.form, curYear());
   if (!st.draft.edited && !tailOk()) {
-    st.draft.reason = composeReason({ intro: st.draft.intro, form: st.form, year: curYear() }); st.draft.tail = reasonTail(st.form);
+    st.draft.reason = composeReason({ intro: st.draft.intro, form: st.form, year: curYear() }); st.draft.tail = reasonTail(st.form); st.draft.rel = rel;
     save();
-    const ta = box.querySelector('#pcReason');
     if (ta && document.activeElement !== ta) ta.value = st.draft.reason;
+  } else if (st.draft.edited && st.draft.rel !== rel) {
+    // 손으로 고친 사유: 관련 칸(사업명)이 바뀌면 첫 줄만 따라 바꿈(가~ 손으로 고친 것은 그대로). 「1. 관련:」 줄이 없으면 [사유 다시 맞추기]
+    const w = withRelated(st.draft.reason, rel);
+    if (relatedOf(w) === rel) {
+      st.draft.reason = w; st.draft.rel = rel;
+      save();
+      if (ta && document.activeElement !== ta) ta.value = w;
+    }
   }
   const rb = box.querySelector('#pcResyncBox');
   if (rb) rb.innerHTML = resyncHTML();
@@ -394,6 +432,7 @@ async function makeDraft({ text = '' } = {}) {
   busy = true;
   setBusyUI();
   const mine = st; // 쓰는 중에 [새로 쓰기]·불러오기로 바뀌면 초안은 쓰던 품의에 붙여 최근 작성으로
+  const filled = []; let retype = false; // AI가 채운 칸, 종류가 바뀜(다시 그려야 함)
   try {
     const form = getForm();
     const askType = !form.typeSet && form.type !== 'lecturer';
@@ -403,9 +442,9 @@ async function makeDraft({ text = '' } = {}) {
     });
     const n = normOneshot(v, mine.form);
     // 빈 칸만 채우고 AI가 채운 칸은 표시, 선생님이 종류를 고르지 않았으면 AI가 본 종류로
-    for (const [k, val] of Object.entries(n.fields)) if (!String(mine.form[k] || '').trim()) { mine.form[k] = val; if (!mine.form.guessed.includes(k)) mine.form.guessed.push(k); }
-    if (askType && !mine.form.typeSet && n.type && n.type !== mine.form.type && cleanItems(mine.form.items).length) { mine.form.type = n.type; mine.form.typeGuessed = true; mine.form.attach = (ATTACH[n.type] || []).filter(a => a.on).map(a => a.id); }
-    mine.draft = { title: n.title, intro: n.intro, reason: composeReason({ intro: n.intro, form: mine.form, year: curYear() }), edited: false, tail: reasonTail(mine.form) };
+    for (const [k, val] of Object.entries(n.fields)) if (!String(mine.form[k] || '').trim()) { mine.form[k] = val; filled.push(k); if (!mine.form.guessed.includes(k)) mine.form.guessed.push(k); }
+    if (askType && !mine.form.typeSet && n.type && n.type !== mine.form.type && cleanItems(mine.form.items).length) { mine.form.type = n.type; mine.form.typeGuessed = true; mine.form.attach = (ATTACH[n.type] || []).filter(a => a.on).map(a => a.id); retype = true; }
+    mine.draft = { title: n.title, intro: n.intro, reason: composeReason({ intro: n.intro, form: mine.form, year: curYear() }), edited: false, tail: reasonTail(mine.form), rel: relatedLine(mine.form, curYear()) };
     if (st === mine) {
       save();
       keepRecent();
@@ -421,8 +460,14 @@ async function makeDraft({ text = '' } = {}) {
   }
   busy = false;
   if (curTab === 'new' && box && box.isConnected) {
-    render();
-    if (msg && !String(st.form.purpose || '').trim()) goChip('purpose');
+    // 다른 칸에 치고 있으면 다시 그리지 않고 초안과 AI가 채운 칸만 고침(한글 조합이 끊기지 않게). 종류가 바뀌었거나 다른 품의면 다시 그림
+    const typing = focusOf();
+    if (typing && st === mine && !retype) {
+      for (const k of filled) { const el = box.querySelector(`[data-k="${k}"]`); if (el && el !== document.activeElement) el.value = st.form[k]; }
+      setBusyUI(); renderDraft(); live(); refocus(typing);
+    } else render();
+    // 목적 칸으로 보내는 것은 치는 칸이 없을 때만(치던 글자가 목적 칸에 들어가지 않게)
+    if (msg && !String(st.form.purpose || '').trim() && !typing) goChip('purpose');
   }
 }
 /* [초안 만들기](넣기 칸 옆): 넣기 칸 글을 먼저 넣고 바로 초안 */
@@ -485,15 +530,18 @@ document.addEventListener('input', e => {
   else if (el.dataset.d && st.draft) {
     st.draft[el.dataset.d] = el.value;
     if (el.dataset.d === 'reason') {
-      // 첫 문장만 고쳤으면(가~붙임은 앱이 만든 그대로) 계속 맞춤, 그 밖을 고쳤으면 손으로 고친 사유
-      const intro = firstPara(el.value), rel = relatedOf(el.value);
-      const same = f => el.value.trim() === composeReason({ intro, form: f, year: curYear() }).trim();
-      if (intro && same(st.form)) { st.draft.intro = intro; st.draft.edited = false; st.draft.tail = reasonTail(st.form); }
-      // 「1. 관련:」 줄만 고쳤으면 관련 칸으로 옮기고 계속 맞춤
-      else if (intro && rel && rel !== relatedLine(st.form, curYear()) && same({ ...st.form, related: rel })) {
-        st.form.related = rel; st.draft.intro = intro; st.draft.edited = false; st.draft.tail = reasonTail(st.form);
+      const intro = firstPara(el.value), rel = relatedOf(el.value), y = curYear();
+      // 「1. 관련:」 줄을 고쳤으면(다른 줄과 함께 고쳐도) 관련 칸으로 옮김 — 칸·칩·[사유 다시 맞추기]가 같은 관련을 봄
+      const moved = !!rel && rel !== relatedLine(st.form, y);
+      if (moved) {
+        st.form.related = rel; st.form.guessed = st.form.guessed.filter(k => k !== 'related');
         const rf = box.querySelector('#pcRelated'); if (rf && document.activeElement !== rf) rf.value = rel;
-      } else st.draft.edited = true;
+        const ch = box.querySelector('#pcChips'); if (ch) ch.innerHTML = chipsHTML();
+      }
+      if (rel) st.draft.rel = rel;
+      // 첫 문장(과 관련)만 고쳤으면(가~붙임은 앱이 만든 그대로) 계속 맞춤, 그 밖을 고쳤으면 손으로 고친 사유
+      if (intro && el.value.trim() === composeReason({ intro, form: st.form, year: y }).trim()) { st.draft.intro = intro; st.draft.edited = false; st.draft.tail = reasonTail(st.form); }
+      else st.draft.edited = true;
       const rb = box.querySelector('#pcResyncBox'); if (rb) rb.innerHTML = resyncHTML();
     }
     dropRv(el.dataset.d === 'title' ? 'title' : 'intro');
@@ -527,7 +575,7 @@ document.addEventListener('click', e => {
     const f = ru ? ru.dataset.rvUse : rk.dataset.rvKeep, r = openRv(f);
     if (!r) return;
     if (ru && f === 'title') st.draft.title = r.fix;
-    else if (ru) { st.draft.intro = r.fix; if (st.draft.edited) st.draft.reason = replaceFirst(st.draft.reason, r.fix); else { st.draft.reason = composeReason({ intro: r.fix, form: st.form, year: curYear() }); st.draft.tail = reasonTail(st.form); } }
+    else if (ru) { st.draft.intro = r.fix; if (st.draft.edited) st.draft.reason = replaceFirst(st.draft.reason, r.fix); else { st.draft.reason = composeReason({ intro: r.fix, form: st.form, year: curYear() }); st.draft.tail = reasonTail(st.form); st.draft.rel = relatedLine(st.form, curYear()); } }
     st.draft.rv = st.draft.rv.map(x => (x === r ? { ...x, done: ru ? 'review' : 'main' } : x));
     save(); renderDraft(); return;
   }
@@ -565,8 +613,11 @@ document.addEventListener('click', e => {
     st.form.items = mergeItems(st.form.items, [meetingItem({ people, price, times })], 'add');
     save(); renderItems();
   } else if (a === 'resync' && st.draft) {
+    // 첫 문장과 손으로 쓴 관련 줄은 살림(관련은 칸으로 옮김)
+    const rel = relatedOf(st.draft.reason), y = curYear();
+    if (rel && rel !== st.draft.rel && rel !== relatedLine(st.form, y)) { st.form.related = rel; const rf = box.querySelector('#pcRelated'); if (rf) rf.value = rel; }
     st.draft.intro = firstPara(st.draft.reason) || st.draft.intro;
-    st.draft.reason = composeReason({ intro: st.draft.intro, form: st.form, year: curYear() }); st.draft.edited = false; st.draft.tail = reasonTail(st.form);
+    st.draft.reason = composeReason({ intro: st.draft.intro, form: st.form, year: y }); st.draft.edited = false; st.draft.tail = reasonTail(st.form); st.draft.rel = relatedLine(st.form, y);
     save(); renderDraft();
   }
   else if (a === 'intake') { const t = box.querySelector('#pcIntake').value; if (!t.trim()) { toast('넣을 글을 쓰거나 붙여넣어 주세요. 파일·캡처는 끌어 놓거나 붙여넣으면 바로 읽어요.'); return; } runIntake({ text: t }); }
@@ -644,12 +695,22 @@ function askVendors(vs) {
     });
   });
 }
-async function runIntake(input) {
+/* 읽는 동안 다른 품의를 열었는지(같은 품의를 최근 작성에서 다시 열었으면 같은 품의) */
+const away = mine => st !== mine && st.id !== mine.id;
+/* 읽는 동안 다른 품의를 열었으면: 읽은 것은 쓰던 품의(mine)에 넣어 최근 작성에 남김(지금 품의는 그대로) */
+function keepAside(mine, r) {
+  mine.form = fillEmpty(mine.form, r.fields);
+  mine.form.items = mergeItems(mine.form.items, r.items, 'add');
+  pushRecent({ id: mine.id, at: Date.now(), form: JSON.parse(JSON.stringify(mine.form)), draft: mine.draft ? { ...mine.draft } : null });
+  toast(`읽는 동안 다른 품의를 열어서, 읽은 품목 ${r.items.length}개는 쓰던 품의에 넣어 「최근 작성」에 남겼어요`, 6000);
+}
+/* mine: 넣을 품의(읽는 동안 다른 품의를 열어도 그 품의에 넣음). 다른 품의를 열었으면 -1 */
+async function runIntake(input, mine = st) {
   if (intakeBusy) return 0;
   intakeBusy = true; setIntakeMsg('<span class="spin"></span> 읽는 중…');
   let r;
   // 강사 수당 품의는 넣기 칸 글·그림을 AI로 보내지 않음(앱 규칙으로만)
-  try { r = await readIntake({ ...input, noAI: st.form.type === 'lecturer' }); }
+  try { r = await readIntake({ ...input, noAI: mine.form.type === 'lecturer' }); }
   catch (e) { intakeBusy = false; setIntakeMsg(''); toast(quoteError(e), 6000); return 0; }
   intakeBusy = false; setIntakeMsg('');
   const note = (r.personal ? ` · 개인정보가 있는 줄 ${r.personal}개는 읽지 않았어요` : '') + (r.dropped ? ` · 전화번호·이메일 ${r.dropped}곳은 넣지 않았어요` : '');
@@ -657,6 +718,7 @@ async function runIntake(input) {
     toast((r.missed && r.missed.length ? `품목을 읽지 못했어요(못 읽은 줄 ${r.missed.length}개). 「품명 수량 금액」처럼 써 주세요. 예) A4 용지 5박스 2만원` : '품목을 찾지 못했어요. 직접 입력해 주세요.') + note, 6000);
     return 0;
   }
+  if (away(mine)) { if (input.text != null && !input.keepBox) { const ta = box && box.querySelector('#pcIntake'); if (ta && ta.value === input.text) ta.value = ''; } keepAside(mine, r); return -1; }
   let how = 'add';
   if (r.items.length && hasItems()) { how = await askMerge(cleanItems(st.form.items).length); if (!how) return -1; }
   st.form = fillEmpty(st.form, r.fields);
@@ -673,13 +735,14 @@ async function runIntake(input) {
   if (vs.length >= 2 && vs.some(v => !(st.vendorsOk || []).includes(v))) askVendors(vs);
   return r.items.length;
 }
-async function intakeFiles(files) { for (const f of files) await runIntake({ file: f }); }
-/* 떠 있는 버튼으로 넣은 견적서·캡처: 같은 넣기(품목은 더함, 묻지 않음) */
-export async function addQuote(file) {
+async function intakeFiles(files) { const mine = st; for (const f of files) await runIntake({ file: f }, mine); }
+/* 떠 있는 버튼으로 넣은 견적서·캡처: 같은 넣기(품목은 더함, 묻지 않음). mine: 넣을 품의(읽는 동안 다른 품의를 열어도 그 품의에) */
+export async function addQuote(file, mine = st) {
   let r;
-  try { r = await readIntake({ file, noAI: st.form.type === 'lecturer' }); }
+  try { r = await readIntake({ file, noAI: mine.form.type === 'lecturer' }); }
   catch (e) { toast(quoteError(e), 6000); return 0; }
   if (!r.items.length) { toast('견적서에서 품목을 찾지 못했어요. 직접 입력해 주세요.', 6000); return 0; }
+  if (away(mine)) { keepAside(mine, r); return r.items.length; }
   st.form = fillEmpty(st.form, r.fields);
   st.form.items = mergeItems(st.form.items, r.items, 'add');
   save();
@@ -708,8 +771,11 @@ registerInbox('quote', {
     const fresh = v.where === 'new' || !busyForm();
     if (fresh) { keepRecent(); st = { id: newId(), form: normForm(emptyForm('goods')), draft: null }; msg = ''; tried = false; save(); }
     go('purchase', 'new');
+    const mine = st;
     let n = 0;
-    for (const f of files) n += await addQuote(f);
+    for (const f of files) n += await addQuote(f, mine);
+    // 읽는 동안 다른 품의를 열었으면 초안은 쓰지 않음(품목은 최근 작성의 쓰던 품의에)
+    if (away(mine)) return '';
     // AI가 되면 초안까지(빈 칸은 AI가 채움). 쓰던 초안이 있는 품의에 더했으면 초안은 그대로(사유는 다시 맞추거나 [사유 다시 맞추기])
     if (n > 0 && ai.ready() && (fresh || !st.draft)) {
       // 「빠진 것만 물어보기」면 목적이 없을 때 먼저 물어봄(창을 닫으면 초안을 쓰지 않음)

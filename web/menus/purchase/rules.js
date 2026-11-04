@@ -233,11 +233,14 @@ export function reasonTail(form) {
 export function relatedLine(form, year) {
   const f = form || {}, own = String(f.related || '').trim();
   if (own) return own;
-  const y = Number.isInteger(year) ? `${year}학년도 ` : '';
-  const p = String(f.project || '').trim().replace(/\s*(?:운영\s*)?계획$/, '');
+  // 사업명 앞의 「2026학년도」·끝의 「운영(비)·계획」은 빼고 붙임(「운영 운영 계획」「2026학년도 2026학년도」가 되지 않게)
+  const raw = String(f.project || '').trim(), py = /^(\d{4})\s*(?:학년도|년)?\s+/.exec(raw);
+  const y = Number.isInteger(year) ? `${year}학년도 ` : py ? `${py[1]}학년도 ` : '';
+  const p = (py ? raw.slice(py[0].length) : raw).replace(/\s*(?:운영\s*비|운영\s*계획|운영|계획)$/, '').trim();
   return p && (f.type || 'goods') !== 'goods' ? `${y}${p} 운영 계획` : `${y}학교 교육과정 운영 계획`;
 }
-const introText = s => String(s || '').trim().replace(/^\d+\.\s*/, '');
+/* 첫 문장 앞 번호(「2.」)만 뺌. 「2026. 11. 20.(금) …」처럼 날짜로 시작하면 그대로 */
+export const introText = s => String(s || '').trim().replace(/^\d\.(?!\s*\d)\s*/, '');
 /* 품의 사유(에듀파인 기안문 꼴): 1. 관련: … / 2. AI가 쓴 첫 문장 / 가. 나. 다.(앱이 만듦, 두 칸 들여 씀) / 붙임 … 끝. */
 export function composeReason({ intro, form, year }) {
   const tail = reasonTail(form);
@@ -262,22 +265,34 @@ export function withIntro(reason, intro) {
 }
 /* 사유 첫 줄의 관련(새 꼴이 아니면 '') */
 export const relatedOf = reason => { const m = /^\s*1\.\s*관련\s*:\s*([^\n]*)/.exec(String(reason || '')); return m ? m[1].trim() : ''; };
+/* 사유 첫 줄의 관련만 바꿈(손으로 고친 나머지는 그대로). 새 꼴이 아니면 그대로 */
+export const withRelated = (reason, rel) => String(reason || '').replace(/^(\s*1\.\s*관련\s*:)[ \t]*[^\n]*/, (m, head) => `${head} ${String(rel || '').trim()}`);
 
 /* 넣은 글의 1인칭·구어(「내가 필요한」「제가 쓸」「사 주세요」)는 품의에 넣지 않음 */
-const SUBJ = '(?:내가|제가|나는|저는|저희가|저희는|저희|우리가|우리는|우리\\s*반(?:에서|이|에|의)?)';
-const NEED = '(?:필요한|필요하는|쓸|쓰는|사용할|사용하는|사야\\s*할|살|구입할|구매할|주문할|사려는|사고\\s*싶은|원하는)';
-const ASK = '(?:좀\\s*)?(?:사\\s*주세요|사\\s*줘|구입해\\s*주세요|구매해\\s*주세요|주문해\\s*주세요|부탁(?:드립니다|합니다|해요)?|필요해요|필요합니다|필요함|구입|구매|주문|좀)';
-const LEAD_SUBJ = new RegExp(`^${SUBJ}\\s+`), LEAD_NEED = new RegExp(`^${NEED}\\s+`), TAIL_ASK = new RegExp(`\\s*(?:을|를)?\\s*${ASK}\\s*$`);
-/* 품명: 앞의 「내가 필요한」·「우리 반」, 뒤의 「사주세요」·「구입」을 뺌(다 지워지면 그대로) */
+/* 주어만으로는 지우지 않음(「우리 반 채무 관계」「나는 기다립니다」「내가 가장 슬플 때」 같은 책 이름, 「소리 나는」), 「공동구매」도 그대로 */
+const SUBJ = '(?:내가|제가|나는|저는|저희가|저희는|(?:우리|저희)\\s*반(?:에서|이|에|의)?|저희|우리가|우리는)';
+// 「쓸 수 있는」「원하는 것을」처럼 뒤에 매인 말(것·수·때…)이 오면 이름의 일부
+const BOUND = '(?!(?:것|수|때|곳|데|줄|만큼|만한)(?:[을를이가은는도만의]|\\s|$))';
+const NEED = `(?:필요한|필요하는|쓸|쓰는|사용할|사용하는|사야\\s*할|살|구입할|구매할|주문할|사려는|사고\\s*싶은|원하는)\\s+${BOUND}`;
+// 주어 없이 앞에 와도 뺄 만큼 뚜렷한 말(「쓸 만한 …」 같은 이름은 남게 「쓸·살」은 뺌)
+const NEED_ALONE = `(?:필요한|필요하는|사용할|사야\\s*할|구입할|구매할|주문할|사려는|사고\\s*싶은)\\s+${BOUND}`;
+const ASK_LONG = '(?:사\\s*주세요|사\\s*줘|구입해\\s*주세요|구매해\\s*주세요|주문해\\s*주세요|부탁(?:드립니다|합니다|해요)|필요해요|필요합니다|필요함)';
+// 「구입·구매·주문·좀」은 띄어 쓴 때만 끝말로 봄(「공동구매」는 그대로)
+const ASK_WORD = '(?:구입|구매|주문|부탁|좀)';
+const LEAD_SUBJ_NEED = new RegExp(`^${SUBJ}\\s+${NEED}`), LEAD_NEED = new RegExp(`^${NEED_ALONE}`);
+const TAIL_ASK = new RegExp(`(?:\\s*(?:을|를)?\\s*(?:좀\\s*)?${ASK_LONG}|(?:을|를)?\\s+(?:좀\\s+)?${ASK_WORD})\\s*$`);
+/* 품명: 앞의 「내가 필요한」·「제가 쓸」(주어 + 필요한), 뒤의 「사주세요」·「 구입」을 뺌(다 지워지면 그대로) */
 export function plainItemName(name) {
   const s = String(name == null ? '' : name).trim();
-  let t = s.replace(LEAD_SUBJ, '');
+  let t = s.replace(LEAD_SUBJ_NEED, '');
   for (let i = 0; i < 2; i++) t = t.replace(LEAD_NEED, '');
   for (let i = 0; i < 2; i++) t = t.replace(TAIL_ASK, '');
   t = t.trim();
   return t || s;
 }
-const ANY_SUBJ = new RegExp(`(^|\\s)${SUBJ}\\s+(?:${NEED}\\s+)?`, 'g');
+// 공문 글에서 빼는 주어: 「제가·저는·저희가」는 어디서나, 「내가·우리가」는 「필요한」과 함께일 때만(「내가 가장 슬플 때」 같은 책 이름),
+// 「나는」(소리 나는)·「우리 반」은 빼지 않음
+const ANY_SUBJ = new RegExp(`(^|\\s)(?:(?:제가|저는|저희가|저희는)\\s+(?:${NEED})?|(?:내가|우리가|우리는)\\s+${NEED})`, 'g');
 /* 제목·첫 문장·목적 같은 글: 「내가 (필요한)」 같은 1인칭 주어만 뺌(「구입」 같은 말은 그대로) */
 export function plainOfficial(text) {
   const s = String(text == null ? '' : text);
