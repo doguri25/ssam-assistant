@@ -1,5 +1,5 @@
 /* 품의 「한 칸 → 바로 초안」(스펙 2026-11-02 3장): 한 번에 초안 프롬프트·답 다듬기, 확인할 것 칩, 빠진 것 묻기. 화면 없이 돌아감(시험) */
-import { TYPES, draftMemo, findPersonal, cleanItems, toNumber, plainOfficial } from './rules.js';
+import { TYPES, draftMemo, findPersonal, cleanItems, toNumber, plainOfficial, introText } from './rules.js';
 import { hasContact, maskNames } from './intake.js';
 
 const VERB = { goods: '구입', lecturer: '지급', event: '운영', meeting: '운영' };
@@ -48,7 +48,7 @@ export function normOneshot(v, form) {
     fields[k] = k === 'project' || k === 'purpose' ? plainOfficial(t) : t;
   }
   // 넣은 글에서 옮겨 온 「내가 필요한」 같은 1인칭 주어는 뺌, 첫 문장 앞 번호(「2.」)도 뺌(앱이 붙임)
-  return { title: plainOfficial(str(o.title, 80)), intro: plainOfficial(str(o.intro, 300).replace(/^\d+\.\s*/, '')), fields, type: TYPE_IDS.includes(o.type) ? o.type : '' };
+  return { title: plainOfficial(str(o.title, 80)), intro: plainOfficial(introText(str(o.intro, 300))), fields, type: TYPE_IDS.includes(o.type) ? o.type : '' };
 }
 
 /* 초안 위 「확인할 것」 칩: [{ key(누르면 갈 칸, ''면 칸 없음), text, level: 'warn'|'info' }] */

@@ -43,7 +43,7 @@ test('첫 문장 찾기·바꾸기: 새 꼴은 「2.」 줄, 예전 꼴(첫 문�
 test('품명에서 1인칭·구어 빼기', () => {
   assert.equal(plainItemName('내가 필요한 책'), '책');
   assert.equal(plainItemName('제가 쓸 A4 용지 사주세요'), 'A4 용지');
-  assert.equal(plainItemName('우리 반 학급문고 책 구입'), '학급문고 책');
+  assert.equal(plainItemName('우리 반 학급문고 책 구입'), '우리 반 학급문고 책', '「우리 반」은 책 이름일 수 있어 남김(purchase-4)');
   assert.equal(plainItemName('필요한 물티슈 좀'), '물티슈');
   assert.equal(plainItemName('저희가 사용할 보드마커 주문해 주세요'), '보드마커');
   assert.equal(plainItemName('비커'), '비커');
