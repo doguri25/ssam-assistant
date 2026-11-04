@@ -222,7 +222,11 @@ async function makeBackupFile() {
     const where = await saveFile(name, new TextEncoder().encode(JSON.stringify(b)), 'application/json');
     sset('backupAt', Date.now());
     if (curTab === 'years') again();
-    toast(partial ? '보관함을 열지 못해 지금 학년도만 백업했어요' : window.__TAURI__ ? `다운로드 폴더에 저장했어요: ${String(where).split(/[\\/]/).pop()}` : '백업 파일을 내려받았어요', partial ? 6000 : undefined);
+    // Windows 앱이 다운로드 폴더를 못 찾아 임시 폴더에 썼으면 지워질 수 있으니 전체 경로로 알림
+    const temp = window.__TAURI__ && /[\\/](AppData[\\/]Local[\\/]Temp|Windows[\\/](System)?Temp)[\\/][^\\/]*$/i.test(String(where));
+    toast(partial ? '보관함을 열지 못해 지금 학년도만 백업했어요'
+      : temp ? `다운로드 폴더를 찾지 못해 임시 폴더에 저장했어요. 지워질 수 있으니 다른 곳으로 옮겨 두세요: ${where}`
+      : window.__TAURI__ ? `다운로드 폴더에 저장했어요: ${String(where).split(/[\\/]/).pop()}` : '백업 파일을 내려받았어요', partial ? 6000 : temp ? 12000 : undefined);
   } catch (e) { toast('백업 파일을 만들지 못했어요', 5000); }
 }
 async function go(target, data) {
@@ -246,10 +250,11 @@ async function askNewYear() {
       <li><b>비우는 것</b> 학급 명단, 평가 자료(평가계획·평어·창체·행특·채점 결과), 학급 메뉴(시간표·진도표·체크·주간학습안내), 작성 중인 품의</li></ul>
     <label class="switch"><input type="checkbox" id="yrClassToo">학급 준비도 가져가기: 학급 명단·학년 반·시간표·진도표 (2월에 ${next}학년도 준비를 미리 넣었을 때. 진도는 처음부터, 체크는 비워요)</label>
     ${keyNote()}${sheetBtns('yrNewOk', `${next}학년도 시작하기`, '<button class="btn" type="button" data-sheet="backup">백업 파일 만들기</button>')}`,
-  sh => sh.querySelector('#yrNewOk').addEventListener('click', () => {
+  // onOk로 묶어야 [백업 파일 만들기]도 동작함
+  sh => onOk('yrNewOk', () => {
     const classSetup = sh.querySelector('#yrClassToo').checked;
     SSAM().closeSheet(); go(next, carryOver(snapshot(safeLS()), next, { classSetup }));
-  }));
+  })(sh));
 }
 function askGo(y) {
   SSAM().openSheet(`<h3>${y}학년도로 갈까요?</h3><p class="muted" style="margin:0">지금(${curYear()}학년도) 자료는 보관함에 남아요. 앱을 다시 열어요.</p>${keyNote()}${sheetBtns('yrGoOk', `${y}학년도로 가기`)}`,
@@ -380,9 +385,12 @@ document.addEventListener('change', e => {
 
 // AI 창(평어 쓰는 방식)을 닫으면 설정 › AI의 요약을 다시 그림
 const sheetRoot = document.getElementById('sheetRoot');
+const aiShown = () => curTab === 'ai' && box && box.isConnected && !box.parentElement.hidden;
 if (sheetRoot) new MutationObserver(() => {
-  if (!sheetRoot.childElementCount && curTab === 'ai' && box && box.isConnected && !box.parentElement.hidden) again();
+  if (!sheetRoot.childElementCount && aiShown()) again();
 }).observe(sheetRoot, { childList: true });
+// 시험용 업스테이지를 늦게 알게 됐을 때 등(왼쪽 아래 AI 이름과 같이)
+document.addEventListener('ssam:ai-changed', () => { if (aiShown()) again(); });
 
 onEnter('settings', render);
 
