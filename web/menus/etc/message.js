@@ -1,13 +1,15 @@
 /* 기타 › 쪽지 작성 (스펙 2026-11-02 4장): 공문·연수 계획·행사 계획 파일이나 글 → 선생님들께 보낼 안내 쪽지.
    AI는 칸만 뽑고(message-ai.js), 쪽지 글은 앱이 맞춤. 넣은 파일은 이 화면에만 두고(붙임 후보) 이름만 저장.
-   AI로 보내기 전 명단 줄·전화번호 줄·주민번호 줄은 빼고 「이름: ○○○」은 이름을 지움. 보내는 사람은 AI로 보내지 않음 */
+   AI로 보내기 전 명단 줄·전화번호 줄·주민번호 줄은 빼고 「이름: ○○○」은 이름을 지움(글만 — 스캔·사진은 가릴 수 없어 그림 그대로 가고, 넣기 칸·알림에 그렇게 알림).
+   보내는 사람은 AI로 보내지 않음 */
 import { onEnter, go } from '../../core/shell.js';
 import * as ai from '../../core/ai.js';
 import { toast, copyText } from '../../core/ui.js';
 import { readText } from '../../core/files.js';
 import { aiRowHTML } from '../../core/ai-roles.js';
+import { schoolYearOf } from '../../core/calendar.js';
 import { cleanSheet } from '../evaluate/activity/activity-read.js';
-import { KINDS, messagePrompt, normMessage, composeMessage, keepFields } from './message-ai.js';
+import { KINDS, messagePrompt, normMessage, composeMessage, keepFields, moveStart } from './message-ai.js';
 import { getSender, setSender, getDraft, saveDraft, clearDraft, listMessages, pushMessage, newMessageId } from './message-model.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -22,17 +24,15 @@ let box = null, d = null;
 const blankDraft = () => ({ id: newMessageId(), m: normMessage(null), len: 'base', attach: [], edited: false, body: '', title: '', again: false, touched: [] });
 const cur = () => (d || (d = getDraft() || blankDraft()));
 const hasContent = x => !!(x.m.title || (x.m.when || []).length || x.m.place || x.m.target);
-/* 칸·길이·붙임·보내는 사람이 바뀌면 다시 맞춤(본문을 손으로 고쳤으면 그대로 두고 [다시 맞추기]) */
-function compose(force = false) {
-  const x = cur();
+/* 칸·길이·붙임·보내는 사람이 바뀌면 다시 맞춤(본문을 손으로 고쳤으면 그대로 두고 [다시 맞추기]). x: 맞출 쪽지(읽는 동안 다른 쪽지로 옮겼으면 읽던 쪽지) */
+function compose(force = false, x = cur()) {
   if (x.edited && !force) return;
   const r = composeMessage(x.m, { len: x.len, attach: x.attach.filter(a => a.on).map(a => a.name), sender: getSender(), again: !!x.again });
   x.title = r.title; x.body = r.body; x.edited = false;
 }
-function persist() {
-  const x = cur();
-  saveDraft(x);
-  if (hasContent(x)) pushMessage({ id: x.id, title: x.title, kind: x.m.kind, m: x.m, len: x.len, attachNames: x.attach.map(a => a.name), body: x.body, edited: x.edited, again: !!x.again });
+function persist(x = cur()) {
+  if (x === cur()) saveDraft(x);
+  if (hasContent(x)) pushMessage({ id: x.id, title: x.title, kind: x.m.kind, m: x.m, len: x.len, attach: x.attach.map(a => ({ name: a.name, on: a.on })), body: x.body, edited: x.edited, again: !!x.again });
 }
 
 /* ---------- 붙임 파일 (Windows 앱): 다운로드 폴더에 모아 클립보드 파일 복사·끌어 놓기·경로 복사·폴더 열기
@@ -104,11 +104,14 @@ async function openDir() {
 
 /* ---------- 그리기 ---------- */
 const field = (k, label, v, type = 'text', ph = '') => `<label class="yp-f"><span class="lab">${label}</span><input class="field" data-mf="${k}" type="${type}" value="${esc(v)}" placeholder="${esc(ph)}" autocomplete="off"></label>`;
+/* 칸 값(data-mf 이름마다) */
+const fieldVals = m => { const w = (m.when || [])[0] || {}, ap = m.apply || {}; return { title: m.title, date: w.date, end: w.end, time: w.time, place: m.place, target: m.target, due: ap.due, how: ap.how, bring: m.bring, notes: m.notes }; };
 function fieldsHTML(m) {
   const w = (m.when || [])[0] || { date: '', time: '' }, ap = m.apply || {};
+  // 며칠짜리 일정이면 끝 날짜 칸도
   return `<div class="msg-fields" id="msgFields">
     ${field('title', '제목', m.title, 'text', '예) 2026 AI 활용 수업 연수')}
-    <div class="row msg-two">${field('date', '날짜', w.date, 'date')}${field('time', '시간', w.time, 'text', '예) 15:00~16:30')}</div>
+    <div class="row msg-two">${field('date', '날짜', w.date, 'date')}${w.end ? field('end', '끝 날짜', w.end, 'date') : ''}${field('time', '시간', w.time, 'text', '예) 15:00~16:30')}</div>
     ${(m.when || []).length > 1 ? `<p class="muted" style="margin:0">일시 ${m.when.length}개 중 첫째만 여기서 고쳐요. 나머지는 본문에서 고쳐 주세요.</p>` : ''}
     ${field('place', '장소', m.place)}${field('target', '대상', m.target)}
     <div class="row msg-two">${field('due', '신청 기한', ap.due, 'date')}${field('how', '신청 방법', ap.how, 'text', '예) 이음 쪽지로 회신')}</div>
@@ -118,7 +121,7 @@ const attachHTML = x => (x.attach.length ? `<ul class="msg-attach" id="msgAttach
     <input class="field" data-att-name="${i}" value="${esc(a.name)}" aria-label="${i + 1}번째 붙임 이름" autocomplete="off">${M.files[i] ? (T() && a.on ? `<span class="msg-drag" data-msg-drag="${i}" role="button" tabindex="0" title="눌러 끌어서 이음 쪽지 창에 놓으세요" aria-label="${esc(a.name)} 끌기">⠿</span>` : '') : '<span class="muted">파일 없음(이름만)</span>'}</li>`).join('')}</ul>` : '<p class="muted" id="msgAttach" style="margin:0">넣은 파일이 붙임 목록이 돼요.</p>');
 const recentHTML = () => {
   const l = listMessages();
-  return l.length ? `<ul class="pc-lib-list" id="msgRecent">${l.map(r => `<li class="pc-lib-row"><div class="grow"><b>${esc(r.title || '제목 없는 쪽지')}</b><span class="muted">${new Date(r.at).toLocaleDateString('ko-KR')} · 붙임 ${r.attachNames.length}개</span></div>
+  return l.length ? `<ul class="pc-lib-list" id="msgRecent">${l.map(r => `<li class="pc-lib-row"><div class="grow"><b>${esc(r.title || '제목 없는 쪽지')}</b><span class="muted">${new Date(r.at).toLocaleDateString('ko-KR')} · 붙임 ${r.attach.filter(a => a.on).length}개</span></div>
     <span class="row"><button class="btn text" type="button" data-msg-open="${esc(r.id)}">열기</button><button class="btn text" type="button" data-msg-again="${esc(r.id)}">다시 안내</button></span></li>`).join('')}</ul>`
     : '<p class="muted" id="msgRecent" style="margin:0">쓴 쪽지가 최근 20개까지 남아요.</p>';
 };
@@ -135,7 +138,7 @@ export function render() {
           <div class="row"><button class="btn primary" type="button" data-msg="read"${M.busy ? ' disabled' : ''}>${M.busy ? '<span class="spin"></span>읽는 중…' : '쪽지 쓰기'}</button>
             <button class="btn text" type="button" data-msg="pick">파일 고르기</button>
             <input type="file" id="msgFile" multiple hidden accept=".hwp,.hwpx,.pdf,.txt,.png,.jpg,.jpeg,.webp"><span class="muted" id="msgState" role="status">${esc(M.msg)}</span></div>
-          <p class="muted" style="margin:0">명단·전화번호가 적힌 줄은 빼고 AI로 보내요.</p></div>
+          <p class="muted" style="margin:0">글은 명단·전화번호가 적힌 줄을 빼고 AI로 보내요. 스캔·사진은 가릴 수 없어 그림 그대로 AI로 가요.</p></div>
         <h3>붙임</h3>${attachHTML(x)}${filesHTML()}
         <h3>칸</h3>${fieldsHTML(x.m)}
       </section>
@@ -161,6 +164,24 @@ function refreshOut() {
   if (at && !at.contains(document.activeElement)) at.outerHTML = attachHTML(x);
 }
 
+/* AI 읽기 앞뒤(값이 바뀜): 쓰는 칸이 있으면 다시 그리지 않고 단추·칸 값·본문·최근 쪽지만 고침. 초점이 든 칸은 덮지 않음(한글 입력이 끊기지 않게) */
+function live() {
+  if (!box || box.hidden) return;
+  const a = document.activeElement, rb = box.querySelector('[data-msg="read"]');
+  if (!rb || !(a && box.contains(a) && a.matches('input, textarea, select'))) { render(); return; }
+  const x = cur();
+  rb.disabled = M.busy; rb.innerHTML = M.busy ? '<span class="spin"></span>읽는 중…' : '쪽지 쓰기';
+  const st = box.querySelector('#msgState'); if (st) st.textContent = M.msg;
+  const fs = box.querySelector('#msgFields');
+  if (fs && !fs.contains(a)) fs.outerHTML = fieldsHTML(x.m);
+  else if (fs) { const v = fieldVals(x.m); fs.querySelectorAll('[data-mf]').forEach(el => { if (el !== a) el.value = v[el.dataset.mf] || ''; }); }
+  box.querySelectorAll('[data-len]').forEach(b => b.setAttribute('aria-pressed', String(x.len === b.dataset.len)));
+  const pa = box.querySelector('#msgPaste'); if (pa && pa !== a) pa.value = M.paste;
+  const se = box.querySelector('#msgSender'); if (se && se !== a) se.value = getSender();
+  const rc = box.querySelector('#msgRecent'); if (rc) rc.outerHTML = recentHTML();
+  refreshOut();
+}
+
 /* ---------- 넣기·읽기 ---------- */
 const setState = m => { M.msg = m; const el = box && box.querySelector('#msgState'); if (el) el.textContent = m; };
 /* M.files[i]는 붙임 x.attach[i]의 파일. 파일이 없는(다시 연·새로 고친) 붙임과 이름이 같으면 그 자리에 넣고, 아니면 붙임을 더함 */
@@ -172,16 +193,20 @@ function addFiles(files) {
     else { x.attach.push({ name: baseName(f.name), on: true }); M.files[x.attach.length - 1] = f; }
   }
 }
+/* 쓰던 쪽지를 바꿈([새 쪽지]·[열기]·[다시 안내]·공문 처리 [쪽지]): 읽던 쪽지는 다 읽으면 최근 쪽지에만 넣고, 새 쪽지는 바로 읽을 수 있게 */
+let readTok = 0;
+function switchDraft(next) { d = next; readTok++; M.busy = false; M.msg = ''; }
 /* 넣은 파일·붙여 넣은 글을 읽어 AI 한 번 → 칸 → 쪽지 */
 export async function readAll() {
   if (M.busy) return;
-  const x = cur(), paste = M.paste;
-  if (!M.files.some(Boolean) && !paste.trim()) { toast('공문·계획 파일을 넣거나 글을 붙여 넣어 주세요.', 5000); return; }
+  const x = cur(), paste = M.paste, files = M.files.filter(Boolean), tok = ++readTok;
+  const here = () => tok === readTok && cur() === x; // 읽는 동안 다른 쪽지로 옮기지 않았나
+  if (!files.length && !paste.trim()) { toast('공문·계획 파일을 넣거나 글을 붙여 넣어 주세요.', 5000); return; }
   if (!ai.ready()) { toast('설정 › AI에서 키를 넣어 주세요', 5000); return; }
-  M.busy = true; render(); setState('읽는 중…');
+  M.busy = true; M.msg = '읽는 중…'; live();
   try {
     const texts = paste.trim() ? [paste] : [], images = [];
-    for (const f of M.files.filter(Boolean)) {
+    for (const f of files) {
       let t = '';
       if (!IMAGE.test(f.name || '')) { try { t = await readText(f); } catch (e) { t = ''; } }
       if (String(t).trim()) texts.push(t);
@@ -189,28 +214,34 @@ export async function readAll() {
     }
     const c = cleanSheet(texts.join('\n\n'));
     if (!c.text && !images.length) throw { code: 'empty' };
-    setState('AI가 쪽지 칸을 찾는 중…');
+    if (here()) setState('AI가 쪽지 칸을 찾는 중…');
     const v = await ai.generateJSON(messagePrompt(c.text, { nImages: images.length }), { images, task: 'message', valid: o => !!o && typeof o === 'object' && !Array.isArray(o) });
     // 선생님이 고친 칸은 그대로, 본문을 손으로 고쳤으면 본문도 그대로([칸으로 다시 맞추기])
     const touched = x.touched || [];
-    x.m = keepFields(normMessage(v, { year: new Date().getFullYear() }), x.m, touched);
+    // 연도 없는 날: 오늘이 든 학년도(1·2월은 다음 해, 공문 처리와 같은 규칙). 설정의 학년도는 10월부터 다음 해라 쓰지 않음
+    x.m = keepFields(normMessage(v, { year: schoolYearOf(today()), today: today() }), x.m, touched);
     x.again = false;
-    compose(); persist();
-    M.busy = false; setState('');
+    compose(false, x); persist(x);
+    // 기다리는 동안 다른 쪽지로 옮겼으면 그 쪽지는 건드리지 않고, 쓴 쪽지는 최근 쪽지에 넣음(가정통신문과 같게)
+    if (!here()) { if (hasContent(x)) toast(`「${x.title}」 쪽지를 다 써서 최근 쪽지에 넣었어요.`, 5000); live(); return; }
+    M.busy = false; M.msg = '';
     const kept = touched.length || x.edited ? ` · 고치신 ${[touched.length ? '칸' : '', x.edited ? '본문' : ''].filter(Boolean).join('·')}은 그대로 두었어요` : '';
     const cut = [c.lines ? `명단·전화번호가 적힌 줄 ${c.lines}곳은 뺐어요` : '', c.names ? `이름 ${c.names}개는 가렸어요` : ''].filter(Boolean).join(' · ');
-    if (cut) toast(`쪽지를 썼어요 · ${cut}(AI로 보내지 않았어요)${kept}`, 6000);
-    else toast(`쪽지를 썼어요. 칸과 본문을 확인해 주세요${kept}`, 4000);
+    // 스캔·사진은 가릴 수 없어 그림 그대로 보냄(넣기 칸에도 알림)
+    const img = images.length ? ` · 스캔·사진 ${images.length}쪽은 그림 그대로 AI로 보냈어요` : '';
+    if (cut) toast(`쪽지를 썼어요 · ${cut}(AI로 보내지 않았어요)${img}${kept}`, 6000);
+    else toast(`쪽지를 썼어요. 칸과 본문을 확인해 주세요${img}${kept}`, img ? 6000 : 4000);
   } catch (e) {
-    M.busy = false; setState('');
+    if (!here()) return;
+    M.busy = false; M.msg = '';
     toast(e && e.code === 'empty' ? '글을 읽지 못했어요. 글을 붙여 넣어 주세요.' : e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 눌러 주세요.' : ai.errorMessage(e && e.code, e), 6000);
   }
-  render();
+  live();
 }
-/* 떠 있는 버튼 등: 기타 › 쪽지 작성으로 가서 새 쪽지로 넣고 바로 읽기 */
+/* 떠 있는 버튼 등: 기타 › 쪽지 작성으로 가서 새 쪽지로 넣고 바로 읽기(읽던 쪽지가 있어도) */
 export async function putMessageFiles(files, { text = '' } = {}) {
   go('etc', 'message');
-  d = blankDraft(); M.files = []; M.paste = String(text || ''); saveDraft(d);
+  switchDraft(blankDraft()); M.files = []; M.paste = String(text || ''); saveDraft(d);
   addFiles(files || []);
   render();
   await readAll();
@@ -222,14 +253,19 @@ document.addEventListener('click', e => {
   if (!mine(e)) return;
   const x = cur();
   const ln = e.target.closest('[data-len]');
-  if (ln) { x.len = ln.dataset.len; compose(true); persist(); render(); return; }
+  if (ln) {
+    if (ln.dataset.len === x.len) return;
+    // 손으로 고친 본문은 묻고 다시 맞춤(취소하면 고친 본문·길이 그대로)
+    if (x.edited && !confirm(`손으로 고친 본문이 없어지고 「${ln.textContent}」 쪽지로 다시 맞춰요. 바꿀까요?`)) return;
+    x.len = ln.dataset.len; compose(true); persist(); render(); return;
+  }
   const op = e.target.closest('[data-msg-open],[data-msg-again]');
   if (op) {
     const id = op.dataset.msgOpen || op.dataset.msgAgain, r = listMessages().find(y => y.id === id);
     if (!r) return;
     const again = !!op.dataset.msgAgain;
     M.files = [];
-    d = { id: again ? newMessageId() : r.id, m: r.m, len: r.len, attach: r.attachNames.map(name => ({ name, on: true })), edited: false, body: '', title: '', again: again || r.again };
+    switchDraft({ id: again ? newMessageId() : r.id, m: r.m, len: r.len, attach: r.attach.map(a => ({ ...a })), edited: false, body: '', title: '', again: again || r.again });
     if (!again && r.edited && r.body) { d.body = r.body; d.title = r.title; d.edited = true; } else compose(true);
     persist(); render(); return;
   }
@@ -238,7 +274,7 @@ document.addEventListener('click', e => {
   const a = b.dataset.msg;
   if (a === 'pick') box.querySelector('#msgFile').click();
   else if (a === 'read') readAll();
-  else if (a === 'new') { d = blankDraft(); M.files = []; M.paste = ''; clearDraft(); render(); }
+  else if (a === 'new') { switchDraft(blankDraft()); M.files = []; M.paste = ''; clearDraft(); render(); }
   else if (a === 'resync') { compose(true); persist(); render(); }
   else if (a === 'copyFiles' && T()) copyFiles();
   else if (a === 'copyPath' && T()) copyPath();
@@ -263,10 +299,16 @@ document.addEventListener('input', e => {
   const el = e.target, x = cur();
   if (el.dataset.mf) {
     const k = el.dataset.mf, v = el.value, m = x.m;
-    if (k === 'date' || k === 'time') { m.when = m.when && m.when.length ? m.when : [{ date: '', end: '', time: '', note: '' }]; m.when[0] = { ...m.when[0], [k]: v }; }
+    if (k === 'date' || k === 'end' || k === 'time') {
+      m.when = m.when && m.when.length ? m.when : [{ date: '', end: '', time: '', note: '' }];
+      // 시작 날짜를 옮기면 며칠짜리 일정의 끝도 같은 날 수만큼(끝 날짜 칸도 맞춤)
+      m.when[0] = k === 'date' ? moveStart(m.when[0], v) : { ...m.when[0], [k]: v };
+      const en = box.querySelector('[data-mf="end"]');
+      if (k === 'date' && en) en.value = m.when[0].end || '';
+    }
     else if (k === 'due' || k === 'how') m.apply = { ...(m.apply || {}), [k]: v, ...(k === 'due' ? { dueNote: '' } : {}) };
     else m[k] = v;
-    x.touched = [...new Set([...(x.touched || []), k])];
+    x.touched = [...new Set([...(x.touched || []), k === 'end' ? 'date' : k])]; // 끝 날짜는 날짜와 같이 남김
     compose(); persist(); refreshOut(); return;
   }
   if (el.dataset.attName != null) { const at = x.attach[+el.dataset.attName]; if (at) { at.name = el.value; compose(); persist(); refreshOut(); } return; }

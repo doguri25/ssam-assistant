@@ -19,6 +19,19 @@ export function normDate(v, year) {
   if (t.getUTCFullYear() !== y || t.getUTCMonth() !== mo - 1 || t.getUTCDate() !== d) return '';
   return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
+const isoOf = (y, m, d) => { const t = new Date(Date.UTC(y, m - 1, d)); return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d ? `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}` : ''; };
+const addDaysIso = (iso, n) => { const t = new Date(`${iso}T00:00:00Z`); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+/* 날짜(공문 처리·쪽지): 연도가 없으면 학년도(1~2월은 다음 해), 그 날이 오늘보다 60일 넘게 앞이면 한 해 뒤(2월에 받은 새 학년도 공문) */
+export function schoolDate(v, year, today = '') {
+  const s = String(v == null ? '' : v).trim();
+  if (/^\d{4}/.test(s) || !year) return normDate(s, year);
+  const m = /^(\d{1,2})\s*[-./월]\s*(\d{1,2})/.exec(s);
+  if (!m) return '';
+  const mo = +m[1], d = +m[2];
+  let y = mo <= 2 ? +year + 1 : +year, iso = isoOf(y, mo, d);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(today) && (!iso || iso < addDaysIso(today, -60))) { y++; iso = isoOf(y, mo, d); }
+  return iso;
+}
 /* '2026-11-12' → '2026. 11. 12.(목)' (학교 공문 꼴), 틀린 날은 ''. noYear: 연도 빼고 '11. 13.(금)' */
 export function fmtDay(iso, { noYear = false } = {}) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
@@ -52,8 +65,8 @@ export function messagePrompt(text, { nImages = 0 } = {}) {
     '{"kind":"training","title":"…","when":[{"date":"2026-11-12","time":"15:00~16:30","note":""}],"place":"","target":"","apply":{"due":"","how":""},"bring":"","notes":"","points":["…"]}'].join('\n');
 }
 
-/* AI 답 → 쪽지 칸. year: 연도 없는 날에 붙일 학년도 */
-export function normMessage(v, { year } = {}) {
+/* AI 답 → 쪽지 칸. year: 연도 없는 날에 붙일 학년도, today: 오늘(1·2월은 다음 해·60일 규칙, 공문 처리와 같게) */
+export function normMessage(v, { year, today = '' } = {}) {
   const o = v && typeof v === 'object' && !Array.isArray(v) ? v : {};
   const ap = o.apply && typeof o.apply === 'object' ? o.apply : {};
   // 일시가 글 하나·글 목록으로 와도 받음: 날짜는 읽고 나머지는 시간
@@ -61,13 +74,13 @@ export function normMessage(v, { year } = {}) {
   const when = raw.map(x => (typeof x === 'string' ? fromText(x, year) : x))
     .filter(x => x && typeof x === 'object').slice(0, 5).map(x => {
       const [d0, d1] = splitRange(x.date);
-      const date = normDate(d0, year), endRaw = String(x.end || d1 || '');
+      const date = schoolDate(d0, year, today), endRaw = String(x.end || d1 || '');
       let end = date ? normDate(endRaw, Number(date.slice(0, 4))) : '';
       // 「12-30~01-02」처럼 연도 없이 해를 넘기는 기간은 끝을 다음 해로
       if (end && end <= date && !/^\s*\d{4}/.test(endRaw)) end = normDate(endRaw, Number(date.slice(0, 4)) + 1);
       return { date, end: end > date ? end : '', time: clean(x.time, 40), note: clean(x.note, 60) || (date ? '' : clean(x.date, 40)) };
     }).filter(x => x.date || x.time || x.note);
-  const due = normDate(ap.due, year);
+  const due = schoolDate(ap.due, year, today);
   return {
     kind: Object.prototype.hasOwnProperty.call(KINDS, o.kind) ? o.kind : 'etc',
     title: clean(o.title, 80), when, place: clean(o.place, 100), target: clean(o.target, 100),
@@ -81,7 +94,8 @@ export function normMessage(v, { year } = {}) {
 const eul = w => { const c = String(w || '').trim().slice(-1).charCodeAt(0) - 0xac00; return c >= 0 && c < 11172 ? (c % 28 ? '을' : '를') : '을(를)'; };
 /* 올해(thisYear) 날짜는 연도 없이 「11. 12.(목)」 */
 const fmtIn = (iso, y) => fmtDay(iso, { noYear: !!iso && iso.slice(0, 4) === String(y) });
-const dayText = (w, y) => (w.end ? `${fmtIn(w.date, y)}~${fmtDay(w.end, { noYear: w.end.slice(0, 4) === w.date.slice(0, 4) })}` : fmtIn(w.date, y));
+/* 끝 날짜는 시작보다 늦을 때만(시작이 없거나 거꾸로면 시작만) */
+const dayText = (w, y) => (w.date && w.end && w.end > w.date ? `${fmtIn(w.date, y)}~${fmtDay(w.end, { noYear: w.end.slice(0, 4) === w.date.slice(0, 4) })}` : fmtIn(w.date, y));
 const whenText = (w, y) => [dayText(w, y), w.time].filter(Boolean).join(' ') + (w.note ? (w.date || w.time ? ` (${w.note})` : w.note) : '');
 
 /* 쪽지 칸 → { title, body }. 이음 쪽지는 제목 칸이 없어 본문 첫 줄이 제목, 그다음 인사 「안녕하세요 선생님.」 (스펙 2026-11-03 2장)
@@ -119,6 +133,14 @@ export function composeMessage(m, { len = 'base', attach = [], sender = '', agai
   return { title: full, body: lines.join('\n').replace(/\n{3,}/g, '\n\n') };
 }
 
+/* 일시 칸의 시작 날짜를 고침: 며칠짜리 일정이면 끝도 같은 날 수만큼 옮김.
+   키보드로 고치는 중간 값(빈 칸·「0002-…」)이면 끝은 그대로 둠(쪽지 글에는 시작보다 늦은 끝만 씀) */
+const dayNo = iso => (iso && normDate(iso) === iso ? Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 864e5 : null);
+export function moveStart(w, date) {
+  const x = { ...(w || {}), date: String(date || '') }, a = dayNo(w && w.date), b = dayNo(w && w.end), c = dayNo(x.date);
+  if (a != null && b != null && b > a && c != null) x.end = addDaysIso(x.date, b - a);
+  return x;
+}
 /* 다시 읽을 때 선생님이 고친 칸은 그대로: keys는 쪽지 칸 이름(title·date·time·place·target·due·how·bring·notes) */
 export const FIELD_KEYS = ['title', 'date', 'time', 'place', 'target', 'due', 'how', 'bring', 'notes'];
 export function keepFields(next, prev, keys = []) {

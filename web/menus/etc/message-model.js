@@ -22,11 +22,17 @@ export const getDraft = () => normDraft(get(DRAFT, null));
 export const saveDraft = d => { const n = normDraft(d); return n ? set(DRAFT, n) : false; };
 export const clearDraft = () => set(DRAFT, null);
 
-/* 최근 쪽지: [{ id, at, title, kind, m, len, attachNames }] 늦은 것 먼저 */
-const normItem = x => (isObj(x) && typeof x.id === 'string' && isObj(x.m)
-  ? { id: x.id, at: Number(x.at) || 0, title: String(x.title || ''), kind: String(x.kind || 'etc'), m: x.m, len: LENS.includes(x.len) ? x.len : 'base',
-    attachNames: (Array.isArray(x.attachNames) ? x.attachNames : []).map(String).filter(Boolean).slice(0, 20),
-    body: String(x.body || '').slice(0, 6000), edited: !!x.edited, again: !!x.again } : null);
+/* 최근 쪽지: [{ id, at, title, kind, m, len, attach: [{ name, on }], attachNames }] 늦은 것 먼저.
+   attach: 붙임 이름과 체크(뺀 붙임은 [열기]·[다시 안내]에서도 빠지게), 예전 쪽지(attachNames만)는 모두 체크 */
+const normAttach = x => (Array.isArray(x.attach)
+  ? x.attach.filter(isObj).map(a => ({ name: String(a.name || '').slice(0, 80), on: a.on !== false })).filter(a => a.name)
+  : (Array.isArray(x.attachNames) ? x.attachNames : []).map(String).filter(Boolean).map(name => ({ name, on: true }))).slice(0, 20);
+const normItem = x => {
+  if (!(isObj(x) && typeof x.id === 'string' && isObj(x.m))) return null;
+  const attach = normAttach(x);
+  return { id: x.id, at: Number(x.at) || 0, title: String(x.title || ''), kind: String(x.kind || 'etc'), m: x.m, len: LENS.includes(x.len) ? x.len : 'base',
+    attach, attachNames: attach.map(a => a.name), body: String(x.body || '').slice(0, 6000), edited: !!x.edited, again: !!x.again };
+};
 export const listMessages = () => { const v = get(LIST, []); return (Array.isArray(v) ? v : []).map(normItem).filter(Boolean).sort((a, b) => b.at - a.at); };
 /* 같은 id는 그 자리를 고쳐 맨 앞으로, 20개까지 */
 export function pushMessage(x) {
