@@ -38,17 +38,25 @@ pub fn unique_path(dir: &Path, name: &str) -> PathBuf {
         .unwrap_or(first)
 }
 
-fn downloads_dir() -> PathBuf {
-    std::env::var_os("USERPROFILE")
-        .map(|h| PathBuf::from(h).join("Downloads"))
+/// 다운로드 폴더 고르기: Windows가 아는 「다운로드」(Known Folder — 위치를 D:\다운로드로 옮겼거나 폴더 리디렉션이어도 그곳),
+/// 없으면 `프로필\Downloads`, 그것도 없으면 임시 폴더
+pub fn pick_downloads(known: Option<PathBuf>, profile: Option<PathBuf>) -> PathBuf {
+    known
         .filter(|p| p.is_dir())
+        .or_else(|| profile.map(|h| h.join("Downloads")).filter(|p| p.is_dir()))
         .unwrap_or_else(std::env::temp_dir)
+}
+
+/// 저장·열기·붙임 확인이 모두 같은 폴더를 씀
+fn downloads_dir(app: &tauri::AppHandle) -> PathBuf {
+    use tauri::Manager;
+    pick_downloads(app.path().download_dir().ok(), std::env::var_os("USERPROFILE").map(PathBuf::from))
 }
 
 /// 다운로드 폴더에 저장하고 저장한 경로를 돌려줌
 #[tauri::command]
-pub fn save_download(name: String, bytes: Vec<u8>) -> Result<String, String> {
-    let path = unique_path(&downloads_dir(), &safe_name(&name));
+pub fn save_download(app: tauri::AppHandle, name: String, bytes: Vec<u8>) -> Result<String, String> {
+    let path = unique_path(&downloads_dir(&app), &safe_name(&name));
     std::fs::write(&path, bytes).map_err(|e| format!("파일을 저장하지 못했어요: {e}"))?;
     Ok(path.to_string_lossy().into_owned())
 }
@@ -104,14 +112,14 @@ pub fn save_note_files(base: &Path, folder: &str, files: Vec<NoteFile>) -> Resul
 
 /// 쪽지 붙임을 다운로드 폴더의 「쌤비서 쪽지 붙임/<날짜 제목>」에 모음
 #[tauri::command]
-pub fn note_save_attachments(folder: String, files: Vec<NoteFile>) -> Result<NoteSaved, String> {
-    save_note_files(&downloads_dir(), &folder, files)
+pub fn note_save_attachments(app: tauri::AppHandle, folder: String, files: Vec<NoteFile>) -> Result<NoteSaved, String> {
+    save_note_files(&downloads_dir(&app), &folder, files)
 }
 
 /// 파일들을 클립보드에 파일로 넣음(탐색기에서 Ctrl+C 한 것처럼) — 쪽지 창 첨부 칸에 Ctrl+V
 #[tauri::command]
-pub fn note_copy_files(paths: Vec<String>) -> Result<(), String> {
-    let base = downloads_dir();
+pub fn note_copy_files(app: tauri::AppHandle, paths: Vec<String>) -> Result<(), String> {
+    let base = downloads_dir(&app);
     if paths.iter().any(|p| !inside_notes(&base, Path::new(p))) {
         return Err("쪽지 붙임 폴더 밖의 파일은 복사하지 않아요".into());
     }
@@ -130,7 +138,7 @@ pub fn note_copy_files(paths: Vec<String>) -> Result<(), String> {
 /// 끌기는 앱 메인 스레드에서 하고 이 명령은 바로 돌아옴
 #[tauri::command]
 pub async fn note_drag_files(app: tauri::AppHandle, paths: Vec<String>) -> Result<(), String> {
-    let base = downloads_dir();
+    let base = downloads_dir(&app);
     if paths.is_empty() || paths.iter().any(|p| !inside_notes(&base, Path::new(p)) || !Path::new(p).is_file()) {
         return Err("쪽지 붙임 폴더의 파일만 끌 수 있어요".into());
     }
@@ -152,7 +160,7 @@ pub async fn note_drag_files(app: tauri::AppHandle, paths: Vec<String>) -> Resul
 #[tauri::command]
 pub fn open_downloads(app: tauri::AppHandle) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
-    let dir = downloads_dir();
+    let dir = downloads_dir(&app);
     app.opener()
         .open_path(dir.to_string_lossy().into_owned(), None::<&str>)
         .map_err(|e| format!("폴더를 열지 못했어요: {e}"))
@@ -162,7 +170,7 @@ pub fn open_downloads(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn note_open_dir(app: tauri::AppHandle, dir: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
-    if !inside_notes(&downloads_dir(), Path::new(&dir)) || !Path::new(&dir).is_dir() {
+    if !inside_notes(&downloads_dir(&app), Path::new(&dir)) || !Path::new(&dir).is_dir() {
         return Err("쪽지 붙임 폴더만 열 수 있어요".into());
     }
     app.opener().open_path(dir, None::<&str>).map_err(|e| format!("폴더를 열지 못했어요: {e}"))
@@ -202,6 +210,24 @@ mod tests {
         assert!(again.paths[1].ends_with("계획 (2).hwpx"), "{}", again.paths[1]);
         assert_eq!(again.dir, saved.dir);
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn core_5_다운로드_폴더는_윈도우가_아는_곳부터() {
+        let root = std::env::temp_dir().join(format!("ssam-dl-test-{}", std::process::id()));
+        let known = root.join("D_다운로드");
+        let profile = root.join("profile");
+        std::fs::create_dir_all(&known).unwrap();
+        std::fs::create_dir_all(profile.join("Downloads")).unwrap();
+        // Windows가 아는 다운로드 폴더(옮긴 곳)가 먼저
+        assert_eq!(pick_downloads(Some(known.clone()), Some(profile.clone())), known);
+        // 그 폴더가 없거나 모르면 프로필\Downloads
+        assert_eq!(pick_downloads(Some(root.join("없음")), Some(profile.clone())), profile.join("Downloads"));
+        assert_eq!(pick_downloads(None, Some(profile.clone())), profile.join("Downloads"));
+        // 둘 다 없을 때만 임시 폴더
+        assert_eq!(pick_downloads(None, Some(root.join("없는 프로필"))), std::env::temp_dir());
+        assert_eq!(pick_downloads(None, None), std::env::temp_dir());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
