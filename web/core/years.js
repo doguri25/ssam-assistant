@@ -1,10 +1,11 @@
 /* 학년도: 지금 학년도의 자료는 기존 ssam: 키에 그대로 두고, 다른 학년도는 보관함(archive.js)에 둠.
    공통 키(AI 키·테마 등)는 학년도와 상관없이 그대로. 백업 파일에는 공통 키를 넣지 않음 */
-import { schoolYearOf } from './calendar.js';
+import { schoolYearOf, HOLIDAYS, weekday, addDays } from './calendar.js';
 import { dueEvents } from '../menus/etc/gongmun-ai.js';
 
 const PREFIX = 'ssam:';
-export const GLOBAL = ['engine', 'theme', 'nav', 'mode', 'updSkip', 'years', 't', 'backupAt', 'inbox', 'bubble', 'export', 'ai-roles', 'purchase:view', 'purchase:flow', 'msg:sender'];
+// testkey:told(시험용 키 알림을 보였음)·queue(차례로 붙여넣기 설정)·queueCalc(산출 내역 넣는 방식)는 화면 설정이라 학년도 자료가 아님
+export const GLOBAL = ['engine', 'theme', 'nav', 'mode', 'updSkip', 'years', 't', 'backupAt', 'inbox', 'bubble', 'export', 'ai-roles', 'purchase:view', 'purchase:flow', 'msg:sender', 'testkey:told', 'queue', 'queueCalc'];
 export const isYearKey = k => !!k && !GLOBAL.includes(k) && !k.startsWith('mig:');
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const pad = n => String(n).padStart(2, '0');
@@ -14,6 +15,18 @@ const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad(
 export function getYears(ls, today = todayStr()) {
   try { const v = JSON.parse(ls.getItem(PREFIX + 'years')); if (isObj(v) && Number.isInteger(v.current)) return { current: v.current }; } catch (e) {}
   return { current: schoolYearOf(today) };
+}
+/* 지금 자료의 학년도 (저장소에 닿지 못하면 오늘이 든 학년도) */
+export function currentYear(today = todayStr()) {
+  let ls = null;
+  try { ls = globalThis.localStorage || null; } catch (e) {}
+  return getYears(ls, today).current;
+}
+/* 학년도 첫 수업일: 3월 2일부터 주말·공휴일이 아닌 첫날 */
+export function firstSchoolDay(year) {
+  let d = `${year}-03-02`;
+  for (let i = 0; i < 7 && (weekday(d) === 0 || weekday(d) === 6 || HOLIDAYS[d]); i++) d = addDays(d, 1);
+  return d;
 }
 /* 처음 연 날의 학년도를 저장해 둠 (날짜가 3월을 넘어도 지금 자료의 학년도가 저절로 바뀌지 않게) */
 export function ensureYears(ls, today = todayStr()) {
@@ -38,7 +51,8 @@ export function snapshot(ls) {
 const parse = t => { try { return JSON.parse(t); } catch (e) { return null; } };
 /* 새 학년도에 가져가는 것: 연간계획·행사계획·학급운영계획, 새 학년도(3월 1일부터) 학사일정, 학교명·학급 수·학생 수,
    설정(평어·행특 설정, 채점 설정(예외 번호는 비움), 나이스 입력 설정, 품의 기준 금액). 학생 자료는 비움.
-   classSetup: 2월에 새 학년도 준비를 미리 넣었으면 학급 명단·학급 정보·시간표·진도표도 (진도 위치는 처음부터, 체크·주간학습안내는 비움) */
+   classSetup: 2월에 새 학년도 준비를 미리 넣었으면 학급 명단·학급 정보·시간표·진도표도 (진도 위치는 처음부터, 체크·주간학습안내는 비움.
+   진도표 시작일은 새 학년도 첫 수업일 — 새 학년도 날로 정해 둔 것은 그대로) */
 export function carryOver(snap, newYear, { classSetup = false } = {}) {
   const out = {};
   for (const k of ['yearplans', 'yearplan:current', 'events', 'event:current', 'classplans', 'classplan:current', 'purchaseLimit', 'purchaseMeetCap', 'purchase:templates']) if (typeof snap[k] === 'string') out[k] = snap[k];
@@ -60,7 +74,8 @@ export function carryOver(snap, newYear, { classSetup = false } = {}) {
   if (classSetup) {
     for (const k of ['class', 'class:info', 'class:timetable']) if (typeof snap[k] === 'string') out[k] = snap[k];
     const subs = parse(snap['class:subjects']);
-    if (Array.isArray(subs)) out['class:subjects'] = JSON.stringify(subs.filter(isObj).map(x => ({ ...x, offset: 0, start: '' })));
+    const first = firstSchoolDay(newYear), keep = d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= first && d < `${newYear + 1}-03-01`;
+    if (Array.isArray(subs)) out['class:subjects'] = JSON.stringify(subs.filter(isObj).map(({ since, ...x }) => ({ ...x, offset: 0, start: keep(x.start) ? x.start : first })));
   }
   return out;
 }

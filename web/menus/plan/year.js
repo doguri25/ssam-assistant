@@ -6,6 +6,7 @@ import { registerInbox } from '../../core/inbox.js';
 import * as ai from '../../core/ai.js';
 import { aiRowHTML } from '../../core/ai-roles.js';
 import { readText, fileMessage } from '../../core/files.js';
+import { stripPersonal, readStripped, personalMsg } from '../../core/survey.js';
 import { getSchool } from '../../core/settings.js';
 import { toast, copyText } from '../../core/ui.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
@@ -314,7 +315,7 @@ async function downloadHwpx() {
 /* ---------- AI: 작년 평가 ---------- */
 function reviewPrompt(p) {
   return `[작년 평가]\n학교 업무 연간계획을 돕는 도우미예요. 아래 작년 운영 결과(설문·실적·반성)를 보고 평가해 주세요.\n`
-    + `업무: ${p.name}\n올해 목표: ${p.goal}\n\n작년 결과:\n"""\n${p.sources.lastResult.slice(0, 20000)}\n"""\n\n`
+    + `업무: ${p.name}\n올해 목표: ${p.goal}\n\n작년 결과:\n"""\n${stripPersonal(p.sources.lastResult).text.slice(0, 20000)}\n"""\n\n`
     + '규칙:\n- good: 잘된 점 2~4개(짧은 문장)\n- bad: 아쉬운 점 1~4개, 각각 ideas에 올해 개선 방향 2~3개(실행할 수 있는 짧은 문장)\n'
     + '- numbers: 결과에 나온 수치 변화(없으면 빈 배열). 결과에 없는 숫자는 지어내지 않음\n\n'
     + '답은 JSON 하나만: {"good":["…"],"bad":[{"text":"…","ideas":["…","…"]}],"numbers":["…"]}';
@@ -459,13 +460,15 @@ async function addFiles(target, files) {
     reading[id] = `「${f.name}」 읽는 중…`;
     if (here()) renderMain();
     try {
-      const text = await readText(f);
+      // 작년 결과(만족도 설문 CSV 등): 학생 이름·연락처 열과 명단·전화번호 줄은 빼고 넣음(저장하지도 AI로 보내지도 않음)
+      const r = target === 'lastResult' ? await readStripped(f) : null, text = r ? r.text : await readText(f);
       const add = p => {
         const prev = p.sources[target].trim();
         p.sources[target] = cap((prev ? prev + '\n\n' : '') + `(파일 「${f.name}」)\n${text}`);
         p.sourceNames[target] = [...p.sourceNames[target], f.name];
       };
       if (plan.id === id) { add(plan); persist(); } else apply(id, add);
+      if (r && (r.cols.length || r.dropped || r.masked)) toast(personalMsg(r), 7000);
     } catch (e) { toast(fileMessage(e && e.code), 5000); }
   }
   delete reading[id];
@@ -505,6 +508,12 @@ document.addEventListener('change', e => {
   const el = e.target;
   if (el.dataset.date != null) { setSchedule(+el.dataset.date, { date: el.value }); refreshDays(+el.dataset.date); return; }
   if (el.id === 'ypFile') { const t = el.dataset.target; const files = [...el.files]; el.value = ''; if (t && files.length) addFiles(t, files); return; }
+  // 붙여 넣은 작년 결과: 칸을 벗어나면 개인정보 열·명단·전화번호 줄은 빼고 이름은 가림
+  if (el.dataset.src === 'lastResult') {
+    const r = stripPersonal(el.value);
+    if (r.cols.length || r.dropped || r.masked) { el.value = r.text; plan.sources.lastResult = r.text; persist(); toast(personalMsg(r), 7000); }
+    return;
+  }
   if (el.dataset.idea != null && plan.review) {
     const set = new Set(plan.review.picked);
     if (el.checked) set.add(el.dataset.idea); else set.delete(el.dataset.idea);

@@ -1,32 +1,37 @@
 /* 학급: 학교에서 받은 진도표(교과·창체 연간지도계획)와 학년별 기초시간표를 글에서 읽기 (AI 없음, 화면 없음).
    글은 core/files.js의 readText가 한글 표를 「칸 | 칸」 줄로 바꾼 것. 합친 칸 때문에 줄마다 칸 수가 다름 */
 
-import { schoolYearOf } from '../../core/calendar.js';
+import { schoolYearOf, yearOfMonth } from '../../core/calendar.js';
 export { schoolYearOf };
 
 export const normName = s => String(s == null ? '' : s).replace(/\s+/g, '');
 
-const PERIOD = /^(\d{1,2})\.(\d{1,2})\.?\s*~\s*\d{1,2}\.\d{1,2}\.?$/;
+const PERIOD = /^(\d{1,2})\.(\d{1,2})\.?\s*~\s*(\d{1,2})\.\d{1,2}\.?$/;
 const LESSON_NO = /^\d+\s*\/\s*\d+$/;
 const SUB_AREA = /^(자율.?자치활동|동아리활동|진로활동)$/;
 const pad = n => String(n).padStart(2, '0');
 
-/* 「8.24~8.29」의 첫날. 1~2월은 학년도 다음 해 */
+/* 「8.24~8.29」의 첫날. 1~2월은 학년도 다음 해, 다만 2월에 시작해 3월 넘어 끝나는 주(일~토로 적은 학년도 첫 주 「2.28~3.6」)는 그 학년도 */
 export function periodStart(period, year) {
   const m = PERIOD.exec(String(period || '').trim());
   if (!m) return '';
-  const mon = +m[1], day = +m[2];
+  const mon = +m[1], day = +m[2], end = +m[3];
   if (mon < 1 || mon > 12 || day < 1 || day > 31) return '';
-  return `${mon <= 2 ? year + 1 : year}-${pad(mon)}-${pad(day)}`;
+  return `${mon <= 2 && end >= 3 ? year : yearOfMonth(mon, year)}-${pad(mon)}-${pad(day)}`;
+}
+/* 저장된 차시(기간·첫날)의 학년도: 그 기간을 그 학년도로 읽으면 같은 첫날이 나오는 해 */
+export function lessonYear(l) {
+  const y = +String(l && l.from).slice(0, 4);
+  return [y, y - 1].find(x => periodStart(l.period, x) === l.from) || schoolYearOf(l.from);
 }
 
 const cells = line => line.split(/\s*\|\s*/).map(c => c.trim());
 
-/* 진도표 글 → 교과마다 차시 목록. 한 줄 = 1시간 */
-export function parseJindo(text, { today } = {}) {
+/* 진도표 글 → 교과마다 차시 목록. 한 줄 = 1시간. 글에 학년도가 없으면 year(지금 자료의 학년도), 그것도 없으면 오늘이 든 학년도 */
+export function parseJindo(text, { today, year: dataYear } = {}) {
   const src = String(text || '');
   const ym = /(\d{4})\s*학년도/.exec(src);
-  const year = ym ? +ym[1] : schoolYearOf(today);
+  const year = ym ? +ym[1] : Number.isInteger(dataYear) ? dataYear : schoolYearOf(today);
   const subjects = [];
   let cur = null, week = null, period = '', unit = '';
   for (const raw of src.split(/\r?\n/)) {

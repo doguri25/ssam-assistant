@@ -8,7 +8,7 @@ import { onFlush, get, set } from '../../core/store.js';
 import { forms } from '../../core/form-store.js';
 import { readForm, fillForm, rolesValid } from '../../core/hwpx-form.js';
 import { docToLetter } from '../../core/body-table.js';
-import { getSchool } from '../../core/settings.js';
+import { currentYear } from '../../core/years.js';
 import { readText, fileMessage } from '../../core/files.js';
 import { aiRowHTML } from '../../core/ai-roles.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
@@ -28,7 +28,7 @@ let box = null, cur = null, curTab = '';
 
 const blank = () => ({ id: newReportId(), sources: [], memo: '', r: null, letter: { title: '', body: '' }, letterEdited: false, captions: [] });
 const c = () => (cur || (cur = getCurrent() || blank()));
-const year = () => +getSchool().year || new Date().getFullYear(); // 학년도
+const year = () => currentYear(); // 지금 자료의 학년도(설정 › 학년도). 계획 학년도(학교 정보, 10월부터 다음 해)가 아님
 /* 최근 결과 보고에 넣기는 칸·메모를 고칠 때마다 하지 않고 잠깐 뒤에 한 번(다른 보고로 옮기거나 앱을 닫을 때는 바로) */
 let pushT = null, pushX = null;
 function flushPush() {

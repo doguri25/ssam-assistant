@@ -193,7 +193,7 @@ test('새 학년도에 학급 준비도 가져가기(고르면): 명단·학급 
   assert.deepEqual(JSON.parse(c['class:info']), { grade: 4, room: 2 });
   assert.ok(c['class:timetable']);
   const sub = JSON.parse(c['class:subjects'])[0];
-  assert.equal(sub.offset, 0); assert.equal(sub.start, ''); assert.equal(sub.lessons.length, 1);
+  assert.equal(sub.offset, 0); assert.equal(sub.start, '2027-03-02'); assert.equal(sub.lessons.length, 1); // 시작일은 새 학년도 첫 수업일(years-carry-start-1)
   assert.ok(!('class:log' in c) && !Object.keys(c).some(k => k.startsWith('class:weekly:')));
 });
 

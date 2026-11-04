@@ -13,7 +13,7 @@ import { openPurchase } from '../purchase/purchase.js';
 import { stepsHTML } from '../../core/steps.js';
 import { rvBoxHTML, runPlanReview, onRvClick, markDone, dropOpen, hasOpen, clearState } from './plan-review.js';
 import { listEvents as listCalendar, setEvents, removeEvents, dayIssues, suggestDates, weekday, isDate } from '../../core/calendar.js';
-import { summarize, formText } from '../../core/survey.js';
+import { summarize, formText, stripPersonal, readStripped, personalMsg } from '../../core/survey.js';
 import { qrPng } from '../../core/qr.js';
 import { readTable } from '../../core/sheet.js';
 import { listPlans, planText } from './year-model.js';
@@ -529,7 +529,7 @@ function optionsPrompt(e) {
     + `종류: ${kindName(e.kind)}\n행사명: ${e.name}\n목적: ${e.purpose || '(없음)'}\n대상: ${e.grades}\n날짜: ${e.date}\n장소: ${e.place} (${e.outdoor ? '야외' : '실내'})\n예산: ${e.budget || '(정하지 않음)'}\n`
     + `학교: ${s.name || '(학교명 없음)'}, 학급 ${s.classes || '-'}개, 학생 ${s.students || '-'}명\n`
     + (e.staff.length ? `참여 교직원 ${e.staff.length}명\n` : '')
-    + (hasLast ? `\n작년 설문 결과:\n"""\n${e.lastSurvey.slice(0, 8000)}\n"""\n` : '')
+    + (hasLast ? `\n작년 설문 결과:\n"""\n${stripPersonal(e.lastSurvey).text.slice(0, 8000)}\n"""\n` : '')
     + refsPart(e)
     + '\n규칙:\n'
     + (hasLast ? '- 첫 안은 label "보완안": 작년 설문의 아쉬운 점을 고친 안. 나머지는 label "새로운 안": 새 활동을 넣은 안\n' : '- 작년 자료가 없으니 보완안은 만들지 마세요. 모두 label "새로운 안"\n')
@@ -623,6 +623,10 @@ document.addEventListener('change', e => {
     unconfirm();
     persist();
     const b = box.querySelector('#evDateBox'); if (b) b.innerHTML = dateWarnHTML();
+  } else if (el.id === 'evLast') {
+    // 붙여 넣은 작년 설문 결과: 칸을 벗어나면 개인정보 열·명단·전화번호 줄은 빼고 이름은 가림
+    const r = stripPersonal(el.value);
+    if (r.cols.length || r.dropped || r.masked) { el.value = r.text; ev.lastSurvey = r.text; persist(); toast(personalMsg(r), 7000); }
   } else if (el.id === 'evCsv') {
     const f = el.files[0]; el.value = '';
     if (f) addCsv(f);
@@ -647,9 +651,11 @@ document.addEventListener('change', e => {
     (async () => {
       for (const f of files) {
         try {
-          const t = await readText(f);
+          // 구글 폼 CSV 등: 학생 이름·연락처 열과 명단·전화번호 줄은 빼고 넣음(저장하지도 AI로 보내지도 않음)
+          const r = await readStripped(f), t = r.text;
           const add = x => { x.lastSurvey = cap((x.lastSurvey.trim() ? x.lastSurvey.trim() + '\n\n' : '') + `(파일 「${f.name}」)\n${t}`); };
           if (ev.id === id) { add(ev); persist(); } else apply(id, add);
+          if (r.cols.length || r.dropped || r.masked) toast(personalMsg(r), 7000);
         } catch (err) { toast(fileMessage(err && err.code), 5000); }
       }
       if (visible() && ev.id === id && ev.step === 1) renderMain();
