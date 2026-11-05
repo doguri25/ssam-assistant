@@ -1,4 +1,4 @@
-// 쪽지 저장: 보내는 사람(학년도와 상관없이), 지금 쪽지, 최근 쪽지 20개(같은 쪽지는 그 자리, 붙임은 이름만)
+// 쪽지 저장: 보내는 사람(학년도와 상관없이), 지금 쪽지, 최근 쪽지 5개(같은 쪽지는 그 자리, 붙임은 이름만)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as store from '../../web/core/store.js';
@@ -28,15 +28,15 @@ test('지금 쪽지: 망가진 값이면 null, 붙임은 이름·체크만', () 
   assert.equal(getDraft(), null);
 });
 
-test('최근 쪽지 20개: 늦은 것 먼저, 같은 id는 그 자리, 21개면 가장 오래된 것을 버림', () => {
+test('최근 쪽지 5개: 늦은 것 먼저, 같은 id는 그 자리, 넘치면 가장 오래된 것을 버림', () => {
   for (let i = 0; i < 21; i++) pushMessage({ id: 'k' + i, at: 1000 + i, title: '쪽지 ' + i, kind: 'etc', m: {}, len: 'base', attachNames: ['붙임 ' + i] });
   let l = listMessages();
-  assert.equal(l.length, 20);
+  assert.equal(l.length, 5);
   assert.equal(l[0].id, 'k20');
   assert.ok(!l.some(x => x.id === 'k0'));
   pushMessage({ id: 'k5', at: 5000, title: '고침', kind: 'etc', m: {}, len: 'base', attachNames: [] });
   l = listMessages();
-  assert.equal(l.length, 20);
+  assert.equal(l.length, 5);
   assert.equal(l[0].id, 'k5');
   assert.equal(l.filter(x => x.id === 'k5').length, 1);
   assert.ok(newMessageId() !== newMessageId());

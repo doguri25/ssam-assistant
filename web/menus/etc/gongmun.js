@@ -27,7 +27,7 @@ let box = null;
 /* ---------- 넣기 → AI ---------- */
 async function readDoc(id) {
   const d0 = getDoc(id);
-  if (!d0 || !d0.text.trim()) return;
+  if (!d0 || !d0.text.trim() || S.reading.has(id)) return; // 읽는 중이면 AI를 또 부르지 않음
   if (!ai.ready()) { toast('AI 키가 없어 제목·글만 넣었어요. 기한·할 일은 직접 적어 주세요(설정 › AI).', 6000); return; }
   S.reading.add(id); refresh();
   try {
@@ -104,7 +104,7 @@ function docHTML(d, t) {
       ${x.due ? `<span class="muted">${esc(ddayText(dday(x.due, t)))}</span>` : ''}<button class="icon-btn tiny" type="button" data-gm-tdel="${i}" aria-label="할 일 빼기">✕</button></li>`).join('')}</ul>
     <div class="row gm-add"><input class="field" data-gm-tadd value="${esc(S.tadd[d.id] || '')}" placeholder="할 일 더하기(Enter)" aria-label="할 일 더하기" autocomplete="off"></div>
     <div class="row gm-go">${KINDS.map(([k, l]) => `<button class="btn${d.kinds.includes(k) ? ' primary' : ''}" type="button" data-gm-go="${k}">${l}</button>`).join('')}
-      <span class="grow"></span>${d.read || reading ? '' : '<button class="btn text" type="button" data-gm-read>AI로 읽기</button>'}
+      <span class="grow"></span>${d.read || reading || !d.text.trim() ? '' : '<button class="btn text" type="button" data-gm-read>AI로 읽기</button>'}
       <button class="btn text" type="button" data-gm-done>${d.done ? '다시 열기' : '다 했어요'}</button><button class="btn text" type="button" data-gm-del>지우기</button></div></li>`;
 }
 const pickHTML = () => (S.adding ? '<span class="spin"></span>읽는 중…' : '파일 고르기');
@@ -125,14 +125,14 @@ export function render() {
       <div class="row"><button class="btn primary" type="button" data-gm="paste">넣기</button></div></section>
     <section class="pc-card" id="gmLists">${listHTML()}</section></div>`;
 }
-/* AI 읽기·파일 넣기 앞뒤: 넣기 칸은 두고 단추와 목록만 고침. 공문 칸(할 일·기한)에 초점이 있으면 그 공문은 두고 다른 공문만 고치고,
-   그 칸을 떠날 때 차례를 맞춤(쓰던 글·한글 조합이 끊기지 않게) */
+/* AI 읽기·파일 넣기 앞뒤: 넣기 칸은 두고 단추와 목록만 고침. 공문의 글 칸(할 일·기한)에 초점이 있으면 그 공문은 두고 다른 공문만 고치고,
+   그 칸을 떠날 때 차례를 맞춤(쓰던 글·한글 조합이 끊기지 않게). 단추·체크에 든 초점은 다시 그림([AI로 읽기]를 누르면 읽는 중 표시) */
 function refresh() {
   if (!box || box.hidden) return;
   const pk = box.querySelector('[data-gm="pick"]'), el = box.querySelector('#gmLists');
   if (!pk || !el) { render(); return; }
   pk.innerHTML = pickHTML();
-  const a = document.activeElement, li = a && el.contains(a) ? a.closest('[data-gm-id]') : null;
+  const a = document.activeElement, li = a && el.contains(a) && a.matches('input:not([type=checkbox]), textarea, select') ? a.closest('[data-gm-id]') : null;
   if (!li) { S.listDirty = false; el.innerHTML = listHTML(); return; }
   const t = today(), shown = new Set();
   el.querySelectorAll('[data-gm-id]').forEach(x => {

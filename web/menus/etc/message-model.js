@@ -1,7 +1,8 @@
-/* 쪽지 저장 (스펙 2026-11-02 4.4·4.6): 보내는 사람(GLOBAL), 지금 쓰는 쪽지·최근 쪽지 20개(학년도 자료). 붙임 파일은 저장하지 않고 이름만 */
+/* 쪽지 저장 (스펙 2026-11-02 4.4·4.6): 보내는 사람(GLOBAL), 지금 쓰는 쪽지·최근 쪽지 5개(학년도 자료). 붙임 파일은 저장하지 않고 이름만 */
 import { get, set } from '../../core/store.js';
 
 const SENDER = 'msg:sender', DRAFT = 'msg:draft', LIST = 'msg:list';
+export const MAX_MESSAGES = 5; // 최근 쪽지(예전 판은 20개)
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const LENS = ['short', 'base', 'long'];
 const TOUCH = ['title', 'date', 'time', 'place', 'target', 'due', 'how', 'bring', 'notes']; // 선생님이 고친 칸(다시 읽어도 그대로)
@@ -33,10 +34,16 @@ const normItem = x => {
   return { id: x.id, at: Number(x.at) || 0, title: String(x.title || ''), kind: String(x.kind || 'etc'), m: x.m, len: LENS.includes(x.len) ? x.len : 'base',
     attach, attachNames: attach.map(a => a.name), body: String(x.body || '').slice(0, 6000), edited: !!x.edited, again: !!x.again };
 };
-export const listMessages = () => { const v = get(LIST, []); return (Array.isArray(v) ? v : []).map(normItem).filter(Boolean).sort((a, b) => b.at - a.at); };
-/* 같은 id는 그 자리를 고쳐 맨 앞으로, 20개까지 */
+export function listMessages() {
+  const v = get(LIST, []), l = (Array.isArray(v) ? v : []).map(normItem).filter(Boolean).sort((a, b) => b.at - a.at).slice(0, MAX_MESSAGES);
+  if (Array.isArray(v) && v.length > MAX_MESSAGES) set(LIST, l); // 예전 판이 20개까지 저장한 목록은 늦은 5개로 줄여 저장
+  return l;
+}
+/* 같은 id는 그 자리를 고쳐 맨 앞으로, 5개까지 */
 export function pushMessage(x) {
   const e = normItem({ at: Date.now(), ...x });
   if (!e) return false;
-  return set(LIST, [e, ...listMessages().filter(y => y.id !== e.id)].sort((a, b) => b.at - a.at).slice(0, 20));
+  return set(LIST, [e, ...listMessages().filter(y => y.id !== e.id)].sort((a, b) => b.at - a.at).slice(0, MAX_MESSAGES));
 }
+/* 최근 쪽지에서 지우기([삭제]). 붙임 파일(다운로드 폴더)은 건드리지 않음 */
+export const removeMessage = id => set(LIST, listMessages().filter(y => y.id !== id));

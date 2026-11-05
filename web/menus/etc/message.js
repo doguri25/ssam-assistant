@@ -10,7 +10,7 @@ import { aiRowHTML } from '../../core/ai-roles.js';
 import { schoolYearOf } from '../../core/calendar.js';
 import { cleanSheet } from '../evaluate/activity/activity-read.js';
 import { KINDS, messagePrompt, normMessage, composeMessage, keepFields, moveStart } from './message-ai.js';
-import { getSender, setSender, getDraft, saveDraft, clearDraft, listMessages, pushMessage, newMessageId } from './message-model.js';
+import { getSender, setSender, getDraft, saveDraft, clearDraft, listMessages, pushMessage, removeMessage, newMessageId, MAX_MESSAGES } from './message-model.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SS = () => window.SSAM || {};
@@ -20,6 +20,7 @@ const LENS = [['short', '짧게'], ['base', '기본'], ['long', '자세히']];
 /* 화면 상태: files(넣은 파일, 붙임 후보 — 저장 안 함, attach와 같은 차례), busy, msg */
 export const M = { files: [], busy: false, msg: '', paste: '' }; // paste: 붙여 넣은 글([새 쪽지]까지 남음)
 let box = null, d = null;
+const gone = new Set(); // 최근 쪽지에서 [삭제]한 쪽지 id(읽던 AI가 끝나도 다시 넣지 않게)
 
 const blankDraft = () => ({ id: newMessageId(), m: normMessage(null), len: 'base', attach: [], edited: false, body: '', title: '', again: false, touched: [] });
 const cur = () => (d || (d = getDraft() || blankDraft()));
@@ -32,7 +33,7 @@ function compose(force = false, x = cur()) {
 }
 function persist(x = cur()) {
   if (x === cur()) saveDraft(x);
-  if (hasContent(x)) pushMessage({ id: x.id, title: x.title, kind: x.m.kind, m: x.m, len: x.len, attach: x.attach.map(a => ({ name: a.name, on: a.on })), body: x.body, edited: x.edited, again: !!x.again });
+  if (hasContent(x) && !gone.has(x.id)) pushMessage({ id: x.id, title: x.title, kind: x.m.kind, m: x.m, len: x.len, attach: x.attach.map(a => ({ name: a.name, on: a.on })), body: x.body, edited: x.edited, again: !!x.again });
 }
 
 /* ---------- 붙임 파일 (Windows 앱): 다운로드 폴더에 모아 클립보드 파일 복사·끌어 놓기·경로 복사·폴더 열기
@@ -122,8 +123,8 @@ const attachHTML = x => (x.attach.length ? `<ul class="msg-attach" id="msgAttach
 const recentHTML = () => {
   const l = listMessages();
   return l.length ? `<ul class="pc-lib-list" id="msgRecent">${l.map(r => `<li class="pc-lib-row"><div class="grow"><b>${esc(r.title || '제목 없는 쪽지')}</b><span class="muted">${new Date(r.at).toLocaleDateString('ko-KR')} · 붙임 ${r.attach.filter(a => a.on).length}개</span></div>
-    <span class="row"><button class="btn text" type="button" data-msg-open="${esc(r.id)}">열기</button><button class="btn text" type="button" data-msg-again="${esc(r.id)}">다시 안내</button></span></li>`).join('')}</ul>`
-    : '<p class="muted" id="msgRecent" style="margin:0">쓴 쪽지가 최근 20개까지 남아요.</p>';
+    <span class="row"><button class="btn text" type="button" data-msg-open="${esc(r.id)}">열기</button><button class="btn text" type="button" data-msg-again="${esc(r.id)}">다시 안내</button><button class="btn text" type="button" data-msg-del="${esc(r.id)}">삭제</button></span></li>`).join('')}</ul>`
+    : `<p class="muted" id="msgRecent" style="margin:0">쓴 쪽지가 최근 ${MAX_MESSAGES}개까지 남아요.</p>`;
 };
 export function render() {
   if (!box || box.hidden) return;
@@ -155,16 +156,17 @@ export function render() {
     <section class="pc-card"><h3>최근 쪽지</h3>${recentHTML()}</section></div>`;
   document.dispatchEvent(new CustomEvent('ssam:message-render', { detail: { box } }));
 }
-/* 본문·제목만 다시 넣기(입력 칸에 초점이 있어도 그 칸은 덮지 않음) */
+/* 본문·제목만 다시 넣기(본문 칸에 초점이 있어도 손으로 고치기 전이면 덮음 — 눌러 두기만 한 칸이 빈 채로 남지 않게) */
 function refreshOut() {
   if (!box) return;
   const x = cur(), b = box.querySelector('#msgBody'), rs = box.querySelector('#msgResync'), at = box.querySelector('#msgAttach');
-  if (b && document.activeElement !== b) b.value = x.body;
+  if (b && (document.activeElement !== b || !x.edited)) b.value = x.body;
   if (rs) rs.innerHTML = x.edited ? '<p class="muted pc-resync">본문을 고쳤어요 <button class="btn text tiny" type="button" data-msg="resync">칸으로 다시 맞추기</button></p>' : '';
   if (at && !at.contains(document.activeElement)) at.outerHTML = attachHTML(x);
 }
 
-/* AI 읽기 앞뒤(값이 바뀜): 쓰는 칸이 있으면 다시 그리지 않고 단추·칸 값·본문·최근 쪽지만 고침. 초점이 든 칸은 덮지 않음(한글 입력이 끊기지 않게) */
+/* AI 읽기 앞뒤(값이 바뀜): 쓰는 칸이 있으면 다시 그리지 않고 단추·칸 값·본문·최근 쪽지만 고침. 초점이 든 칸은 선생님이 고친 칸이면 덮지 않음(한글 입력이 끊기지 않게),
+   눌러 두기만 한 칸은 AI 값으로 */
 function live() {
   if (!box || box.hidden) return;
   const a = document.activeElement, rb = box.querySelector('[data-msg="read"]');
@@ -174,7 +176,7 @@ function live() {
   const st = box.querySelector('#msgState'); if (st) st.textContent = M.msg;
   const fs = box.querySelector('#msgFields');
   if (fs && !fs.contains(a)) fs.outerHTML = fieldsHTML(x.m);
-  else if (fs) { const v = fieldVals(x.m); fs.querySelectorAll('[data-mf]').forEach(el => { if (el !== a) el.value = v[el.dataset.mf] || ''; }); }
+  else if (fs) { const v = fieldVals(x.m), t = x.touched || []; fs.querySelectorAll('[data-mf]').forEach(el => { if (el !== a || !t.includes(el.dataset.mf === 'end' ? 'date' : el.dataset.mf)) el.value = v[el.dataset.mf] || ''; }); }
   box.querySelectorAll('[data-len]').forEach(b => b.setAttribute('aria-pressed', String(x.len === b.dataset.len)));
   const pa = box.querySelector('#msgPaste'); if (pa && pa !== a) pa.value = M.paste;
   const se = box.querySelector('#msgSender'); if (se && se !== a) se.value = getSender();
@@ -223,7 +225,7 @@ export async function readAll() {
     x.again = false;
     compose(false, x); persist(x);
     // 기다리는 동안 다른 쪽지로 옮겼으면 그 쪽지는 건드리지 않고, 쓴 쪽지는 최근 쪽지에 넣음(가정통신문과 같게)
-    if (!here()) { if (hasContent(x)) toast(`「${x.title}」 쪽지를 다 써서 최근 쪽지에 넣었어요.`, 5000); live(); return; }
+    if (!here()) { if (hasContent(x) && !gone.has(x.id)) toast(`「${x.title}」 쪽지를 다 써서 최근 쪽지에 넣었어요.`, 5000); live(); return; }
     M.busy = false; M.msg = '';
     const kept = touched.length || x.edited ? ` · 고치신 ${[touched.length ? '칸' : '', x.edited ? '본문' : ''].filter(Boolean).join('·')}은 그대로 두었어요` : '';
     const cut = [c.lines ? `명단·전화번호가 적힌 줄 ${c.lines}곳은 뺐어요` : '', c.names ? `이름 ${c.names}개는 가렸어요` : ''].filter(Boolean).join(' · ');
@@ -258,6 +260,16 @@ document.addEventListener('click', e => {
     // 손으로 고친 본문은 묻고 다시 맞춤(취소하면 고친 본문·길이 그대로)
     if (x.edited && !confirm(`손으로 고친 본문이 없어지고 「${ln.textContent}」 쪽지로 다시 맞춰요. 바꿀까요?`)) return;
     x.len = ln.dataset.len; compose(true); persist(); render(); return;
+  }
+  // [삭제]: 묻고 최근 쪽지에서 지움. 지금 쓰는 쪽지면 [새 쪽지]처럼 비움(남겨 두면 고칠 때 다시 목록에 들어가서). 붙임 파일은 그대로
+  const del = e.target.closest('[data-msg-del]');
+  if (del) {
+    const r = listMessages().find(y => y.id === del.dataset.msgDel);
+    if (!r || !confirm(`「${r.title || '제목 없는 쪽지'}」 쪽지를 지울까요?`)) return;
+    gone.add(r.id); removeMessage(r.id);
+    if (r.id === x.id) { switchDraft(blankDraft()); M.files = []; M.paste = ''; clearDraft(); render(); return; }
+    const rc = box.querySelector('#msgRecent'); if (rc) rc.outerHTML = recentHTML();
+    return;
   }
   const op = e.target.closest('[data-msg-open],[data-msg-again]');
   if (op) {
