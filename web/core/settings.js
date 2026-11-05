@@ -6,9 +6,10 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const LIMIT_DEFAULT = 20000000;
 const int0 = v => Math.max(0, Math.floor(Number(v) || 0));
 
-/* 학년도: 9월까지는 올해, 10월부터는 다음 해를 계획하는 때로 봄 */
+/* 계획 학년도 기본값: 12월까지는 올해 학년도, 1월부터는 3월에 시작할 다음 학년도(다음 해 계획은 보통 1월부터 세움).
+   학년도는 3월에 시작하므로 결국 달력의 해와 같음 */
 export function defaultYear(now = new Date()) {
-  return now.getMonth() >= 9 ? now.getFullYear() + 1 : now.getFullYear();
+  return now.getFullYear();
 }
 
 function cleanBreaks(list) {
@@ -26,7 +27,7 @@ function dataYear(now) {
 
 /* 계획 학년도: 선생님이 고른 해(yearSet)는 그대로, 없으면 defaultYear.
    예전에는 학교 정보를 저장할 때 화면의 자동값이 그대로 저장됨(yearSet 없음). 그 값이 지금 자료 학년도 이후인데
-   자동값보다 앞서면(10월이 지나 지난 해가 됨) 자동값을 따름. 자료 학년도보다 앞선 해는 일부러 고른 것으로 보고 둠 */
+   자동값보다 앞서면(1월이 지나 지난 해가 됨) 자동값을 따름. 자료 학년도보다 앞선 해는 일부러 고른 것으로 보고 둠 */
 function planYear(v, now) {
   const auto = defaultYear(now);
   if (!Number.isInteger(v.year)) return auto;

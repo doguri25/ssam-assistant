@@ -22,15 +22,18 @@ test('음수·숫자가 아닌 기준 금액은 거절하고 값은 그대로', 
   assert.equal(getPurchaseLimit(), 30000000);
 });
 
-test('학년도 기본값: 9월까지는 올해, 10월부터는 다음 해', () => {
-  assert.equal(defaultYear(new Date(2026, 8, 30)), 2026);
-  assert.equal(defaultYear(new Date(2026, 9, 1)), 2027);
+test('계획 학년도 기본값: 12월까지는 올해 학년도, 1월부터는 3월에 시작할 다음 학년도(다음 해 계획은 보통 1월부터 세움)', () => {
+  assert.equal(defaultYear(new Date(2026, 2, 2)), 2026);
+  assert.equal(defaultYear(new Date(2026, 9, 1)), 2026);
+  assert.equal(defaultYear(new Date(2026, 11, 31)), 2026);
+  assert.equal(defaultYear(new Date(2027, 0, 1)), 2027);
+  assert.equal(defaultYear(new Date(2027, 1, 28)), 2027);
 });
 
 test('학교 정보 기본값', () => {
   useStorage(fake());
-  const s = getSchool(new Date(2026, 9, 29));
-  assert.deepEqual(s, { name: '', year: 2027, classes: 0, students: 0, breaks: [] });
+  assert.deepEqual(getSchool(new Date(2026, 9, 29)), { name: '', year: 2026, classes: 0, students: 0, breaks: [] });
+  assert.deepEqual(getSchool(new Date(2027, 0, 5)), { name: '', year: 2027, classes: 0, students: 0, breaks: [] });
 });
 
 test('방학 목록에서 시작일이 끝일보다 늦거나 날짜 모양이 아닌 항목은 버림', () => {

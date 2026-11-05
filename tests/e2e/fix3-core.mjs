@@ -1,5 +1,5 @@
 // 3차 고치기(공통·설정): 학교 정보를 저장해도 「계획 학년도」가 그해로 굳지 않음.
-// 손대지 않은 계획 학년도는 저장하지 않고(10월부터 다음 학년도), 선생님이 바꾼 해는 지킴. 예전에 굳은 값은 10월부터 다음 학년도로 봄
+// 손대지 않은 계획 학년도는 저장하지 않고(1월부터 다음 학년도), 선생님이 바꾼 해는 지킴. 예전에 굳은 값은 1월부터 다음 학년도로 봄
 import { open, run, assert } from './helpers.mjs';
 
 const t = await open();
@@ -24,7 +24,7 @@ const newYearPlan = async () => { await tab('plan', 'year'); await page.click(`$
 const newClassPlan = async () => { await tab('plan', 'class'); await page.click(`${P} [data-c="new"]`); return page.inputValue(`${P} #cpYear`); };
 
 await run('fix3-core', [
-  ['[core3-1] 5월에 학교명·방학만 넣고 저장(계획 학년도는 손대지 않음) → 학년도는 저장하지 않고, 11월에는 칸·새 연간계획·새 학급운영계획이 모두 2027', async () => {
+  ['[core3-1] 5월에 학교명·방학만 넣고 저장(계획 학년도는 손대지 않음) → 학년도는 저장하지 않고, 1월에는 칸·새 연간계획·새 학급운영계획이 모두 2027', async () => {
     await fresh('2026-05-10T09:00:00');
     await tab('settings', 'school');
     assert(await page.inputValue(`${S} #schYear`) === '2026', '5월 칸: ' + await page.inputValue(`${S} #schYear`));
@@ -40,15 +40,18 @@ await run('fix3-core', [
     assert(await page.inputValue(`${S} #schYear`) === '2026', '저장 뒤 칸: ' + await page.inputValue(`${S} #schYear`));
     await later('2026-11-05T09:00:00');
     await tab('settings', 'school');
-    assert(await page.inputValue(`${S} #schYear`) === '2027', '11월 칸: ' + await page.inputValue(`${S} #schYear`));
+    assert(await page.inputValue(`${S} #schYear`) === '2026', '11월 칸(12월까지는 올해): ' + await page.inputValue(`${S} #schYear`));
+    await later('2027-01-10T09:00:00');
+    await tab('settings', 'school');
+    assert(await page.inputValue(`${S} #schYear`) === '2027', '1월 칸: ' + await page.inputValue(`${S} #schYear`));
     assert(await page.inputValue(`${S} #schName`) === '가나초등학교', '학교명이 사라짐');
     assert(await newYearPlan() === '2027', '새 연간계획 학년도');
     assert(await newClassPlan() === '2027', '새 학급운영계획 학년도');
   }],
-  ['[settings-planyear-4] 고치기 전에 굳은 값(year 2026, 자료 2026학년도)이 있어도 11월에는 칸·새 연간계획이 2027이고, 손대지 않고 다시 저장해도 2027', async () => {
-    await fresh('2026-11-05T09:00:00', { 'ssam:years': JSON.stringify({ current: 2026 }), 'ssam:school': JSON.stringify({ name: '가나초', year: 2026, classes: 0, students: 0, breaks: [] }) });
+  ['[settings-planyear-4] 고치기 전에 굳은 값(year 2026, 자료 2026학년도)이 있어도 1월에는 칸·새 연간계획이 2027이고, 손대지 않고 다시 저장해도 2027', async () => {
+    await fresh('2027-01-10T09:00:00', { 'ssam:years': JSON.stringify({ current: 2026 }), 'ssam:school': JSON.stringify({ name: '가나초', year: 2026, classes: 0, students: 0, breaks: [] }) });
     await tab('settings', 'school');
-    assert(await page.inputValue(`${S} #schYear`) === '2027', '11월 칸: ' + await page.inputValue(`${S} #schYear`));
+    assert(await page.inputValue(`${S} #schYear`) === '2027', '1월 칸: ' + await page.inputValue(`${S} #schYear`));
     assert(await newYearPlan() === '2027', '새 연간계획 학년도');
     await tab('settings', 'school');
     await page.fill(`${S} #schClasses`, '12');
@@ -56,16 +59,16 @@ await run('fix3-core', [
     assert(await page.inputValue(`${S} #schYear`) === '2027', '저장 뒤 칸');
     const s = await stored();
     assert(s.classes === 12 && s.year !== 2027, '자동값이 저장됨: ' + JSON.stringify(s));
-    await later('2026-11-06T09:00:00');
+    await later('2027-01-11T09:00:00');
     assert(await newClassPlan() === '2027', '새 학급운영계획 학년도');
   }],
-  ['[core3-1] 선생님이 계획 학년도를 2026으로 바꿔 저장하면 11월에도 그대로, 방학을 더해 다시 저장해도 그대로, 자동값(2027)으로 되돌리면 저장값을 지움', async () => {
-    await fresh('2026-11-05T09:00:00');
+  ['[core3-1] 1월에 선생님이 계획 학년도를 2026으로 바꿔 저장하면 그대로, 방학을 더해 다시 저장해도 그대로, 자동값(2027)으로 되돌리면 저장값을 지움', async () => {
+    await fresh('2027-01-10T09:00:00');
     await tab('settings', 'school');
     await page.fill(`${S} #schYear`, '2026');
     await save();
     assert((await stored()).year === 2026, '고른 학년도가 저장되지 않음: ' + JSON.stringify(await stored()));
-    await later('2026-11-20T09:00:00');
+    await later('2027-01-20T09:00:00');
     await tab('settings', 'school');
     assert(await page.inputValue(`${S} #schYear`) === '2026', '다시 연 칸: ' + await page.inputValue(`${S} #schYear`));
     await page.click(`${S} [data-set="addBreak"]`);

@@ -150,7 +150,7 @@ export async function write() {
   if (!ai.ready()) { toast('설정 › AI에서 키를 넣어 주세요', 5000); return; }
   F.busy = true; render();
   try {
-    // 학년도: 오늘이 든 학년도(1·2월은 앞 해, 쪽지·공문 처리와 같게). 설정의 학년도는 10월부터 다음 해라 쓰지 않음
+    // 학년도: 오늘이 든 학년도(1·2월은 앞 해, 쪽지·공문 처리와 같게). 설정의 계획 학년도는 1월부터 다음 해라 쓰지 않음
     const year = schoolYearOf(today());
     const v = await ai.generateJSON(letterPrompt({ sources: x.sources, memo: cleanSheet(x.memo).text, sample: sampleOf(), today: today(), year }),
       { task: 'letter', valid: o => !!o && typeof o === 'object' && !Array.isArray(o) });

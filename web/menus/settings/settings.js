@@ -107,7 +107,7 @@ const VIEWS = {
           <label class="set-f"><span class="lab">학급 수</span><input class="field" id="schClasses" type="number" min="0" value="${s.classes || ''}"></label>
           <label class="set-f"><span class="lab">학생 수</span><input class="field" id="schStudents" type="number" min="0" value="${s.students || ''}"></label>
         </div>
-        <p class="muted" id="schYearNote" style="margin:0">계획 학년도는 연간계획을 세울 학년도예요. 10월부터는 다음 학년도로 잡혀요. 자료를 나누는 학년도는 설정 › 학년도에서 바꿔요.</p>`) +
+        <p class="muted" id="schYearNote" style="margin:0">계획 학년도는 연간계획을 세울 학년도예요. 1월부터는 3월에 시작할 다음 학년도로 잡혀요. 자료를 나누는 학년도는 설정 › 학년도에서 바꿔요.</p>`) +
       card('방학·재량휴업일', `<div class="break-list">${s.breaks.map((b, i) => `<div class="break-row">
           <input class="field" data-break="${i}" data-f="label" value="${esc(b.label)}" placeholder="예) 여름방학" aria-label="이름">
           <input class="field" type="date" data-break="${i}" data-f="from" value="${esc(b.from)}" aria-label="시작일">

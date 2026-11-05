@@ -204,7 +204,7 @@ await run('fix1105-etc', safe([
 ]));
 await t.close();
 
-// 가정통신문: 시계를 2026-11-05(설정의 학년도는 10월부터 다음 해 2027)로
+// 가정통신문: 시계를 2026-11-05로(설정의 계획 학년도와 상관없이 오늘이 든 학년도 2026)
 const t2 = await open();
 const pg = t2.page;
 await pg.clock.setFixedTime(new Date('2026-11-05T10:00:00'));

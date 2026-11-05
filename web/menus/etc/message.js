@@ -220,7 +220,7 @@ export async function readAll() {
     const v = await ai.generateJSON(messagePrompt(c.text, { nImages: images.length }), { images, task: 'message', valid: o => !!o && typeof o === 'object' && !Array.isArray(o) });
     // 선생님이 고친 칸은 그대로, 본문을 손으로 고쳤으면 본문도 그대로([칸으로 다시 맞추기])
     const touched = x.touched || [];
-    // 연도 없는 날: 오늘이 든 학년도(1·2월은 다음 해, 공문 처리와 같은 규칙). 설정의 학년도는 10월부터 다음 해라 쓰지 않음
+    // 연도 없는 날: 오늘이 든 학년도(1·2월은 다음 해, 공문 처리와 같은 규칙). 설정의 계획 학년도는 1월부터 다음 해라 쓰지 않음
     x.m = keepFields(normMessage(v, { year: schoolYearOf(today()), today: today() }), x.m, touched);
     x.again = false;
     compose(false, x); persist(x);
