@@ -216,7 +216,7 @@ await mockClaude(pg, async ({ prompt }) => {
   const n = AI.letter.length;
   return JSON.stringify({ title: `겨울방학 안내 ${n}`, greeting: ['안녕하십니까?'], intro: '겨울방학을 안내드립니다.', items: ['1. 방학: 12. 24.(목)'], closing: '감사합니다.',
     reply: { need: true, title: '방과후 신청서', fields: ['참가 여부: □ 참가 / □ 불참'], due: '12. 1.(화)까지' }, short: `방학 안내 ${n}`,
-    related: [{ no: '교무-123', date: '12-01', title: '방학 계획' }], target: '전 학년 보호자' });
+    related: [{ no: '교무-123', date: '10-28', title: '방학 계획' }], target: '전 학년 보호자' });
 });
 const lt = s => pg.waitForFunction(x => (document.querySelector('#toast') || {}).textContent?.includes(x), s);
 const notBusy = () => pg.waitForFunction(s => { const b = document.querySelector(`${s} [data-lf="write"]`); return b && !b.disabled; }, L, { timeout: 5000 });
@@ -234,7 +234,7 @@ await run('fix1105-etc-letter', safe([
     const p = AI.letter[AI.letter.length - 1];
     assert(p.includes('오늘: 2026-11-05, 학년도: 2026.'), p.split('\n')[1]);
     const sb = await pg.inputValue(`${L} #lfSendBody`);
-    assert(sb.includes('교무-123(2026. 12. 1.)') && !sb.includes('2027'), sb);
+    assert(sb.includes('교무-123(2026. 10. 28.)') && !sb.includes('2027'), sb);
   }],
   ['[letter-focus-1] AI가 쓰는 동안 「넣을 내용」에 이어 쓰면, 다 쓴 뒤에도 초점·친 글이 그대로(한글 조합 중이어도)', async () => {
     await pg.fill(`${L} #lfMemo`, '현장체험학습.');

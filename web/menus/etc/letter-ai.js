@@ -91,12 +91,12 @@ export function letterPrompt({ sources = [], memo = '', sample = '', today = '',
 }
 
 /* 관련 공문 날짜: 연도가 없으면 학년도로(1·2월은 다음 해, 쪽지·공문 처리의 schoolDate와 같게).
-   이미 받은 공문이라 오늘보다 60일 넘게 뒤면 한 해 앞(3월에 쓴 「02-20」은 지난 2월) */
+   이미 나온 공문이라 아직 오지 않은 날(오늘보다 사흘 넘게 뒤)이면 한 해 앞(1월에 쓴 「02-20」은 지난 2월), 한 해 앞에 없는 날(2. 29.)은 빈칸 */
 function relDate(v, year, today) {
   const s = String(v == null ? '' : v).trim(), iso = schoolDate(s, year);
   if (!iso || /^\d{4}/.test(s) || !/^\d{4}-\d{2}-\d{2}$/.test(today || '')) return iso;
-  const lim = new Date(`${today}T00:00:00Z`); lim.setUTCDate(lim.getUTCDate() + 60);
-  return iso > lim.toISOString().slice(0, 10) ? normDate(`${+iso.slice(0, 4) - 1}${iso.slice(4)}`) || iso : iso;
+  const lim = new Date(`${today}T00:00:00Z`); lim.setUTCDate(lim.getUTCDate() + 3);
+  return iso > lim.toISOString().slice(0, 10) ? normDate(`${+iso.slice(0, 4) - 1}${iso.slice(4)}`) : iso;
 }
 /* AI 답 → 가정통신문 칸. today: 오늘(관련 공문 날짜를 지난 날로 맞춤) */
 export function normLetter(v, { year, today = '' } = {}) {
