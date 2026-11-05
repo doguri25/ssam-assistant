@@ -82,15 +82,17 @@ async function handleBatch(files) {
   const info = new Map(ok.map(r => [r.file, classify({ name: r.file.name, text: r.text, scan: r.scan })]));
   const ctx = { texts: new Map(ok.map(r => [r.file, r.text || ''])) };
   const groups = groupFiles(ok.map(r => ({ file: r.file, kind: info.get(r.file).kind })));
-  for (const [i, g] of groups.entries()) await handleGroup(g, info.get(g.files[0]), i ? [] : notes, ctx);
+  // ask: 묶음에 이름 칸 하나로만 판단한 글 파일이 있으면 바로 실행이어도 물어봄
+  for (const [i, g] of groups.entries()) await handleGroup(g, { ...info.get(g.files[0]), ask: g.files.some(f => info.get(f).ask) }, i ? [] : notes, ctx);
 }
 
 async function handleGroup({ kind, files }, guess, notes, ctx) {
   const s = getInboxSettings();
   let pick = { kind, values: {} };
   const fields = await fieldsOf(kind, files, ctx);
-  // 바로 실행이어도 모자란 필수 값, 여럿 중 고를 것(ask: 어느 평가·계획·행사)이 있으면 카드
-  const direct = s.mode === 'direct' && kind !== 'unknown' && handlers[kind] && !notes.length && !fields.some(f => f.ask || (f.required && !String(f.value || '').trim()));
+  // 바로 실행이어도 모자란 필수 값, 여럿 중 고를 것(ask: 어느 평가·계획·행사), 판단이 약한 파일(guess.ask)이 있으면 카드
+  const direct = s.mode === 'direct' && kind !== 'unknown' && handlers[kind] && !notes.length && !guess.ask
+    && !fields.some(f => f.ask || (f.required && !String(f.value || '').trim()));
   if (direct) fields.forEach(f => { pick.values[f.key] = f.value == null ? '' : f.value; });
   else {
     await sheetIdle();

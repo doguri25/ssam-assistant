@@ -4,8 +4,10 @@ const DOUBLE = /^(남궁|황보|제갈|선우|독고)[가-힣]{2}$/;
 // 흔한 성씨 글자로 시작하는 세 글자 낱말 (이름으로 세지 않음)
 const COMMON = new Set(['이야기', '우리반', '우리말', '우리들', '도서관', '한국어', '국어과', '기본적', '문제점', '안전한', '공동체', '주제별', '방과후', '진로반', '고학년', '저학년', '중학년', '정리함', '조사표', '기초적', '문화재', '노래방', '한마음', '나눔터',
   '이해도', '성취도', '주도성', '정체성', '연락처', '주인공', '지킴이', '유형별', '연수회', '정보화', '기본권', '성취감', '안전성', '선생님', '어머니',
-  '전문성', '도덕성', '공공성', '우수성', '지속성', '연계성', '진정성', '성실성', '도우미']);
-const PHONE = /\(?0\d{1,2}\)?[-.\s)]{0,2}\d{3,4}[-.\s]?\d{4}/;
+  '전문성', '도덕성', '공공성', '우수성', '지속성', '연계성', '진정성', '성실성', '도우미',
+  '나머지', '장애인', '한부모', '나이스', '경계선', '전학온', '이주민', '조부모', '임원진', '구글폼', '최우수']);
+// 전화번호: 0으로 시작하는 국번(앞에 숫자가 붙지 않음) — 「1200000 1150000」「3000 4000 5000」 같은 금액·숫자 줄은 아님
+const PHONE = /(?<!\d)\(?0\d{1,2}\)?[-.\s)]{0,2}\d{3,4}[-.\s]?\d{4}/;
 
 /* 이름처럼 보이는 낱말: 2~4글자 한글, 흔한 성으로 시작 (설문 답 판단용) */
 export const looksLikeName = s => /^[가-힣]{2,4}$/.test(s) && SURNAME.has(s[0]);
@@ -40,6 +42,35 @@ const LABEL_WORD = new Set(['한글', '한자', '서명', '기입', '기재', '�
 const GROUP = /(?:학급|모둠|(?<![\d)]\s*)반|팀|동아리|모임|단체|학교|기관|업체|회사|상호|단원|활동|행사|프로그램|노래|작품|책|과목|교과|파일|폴더|꽃|나무|동물|식물|곤충)\s*$/;
 const labelOk = strong => (n, j) => (strong ? cellName(n) || (n.length === 2 && SURNAME.has(n[0]) && !LABEL_WORD.has(n))
   : cellName(n) && !/기$/.test(n)) && ((strong && !j) || !NOUN_END.test(n));
+/* 이름 뒤 「학생·어머니·보호자」(「김민수 학생은」「3월 12일 김민수 어머니와 상담」). 뒤는 조사·띄어쓰기만(「학생회·학생부」는 아님) */
+const AFTER = /(^|[^가-힣○])([가-힣]{3,4})(\s*)(학생|어머니|어머님|아버지|아버님|부모님|학부모|보호자)(?=$|[^가-힣]|[은는이가을를과와의에도께랑만한님])/g;
+/* 조사 없이 홀로 쓴 이름: 조사·꾸밈말로 끝나는 낱말(정수가·어려운·원하는·나아간·어려움·마지막)과 「~반·~생·~상·~기·~자」 낱말은 빼고.
+   「~은·~나·~인·~진·~준·~원」은 가운데가 이름에 흔한 글자일 때만(최하은·김유나·이서인·정우진·강민준 — 기준은·이거나·반장인·정해진·도와준·모둠원은 아님) */
+const plainOk = n => cellName(n) && !NOUN_END.test(n) && !/[이가는을를의에도만와과로한할된던운간친른막움님기상왕년자]$/.test(n)
+  && (n.length !== 3 || !/[은나인진준원]$/.test(n) || /[가나다도동리미민보서세소수승시아연영예우원유윤은재정주지채태하현혜효희]/.test(n[1]));
+/* 쉼표·가운뎃점으로 이은 목록의 한 항목: 이름 + 「(사정)」이나 「-맡은 일」, 다음 쉼표·줄 끝까지 */
+const ITEM = /(^|[\s:：]|[,，·、]\s*)(○○○|[가-힣]{3,4})(\s*(?:[(（][^)）\n]*[)）]|[-–]\s*[^,，·、\n]*))?\s*(?=[,，·、]|$)/g;
+// 맡은 일 목록 머리(「1인 1역:」「역할:」「당번:」)
+const DUTY = /(1인\s*1역|역할|당번)\s*[:：]/;
+/* 가린 이름에 이어진 이름(「관심 학생: ○○○(정서 불안), 최하은(교우 관계)」「회장 ○○○, 이서연」)과
+   맡은 일 목록의 「이름-맡은 일」(「1인 1역: 김민수-칠판 정리, 이서연-우유 배달」)을 가림. 「정답: 안중근-하얼빈, …」은 그대로 → [줄, 가린 수] */
+function maskList(line) {
+  const runs = [];
+  let end = -1;
+  for (const m of line.matchAll(ITEM)) {
+    if (m.index !== end) runs.push([]);
+    runs[runs.length - 1].push(m);
+    end = m.index + m[0].length;
+  }
+  const hits = [], duty = DUTY.test(line);
+  for (const run of runs) {
+    const tied = run.some(m => m[2] === MASK);
+    for (const m of run) if (m[2] !== MASK && plainOk(m[2]) && (tied || (duty && /^\s*[-–]/.test(m[3] || '')))) hits.push([m.index + m[1].length, m[2].length]);
+  }
+  let out = line;
+  for (const [at, len] of hits.reverse()) out = out.slice(0, at) + MASK + out.slice(at + len);
+  return [out, hits.length];
+}
 const CUE = new RegExp(`^(\\d{1,2}|남|여|남자|여자|${ROLE})$`), HEAD = /^(이름|성명|성 명|학생명|학생 이름)$/;
 const NUMBERED = /^(\s*\d{1,2}[.)]?\s+)([가-힣]{3})(?=\s|$)/;
 const numName = l => { const m = NUMBERED.exec(l); return !!m && cellName(m[2]); };
@@ -68,6 +99,12 @@ export function stripNames(text) {
     const r = nameJosa(w, labelOk(strong));
     return r ? (masked++, pre + MASK + r[1]) : m;
   });
+  // 이름 뒤 「학생·어머니」(「김민수 학생은」), 쉼표로 이은 둘째 이름부터(「관심 학생: ○○○(정서 불안), 최하은(교우 관계)」)
+  for (let i = 0; i < ls.length; i++) {
+    ls[i] = ls[i].replace(AFTER, (m, pre, n, sp, who) => (plainOk(n) ? (masked++, pre + MASK + sp + who) : m));
+    const [line, n] = maskList(ls[i]);
+    ls[i] = line; masked += n;
+  }
   // 표: 「이름」 머리 칸 아래, 또는 번호·남녀·직책 옆에 이름이 세 줄 이상 있는 칸
   for (let a = 0; a < ls.length;) {
     if (!ls[a].includes('|')) { a++; continue; }

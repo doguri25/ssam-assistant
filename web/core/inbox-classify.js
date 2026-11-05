@@ -41,7 +41,11 @@ const ACT_SIGNS = [
   ['활동 안내', /활동\s*[0-9①-⑩]|^\s*[◉※●▶■◆]\s*.*(?:봅시다|보세요|봐요)/m]
 ];
 
-/* { name, text, scan } → { kind, why, alts } */
+/* 어른 서류(견적서·강사 인적사항)의 칸 표시: 「성 명 : 홍길동」이 있어도 학생 답안이 아님.
+   문제 글의 낱말(「수요자와 공급자」「학급 대표자」「상호 존중」)은 아님 — 칸 머리(줄 첫머리·쌍점·표 칸)일 때만 */
+const ADULT_DOC = /견\s*적\s*서|사\s*업\s*자\s*(등\s*록\s*)?번\s*호|^\s*\|?\s*공\s*급\s*(받\s*는\s*)?자\s*(?:[:：|(（]|$)|상\s*호\s*[:：]|대\s*표\s*자\s*(성\s*명\s*)?[:：]|인\s*적\s*사\s*항|생\s*년\s*월\s*일\s*[:：]|주\s*민\s*등\s*록\s*번\s*호|계\s*좌\s*번\s*호|소\s*속\s*[:：]|직\s*[위급]\s*[:：]/m;
+
+/* { name, text, scan } → { kind, why, alts, ask? } — ask: 이름 칸 하나로만 학생 답안이라고 본 글 파일(바로 실행이어도 카드로 물어봄) */
 export function classify({ name = '', text = '', scan = false } = {}) {
   const n = String(name || '');
   if (scan) {
@@ -65,7 +69,9 @@ export function classify({ name = '', text = '', scan = false } = {}) {
   // — 문제지로 잘못 보면 학생 이름·답이 평가지 글로 저장되고 채점 AI로 감
   if (/답안|스캔|scan/i.test(n)) add('unit-scan', 12, '파일 이름에 「답안」이 있어요.');
   // 「이름: 교사용」은 학생 이름이 아님(활동지 교사용 쪽). 「대표자 성명:」「담임 성명:」처럼 어른 이름 칸도 아님(견적서·학급운영계획)
-  if (/(?<!(?:대표자?|담임|담당자?|교사|교장|교감|작성자|공급자|신청자|책임자|보호자|학부모|강사)\s*)(이\s*름|성\s*명)\s*[:：]\s*(?!교사용|학생용)[가-힣]{2,4}(?![가-힣])/.test(t)) add('unit-scan', 12, '이름이 적힌 학생 답안이에요.');
+  // 견적서(공급자·상호·사업자등록번호)·강사 인적사항처럼 어른 서류 표시가 있으면 따로 적은 「성 명 : 홍길동」도 학생 이름이 아님
+  const named = !ADULT_DOC.test(t) && /(?<!(?:대표자?|담임|담당자?|교사|교장|교감|작성자|공급자|신청자|책임자|보호자|학부모|강사)\s*)(이\s*름|성\s*명)\s*[:：]\s*(?!교사용|학생용)[가-힣]{2,4}(?![가-힣])/.test(t);
+  if (named) add('unit-scan', 12, '이름이 적힌 학생 답안이에요.');
   const q1 = parsePaper(t).questions[1];
   // 교사용·(예시)·정답 표시로 나뉘는 글이면 같은 문제가 두 번 나와도 학생 답안 묶음이 아님(학생용 + 교사용)
   if (q1 && q1.length >= 8 && t.split(q1).length > 2 && splitDoc(t).how !== 'marker') add('unit-scan', 12, '같은 문제지가 여러 장 들어 있어요(학생 답안 묶음).');
@@ -118,7 +124,8 @@ export function classify({ name = '', text = '', scan = false } = {}) {
   const ranked = Object.keys(score).sort((a, b) => score[b] - score[a] || order(a) - order(b));
   const top = ranked[0];
   if (!top || score[top] < 4) return { kind: 'unknown', why: '어떤 파일인지 알아보지 못했어요. 할 일을 골라 주세요.', alts: ranked };
-  return { kind: top, why: why[top], alts: ranked.slice(1) };
+  // 이름 칸 하나(12점)로만 학생 답안이라고 봤으면 단원평가의 올려 둔 스캔을 바꾸기 전에 물어봄
+  return { kind: top, why: why[top], alts: ranked.slice(1), ...(top === 'unit-scan' && named && score[top] === 12 ? { ask: true } : {}) };
 }
 
 /* [{file, kind}] → [{kind, files}] — 같은 종류는 묶고 KINDS 차례로 */
