@@ -181,8 +181,11 @@ await run('fix3-evallegacy', [
     await until(async () => calls.slice(c0).some(c => c.prompt.includes("'교과학습발달상황' 평어")), 8000);
     await page.waitForSelector('[data-gr="copyAll"]:not([disabled])', { timeout: 15000 });
     await until(async () => { const r = await resText(); return r.includes('채점과 평어를 마쳤어요') && !r.includes('수준이 바뀌었어요'); }, 8000);
-    const st = await page.evaluate(async () => { const ids = JSON.parse(localStorage.getItem('ssam:grs') || '[]'); return JSON.parse(localStorage.getItem('ssam:gr:' + ids[0])).students; });
-    assert(st.every(s => !s.stale && s.text), JSON.stringify(st.map(s => [s.no, s.level, s.stale, s.text])));
+    // 저장은 조금 미뤄서 하므로 다 쓴 기록이 저장될 때까지 기다림
+    const savedStudents = () => page.evaluate(() => { const ids = JSON.parse(localStorage.getItem('ssam:grs') || '[]'); const g = ids.length && JSON.parse(localStorage.getItem('ssam:gr:' + ids[0]) || 'null'); return g ? g.students : null; });
+    let st = null;
+    await until(async () => { st = await savedStudents(); return !!st && st.length === 5 && st.every(s => !s.stale && s.text); }, 8000).catch(() => {});
+    assert(st && st.every(s => !s.stale && s.text), JSON.stringify(st && st.map(s => [s.no, s.level, s.stale, s.text])));
     const LV = { top: '최상', high: '상', mid: '중', low: '하' };
     assert(st.every(s => s.text.startsWith(`${s.no}번 ${LV[s.level]} 평어`)), JSON.stringify(st.map(s => [s.no, s.level, s.text])));
     assert(!(await resText()).includes('남은 평어 쓰기'), '남은 평어 쓰기 단추가 남음');
