@@ -234,39 +234,57 @@ export function relatedLine(form, year) {
   const f = form || {}, own = String(f.related || '').trim();
   if (own) return own;
   // 사업명 앞의 「2026학년도」·끝의 「운영(비)·계획」은 빼고 붙임(「운영 운영 계획」「2026학년도 2026학년도」가 되지 않게)
-  const raw = String(f.project || '').trim(), py = /^(\d{4})\s*(?:학년도|년)?\s+/.exec(raw);
-  const y = Number.isInteger(year) ? `${year}학년도 ` : py ? `${py[1]}학년도 ` : '';
+  // 숫자는 「학년도·년(도)」가 붙어야 연도(「2050 탄소중립」은 이름), 사업명에 적은 연도가 지금 학년도보다 먼저(2월에 쓰는 「2027학년도 입학식」)
+  const raw = String(f.project || '').trim(), py = /^(\d{4})\s*(?:학년도|년도|년)\s*/.exec(raw);
+  const y = py ? `${py[1]}학년도 ` : Number.isInteger(year) ? `${year}학년도 ` : '';
   const p = (py ? raw.slice(py[0].length) : raw).replace(/\s*(?:운영\s*비|운영\s*계획|운영|계획)$/, '').trim();
   return p && (f.type || 'goods') !== 'goods' ? `${y}${p} 운영 계획` : `${y}학교 교육과정 운영 계획`;
 }
 /* 첫 문장 앞 번호(「2.」)만 뺌. 「2026. 11. 20.(금) …」처럼 날짜로 시작하면 그대로 */
 export const introText = s => String(s || '').trim().replace(/^\d\.(?!\s*\d)\s*/, '');
-/* 품의 사유(에듀파인 기안문 꼴): 1. 관련: … / 2. AI가 쓴 첫 문장 / 가. 나. 다.(앱이 만듦, 두 칸 들여 씀) / 붙임 … 끝. */
-export function composeReason({ intro, form, year }) {
+/* 품의 사유(에듀파인 기안문 꼴): 1. 관련: … / 2. AI가 쓴 첫 문장 / 가. 나. 다.(앱이 만듦, 두 칸 들여 씀) / 붙임 … 끝.
+   head: 손으로 쓴 머리(「1. 근거:」·여러 줄 관련·지운 관련 줄 — ownHead)가 있으면 「1. 관련:」 줄 대신 그대로 씀 */
+export function composeReason({ intro, form, year, head = null }) {
   const tail = reasonTail(form);
-  return `1. 관련: ${relatedLine(form, year)}\n2. ${introText(intro)}${tail.startsWith('\n') ? '' : '\n'}${tail}`;
+  const top = head == null ? `1. 관련: ${relatedLine(form, year)}\n` : head ? `${head}\n` : '';
+  return `${top}2. ${introText(intro)}${tail.startsWith('\n') ? '' : '\n'}${tail}`;
 }
-const NEW_HEAD = /^\s*1\.\s*관련\s*:/;
-/* 사유에서 첫 문장: 새 꼴은 「2.」 줄, 예전 꼴(첫 문장 + 빈 줄 + 가~)은 첫 문단 */
-export function introOf(reason) {
-  const s = String(reason || '');
-  if (NEW_HEAD.test(s)) { const m = /\n[ \t]*2\.[ \t]*([^\n]*)/.exec(s); if (m) return m[1].trim(); }
-  return s.split(/\n\s*\n/)[0].trim();
+/* 사유에서 첫 문장 자리: 붙임 앞의 「2.」 줄(붙임의 「2. 견적서」는 아님). 「1. 관련:」 줄을 지우거나 바꿔도 그 줄.
+   「2.」 줄이 없으면(예전 꼴) 첫 문단, 「가.」 줄 앞까지(맨 앞 「1. …」 줄은 빼고) — 가~ 줄이 첫 문장에 섞여 두 번 들어가지 않게 */
+function introAt(reason) {
+  const s = String(reason || ''), b = /\n[ \t]*붙임/.exec(s), body = b ? s.slice(0, b.index) : s;
+  const m = /(^|\n)([ \t]*)2\.[ \t]*([^\n]*)/.exec(body);
+  if (m) return { start: m.index + m[1].length, end: m.index + m[0].length, text: m[3].trim(), num: `${m[2]}2. ` };
+  const e = /\n\s*\n|\n[ \t]*가\./.exec(s), end = e ? e.index : s.length;
+  const h = /^\s*1\.[^\n]*\n/.exec(s.slice(0, end)), start = h ? h[0].length : 0;
+  return { start, end, text: s.slice(start, end).trim(), num: '' };
 }
+/* 사유에서 첫 문장 */
+export const introOf = reason => introAt(reason).text;
 /* 사유의 첫 문장만 바꿈(나머지는 그대로) */
 export function withIntro(reason, intro) {
-  const s = String(reason || ''), t = introText(intro);
-  if (NEW_HEAD.test(s)) {
-    const m = /\n([ \t]*)2\.[ \t]*[^\n]*/.exec(s);
-    if (m) return `${s.slice(0, m.index)}\n${m[1]}2. ${t}${s.slice(m.index + m[0].length)}`;
-  }
-  const m = /\n\s*\n/.exec(s);
-  return m ? t + s.slice(m.index) : t;
+  const s = String(reason || ''), p = introAt(s);
+  return s.slice(0, p.start) + p.num + introText(intro) + s.slice(p.end);
 }
-/* 사유 첫 줄의 관련(새 꼴이 아니면 '') */
-export const relatedOf = reason => { const m = /^\s*1\.\s*관련\s*:\s*([^\n]*)/.exec(String(reason || '')); return m ? m[1].trim() : ''; };
+/* 사유 첫 줄의 관련: 「1. 관련: …」 한 줄일 때만(글을 지웠으면 ''). 「1. 근거:」·여러 줄 관련(가. 나.)·예전 꼴이면 null
+   (쌍점 뒤는 같은 줄만 읽음 — 관련을 비워도 다음 줄 「2. …」을 관련으로 읽지 않게) */
+const REL_LINE = /^\s*1\.[ \t]*관련[ \t]*:[ \t]*([^\n]*)/;
+export function relatedOf(reason) {
+  const s = String(reason || ''), m = REL_LINE.exec(s);
+  if (!m) return null;
+  const p = introAt(s), end = m.index + m[0].length;
+  // 관련 줄과 「2.」 줄 사이에 다른 줄이 있거나(「2.」 줄이 없으면 바로 아래가 「가.」 꼴이면) 여러 줄 관련
+  if (p.num ? s.slice(end, p.start).trim() : /^\n[ \t]*[가-하]\./.test(s.slice(end))) return null;
+  return m[1].trim();
+}
+/* 손으로 쓴 사유 머리(「2.」 줄 앞): 「1. 근거:」·여러 줄 관련·지운 관련 줄('') — [사유 다시 맞추기] 때 그대로 살림.
+   「1. 관련: …」 한 줄이거나 「2.」 줄이 없으면 null(앱이 「1. 관련:」 줄을 씀) */
+export function ownHead(reason) {
+  const s = String(reason || ''), p = introAt(s);
+  return p.num && relatedOf(s) == null ? s.slice(0, p.start).replace(/\n$/, '') : null;
+}
 /* 사유 첫 줄의 관련만 바꿈(손으로 고친 나머지는 그대로). 새 꼴이 아니면 그대로 */
-export const withRelated = (reason, rel) => String(reason || '').replace(/^(\s*1\.\s*관련\s*:)[ \t]*[^\n]*/, (m, head) => `${head} ${String(rel || '').trim()}`);
+export const withRelated = (reason, rel) => String(reason || '').replace(/^(\s*1\.[ \t]*관련[ \t]*:)[ \t]*[^\n]*/, (m, head) => `${head} ${String(rel || '').trim()}`);
 
 /* 넣은 글의 1인칭·구어(「내가 필요한」「제가 쓸」「사 주세요」)는 품의에 넣지 않음 */
 /* 주어만으로는 지우지 않음(「우리 반 채무 관계」「나는 기다립니다」「내가 가장 슬플 때」 같은 책 이름, 「소리 나는」), 「공동구매」도 그대로 */
@@ -280,19 +298,25 @@ const ASK_LONG = '(?:사\\s*주세요|사\\s*줘|구입해\\s*주세요|구매�
 // 「구입·구매·주문·좀」은 띄어 쓴 때만 끝말로 봄(「공동구매」는 그대로)
 const ASK_WORD = '(?:구입|구매|주문|부탁|좀)';
 const LEAD_SUBJ_NEED = new RegExp(`^${SUBJ}\\s+${NEED}`), LEAD_NEED = new RegExp(`^${NEED_ALONE}`);
-const TAIL_ASK = new RegExp(`(?:\\s*(?:을|를)?\\s*(?:좀\\s*)?${ASK_LONG}|(?:을|를)?\\s+(?:좀\\s+)?${ASK_WORD})\\s*$`);
+const TAIL_ASK = new RegExp(`(?:\\s*(?:좀\\s*)?${ASK_LONG}|\\s+(?:좀\\s+)?${ASK_WORD})\\s*$`);
+// 끝말 앞 조사: 「을」은 받침 있는 글자 뒤, 「를」은 받침 없는 글자 뒤일 때만(「사과마을」「노을」「가을」의 「을」은 이름). 한글이 아니면(LED를) 둘 다
+const hasBatchim = c => { const n = c.charCodeAt(0) - 0xAC00; return n >= 0 && n < 11172 ? n % 28 !== 0 : null; };
+function cutAsk(t) {
+  const u = t.replace(TAIL_ASK, '');
+  return u === t ? t : u.replace(/(\S)\s*(을|를)$/, (m, c, p) => { const b = hasBatchim(c); return b == null || b === (p === '을') ? c : m; });
+}
 /* 품명: 앞의 「내가 필요한」·「제가 쓸」(주어 + 필요한), 뒤의 「사주세요」·「 구입」을 뺌(다 지워지면 그대로) */
 export function plainItemName(name) {
   const s = String(name == null ? '' : name).trim();
   let t = s.replace(LEAD_SUBJ_NEED, '');
   for (let i = 0; i < 2; i++) t = t.replace(LEAD_NEED, '');
-  for (let i = 0; i < 2; i++) t = t.replace(TAIL_ASK, '');
+  for (let i = 0; i < 2; i++) t = cutAsk(t);
   t = t.trim();
   return t || s;
 }
-// 공문 글에서 빼는 주어: 「제가·저는·저희가」는 어디서나, 「내가·우리가」는 「필요한」과 함께일 때만(「내가 가장 슬플 때」 같은 책 이름),
-// 「나는」(소리 나는)·「우리 반」은 빼지 않음
-const ANY_SUBJ = new RegExp(`(^|\\s)(?:(?:제가|저는|저희가|저희는)\\s+(?:${NEED})?|(?:내가|우리가|우리는)\\s+${NEED})`, 'g');
+// 공문 글에서 빼는 주어: 「제가·저는·저희가」는 어디서나, 「내가·우리가」는 「필요한·구입할」처럼 사는 말과 함께일 때만
+// (「내가 가장 슬플 때」 같은 책 이름, 「우리가 원하는 학교 만들기」「내가 쓰는 시 공모전」 같은 사업명), 「나는」(소리 나는)·「우리 반」은 빼지 않음
+const ANY_SUBJ = new RegExp(`(^|\\s)(?:(?:제가|저는|저희가|저희는)\\s+(?:${NEED})?|(?:내가|우리가|우리는)\\s+${NEED_ALONE})`, 'g');
 /* 제목·첫 문장·목적 같은 글: 「내가 (필요한)」 같은 1인칭 주어만 뺌(「구입」 같은 말은 그대로) */
 export function plainOfficial(text) {
   const s = String(text == null ? '' : text);
