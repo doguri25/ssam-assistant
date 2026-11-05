@@ -9,6 +9,7 @@ import { readText, fileMessage } from '../../core/files.js';
 import { aiRowHTML } from '../../core/ai-roles.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
 import { getSchool } from '../../core/settings.js';
+import { schoolYearOf } from '../../core/calendar.js';
 import { canQueue, openQueue } from '../../core/queue-paste.js';
 import { readForm, findRoles, fillForm, rolesValid, isSign } from '../../core/hwpx-form.js';
 import { forms, newFormId, MAX_FORM } from '../../core/form-store.js';
@@ -16,7 +17,7 @@ import { cleanSheet } from '../evaluate/activity/activity-read.js';
 import { letterQueueItems } from '../plan/report-ai.js';
 import { plainFromText, defaultPlain, plainLetterDoc, letterPrompt, normLetter, composeBody, composeSend, formSample, cleanSample } from './letter-ai.js';
 import { rosterAllowed } from '../../core/student-no.js';
-import { replyOptions, replyPrompt, normReply, flagRows, tally, missingNos, collectTSV, collectDoc } from './reply-collect.js';
+import { replyOptions, replyPrompt, normReply, flagRows, tally, missingNos, collectTSV, collectDoc, fitAnswers } from './reply-collect.js';
 import { getCurrent, saveCurrent, clearCurrent, listLetters, pushLetter, newLetterId, getFormId, setFormId } from './letter-model.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -30,7 +31,9 @@ const blank = () => ({ id: newLetterId(), sources: [], memo: '', related: [], ta
 const SS = () => window.SSAM || {};
 /* 회신서 스캔(화면에만): pages, busy, tok(읽는 중 다른 가정통신문·새 스캔이면 버림) */
 const RC = { pages: [], busy: false, tok: 0, adding: false, batch: '', checked: '' }; // batch: 이번 스캔 묶음 id, checked: 가린 모습을 모든 장에서 본 묶음
-const c = () => (cur || (cur = getCurrent() || blank()));
+/* 예전 판이 「참가 /」처럼 저장한 회신서 표 답은 지금 선택지(「참가」)로 맞춰 엶 */
+const fitOld = x => { if (x && x.out && x.out.replyOn) fitAnswers(x.collect.rows, replyOptions(x.out.reply.fields)); return x; };
+const c = () => (cur || (cur = fitOld(getCurrent()) || blank()));
 function save(x = c(), { push = false } = {}) { if (x === c()) saveCurrent(x); if (push && x.out) pushLetter(x); }
 function resend(force = false, x = c()) {
   if (!x.out || (x.sendEdited && !force)) return;
@@ -147,9 +150,11 @@ export async function write() {
   if (!ai.ready()) { toast('설정 › AI에서 키를 넣어 주세요', 5000); return; }
   F.busy = true; render();
   try {
-    const v = await ai.generateJSON(letterPrompt({ sources: x.sources, memo: cleanSheet(x.memo).text, sample: sampleOf(), today: today(), year: getSchool().year }),
+    // 학년도: 오늘이 든 학년도(1·2월은 앞 해, 쪽지·공문 처리와 같게). 설정의 학년도는 10월부터 다음 해라 쓰지 않음
+    const year = schoolYearOf(today());
+    const v = await ai.generateJSON(letterPrompt({ sources: x.sources, memo: cleanSheet(x.memo).text, sample: sampleOf(), today: today(), year }),
       { task: 'letter', valid: o => !!o && typeof o === 'object' && !Array.isArray(o) });
-    const n = normLetter(v, { year: getSchool().year });
+    const n = normLetter(v, { year });
     x.related = n.related; x.target = n.target;
     x.out = { title: n.title, date: (x.out && x.out.date) || today(), body: composeBody(n), replyOn: n.reply.need,
       reply: { title: n.reply.title || '회신서', fields: n.reply.fields, due: n.reply.due }, short: n.short };
@@ -161,7 +166,7 @@ export async function write() {
     toast(e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 눌러 주세요.' : ai.errorMessage(e && e.code, e), 6000);
   }
   F.busy = false;
-  render();
+  live();
 }
 const letterOf = x => ({ title: x.out.title, date: x.out.date || today(), body: x.out.body, reply: x.out.replyOn ? x.out.reply : null });
 async function download() {
@@ -254,7 +259,7 @@ async function rcAdd(files) {
     RC.pages = pages; RC.tok++; RC.busy = false; RC.batch = Math.random().toString(36).slice(2, 10); RC.checked = '';
     if (r && r.skipped && r.skipped.length) toast(`읽지 못한 파일: ${r.skipped.map(s => s.name || s).join(', ')}`, 6000);
   } catch (e) { toast(e && e.code ? fileMessage(e.code) : '스캔을 읽지 못했어요. PDF·사진을 넣어 주세요.', 6000); }
-  RC.adding = false; render();
+  RC.adding = false; live();
 }
 /* 가리기: 모든 장을 넘겨 보며 이름이 가려졌는지 확인(잘라 낸 회신서는 장마다 자리가 달라요). 새 스캔마다 다시 */
 function rcMask(then) {
@@ -293,11 +298,11 @@ async function rcRead() {
   await Promise.all(Array.from({ length: Math.min(3, pages.length) }, async () => { while (next < pages.length && tok === RC.tok && !fatal) await one(next++); }));
   if (tok !== RC.tok) return; // 그새 스캔을 바꾸거나 다른 가정통신문을 열었으면 버림
   RC.busy = false;
-  if (fatal) { render(); toast(`${ai.errorMessage(fatal.code, fatal)} 읽은 표는 그대로 두었어요.`, 7000); return; }
-  if (c() !== x) { render(); return; }
+  if (fatal) { live(); toast(`${ai.errorMessage(fatal.code, fatal)} 읽은 표는 그대로 두었어요.`, 7000); return; }
+  if (c() !== x) { live(); return; }
   // 이번 스캔 묶음의 줄만 바꾸고 앞서 읽은(고친) 줄은 그대로 — 늦게 낸 회신서는 더해짐
   x.collect.rows = [...x.collect.rows.filter(r => r.b !== batch), ...out.filter(Boolean)];
-  save(x, { push: true }); render();
+  save(x, { push: true }); live();
   toast(fails ? `${fails}장은 읽지 못했어요. 노란 줄의 [장]을 눌러 스캔을 보고 고쳐 주세요.` : '회신서를 읽었어요. 노란 칸은 꼭 확인해 주세요.', 5000);
 }
 function sideHTML(x) {
@@ -326,9 +331,10 @@ export function render() {
   drawing = true;
   try { draw(); } finally { drawing = false; }
 }
-function draw() {
+function draw() { box.innerHTML = pageHTML(); }
+function pageHTML() {
   const x = c();
-  box.innerHTML = `<div class="m-page lf-page">
+  return `<div class="m-page lf-page">
     <div class="m-head m-head-row"><div><h2>가정통신문</h2><p class="muted">학교 양식을 넣어 두고, 공문·계획과 넣을 내용을 주면 학교 양식에 맞춘 가정통신문을 써요.</p></div>
       <div class="m-head-act">${aiRowHTML('letter')}<button class="btn text" type="button" data-lf="new">새 가정통신문</button></div></div>
     <div class="msg-grid">
@@ -345,6 +351,35 @@ function draw() {
     <div class="msg-grid">${sideHTML(x)}</div>
     ${collectHTML(x)}
     <section class="pc-card"><h3>최근 가정통신문</h3>${recentHTML()}</section></div>`;
+}
+/* AI 쓰기·스캔 넣기·회신서 읽기가 끝날 때: 글 칸에 초점이 있으면 화면을 통째로 다시 그리지 않음.
+   그 칸의 글이 그대로면 그 칸만 두고 둘레를 새로 그림(쓰던 글·한글 조합이 끊기지 않게),
+   AI가 그 칸 글을 바꿨으면(다시 쓰기 중 고치던 기안 등) 다시 그리고 같은 칸에 초점을 돌려 둠(이어 친 글자가 버려지지 않게) */
+const TYPING = 'input:not([type=checkbox]):not([type=file]), textarea';
+const keyOf = el => (el.id ? `#${el.id}` : el.dataset.lo ? `[data-lo="${el.dataset.lo}"]` : el.dataset.lr ? `[data-lr="${el.dataset.lr}"]` : '');
+function live() {
+  if (!box || box.hidden || drawing) return;
+  const a = document.activeElement, k = a && box.contains(a) && a.matches(TYPING) ? keyOf(a) : '';
+  if (!k) { render(); return; }
+  const tmp = document.createElement('div');
+  tmp.innerHTML = pageHTML();
+  const na = tmp.querySelector(k);
+  if (na && na.value === a.value && keepAround(a, na, tmp)) return;
+  render();
+  const b = box.querySelector(k);
+  if (b) { b.focus(); try { b.setSelectionRange(b.value.length, b.value.length); } catch (e) {} }
+}
+/* 칸 a는 그 자리에 두고, a에서 box까지 올라가며 둘레(앞뒤 형제)만 새 그림(na의 둘레)으로 바꿈. 짜임이 다르면 false */
+function keepAround(a, na, top) {
+  const up = (e, stop) => { const p = []; for (; e && e !== stop; e = e.parentElement) p.push(e); return e === stop ? p : null; };
+  const po = up(a, box), pn = up(na, top);
+  if (!po || !pn || po.length !== pn.length || po.some((e, i) => e.tagName !== pn[i].tagName)) return false;
+  po.forEach((o, i) => {
+    const sib = [...pn[i].parentNode.childNodes], j = sib.indexOf(pn[i]);
+    [...o.parentNode.childNodes].forEach(n => { if (n !== o) n.remove(); });
+    o.before(...sib.slice(0, j)); o.after(...sib.slice(j + 1));
+  });
+  return true;
 }
 function refreshSend() {
   const x = c(), t = box && box.querySelector('#lfSendTitle'), b = box && box.querySelector('#lfSendBody'), rs = box && box.querySelector('#lfResync');
@@ -410,7 +445,7 @@ document.addEventListener('click', async e => {
   const del = e.target.closest('[data-lf-del]');
   if (del) { x.sources.splice(+del.dataset.lfDel, 1); save(); render(); return; }
   const op = e.target.closest('[data-lf-open]');
-  if (op) { const r = listLetters().find(y => y.id === op.dataset.lfOpen); if (r) { cur = { ...r }; delete cur.at; saveCurrent(cur); rcReset(); render(); } return; }
+  if (op) { const r = listLetters().find(y => y.id === op.dataset.lfOpen); if (r) { cur = fitOld({ ...r }); delete cur.at; saveCurrent(cur); rcReset(); render(); } return; }
   const b = e.target.closest('[data-lf]');
   if (!b) return;
   const a = b.dataset.lf;

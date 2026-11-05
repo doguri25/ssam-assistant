@@ -1,18 +1,29 @@
 /* 회신서 모으기 (스펙 2026-11-04 6장): 회신서 칸 가운데 □가 있는 칸만, 이름 칸을 가린 스캔 그림에서 AI가 번호와 ☑만 읽음.
    번호 × 칸 표·집계·미제출 번호·복사·문서. 학생 이름은 읽지도 저장하지도 않음. 화면 없이 돌아감(시험) */
 const str = v => String(v == null ? '' : v).trim();
+const unsep = x => str(x).replace(/^[\/／,，、·|]\s*|\s*[\/／,，、·|]$/g, '').trim(); // 선택지 앞뒤의 구분 글자(/·,·|)
 
-/* 「참가 여부: □ 참가합니다  □ 참가하지 않습니다」 → { name: '참가 여부', options: ['참가합니다', '참가하지 않습니다'] } */
+/* 「참가 여부: □ 참가합니다  □ 참가하지 않습니다」 → { name: '참가 여부', options: ['참가합니다', '참가하지 않습니다'] } (「□ 참가 / □ 불참」도 ['참가', '불참']) */
 export function replyOptions(fields) {
   const out = [];
   for (const f of fields || []) {
     const s = str(f);
     if (!s.includes('□')) continue;
     const i = s.indexOf('□'), head = s.slice(0, i).replace(/[:：]\s*$/, '').trim();
-    const options = s.slice(i).split('□').map(x => x.trim()).filter(Boolean);
+    // 「□ 참가 / □ 불참」·「□ 동의, □ 미동의」: 선택지 앞뒤의 구분 글자는 뗌
+    const options = s.slice(i).split('□').map(unsep).filter(Boolean);
     if (head && options.length) out.push({ name: head, options });
   }
   return out;
+}
+
+/* 예전 판이 「참가 /」처럼 구분 글자가 붙은 선택지로 저장한 표 답 → 지금 선택지(「참가」). rows를 고쳐 돌려줌 */
+export function fitAnswers(rows, opts) {
+  for (const r of rows || []) for (const { name, options } of opts || []) {
+    const a = r && r.answers ? r.answers[name] : '';
+    if (a && !options.includes(a) && options.includes(unsep(a))) r.answers[name] = unsep(a);
+  }
+  return rows;
 }
 
 export function replyPrompt(opts) {
