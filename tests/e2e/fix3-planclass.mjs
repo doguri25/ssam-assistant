@@ -119,6 +119,24 @@ await run('fix3-planclass', [
     const v = await todayText();
     assert(v.includes('2학기 1') && !v.includes('1학기 1'), v);
   }],
+  ['[class-sem-fullyear-2] [진도표 고치기]에서 2학기 첫 줄 기간을 8.20~8.21로 당겨 저장해도 기준일·다음 차시·실시 시수 그대로', async () => {
+    const lessons = Array.from({ length: 20 }, (_, i) => { const m = add('2026-08-24', 7 * i); return { week: i + 1, period: `${md(m)}~${md(add(m, 4))}`, from: m, unit: '단원', title: `2학기 ${i + 1}`, no: `${i + 1}/20`, pages: '', memo: '' }; });
+    const log = JSON.parse(doneLog('국어', 18));
+    for (let i = 0; i < 10; i++) log[add('2026-08-25', 7 * i)] = { 1: { subject: '국어', status: i < 6 ? 'done' : 'skip' } };
+    await fresh('2026-11-02T08:30:00', { 'ssam:years': J({ current: 2026 }), 'ssam:class:info': J({ grade: 3, room: 1 }), 'ssam:class:timetable': ttTue('국어'),
+      'ssam:class:subjects': J([{ id: 'ko', name: '국어', start: '2026-08-24', since: '2026-08-24', offset: 0, total: null, lessons }]), 'ssam:class:log': J(log) });
+    await goProgress();
+    let p = await progress();
+    assert(p.next === 7 && p.done === 6, J(p));
+    await page.click(`${C} [data-c="editSub"][data-id="ko"]`);
+    await page.waitForSelector('#sheetRoot #clsEdBody');
+    await page.fill('#sheetRoot input[data-l="0-period"]', '8.20~8.21');
+    await page.click('#sheetRoot [data-c="saveSub"]');
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('ssam:class:subjects'))[0].lessons[0].from === '2026-08-20');
+    p = await progress();
+    assert(p.sub.since === '2026-08-24' && p.sub.offset === 0 && p.next === 7 && p.actual === 6 && p.done === 6, J({ ...p, sub: [p.sub.since, p.sub.offset] }));
+    assert(await page.inputValue(`${C} input[data-next="ko"]`) === '7', '다음 차시 칸 ' + await page.inputValue(`${C} input[data-next="ko"]`));
+  }],
   ['[class-readd-5] 국어를 지웠다가 같은 진도표 파일을 다시 넣으면 체크 기록대로 다음 차시 11, 실시 10', async () => {
     await fresh('2026-03-02T08:30:00', { 'ssam:years': J({ current: 2026 }), 'ssam:class:info': J({ grade: 3, room: 1 }), 'ssam:class:timetable': ttTue('국어') });
     await goProgress();

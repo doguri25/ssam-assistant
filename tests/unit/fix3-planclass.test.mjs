@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import * as store from '../../web/core/store.js';
 import { readText } from '../../web/core/files.js';
 import { zipStore } from '../../web/core/zip.js';
-import { parseJindo, parseTimetable } from '../../web/menus/class/class-import.js';
+import { parseJindo, parseTimetable, periodStart } from '../../web/menus/class/class-import.js';
 import { setTimetable, setSubjects, listSubjects, saveSubject, removeSubject, importSubjects, replaceLessons, addSubject, termStart, makeCtx, dayView, hours, progressOf, alignToPlan } from '../../web/menus/class/class-model.js';
 
 function mem() {
@@ -151,12 +151,34 @@ test('[class-append-3] 다 마친 날짜 없는 교과에 [진도표 고치기]�
   } finally { mock.timers.reset(); }
 });
 
+test('[class-append-3] 되풀이되는 제목(「학급 회의」): 2학기 진도표를 새로 쓰면 오늘부터 새로 셈, 1학기 줄 뒤에 덧붙이면 그대로 이어짐', () => {
+  const t1 = ['학급 회의', '학급 세우기', '학급 회의', '안전 교육', '학급 회의', '봄 체험', '학급 회의', '진로 탐색', '학급 회의', '학급 회의'];
+  const t2 = ['2학기 세우기', '가을 체험 준비', '학급 회의', '독서 활동', '가을 체험', '체험 정리', '진로 박람회', '봉사 활동', '학예회 준비', '학예회', '한 해 돌아보기', '겨울 계획'];
+  const start = () => { handDone(); saveSubject({ ...listSubjects()[0], lessons: t1.map(plain) }); at('2026-09-01'); return listSubjects()[0]; };
+  try {
+    const old = start();
+    assert.equal(termStart(makeCtx('2026-09-01'), old, t2.map(plain)), '2026-09-01');
+    const s = replaceLessons(old, t2.map(plain), { name: '창체' });
+    assert.equal(s.since, '2026-09-01');
+    const st = state('2026-09-01');
+    assert.deepEqual([st.actual, st.next, st.today], [0, 1, '2학기 세우기'], J(st));
+  } finally { mock.timers.reset(); }
+  try {
+    const old = start();
+    const s = replaceLessons(old, [...old.lessons, ...t2.map(plain)], { name: '창체' });
+    assert.ok(!('since' in s), J(s.since));
+    const st = state('2026-09-01');
+    assert.deepEqual([st.plan, st.actual, st.next, st.today], [22, 10, 11, '2학기 세우기'], J(st));
+  } finally { mock.timers.reset(); }
+});
+
 /* 화요일 1교시 국어: 3/2에 1학기 진도표(18차시)를 넣고 모두 체크 → 8/24에 2학기 진도표(20차시) → 9/29까지 5차시 체크 */
 const md = d => `${+d.slice(5, 7)}.${+d.slice(8, 10)}`;
 const HEAD = '국어 교육과정 연간지도계획\n2026학년도 | 3학년 1반\n주 | 기간 | 단원명 | 학습 주제 | 차시 | 쪽수 | 비고\n';
 const rows = (mon0, n, tag, w0 = 1) => Array.from({ length: n }, (_, i) => { const m = add(mon0, 7 * i); return `${w0 + i} | ${md(m)}~${md(add(m, 4))} | 단원 | ${tag} ${i + 1} | ${i + 1}/${n} | |`; });
 const jindo = (lines, today) => parseJindo(HEAD + lines.join('\n'), { today, year: 2026 }).subjects;
-function sem2Started(n1 = 18, n2 = 20) {
+/* 2학기 체크: weeks주 동안 status(i), 그 뒤 T (기본: 9/29까지 5주 모두 완료) */
+function sem2Started(n1 = 18, n2 = 20, { weeks = 5, status = () => 'done', T = '2026-09-29' } = {}) {
   store.useStorage(mem());
   at('2026-03-02');
   const cells = Array.from({ length: 5 }, () => Array(6).fill(''));
@@ -168,10 +190,12 @@ function sem2Started(n1 = 18, n2 = 20) {
   at('2026-08-24');
   assert.ok(importSubjects(jindo(rows('2026-08-24', n2, '2학기'), '2026-08-24')));
   assert.equal(listSubjects()[0].since, '2026-08-24');
-  for (let i = 0; i < 5; i++) log[add('2026-08-25', 7 * i)] = { 1: { subject: '국어', status: 'done' } };
+  for (let i = 0; i < weeks; i++) log[add('2026-08-25', 7 * i)] = { 1: { subject: '국어', status: status(i) } };
   store.set('class:log', log);
-  at('2026-09-29');
+  at(T);
 }
+/* 2학기 10주: 완료 6·못함 4 → 11/2 (계획보다 4차시 늦음) */
+const BEHIND = { weeks: 10, status: i => (i < 6 ? 'done' : 'skip'), T: '2026-11-02' };
 
 test('[class-sem-fullyear-2] 2학기 진도표를 넣은 교과에 1·2학기 합친 진도표를 넣으면 기준일을 없애 1학기 체크도 세고 지금 차시는 2학기 6', () => {
   try {
@@ -218,6 +242,59 @@ test('[class-sem-fullyear-2] 그대로 지킴: 2학기 진도표를 고쳐 다�
     assert.ok(importSubjects(jindo(rows('2026-03-02', 18, '1학기'), T)));
     assert.ok(!('since' in listSubjects()[0]));
     assert.equal(state(T).actual, 18);
+  } finally { mock.timers.reset(); }
+});
+
+test('[class-sem-fullyear-2] 2학기 진도표 첫 줄 기간을 앞당겨 고치거나 앞에 줄을 더해도 기준일·체크 그대로(계획 진도로 건너뛰지 않음)', () => {
+  const T = '2026-11-02';
+  try {
+    sem2Started(18, 20, BEHIND);
+    const s0 = listSubjects()[0];
+    assert.deepEqual([state(T).actual, state(T).next, hours(makeCtx(T), s0).done], [6, 7, 6]);
+    // 고치기 시트: 첫 줄 기간 8.24~8.28 → 8.20~8.21
+    const ls = s0.lessons.map((l, i) => (i === 0 ? { ...l, period: '8.20~8.21', from: periodStart('8.20~8.21', 2026) } : l));
+    assert.equal(termStart(makeCtx(T), s0, ls), null);
+    const s = replaceLessons(s0, ls, { name: '국어' });
+    assert.deepEqual([s.since, s.offset, s.lessons[0].from], ['2026-08-24', 0, '2026-08-20']);
+    const st = state(T);
+    assert.deepEqual([st.actual, st.next, hours(makeCtx(T), s).done], [6, 7, 6], J(st));
+  } finally { mock.timers.reset(); }
+  try {
+    sem2Started(18, 20, BEHIND);
+    const s0 = listSubjects()[0];
+    // 앞에 「2학기 준비」 줄(8.17~8.21)을 더함
+    const extra = { week: 0, period: '8.17~8.21', from: periodStart('8.17~8.21', 2026), unit: '단원', title: '2학기 준비', no: '', pages: '', memo: '' };
+    const s = replaceLessons(s0, [extra, ...s0.lessons], { name: '국어' });
+    assert.deepEqual([s.since, s.offset], ['2026-08-24', 0]);
+    assert.deepEqual([state(T).actual, state(T).next, hours(makeCtx(T), s).done], [6, 7, 6]);
+  } finally { mock.timers.reset(); }
+});
+
+test('[class-sem-fullyear-2] 1·2학기 합친 진도표로 1학기를 마친 뒤 2학기만 든 진도표를 넣으면 1학기 체크는 세지 않아 2학기 1, 같은 합본은 그대로', () => {
+  const T = '2026-08-25', all = () => jindo([...rows('2026-03-02', 18, '1학기'), ...rows('2026-08-24', 20, '2학기', 30)], T);
+  const start = () => {
+    store.useStorage(mem());
+    at('2026-03-02');
+    const cells = Array.from({ length: 5 }, () => Array(6).fill(''));
+    cells[1][0] = '국어';
+    setTimetable({ periods: 6, cells });
+    assert.ok(importSubjects(all()));
+    store.set('class:log', Object.fromEntries(Array.from({ length: 18 }, (_, i) => [add('2026-03-03', 7 * i), { 1: { subject: '국어', status: 'done' } }])));
+    at(T);
+  };
+  try {
+    start();
+    // 같은 합본을 다시 넣음: 그대로
+    assert.equal(termStart(makeCtx(T), listSubjects()[0], all()[0].lessons), null);
+    assert.ok(importSubjects(all()));
+    let st = state(T);
+    assert.deepEqual([st.since, st.actual, st.next, st.today], [undefined, 18, 19, '2학기 1'], J(st));
+    // 2학기만 든 진도표
+    const sem2 = jindo(rows('2026-08-24', 20, '2학기'), T);
+    assert.equal(termStart(makeCtx(T), listSubjects()[0], sem2[0].lessons), '2026-08-24');
+    assert.ok(importSubjects(sem2));
+    st = state(T);
+    assert.deepEqual([st.since, st.plan, st.actual, st.next, st.today], ['2026-08-24', 20, 0, 1, '2학기 1'], J(st));
   } finally { mock.timers.reset(); }
 });
 
@@ -287,5 +364,45 @@ test('[class-readd-5] 그대로 지킴: 기록이 없는 새 교과는 계획 �
     const s = listSubjects()[0], st = state('2026-08-25', s);
     assert.equal(s.since, '2026-08-24');
     assert.deepEqual([st.actual, st.next, st.today], [0, 1, '2학기 1'], J(st));
+  } finally { mock.timers.reset(); }
+});
+
+test('[class-readd-5] 2학기 진도표만 넣은 교과를 지웠다가 다시 넣어도 2학기 체크 기록대로 이어짐(계획 위치로 건너뛰지 않음)', () => {
+  const T = '2026-11-02';
+  try {
+    sem2Started(18, 20, BEHIND);
+    assert.deepEqual([state(T).next, hours(makeCtx(T), listSubjects()[0]).done], [7, 6]);
+    assert.ok(removeSubject(listSubjects()[0].id));
+    assert.ok(importSubjects(jindo(rows('2026-08-24', 20, '2학기'), T)));
+    const s = listSubjects()[0], st = state(T);
+    assert.deepEqual([s.since, s.offset], ['2026-08-24', 0]);
+    assert.deepEqual([st.actual, st.next, st.diff, hours(makeCtx(T), s).done], [6, 7, -4, 6], J(st));
+  } finally { mock.timers.reset(); }
+  // 1·2학기 합본으로 다시 넣으면 기록을 모두 셈
+  try {
+    sem2Started(18, 20, BEHIND);
+    removeSubject(listSubjects()[0].id);
+    assert.ok(importSubjects(jindo([...rows('2026-03-02', 18, '1학기'), ...rows('2026-08-24', 20, '2학기', 30)], T)));
+    const s = listSubjects()[0], st = state(T);
+    assert.deepEqual([s.since, s.offset, st.actual, st.next], [undefined, 0, 24, 25], J(st));
+  } finally { mock.timers.reset(); }
+});
+
+test('[class-readd-5] 그대로 지킴: 1학기 교과를 지우고 9월에 2학기 진도표를 처음 넣으면(2학기 기록 없음) 계획 진도에 맞춤', () => {
+  try {
+    // 1학기 국어 18차시를 모두 마침 → 9/29에 1학기 교과를 지우고 2학기 진도표를 처음 넣음
+    store.useStorage(mem());
+    at('2026-03-02');
+    const cells = Array.from({ length: 5 }, () => Array(6).fill(''));
+    cells[1][0] = '국어';
+    setTimetable({ periods: 6, cells });
+    assert.ok(importSubjects(jindo(rows('2026-03-02', 18, '1학기'), '2026-03-02')));
+    store.set('class:log', Object.fromEntries(Array.from({ length: 18 }, (_, i) => [add('2026-03-03', 7 * i), { 1: { subject: '국어', status: 'done' } }])));
+    at('2026-09-29');
+    removeSubject(listSubjects()[0].id);
+    assert.ok(importSubjects(jindo(rows('2026-08-24', 20, '2학기'), '2026-09-29')));
+    const s = listSubjects()[0], st = state('2026-09-29');
+    assert.equal(s.since, '2026-08-24');
+    assert.deepEqual([st.actual, st.next, st.diff, st.today], [5, 6, 0, '2학기 6'], J(st));
   } finally { mock.timers.reset(); }
 });
