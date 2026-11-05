@@ -132,3 +132,40 @@ test('[byno-skip-dup-4] 「채점 안 함」 학생 번호가 겹치면 명단 �
   assert.deepEqual(spreadSkipNos([stu(1), stu(2), stu(4, { skip: true })], 5).map(s => s.no), [1, 2, 4]);
   assert.deepEqual(spreadSkipNos([stu(1), stu(0, { skip: true }), stu(1, { skip: true })], 0).map(s => s.no), [1, 2, 3]);
 });
+
+test('[eval-num-1] 숫자 사이 가운뎃점(·)은 점(.)과 같게 봄(4·19 혁명 = 4.19 혁명), 정답표를 고쳐 다시 맞춰도 만점', async () => {
+  const { rescoreItem } = await import('../../web/menus/evaluate/unit/unit-grade.js');
+  for (const [a, r] of [['4·19 혁명', '4.19 혁명'], ['3·1 운동', '3.1 운동'], ['3·1 운동', '3.1운동'], ['5·18 민주화 운동', '5.18 민주화 운동'], ['6·25 전쟁', '6.25전쟁'], ['4.19 혁명', '4·19 혁명'],
+    ['4·19 혁명', '4・19 혁명'], ['4·19 혁명', '4‧19 혁명'], ['4·19 혁명', '4･19 혁명'], ['3·1절', '3.1절']]) {
+    assert.equal(autoJudge(short(a, 5), r), 5, `${a} · ${r}`);
+    const c = gradeCell(short(a, 5), { read: r, points: 5, sure: true });
+    assert.equal(c.pts, 5); assert.equal(c.flag, '', `${a} · ${r}`);
+  }
+  assert.equal(autoJudge(short('4·19 혁명', 5), '419 혁명'), null);
+  assert.equal(autoJudge(short('4·19 혁명', 5), '4·9 혁명'), null);
+  // 낱말 사이 가운뎃점은 예전처럼 뺌
+  assert.equal(autoJudge(short('사과·배', 5), '사과배'), 5);
+  const t = { key: { items: [{ no: 1, type: 'short', answer: '4·19', points: 5 }] }, students: [{ no: 1, items: { 1: gradeCell({ no: 1, type: 'short', answer: '4·19', points: 5 }, { read: '4.19 혁명', points: 5, sure: true }) } }] };
+  t.key.items[0].answer = '4·19 혁명';
+  rescoreItem(t, 1, 'answer');
+  assert.equal(t.students[0].items[1].pts, 5); assert.equal(t.students[0].items[1].flag, '');
+});
+
+test('[eval-num-1] 세 자리 수를 쉼표로 이은 답은 띄어쓰기가 달라도 같음(큰 수로도 목록으로도 읽어 봄)', () => {
+  assert.equal(autoJudge(short('300, 400, 500'), '300,400,500'), 4);
+  assert.equal(autoJudge(short('300,400,500'), '300, 400, 500'), 4);
+  assert.equal(autoJudge(short('100,200,300'), '100, 200, 300'), 4);
+  assert.equal(autoJudge(short('300, 400'), '300,400'), 4);
+  assert.equal(autoJudge(short('1,500'), '1, 500'), 4);
+  assert.equal(autoJudge(short('1,500'), '1500'), 4);
+  assert.equal(autoJudge(short('3,000원'), '3000 원'), 4);
+  // 틀린 답은 그대로 만점이 아님
+  assert.equal(autoJudge(short('300, 400, 500'), '300400500'), null);
+  assert.equal(autoJudge(short('1, 500'), '1500'), null);
+  assert.equal(autoJudge(short('3, 5'), '3,500'), null);
+  assert.equal(autoJudge(short('1,000'), '1'), null);
+  assert.equal(autoJudge(short('12,000'), '12,00'), null);
+  assert.equal(autoJudge(short('3,000원'), '30,000원'), null);
+  // 정답표 나누기는 그대로(큰 수로 읽음)
+  assert.deepEqual(shortAnswers('1,000'), ['1000']);
+});
