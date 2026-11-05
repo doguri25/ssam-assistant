@@ -5,7 +5,7 @@ import { onEnter, go as goMenu } from '../../core/shell.js';
 import { registerInbox } from '../../core/inbox.js';
 import * as ai from '../../core/ai.js';
 import { aiRowHTML } from '../../core/ai-roles.js';
-import { readText, fileMessage } from '../../core/files.js';
+import { fileMessage } from '../../core/files.js';
 import { stripPersonal, readStripped, personalMsg } from '../../core/survey.js';
 import { getSchool } from '../../core/settings.js';
 import { toast, copyText } from '../../core/ui.js';
@@ -339,7 +339,7 @@ async function runReview() {
 /* ---------- AI: 지침 점검 ---------- */
 function guidePrompt(p) {
   return `[지침 점검]\n학교 업무 연간계획을 돕는 도우미예요. 아래 올해 지침·공문에서 「${p.name}」 계획서에 꼭 들어가야 할 항목을 3~8개 뽑아 주세요.\n\n`
-    + `지침:\n"""\n${p.sources.guide.slice(0, 15000)}\n"""\n\n`
+    + `지침:\n"""\n${stripPersonal(p.sources.guide).text.slice(0, 15000)}\n"""\n\n`
     + '규칙:\n- item: 항목 이름(짧게)\n- keywords: 계획서에 그대로 나올 만한 핵심어 2~3개\n- sentence: 계획서에 넣을 한 문장\n'
     + '- section: purpose(목적)·policy(방침)·details(세부 추진 계획)·evaluation(평가 계획) 중 그 문장이 들어갈 곳\n'
     + '- 지침에 없는 항목은 지어내지 않음\n\n답은 JSON 배열 하나만: [{"item":"…","keywords":["…","…"],"sentence":"…","section":"details"}]';
@@ -371,7 +371,7 @@ function draftPrompt(p) {
     p.guide && p.guide.length && `지침에서 꼭 넣을 항목:\n${p.guide.map(g => `- ${g.item}: ${g.sentence}`).join('\n')}`
   ].filter(Boolean).join('\n');
   return `[연간계획 초안]\n학교 업무 연간계획서 초안을 써 주세요.\n\n${lines}\n\n`
-    + (p.sources.lastPlan.trim() ? `작년 계획서(참고만):\n"""\n${p.sources.lastPlan.slice(0, 12000)}\n"""\n\n` : '')
+    + (p.sources.lastPlan.trim() ? `작년 계획서(참고만):\n"""\n${stripPersonal(p.sources.lastPlan).text.slice(0, 12000)}\n"""\n\n` : '')
     + '규칙:\n- purpose(목적)·policy(방침)·details(세부 추진 계획)·evaluation(평가 계획)은 학교 계획서 문체(「~한다」, 「가.」「1)」 목록)로 씀\n'
     + '- 작년 계획서 문장을 그대로 옮기지 말고 올해 목표·지침 표현으로 새로 씀. 단, 법령·근거 문장(「~법 제○조」 등)은 그대로 둠\n'
     + `- schedule: 6~12개, 각 일정의 date는 ${p.year}-03-01 ~ ${p.year + 1}-02-28 사이 평일 'YYYY-MM-DD'\n`
@@ -460,15 +460,15 @@ async function addFiles(target, files) {
     reading[id] = `「${f.name}」 읽는 중…`;
     if (here()) renderMain();
     try {
-      // 작년 결과(만족도 설문 CSV 등): 학생 이름·연락처 열과 명단·전화번호 줄은 빼고 넣음(저장하지도 AI로 보내지도 않음)
-      const r = target === 'lastResult' ? await readStripped(f) : null, text = r ? r.text : await readText(f);
+      // 작년 계획서·결과(만족도 설문 CSV 등)·지침: 학생 이름·연락처 열과 명단·전화번호 줄은 빼고 이름은 가려 넣음(저장하지도 AI로 보내지도 않음)
+      const r = await readStripped(f), text = r.text;
       const add = p => {
         const prev = p.sources[target].trim();
         p.sources[target] = cap((prev ? prev + '\n\n' : '') + `(파일 「${f.name}」)\n${text}`);
         p.sourceNames[target] = [...p.sourceNames[target], f.name];
       };
       if (plan.id === id) { add(plan); persist(); } else apply(id, add);
-      if (r && (r.cols.length || r.dropped || r.masked)) toast(personalMsg(r), 7000);
+      if (r.cols.length || r.dropped || r.masked) toast(personalMsg(r), 7000);
     } catch (e) { toast(fileMessage(e && e.code), 5000); }
   }
   delete reading[id];
@@ -508,10 +508,10 @@ document.addEventListener('change', e => {
   const el = e.target;
   if (el.dataset.date != null) { setSchedule(+el.dataset.date, { date: el.value }); refreshDays(+el.dataset.date); return; }
   if (el.id === 'ypFile') { const t = el.dataset.target; const files = [...el.files]; el.value = ''; if (t && files.length) addFiles(t, files); return; }
-  // 붙여 넣은 작년 결과: 칸을 벗어나면 개인정보 열·명단·전화번호 줄은 빼고 이름은 가림
-  if (el.dataset.src === 'lastResult') {
+  // 붙여 넣은 작년 계획서·결과·지침: 칸을 벗어나면 개인정보 열·명단·전화번호 줄은 빼고 이름은 가림
+  if (el.dataset.src) {
     const r = stripPersonal(el.value);
-    if (r.cols.length || r.dropped || r.masked) { el.value = r.text; plan.sources.lastResult = r.text; persist(); toast(personalMsg(r), 7000); }
+    if (r.cols.length || r.dropped || r.masked) { el.value = r.text; plan.sources[el.dataset.src] = r.text; persist(); toast(personalMsg(r), 7000); }
     return;
   }
   if (el.dataset.idea != null && plan.review) {

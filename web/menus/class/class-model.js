@@ -275,22 +275,34 @@ export const summary = ctx => ctx.subjects.map(s => progressOf(ctx, s));
 /* 진도표대로라면 지금 할 차시를 다음 차시로 */
 export const alignToPlan = (ctx, sub) => setNext(ctx, sub, progressOf(ctx, sub).expected + 1);
 /* 있는 교과를 새 진도표로 바꿀 때 기준일(since): 새 진도표의 첫날 앞에 이 교과 체크 기록이 있으면(다음 학기 진도표) 그 첫날.
-   첫날이 지금 기준일보다 앞이면(앞 학기 진도표로 되돌림) 기준일을 없앰(''), 그 밖에는 그대로(null) */
+   첫날이 지금 기준일보다 앞이면(앞 학기 진도표로 되돌림) 기준일을 없앰(''), 그 밖에는 그대로(null).
+   날짜가 없는 진도표(주만 있음·직접 씀)는 앞 진도표를 모두 마쳤고 차시가 거의 다르면(다음 학기 진도표) 오늘.
+   같은 진도표를 고친 것(차시 날짜가 대부분 앞 진도표에 있음 — 첫 주 줄을 지움 등)은 그대로 */
 export function termStart(ctx, old, lessons) {
-  const first = (lessons || []).map(l => l && l.from).filter(isDate).sort()[0];
-  if (!first) return null;
-  const back = !!old.since && first < old.since, base = back ? { ...old, since: '' } : old;
+  const list = (lessons || []).filter(isObj), dates = list.map(l => l.from).filter(isDate);
+  if (!dates.length) {
+    const h = hours(ctx, old), titles = new Set(old.lessons.map(l => l.title));
+    const same = list.filter(l => titles.has(String(l.title || '').trim())).length;
+    return h.plan > 0 && h.done >= h.plan && same * 2 < list.length ? ctx.today : null;
+  }
+  const had = new Set(old.lessons.map(l => l.from).filter(Boolean));
+  if (dates.filter(d => had.has(d)).length * 2 >= dates.length) return null;
+  const first = dates.sort()[0], back = !!old.since && first < old.since, base = back ? { ...old, since: '' } : old;
   return records(ctx, base).some(r => r.date < first) ? first : back ? '' : null;
 }
-/* 진도표에서 고른 교과 넣기: 있는 교과는 차시 목록만 바꾸고(체크 기록 그대로), 새 교과는 계획 진도에 맞춤.
-   다음 학기 진도표면 그 첫날 앞의 기록은 세지 않고 새 교과처럼 계획 진도에 맞춤. 하나라도 저장하지 못하면 false */
+/* 있는 교과의 차시 목록 바꾸기(진도표 파일·AI로 뽑기·고치기 시트): 체크 기록은 그대로. 다음 학기 진도표면 그 첫날(날짜 없으면 오늘)
+   앞의 기록은 세지 않고 새 교과처럼 계획 진도에 맞춤. fields: 함께 바꿀 값(이름·총 시수). 저장하지 못하면 null */
+export function replaceLessons(old, lessons, fields = {}) {
+  const since = termStart(makeCtx(), old, lessons);
+  if (since) { const neu = saveSubject({ ...old, ...fields, since, start: since, offset: 0, lessons }); return neu && saveSubject(alignToPlan(makeCtx(), neu)); }
+  return saveSubject({ ...old, ...(since === '' ? { since: '' } : {}), ...fields, lessons });
+}
+/* 진도표에서 고른 교과 넣기: 있는 교과는 차시 목록만 바꾸고(replaceLessons), 새 교과는 계획 진도에 맞춤. 하나라도 저장하지 못하면 false */
 export function importSubjects(picked) {
   let ok = true;
   for (const s of picked) {
     const old = listSubjects().find(h => h.name === s.name);
-    const since = old ? termStart(makeCtx(), old, s.lessons) : null;
-    if (since) { const neu = saveSubject({ ...old, since, offset: 0, total: s.total, lessons: s.lessons }); ok = !!(neu && saveSubject(alignToPlan(makeCtx(), neu))) && ok; continue; }
-    if (old) { ok = !!saveSubject({ ...old, ...(since === '' ? { since: '' } : {}), total: s.total, lessons: s.lessons }) && ok; continue; }
+    if (old) { ok = !!replaceLessons(old, s.lessons, { total: s.total }) && ok; continue; }
     const neu = saveSubject({ name: s.name, start: today(), offset: 0, total: s.total, lessons: s.lessons });
     ok = !!(neu && saveSubject(alignToPlan(makeCtx(), neu))) && ok;
   }

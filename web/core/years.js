@@ -2,6 +2,7 @@
    공통 키(AI 키·테마 등)는 학년도와 상관없이 그대로. 백업 파일에는 공통 키를 넣지 않음 */
 import { schoolYearOf, HOLIDAYS, weekday, addDays } from './calendar.js';
 import { dueEvents } from '../menus/etc/gongmun-ai.js';
+import { periodStart } from '../menus/class/class-import.js';
 
 const PREFIX = 'ssam:';
 // testkey:told(시험용 키 알림을 보였음)·queue(차례로 붙여넣기 설정)·queueCalc(산출 내역 넣는 방식)는 화면 설정이라 학년도 자료가 아님
@@ -52,7 +53,7 @@ const parse = t => { try { return JSON.parse(t); } catch (e) { return null; } };
 /* 새 학년도에 가져가는 것: 연간계획·행사계획·학급운영계획, 새 학년도(3월 1일부터) 학사일정, 학교명·학급 수·학생 수,
    설정(평어·행특 설정, 채점 설정(예외 번호는 비움), 나이스 입력 설정, 품의 기준 금액). 학생 자료는 비움.
    classSetup: 2월에 새 학년도 준비를 미리 넣었으면 학급 명단·학급 정보·시간표·진도표도 (진도 위치는 처음부터, 체크·주간학습안내는 비움.
-   진도표 시작일은 새 학년도 첫 수업일 — 새 학년도 날로 정해 둔 것은 그대로) */
+   진도표 시작일은 새 학년도 첫 수업일 — 새 학년도 날로 정해 둔 것은 그대로, 차시 날짜는 기간(「3.2~3.6」)을 새 학년도로 다시 읽음) */
 export function carryOver(snap, newYear, { classSetup = false } = {}) {
   const out = {};
   for (const k of ['yearplans', 'yearplan:current', 'events', 'event:current', 'classplans', 'classplan:current', 'purchaseLimit', 'purchaseMeetCap', 'purchase:templates']) if (typeof snap[k] === 'string') out[k] = snap[k];
@@ -75,7 +76,10 @@ export function carryOver(snap, newYear, { classSetup = false } = {}) {
     for (const k of ['class', 'class:info', 'class:timetable']) if (typeof snap[k] === 'string') out[k] = snap[k];
     const subs = parse(snap['class:subjects']);
     const first = firstSchoolDay(newYear), keep = d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= first && d < `${newYear + 1}-03-01`;
-    if (Array.isArray(subs)) out['class:subjects'] = JSON.stringify(subs.filter(isObj).map(({ since, ...x }) => ({ ...x, offset: 0, start: keep(x.start) ? x.start : first })));
+    // 2월에 지난 학년도 날짜로 읽은 차시도 새 학년도 날짜로 (기간이 없는 차시는 그대로)
+    const redate = list => list.map(l => { const f = isObj(l) && periodStart(l.period, newYear); return f ? { ...l, from: f } : l; });
+    if (Array.isArray(subs)) out['class:subjects'] = JSON.stringify(subs.filter(isObj).map(({ since, ...x }) => ({ ...x, offset: 0, start: keep(x.start) ? x.start : first,
+      ...(Array.isArray(x.lessons) ? { lessons: redate(x.lessons) } : {}) })));
   }
   return out;
 }

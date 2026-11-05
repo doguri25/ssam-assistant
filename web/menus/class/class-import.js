@@ -1,12 +1,12 @@
 /* 학급: 학교에서 받은 진도표(교과·창체 연간지도계획)와 학년별 기초시간표를 글에서 읽기 (AI 없음, 화면 없음).
    글은 core/files.js의 readText가 한글 표를 「칸 | 칸」 줄로 바꾼 것. 합친 칸 때문에 줄마다 칸 수가 다름 */
 
-import { schoolYearOf, yearOfMonth } from '../../core/calendar.js';
+import { schoolYearOf, yearOfMonth, weekday, isDate } from '../../core/calendar.js';
 export { schoolYearOf };
 
 export const normName = s => String(s == null ? '' : s).replace(/\s+/g, '');
 
-const PERIOD = /^(\d{1,2})\.(\d{1,2})\.?\s*~\s*(\d{1,2})\.\d{1,2}\.?$/;
+const PERIOD = /^(\d{1,2})\.(\d{1,2})\.?\s*~\s*(\d{1,2})\.(\d{1,2})\.?$/;
 const LESSON_NO = /^\d+\s*\/\s*\d+$/;
 const SUB_AREA = /^(자율.?자치활동|동아리활동|진로활동)$/;
 const pad = n => String(n).padStart(2, '0');
@@ -25,13 +25,36 @@ export function lessonYear(l) {
   return [y, y - 1].find(x => periodStart(l.period, x) === l.from) || schoolYearOf(l.from);
 }
 
+/* 그 학년도로 읽은 기간이 주(월~금, 일~토)에 맞는 정도: 월~금 2, 공휴일로 늦게 시작해 금요일에 끝남 1, 일~토 2, 그 밖 0 */
+function weekFit(period, year) {
+  const m = PERIOD.exec(String(period || '').trim()), s = periodStart(period, year);
+  if (!m || !s) return 0;
+  const e = `${+s.slice(0, 4) + (+m[3] < +m[1] ? 1 : 0)}-${pad(+m[3])}-${pad(+m[4])}`;
+  if (!isDate(s) || !isDate(e) || e < s) return 0;
+  const a = weekday(s), b = weekday(e);
+  return b === 5 ? (a === 1 ? 2 : a > 1 && a < 5 ? 1 : 0) : b === 6 && a === 0 ? 2 : 0;
+}
+/* 글에 학년도가 없는 진도표의 학년도: 1·2월에 지난 학년도 자료에서 준비하면 다음 학년도, 3월이 지나도 학년도를 안 바꿨으면 오늘이 든 학년도,
+   그 밖에는 지금 자료의 학년도(year). 다만 기간(「3.2~3.6」)의 요일이 지금 자료의 학년도와 더 잘 맞으면 그 학년도(지난 학년도 진도표를 늦게 넣음).
+   year가 없으면 예전처럼 오늘이 든 학년도 */
+export function jindoYear(periods, { today, year } = {}) {
+  const ty = schoolYearOf(today);
+  if (!Number.isInteger(year)) return ty;
+  const m = +String(today).slice(5, 7), prep = (m === 1 || m === 2) && year < ty + 1 ? ty + 1 : 0;
+  const base = prep || Math.max(year, ty);
+  if (base === year) return base;
+  const list = [...new Set((periods || []).map(p => String(p == null ? '' : p).trim()).filter(p => PERIOD.test(p)))];
+  const fit = y => list.reduce((n, p) => n + weekFit(p, y), 0);
+  return fit(year) > fit(base) ? year : base;
+}
+
 const cells = line => line.split(/\s*\|\s*/).map(c => c.trim());
 
-/* 진도표 글 → 교과마다 차시 목록. 한 줄 = 1시간. 글에 학년도가 없으면 year(지금 자료의 학년도), 그것도 없으면 오늘이 든 학년도 */
+/* 진도표 글 → 교과마다 차시 목록. 한 줄 = 1시간. 글에 학년도가 없으면 jindoYear(지금 자료의 학년도 year·오늘·기간 요일), year가 없으면 오늘이 든 학년도 */
 export function parseJindo(text, { today, year: dataYear } = {}) {
   const src = String(text || '');
   const ym = /(\d{4})\s*학년도/.exec(src);
-  const year = ym ? +ym[1] : Number.isInteger(dataYear) ? dataYear : schoolYearOf(today);
+  const year = ym ? +ym[1] : jindoYear(src.split(/\r?\n/).flatMap(cells).filter(c => PERIOD.test(c)), { today, year: dataYear });
   const subjects = [];
   let cur = null, week = null, period = '', unit = '';
   for (const raw of src.split(/\r?\n/)) {

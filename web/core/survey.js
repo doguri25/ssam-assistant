@@ -20,24 +20,41 @@ const SKIP = /타임스탬프|timestamp/i;
 const PERSONAL_WORD = /이름|성명|성함|학번|연락처|전화|휴대|핸드폰|폰\s*번호|이메일|메일\s*주소|e-?mail|\bname\b|주소|생년월일/i;
 const ONLY_CLASS = h => /학년|반|번호/.test(h) && !h.replace(/학생|학년|반|번호|및|[\s\d/·,.:()\-]/g, '');
 const share = (a, f) => a.filter(f).length / a.length;
-export function personalColumn(head, answers = []) {
+// 학번 모양(4~6자리 숫자) 답을 학번으로 볼 머리 글 (실적·결과 표에서)
+const STUDENT_NO = /학번|번호|아이디|\bid\b|응답자/i;
+/* table: 실적·결과 표(stripPersonal·stripTable) — 4~6자리 숫자는 머리가 비었거나 학번·번호를 가리킬 때만 학번으로 보고(예산·집행액·연도는 남김),
+   「학년」「반」 머리는 여기서 보지 않음(dropColumns가 이름·번호 열과 함께일 때만 뺌) */
+export function personalColumn(head, answers = [], { table = false } = {}) {
   const h = String(head || '').replace(/\s+/g, ' ').trim();
-  if (PERSONAL_WORD.test(h) || ONLY_CLASS(h)) return true;
+  if (PERSONAL_WORD.test(h) || (!table && ONLY_CLASS(h))) return true;
   const a = answers.map(x => String(x == null ? '' : x).trim()).filter(Boolean);
   if (a.length < 2) return false;
   if (share(a, x => /^0\d{1,2}-?\d{3,4}-?\d{4}$/.test(x)) >= 0.5) return true;
   if (share(a, x => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x)) >= 0.5) return true;
   const distinct = new Set(a).size / a.length >= 0.8;
-  if (distinct && share(a, x => /^\d{4,6}$/.test(x)) >= 0.8) return true;
+  if (distinct && (!table || !h || STUDENT_NO.test(h)) && share(a, x => /^\d{4,6}$/.test(x)) >= 0.8) return true;
   return a.length >= 3 && distinct && share(a, looksLikeName) >= 0.8;
 }
-/* 표(줄×칸)의 개인정보 열 지우기: 첫 줄이 머리 → { rows, cols(뺀 열 머리) } */
+/* 표(줄×칸)의 개인정보 열 지우기: 첫 줄이 머리 → { rows, cols(뺀 열 머리) }.
+   학년·반·번호만 있는 열은 학생을 가리킬 때만(이름·연락처·학번 열이나 서로 함께 있음) 뺌 — 학년별 실적·연번은 남김 */
 function dropColumns(rows) {
-  const width = Math.max(0, ...rows.map(r => r.length)), drop = new Set(), cols = [];
-  for (let j = 0; j < width; j++) {
-    if (!personalColumn(rows[0][j], rows.slice(1).map(r => r[j]))) continue;
-    drop.add(j); cols.push(String(rows[0][j] || '').trim() || `${j + 1}번째 열`);
-  }
+  const width = Math.max(0, ...rows.map(r => r.length)), body = rows.slice(1), cols = [];
+  const head = j => String(rows[0][j] == null ? '' : rows[0][j]).replace(/\s+/g, ' ').trim();
+  // p: 개인정보 열(「학년 반 번호」처럼 합친 머리도), n: 번호만, c: 학년·반만, '': 그 밖
+  const kind = Array.from({ length: width }, (_, j) => {
+    const h = head(j);
+    if (personalColumn(h, body.map(r => r[j]), { table: true })) return 'p';
+    if (!ONLY_CLASS(h)) return '';
+    return !/번호/.test(h) ? 'c' : /학년|반/.test(h) ? 'p' : 'n';
+  });
+  // 번호 열: 개인정보 열이나 학년·반 열과 함께면 학생 번호 (1, 2, 3…으로 이어지는 연번은 빼고)
+  const serial = j => body.every((r, i) => String(r[j] == null ? '' : r[j]).trim() === String(i + 1));
+  const hasP = kind.includes('p'), hasC = kind.includes('c');
+  kind.forEach((k, j) => { if (k === 'n' && (hasP || (hasC && !serial(j)))) kind[j] = 'p'; });
+  // 학년·반 열: 이름·번호 열과 함께일 때만
+  if (kind.includes('p')) kind.forEach((k, j) => { if (k === 'c') kind[j] = 'p'; });
+  const drop = new Set();
+  kind.forEach((k, j) => { if (k === 'p') { drop.add(j); cols.push(head(j) || `${j + 1}번째 열`); } });
   return { rows: drop.size ? rows.map(r => r.filter((c, j) => !drop.has(j))) : rows, cols };
 }
 const rowsText = rows => rows.map(r => r.join('\t').replace(/\t+$/, '')).join('\n');

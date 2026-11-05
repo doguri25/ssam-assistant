@@ -7,10 +7,10 @@ import { toast } from '../../core/ui.js';
 import * as ai from '../../core/ai.js';
 import { readText, fileMessage } from '../../core/files.js';
 import { getSchool } from '../../core/settings.js';
-import { normName, periodStart, lessonYear, parseJindo, parseTimetable } from './class-import.js';
+import { normName, periodStart, lessonYear, parseJindo, parseTimetable, jindoYear } from './class-import.js';
 import {
   getInfo, setInfo, getTimetable, setTimetable, listSubjects, saveSubject, removeSubject, setSubjects, resetRecords,
-  makeCtx, progressOf, setNext, alignToPlan, today, normLessons, normTimetableAI, hasTimetable, importSubjects, termStart
+  makeCtx, progressOf, setNext, alignToPlan, today, normLessons, normTimetableAI, hasTimetable, importSubjects, termStart, replaceLessons
 } from './class-model.js';
 import { sampleData } from './class-sample.js';
 
@@ -25,6 +25,7 @@ let ttMsg = null; // 시간표 가져오기 안내 { text, ai: AI로 읽기 버�
 let lastTt = ''; // 우리 반을 못 찾은 시간표 파일 글(AI로 읽기용)
 let lastFile = null; // 방금 읽은 진도표 파일 { name, text } — 이 화면에서만 기억(저장 안 함)
 let addToken = 0; // 「교과 추가」 시트마다 번호(AI가 끝났을 때 그 시트가 아직 열려 있는지 봄)
+let stale = false; // 칸에 치는 중이라 다시 그리지 못한 교과 목록이 있음
 const MAX_SRC = 60000;
 const AI_KEY = '설정 › AI에서 키를 넣어 주세요';
 
@@ -58,10 +59,12 @@ function prepNote() {
   const next = prepYear(today(), cur);
   return next ? `<div class="banner warn"><span class="grow">${next}학년도 준비라면 설정 › 학년도에서 새 학년도를 먼저 시작해 주세요. 지금 넣으면 ${cur}학년도 자료에 들어가요. (새 학년도를 시작할 때 학급 준비를 가져갈 수도 있어요)</span><button class="btn" type="button" data-c="toYears">학년도로 가기</button></div>` : '';
 }
+const subsHTML = (subs, ctx) => (subs.length ? `<ul class="cls-subs">${subs.map(s => subHTML(ctx, s)).join('')}</ul>` : '<p class="muted" style="margin:0">아직 넣은 진도표가 없어요. 학교의 「교과 연간지도계획」 한글 파일을 올리면 교과를 한 번에 넣어요.</p>');
+const namesHTML = subs => [...new Set([...subs.map(s => s.name), ...NAMES])].map(n => `<option value="${esc(n)}">`).join('');
 function render() {
   if (!box) return;
+  stale = false;
   const info = getInfo(), tt = getTimetable(), subs = listSubjects(), ctx = makeCtx();
-  const names = [...new Set([...subs.map(s => s.name), ...NAMES])];
   box.innerHTML = `<div class="m-page cls-page cls-setup-page">
     <div class="m-head"><h2 class="cls-h2">준비</h2><p class="muted">학급, 시간표, 교과 진도표를 넣어요. 학교에서 받은 한글 파일을 그대로 올려도 돼요.</p></div>
     ${prepNote()}
@@ -79,7 +82,7 @@ function render() {
       </div>
       <div id="clsTtMsg">${ttMsgHTML()}</div>
       ${ttHTML(tt)}
-      <datalist id="clsNames">${names.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+      <datalist id="clsNames">${namesHTML(subs)}</datalist>
       <p class="muted cls-note">「국어(자)」, 「창체(동)」처럼 괄호를 붙여도 같은 교과로 봐요.</p>
       <input type="file" id="clsTtFile" accept=".hwp,.hwpx,.pdf,.csv,.xlsx,.txt" hidden>
     </div>
@@ -89,7 +92,7 @@ function render() {
         <button class="btn" type="button" data-c="addSub">교과 추가</button>
         <button class="btn text" type="button" data-c="sample">예시로 채우기</button></div>
       </div>
-      ${subs.length ? `<ul class="cls-subs">${subs.map(s => subHTML(ctx, s)).join('')}</ul>` : '<p class="muted" style="margin:0">아직 넣은 진도표가 없어요. 학교의 「교과 연간지도계획」 한글 파일을 올리면 교과를 한 번에 넣어요.</p>'}
+      <div id="clsSubs">${subsHTML(subs, ctx)}</div>
       <input type="file" id="clsJindoFile" accept=".hwp,.hwpx,.pdf,.csv,.xlsx,.txt" hidden>
     </div>
   </div>`;
@@ -218,11 +221,12 @@ async function runLessonAi(token, name, text, msg, btn) {
   if (!text) { msg('진도표 파일을 올리거나 글을 붙여 넣어 주세요'); return; }
   if (text.length > MAX_SRC) toast('앞 6만 자만 AI에 보내요', 4000);
   const ym = /(\d{4})\s*학년도/.exec(text);
-  const year = ym ? +ym[1] : currentYear(); // 파일에 학년도가 없으면 지금 자료의 학년도
   btn.disabled = true; msg('AI가 차시를 뽑는 중이에요…');
   let lessons;
   try {
     const v = await ai.generateJSON(lessonPrompt(name, text), { valid: x => x && Array.isArray(x.lessons) });
+    // 파일에 학년도가 없으면 지금 자료의 학년도·오늘·뽑은 기간의 요일로 정함(jindoYear)
+    const year = ym ? +ym[1] : jindoYear(v.lessons.map(l => l && l.period), { today: today(), year: currentYear() });
     lessons = normLessons(v.lessons, year);
   } catch (err) {
     const open = document.querySelector(`#sheetRoot [data-add-token="${token}"]`);
@@ -238,7 +242,8 @@ async function runLessonAi(token, name, text, msg, btn) {
   const old = listSubjects().find(s => s.name === name);
   // 시트가 그대로면 고치기 시트로, 그사이 닫았거나 다른 일을 하면 시작한 교과 이름으로 바로 저장
   if (open) { openEditor(old ? { ...old, lessons } : { id: '', name, lessons }); return; }
-  let s = saveSubject(old ? { ...old, lessons } : { name, start: today(), offset: 0, total: null, lessons });
+  // 있는 교과는 차시 목록만 바꿈(다음 학기 진도표면 앞 학기 체크는 세지 않음)
+  let s = old ? replaceLessons(old, lessons) : saveSubject({ name, start: today(), offset: 0, total: null, lessons });
   if (s && !old) s = saveSubject(alignToPlan(makeCtx(), s));
   if (saved(!!s)) { changed('lessonAi'); toast(`「${name}」 차시 ${lessons.length}개를 넣었어요`, 5000); }
 }
@@ -312,9 +317,11 @@ function saveEditor() {
   if (!name) { toast('교과 이름을 넣어 주세요'); return; }
   if (listSubjects().some(s => s.name === name && s.id !== ed.id)) { toast(`「${name}」 교과가 이미 있어요`); return; }
   const known = ed.base.lessons.find(l => l.from);
-  const year = known ? lessonYear(known) : currentYear();
+  const year = known ? lessonYear(known) : jindoYear(ed.lessons.map(l => l.period), { today: today(), year: currentYear() });
   const lessons = ed.lessons.filter(l => String(l.title || '').trim()).map(l => ({ ...l, from: periodStart(l.period, year) }));
-  let s = saveSubject(ed.id ? { ...ed.base, name, lessons } : { name, start: today(), offset: 0, total: null, lessons });
+  // 있는 교과: 저장된 차시와 견줘 다음 학기 진도표(AI로 뽑음·새로 씀)면 앞 학기 체크는 세지 않음
+  const stored = ed.id ? listSubjects().find(x => x.id === ed.id) : null;
+  let s = ed.id ? replaceLessons(stored || ed.base, lessons, { name }) : saveSubject({ name, start: today(), offset: 0, total: null, lessons });
   if (s && !ed.id) s = saveSubject(alignToPlan(makeCtx(), s));
   if (!saved(!!s)) return;
   S().closeSheet();
@@ -362,7 +369,26 @@ onEnter('class', (tab, section) => {
   box.hidden = tab !== 'progress';
   if (tab === 'progress') render();
 });
-document.addEventListener('class:changed', e => { if (visible() && !(e.detail && e.detail.from === 'setup')) render(); });
+/* 다른 일(「교과 추가」 AI 등)이 학급 자료를 바꿈: 이 화면 칸에 글을 치는 중이면 칸을 다시 만들지 않고(포커스·한글 조합이 끊기지 않게)
+   교과 목록만 바꾸고, 치는 칸이 교과 목록 안이면 칸을 벗어날 때 바꿈 */
+const typing = () => { const a = document.activeElement; return a && box && box.contains(a) && a.matches('input, textarea, select') ? a : null; };
+function refreshSubs(active) {
+  const list = box.querySelector('#clsSubs'), names = box.querySelector('#clsNames');
+  if (!list || list.contains(active)) { stale = true; return; }
+  const subs = listSubjects();
+  list.innerHTML = subsHTML(subs, makeCtx());
+  if (names) names.innerHTML = namesHTML(subs);
+  stale = false;
+}
+document.addEventListener('class:changed', e => {
+  if (!visible() || (e.detail && e.detail.from === 'setup')) return;
+  const a = typing();
+  if (a) refreshSubs(a); else render();
+});
+document.addEventListener('focusout', e => {
+  if (!stale || !box || !box.contains(e.target)) return;
+  setTimeout(() => { if (!stale || !visible()) return; const a = typing(); if (a) refreshSubs(a); else render(); }, 0);
+});
 document.addEventListener('change', e => { if (box && box.contains(e.target) && visible()) onChange(e.target); });
 document.addEventListener('click', e => {
   if (!box || !box.contains(e.target) || !visible()) return;
