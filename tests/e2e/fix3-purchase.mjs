@@ -234,6 +234,57 @@ await run('fix3-purchase', [
     assert(budget(s2.draft.reason).includes('금35,000원') && s2.draft.reason === (await reason()) && s2.draft.reason.includes(`${INTRO} 미술 수업\n`), '다시 맞춘 뒤: ' + budget(s2.draft.reason));
     assert(!(await page.$(`${P} [data-pc="resync"]`)), '[사유 다시 맞추기]가 남음');
   }],
+  ['[purchase3-1] 손으로 고친 사유에서 조합하는 중 견적서가 관련을 바꾼 뒤, 조합을 마치지 않고 [사유 다시 맞추기]를 사람처럼 누르면 첫 누름에 먹힘', async () => {
+    await fresh({ type: 'event', typeSet: true, project: '', purpose: '협동심' }, { inbox: { on: true, mode: 'direct' } }); await go(); await draft();
+    await page.fill(`${P} #pcReason`, (await reason()).replace('  가. 목적: 협동심', '  가. 목적: 협동심 기르기(손으로)'));
+    await page.waitForTimeout(150);
+    readDelay = 1200;
+    readReply = { items: [{ name: '칭찬 스티커', unit: '장', qty: 10, price: 500 }], shipping: [], fields: { project: '가을 운동회' } };
+    await caret('intro');
+    await page.setInputFiles('#inboxFile', JPG);
+    await page.waitForTimeout(100);
+    const cdp = await page.context().newCDPSession(page);
+    await page.keyboard.insertText(' 미술 수');
+    await cdp.send('Input.imeSetComposition', { text: 'ㅇ', selectionStart: 1, selectionEnd: 1 });
+    await cdp.send('Input.imeSetComposition', { text: '업', selectionStart: 1, selectionEnd: 1 });
+    await has('칭찬 스티커')();
+    await page.waitForTimeout(300);
+    assert(await page.$(`${P} [data-pc="resync"]`), '[사유 다시 맞추기]가 없음');
+    await page.evaluate(() => { window.__clicks = 0; document.addEventListener('click', e => { if (e.target.closest && e.target.closest('[data-pc="resync"]')) window.__clicks++; }, true); });
+    await human(`${P} [data-pc="resync"]`);
+    await page.waitForTimeout(250);
+    await cdp.detach();
+    const s = await cur(), v = await reason();
+    assert((await page.evaluate(() => window.__clicks)) === 1, '누름이 먹히지 않음');
+    assert(budget(s.draft.reason).includes('금35,000원') && v === s.draft.reason && v.includes(`${INTRO} 미술 수업\n`) && v.split('\n')[0].includes('가을 운동회 운영 계획'), '다시 맞춘 뒤: ' + budget(v) + ' / ' + JSON.stringify(v.split('\n').slice(0, 2)));
+    assert(!(await page.$(`${P} [data-pc="resync"]`)), '[사유 다시 맞추기]가 남음');
+  }],
+  ['[purchase3-1] 조합 중 견적서가 들어온 뒤 compositionend 없이 일반 입력이 와도 끝없이 되부르지 않고(페이지 오류 없음) 저장=화면, 친 글자도 저장', async () => {
+    await fresh({}, { inbox: { on: true, mode: 'direct' } }); await go(); await draft();
+    const e0 = errors.length;
+    readDelay = 1200;
+    await caret('intro');
+    await page.setInputFiles('#inboxFile', JPG);
+    await page.waitForTimeout(100);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.imeSetComposition', { text: 'ㅇ', selectionStart: 1, selectionEnd: 1 });
+    await cdp.send('Input.imeSetComposition', { text: '어', selectionStart: 1, selectionEnd: 1 });
+    await has('칭찬 스티커')();
+    await page.waitForTimeout(300);
+    await page.keyboard.type('1');
+    await page.waitForTimeout(300);
+    await cdp.detach();
+    const s = await cur(), v = await reason();
+    assert(errors.length === e0, '페이지 오류: ' + errors.slice(e0, e0 + 2).join(' | '));
+    assert(v === s.draft.reason && budget(v).includes('금35,000원') && !s.draft.edited, '화면: ' + budget(v) + ' / 저장: ' + budget(s.draft.reason) + ' edited ' + s.draft.edited);
+    assert(s.draft.reason.includes(`${INTRO}어1\n`), '친 글자: ' + JSON.stringify(s.draft.reason.split('\n')[1]));
+    // 그 뒤 보통으로 쳐도 저장=화면
+    await page.keyboard.type('2');
+    await page.waitForTimeout(200);
+    const s2 = await cur();
+    assert(s2.draft.reason === (await reason()) && s2.draft.reason.includes(`${INTRO}어12\n`), '이어 친 뒤: ' + JSON.stringify(s2.draft.reason.split('\n')[1]));
+    errors.splice(e0);
+  }],
   ['[purchase3-2] 초안 없이 쓰던 품의가 있으면 행사계획 [품의로 이어 가기]가 바꿀지 묻고, [취소]면 그대로, [바꾸기]면 행사 품의', async () => {
     await seedEvent();
     await fresh({ project: '과학 실험 재료', purpose: '용해와 용액 실험', items: [{ name: '비커', qty: '8', price: '4500' }, { name: '전자저울', qty: '4', price: '23000' }] });

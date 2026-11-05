@@ -371,6 +371,8 @@ function keptHead() {
   const d = st.draft, h = d ? ownHead(d.reason) : null;
   return h != null && !(String(st.form.related || '').trim() && d.rel !== relatedLine(st.form, curYear())) ? h : null;
 }
+/* [사유 다시 맞추기] 줄은 바뀔 때만 다시 씀(누르는 중인 단추가 바뀌어 첫 누름이 먹히지 않게) */
+function putResync() { const rb = box && box.querySelector('#pcResyncBox'), h = resyncHTML(); if (rb && rb.innerHTML !== h) rb.innerHTML = h; }
 function resyncHTML() {
   const d = st.draft;
   if (!d || !d.edited) return '';
@@ -400,7 +402,8 @@ function putReason(ta, v) {
 }
 /* 조합을 마치면: 손대지 않은 사유는 앱이 맞춘 사유에 그동안 고친 첫 문장·관련만, 손으로 고친 사유는 칸 글에 앱이 맞춘 관련만 얹어 보이고 친 것처럼 처리 */
 function catchUp(ta) {
-  const base = lagBase; lagEl = null; lagBase = '';
+  // 조합은 끝났으니 imeEl도 비움(putReason이 다시 기다리지 않아 아래 input이 이리 되돌아오지 않음)
+  const base = lagBase; lagEl = null; lagBase = ''; if (imeEl === ta) imeEl = null;
   if (!st.draft || !box || !box.contains(ta)) return;
   const v = ta.value, d = st.draft;
   let next = d.edited ? withRelated(v, d.rel) : d.reason;
@@ -430,8 +433,7 @@ function syncReason() {
       putReason(ta, w);
     }
   }
-  const rb = box.querySelector('#pcResyncBox');
-  if (rb) rb.innerHTML = resyncHTML();
+  putResync();
 }
 
 function markBad(r) {
@@ -575,6 +577,8 @@ document.addEventListener('input', e => {
   if (el.dataset.k) { st.form[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value; st.form.guessed = st.form.guessed.filter(k => k !== el.dataset.k); }
   else if (el.dataset.item != null && el.dataset.f) { const it = st.form.items[+el.dataset.item]; if (it) it[el.dataset.f] = el.value; }
   else if (el.dataset.d && st.draft) {
+    // compositionend 없이 조합 중이 아닌 입력이 오면 조합은 끝난 것
+    if (el === imeEl && !e.isComposing) imeEl = null;
     // 앱이 맞춘 사유를 조합을 마친 뒤 보일 참이면(칸에는 옛 가~붙임) 조합 중의 글은 저장하지 않음
     if (el === lagEl) { if (!e.isComposing) catchUp(el); return; }
     st.draft[el.dataset.d] = el.value;
@@ -592,7 +596,7 @@ document.addEventListener('input', e => {
       // 첫 문장(과 관련)만 고쳤으면(가~붙임은 앱이 만든 그대로) 계속 맞춤, 그 밖을 고쳤으면 손으로 고친 사유
       if (intro && el.value.trim() === composeReason({ intro, form: st.form, year: y }).trim()) { st.draft.intro = intro; st.draft.edited = false; st.draft.tail = reasonTail(st.form); }
       else st.draft.edited = true;
-      const rb = box.querySelector('#pcResyncBox'); if (rb) rb.innerHTML = resyncHTML();
+      putResync();
     }
     dropRv(el.dataset.d === 'title' ? 'title' : 'intro');
     save(); return;
