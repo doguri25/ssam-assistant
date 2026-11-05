@@ -245,7 +245,9 @@ function checksHTML() {
 }
 
 /* 초안 위 「확인할 것」: 누르면 [자세히 고치기]의 그 칸으로 */
+// 사유의 관련을 일부러 비웠으면 「관련 · 기본값으로 넣음」은 맞지 않으니 보이지 않음
 const chipsHTML = () => confirmChips(st.form, checks(), st.form.guessed)
+  .filter(c => !(c.key === 'related' && st.draft && relatedOf(st.draft.reason) === ''))
   .map(c => `<button type="button" class="chip pc-chip ${c.level}" data-chip="${c.key}">${esc(c.text)}</button>`).join('');
 function openMore() {
   const d = box && box.querySelector('#pcMore');
@@ -384,7 +386,7 @@ function syncReason() {
     st.draft.reason = composeReason({ intro: st.draft.intro, form: st.form, year: curYear() }); st.draft.tail = reasonTail(st.form); st.draft.rel = rel;
     save();
     if (ta && document.activeElement !== ta) ta.value = st.draft.reason;
-  } else if (st.draft.edited && st.draft.rel !== rel) {
+  } else if (st.draft.edited && st.draft.rel !== rel && keptHead() == null) {
     // 손으로 고친 사유: 관련 칸(사업명)이 바뀌면 첫 줄만 따라 바꿈(가~ 손으로 고친 것은 그대로). 「1. 관련:」 줄이 없으면 [사유 다시 맞추기]
     const w = withRelated(st.draft.reason, rel);
     if (relatedOf(w) === rel) {

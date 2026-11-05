@@ -277,11 +277,11 @@ export function relatedOf(reason) {
   if (p.num ? s.slice(end, p.start).trim() : /^\n[ \t]*[가-하]\./.test(s.slice(end))) return null;
   return m[1].trim();
 }
-/* 손으로 쓴 사유 머리(「2.」 줄 앞): 「1. 근거:」·여러 줄 관련·지운 관련 줄('') — [사유 다시 맞추기] 때 그대로 살림.
-   「1. 관련: …」 한 줄이거나 「2.」 줄이 없으면 null(앱이 「1. 관련:」 줄을 씀) */
+/* 손으로 쓴 사유 머리(「2.」 줄 앞): 「1. 근거:」·여러 줄 관련·지운 관련 줄('')·일부러 비운 「1. 관련:」 — [사유 다시 맞추기] 때 그대로 살림.
+   관련 글이 있는 「1. 관련: …」 한 줄이거나 「2.」 줄이 없으면 null(앱이 「1. 관련:」 줄을 씀) */
 export function ownHead(reason) {
-  const s = String(reason || ''), p = introAt(s);
-  return p.num && relatedOf(s) == null ? s.slice(0, p.start).replace(/\n$/, '') : null;
+  const s = String(reason || ''), p = introAt(s), rel = relatedOf(s);
+  return p.num && (rel == null || rel === '') ? s.slice(0, p.start).replace(/\n$/, '').replace(/[ \t]+$/, '') : null;
 }
 /* 사유 첫 줄의 관련만 바꿈(손으로 고친 나머지는 그대로). 새 꼴이 아니면 그대로 */
 export const withRelated = (reason, rel) => String(reason || '').replace(/^(\s*1\.[ \t]*관련[ \t]*:)[ \t]*[^\n]*/, (m, head) => `${head} ${String(rel || '').trim()}`);

@@ -90,3 +90,15 @@ test('[purchase2-7] 「우리가 원하는 학교 만들기」「내가 쓰는 �
   assert.equal(n.fields.project, '우리가 원하는 학교 만들기');
   assert.equal(normIntake({ items: [], fields: { project: '내가 쓰는 시 공모전' } }).fields.project, '내가 쓰는 시 공모전');
 });
+
+test('[관련 비움] 사유의 관련 글을 일부러 비우면 손으로 쓴 머리로 봐 다시 맞춰도 비운 채', () => {
+  for (const head of ['1. 관련:', '1. 관련: ']) {
+    const r = withHead(head);
+    assert.equal(ownHead(r), '1. 관련:', JSON.stringify(head));
+    const out = composeReason({ intro: introOf(r), form: book(12), year: 2026, head: ownHead(r) });
+    assert.ok(out.startsWith(`1. 관련:\n2. ${INTRO}\n`), out);
+    assert.equal(count(out, '가. 목적'), 1);
+  }
+  // 관련 글이 있으면 앱이 맞추는 한 줄(머리 아님)
+  assert.equal(ownHead(r0), null);
+});

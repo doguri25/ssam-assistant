@@ -29,7 +29,11 @@ const P = 'section[data-menu="purchase"]';
 const until = async (fn, ms = 8000) => { const end = Date.now() + ms; while (!(await fn())) { if (Date.now() > end) throw new Error('시간 초과'); await new Promise(r => setTimeout(r, 50)); } };
 const cur = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:purchase:current')));
 const recent = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:purchase:recent') || '[]'));
-const fresh = (form = {}) => page.evaluate(form => localStorage.setItem('ssam:purchase:current', JSON.stringify({ id: 'pcA', form: { type: 'goods', project: '교실 물품', purpose: '수업 준비', date: '2026-11-10', target: '3학년 1반', items: [{ name: '실험 재료', spec: '', unit: '개', qty: '10', price: '3000' }], ...form }, draft: null })), form);
+// 앞 시험에서 끝나지 않은 일(검토 AI 등)이 늦게 저장해 이 값을 덮지 않게, 지금 페이지의 저장을 먼저 멈추고 씀(다시 열면 풀림)
+const fresh = (form = {}) => page.evaluate(async form => {
+  (await import('./core/store.js')).freeze();
+  localStorage.setItem('ssam:purchase:current', JSON.stringify({ id: 'pcA', form: { type: 'goods', project: '교실 물품', purpose: '수업 준비', date: '2026-11-10', target: '3학년 1반', items: [{ name: '실험 재료', spec: '', unit: '개', qty: '10', price: '3000' }], ...form }, draft: null }));
+}, form);
 const go = async () => { await page.reload(); await page.waitForTimeout(400); await page.click('nav.app-side [data-menu-go="purchase"]'); await page.click('#menuTabs [data-tab="new"]'); await page.waitForSelector(`${P} #pcIntake`); };
 const draft = async () => { await page.click(`${P} [data-pc="draft"]`); await page.waitForFunction(s => document.querySelector(`${s} #pcReason`), P, { timeout: 8000 }); };
 const reason = () => page.inputValue(`${P} #pcReason`);

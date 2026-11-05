@@ -99,7 +99,7 @@ await run('fix1105-purchase', [
       assert((await state()).form.related === '', '관련 칸: ' + (await state()).form.related);
     }
   }],
-  ['[purchase2-2] 사유의 관련 글을 Backspace로 다 지우면 관련 칸이 비고(다음 줄·글 조각이 들어가지 않음), 다시 맞추면 기본값', async () => {
+  ['[purchase2-2·관련 비움] 사유의 관련 글을 Backspace로 다 지우면 관련 칸이 비고(다음 줄·글 조각이 들어가지 않음), 수량을 고치거나 다시 맞춰도 관련은 비운 채, 관련 칸에 쓰면 다시 들어감', async () => {
     await reset({ 'purchase:view': 'full' });
     await makeDraft();
     const first = (await reason()).split('\n')[0];
@@ -108,11 +108,20 @@ await run('fix1105-purchase', [
     await page.waitForTimeout(150);
     const s = await state();
     assert(s.form.related === '' && (await page.inputValue(`${P} #pcRelated`)) === '', '관련 칸: ' + JSON.stringify(s.form.related));
-    assert((await page.textContent(`${P} #pcResyncBox`)).includes('사유 다시 맞추기'), '다시 맞추기 버튼');
+    assert(!(await page.textContent(`${P} #pcChips`)).includes('관련 · 기본값'), '비운 관련에 기본값 칩');
+    // 다른 칸(수량)을 고쳐도 관련 줄은 비운 채
+    await page.fill(`${P} [data-item="0"][data-f="qty"]`, '7');
+    await page.waitForTimeout(200);
+    assert((await reason()).split('\n')[0].trim() === '1. 관련:', JSON.stringify((await reason()).split('\n')[0]));
+    assert((await page.textContent(`${P} #pcResyncBox`)).includes('사유 다시 맞추기'), '다시 맞추기 버튼(품목이 바뀜)');
     await page.click(`${P} [data-pc="resync"]`);
     await page.waitForTimeout(150);
     const lines = (await reason()).split('\n');
-    assert(lines[0] === '1. 관련: 2026학년도 학교 교육과정 운영 계획' && lines[1] === `2. ${INTRO}`, JSON.stringify(lines.slice(0, 2)));
+    assert(lines[0].trim() === '1. 관련:' && lines[1] === `2. ${INTRO}` && (await reason()).split('가. 목적').length === 2, JSON.stringify(lines.slice(0, 3)));
+    // 관련 칸에 쓰면 그 관련이 첫 줄에 들어감
+    await page.fill(`${P} #pcRelated`, '○○교육청 독서교육과-77(2026. 11. 3.)');
+    await page.waitForTimeout(200);
+    assert((await reason()).split('\n')[0] === '1. 관련: ○○교육청 독서교육과-77(2026. 11. 3.)', JSON.stringify((await reason()).split('\n')[0]));
   }],
   ['[purchase2-2] 관련을 여러 줄(가. 나.)로 쓰면 관련 칸으로 옮기지 않고, 다시 맞춰도 나. 줄까지 그대로', async () => {
     for (const head of ['1. 관련:\n  가. ○○교육청 과학과-1234(2026. 11. 2.)\n  나. 2026학년도 독서 교육 운영 계획', '1. 관련: 가. ○○교육청 과학과-1234(2026. 11. 2.)\n          나. 2026학년도 독서 교육 운영 계획']) {
