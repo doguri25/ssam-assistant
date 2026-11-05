@@ -55,11 +55,19 @@ export const editing = () => {
   const a = document.activeElement;
   return !!(a && box && box.contains(a) && (a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || (a.tagName === 'INPUT' && !/^(file|checkbox|radio|button)$/.test(a.type))));
 };
+/* 단추 등을 누르는 중(누르고 떼기 전): 그 사이 다시 그리면 눌린 단추가 사라져 click이 나지 않으므로 뗀 뒤로 미룸.
+   글 칸·고르기 칸을 누를 때는 표시하지 않음(고르기 목록은 뗌이 화면에 오지 않을 수 있음). 혹시 뗌을 놓쳐도 2초 뒤엔 풂 */
+let pressAt = 0;
+const pressing = () => Date.now() - pressAt < 2000;
+const TYPING = 'textarea, select, input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=file])';
 export function refresh(id) {
   if (!visible() || (id && curId() !== id)) return;
-  if (editing()) { pendingRefresh = true; return; }
+  if (editing() || pressing()) { pendingRefresh = true; return; }
   pendingRefresh = false; render();
 }
+/* 칸을 고친 change는 Tab·다른 칸·단추 누르기로 떠날 때 나고, 그때는 아직 옮겨 간 칸에 초점이 없음:
+   초점이 옮겨 간 뒤에 보아, 칸에 쓰는 중이면 그 칸을 떠날 때까지, 단추를 누르는 중이면 뗄 때까지 다시 그리지 않음(옮겨 간 칸·한글 조합·누른 단추를 지킴) */
+export const later = id => setTimeout(() => refresh(id), 0);
 
 const reach = t => (!t || !t.key.items.length ? 1 : !t.students.length ? 2 : graded(t).length ? 4 : 3);
 export function openTest(id, step) {
@@ -132,6 +140,7 @@ function testHTML(t) {
 let rendering = false, again = false;
 export function render() {
   if (!box) return;
+  pendingRefresh = false;
   if (rendering) { again = true; return; }
   rendering = true;
   try { draw(); } finally { rendering = false; }
@@ -264,7 +273,7 @@ function editMeta(el) {
   const v = el.value.trim();
   t.meta[k] = kind === 'n' ? (v === '' ? null : Number(v)) : v;
   commit(t);
-  // 제목만 바로 바꾸고, 다시 그리기는 옮겨 간 칸을 떠날 때까지 미룸(아래 later)
+  // 제목만 바로 바꾸고, 다시 그리기는 옮겨 간 칸을 떠날 때까지 미룸(later)
   const ti = box.querySelector('.un-title'); if (ti) ti.textContent = makeTitle(t.meta);
   later(t.id);
 }
@@ -279,9 +288,6 @@ function editItem(el) {
   const sum = box.querySelector('.un-sum'); if (sum) sum.innerHTML = sumHTML(t.key.items);
   later(t.id);
 }
-/* 칸을 고친 change는 Tab·다른 칸 누르기로 떠날 때 나고, 그때는 아직 옮겨 간 칸에 초점이 없음:
-   초점이 옮겨 간 뒤에 보아, 칸에 쓰는 중이면 그 칸을 떠날 때까지 다시 그리지 않음(옮겨 간 칸·한글 조합을 지킴) */
-const later = id => setTimeout(() => refresh(id), 0);
 
 /* ---------- 손잡이 ---------- */
 function askDelete(id) {
@@ -377,10 +383,20 @@ registerInbox('unit-paper', {
   }
 });
 
+/* 뗀 뒤(click이 난 뒤) 미뤄 둔 다시 그리기 */
+const release = () => {
+  const at = pressAt;
+  if (!at) return;
+  setTimeout(() => { if (pressAt === at) pressAt = 0; if (pendingRefresh && !editing() && !pressing()) { pendingRefresh = false; if (visible()) render(); } }, 0);
+};
+document.addEventListener('pointerup', release, true);
+document.addEventListener('pointercancel', release, true);
+
 onEnter('evaluate', (tab, section) => {
   if (!box || !section.contains(box)) {
     box = document.createElement('div'); box.className = 'unit-box'; section.append(box);
-    box.addEventListener('focusout', () => setTimeout(() => { if (pendingRefresh && !editing()) { pendingRefresh = false; if (visible()) render(); } }, 0));
+    box.addEventListener('focusout', () => setTimeout(() => { if (pendingRefresh && !editing() && !pressing()) { pendingRefresh = false; if (visible()) render(); } }, 0));
+    box.addEventListener('pointerdown', e => { if (!(e.target.closest && e.target.closest(TYPING))) pressAt = Date.now(); }, true);
   }
   curTab = tab;
   box.hidden = tab !== 'unit';

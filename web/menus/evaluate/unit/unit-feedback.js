@@ -56,7 +56,9 @@ function step4HTML(t) {
 
 async function writeFeedback(only) {
   const id = curId(), t = getTest(id);
-  if (!t || runId) return;
+  if (!t) return;
+  // 한 번에 한 평가만 씀: 쓰는 중이면 말없이 끝내지 않고 알림
+  if (runId) { toast(runId === id ? '잘한 점·격려를 쓰는 중이에요. 끝난 뒤에 눌러 주세요.' : '다른 평가의 잘한 점·격려를 쓰는 중이에요. 끝난 뒤에 눌러 주세요.', 5000); return; }
   if (!ai.ready()) { toast(AI_KEY, 5000); return; }
   const list = graded(t).filter(s => (only != null ? s.no === only : !(s.good && s.cheer)));
   if (!list.length) { toast('모두 썼어요. 다시 쓰려면 학생마다 [다시 쓰기]를 눌러요.'); return; }

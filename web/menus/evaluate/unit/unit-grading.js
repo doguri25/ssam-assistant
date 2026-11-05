@@ -14,7 +14,7 @@ import { go } from '../../../core/shell.js';
 import { gradeParts, normGrade, validGrade } from './unit-ai.js';
 import { arrangePages } from './unit-pages.js';
 import { readNos, openNoCheck, openNoWait, rosterAllowed, byNoOrder } from '../../../core/student-no.js';
-import { esc, SS, AI_KEY, registerStep, inStep, cur, curId, commit, saveOrWarn, refresh, render, goStep, getBox, openTest, U } from './unit.js';
+import { esc, SS, AI_KEY, registerStep, inStep, cur, curId, commit, saveOrWarn, refresh, later, render, goStep, getBox, openTest, U } from './unit.js';
 
 const TYPE = Object.fromEntries(ITEM_TYPES);
 /* 세션 상태: 올린 스캔은 한 평가에만 붙음(raw: 올린 장, pages: 모아찍기를 자르고 뒷면을 돌린 쪽). 채점은 한 번에 한 평가만(run: 그 평가의 차례·멈춤) */
@@ -149,8 +149,9 @@ const hasResult = s => s.status === 'done' || Object.keys(s.items || {}).length 
 async function askNos(t, then) {
   if (!t.noBox) { toast('학생이 번호를 쓰는 칸을 먼저 정해 주세요.', 5000); openNoBox(t, () => askNos(getTest(t.id), then)); return; }
   if (G.noBusy) return;
-  // 「채점 안 함」 학생은 번호를 묻지 않음 (빈 답안지 등)
-  const id = t.id, list = t.students.map((s, i) => ({ i, pg: pagesOf(id, i) })).filter(x => x.pg.length && !t.students[x.i].skip);
+  // 「채점 안 함」 학생은 번호를 묻지 않음 (빈 답안지 등). 단 번호로 맞춘 적이 있는 평가에 다시 올린 스캔은 걷은 순서라
+  // 자리와 학생이 따로 놀아(「채점 안 함」 학생 자리에 다른 학생 쪽이 옴) 쪽이 있는 자리는 모두 읽음
+  const id = t.id, list = t.students.map((s, i) => ({ i, pg: pagesOf(id, i) })).filter(x => x.pg.length && (t.noOrdered || !t.students[x.i].skip));
   if (!list.length) return;
   const set = getSet(), m = maskOf(t), pages0 = G.pages, idx0 = G.idx;
   const stale = () => G.testId !== id || G.pages !== pages0 || G.idx !== idx0;
@@ -193,7 +194,9 @@ async function askNos(t, then) {
 
 /* ---------- 3단계: 채점 ---------- */
 async function imagesFor(id, i) {
-  const set = getSet(), m = maskOf(getTest(id)), out = [], pg = pagesOf(id, i);
+  // 채점하는 동안 이름 칸이 지워져도 시작할 때 정해 둔 칸으로 가림(이름이 그대로 AI로 가지 않게)
+  const now = maskOf(getTest(id)), run = G.run && G.run.id === id ? G.run : null;
+  const set = getSet(), m = now && now.mask.length ? now : (run && run.mask) || now, out = [], pg = pagesOf(id, i);
   for (let j = 0; j < pg.length; j++) {
     const masked = set.maskOn && m && m.mask.length && (m.all || j === 0);
     out.push(await SS().files.pageImage(G.pages[pg[j]], masked ? m.mask : null));
@@ -272,7 +275,7 @@ const rvCount = t => t.students.filter(s => !s.skip && s.status === 'done').redu
 /* 처음 3명(Claude 계정은 2명), 잘되면 4명까지. AI 한도면 줄이고 20초 쉬었다가 이어 감(스펙 2026-11-03 4장).
    이 채점에 쓴 AI 양을 모아 평가에 남김(aiUse, 다시 채점하면 바뀜) */
 async function runQueue(id, list) {
-  const run = { id, queue: list.slice(), stop: false, wait: false }, meter = newMeter(), acc = ai.isAccount();
+  const run = { id, queue: list.slice(), stop: false, wait: false, mask: maskOf(getTest(id)) }, meter = newMeter(), acc = ai.isAccount();
   G.run = run;
   refresh(id);
   const r = await runPool(run, i => gradeOne(id, i, meter), { start: acc ? 2 : 3, max: acc ? 2 : 4, warm: true, onWait: on => { run.wait = on; refresh(id); } });
@@ -310,7 +313,7 @@ function startGrading(only) {
   if (todo.length) { askMask(() => runQueue(id, todo.map(x => x.i))); return; }
   SS().openSheet(`<h3>모두 다시 채점할까요?</h3><p class="muted" style="margin:0">학생 ${all.length}명을 다시 채점해요. 선생님이 고친 칸은 그대로 둬요.</p>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="unRegradeOk">다시 채점</button></div>`,
-  sh => sh.querySelector('#unRegradeOk').addEventListener('click', () => { SS().closeSheet(); runQueue(id, all.map(x => x.i)); }));
+  sh => sh.querySelector('#unRegradeOk').addEventListener('click', () => { SS().closeSheet(); askMask(() => runQueue(id, all.map(x => x.i))); }));
 }
 function stopGrading() {
   if (G.run) { G.run.stop = true; G.run.queue = []; }
@@ -487,6 +490,9 @@ document.addEventListener('change', e => {
   const box = getBox();
   if (!box || !box.contains(e.target) || !inStep(2)) return;
   const el = e.target, t = cur();
+  // 채점하는 동안 쪽 수·쪽 모양·번호를 바꾸면 보내는 중인 학생의 결과가 버려지거나 이름 칸이 지워져 이름이 AI로 감: 끝나거나 멈춘 뒤에
+  const locked = ['unPagesPer', 'unTwoUp', 'unFlipBack', 'unAbsent'].includes(el.id) || el.dataset.stno != null;
+  if (locked && busy(t.id)) { toast('채점하는 중에는 바꿀 수 없어요.', 4000); render(); return; }
   if (el.id === 'unAnsFile' && el.files.length) { const fs = [...el.files]; el.value = ''; loadAnswers(fs); }
   else if (el.id === 'unPagesPer') {
     const per = Math.max(1, Math.min(8, Math.round(Number(el.value) || 1)));
@@ -498,6 +504,7 @@ document.addEventListener('change', e => {
     saveSet({ ...getSet(), [el.id === 'unTwoUp' ? 'twoUp' : 'flipBack']: el.checked });
     // 쪽 모양·방향이 바뀌면 정해 둔 이름 칸 자리가 맞지 않아 이름이 AI로 갈 수 있음: 지우고 다시 정하게
     if (maskOf(t) && maskOf(t).mask.length) { delete t.mask; delete t.maskAll; commit(t); toast('쪽 모양이 바뀌어 이름 칸을 지웠어요. [이름 칸 정하기]로 다시 정해 주세요.', 6000); }
+    if (G.noMaskFor === t.id) G.noMaskFor = null; // 채점 전에 이름 칸을 다시 물음
     if (t.noBox) { delete t.noBox; commit(t); }
     rearrange(t);
   } else if (el.id === 'unMaskOn') { saveSet({ ...getSet(), maskOn: el.checked }); render(); }
@@ -506,15 +513,18 @@ document.addEventListener('change', e => {
     // 답안 차례(채점 결과)는 그대로 두고 번호만 다시 매김
     t.absent = parseNos(el.value);
     if (t.students.length) renumber(t, rosterExcept());
-    commit(t); render();
+    commit(t);
+    // 학생 번호 칸만 바로 바꾸고, 다시 그리기는 옮겨 간 칸을 떠날 때까지 미룸(1단계 정답표와 같게)
+    box.querySelectorAll('input[data-stno]').forEach(x => { const s = t.students[Number(x.dataset.stno)]; if (s) x.value = s.no; });
+    later(t.id);
   }
   else if (el.dataset.stno != null) {
     const i = Number(el.dataset.stno), v = Math.round(Number(el.value));
-    if (!(v >= 1 && v <= 99) || t.students.some((s, j) => j !== i && s.no === v)) { toast('번호가 비었거나 겹쳐요'); render(); return; }
+    if (!(v >= 1 && v <= 99) || t.students.some((s, j) => j !== i && s.no === v)) { toast('번호가 비었거나 겹쳐요'); if (t.students[i]) el.value = t.students[i].no; later(t.id); return; }
     const ok = nosOk(t);
     t.students[i].no = v; commit(t);
     if (ok) G.noOk.sig = noSig(t); // 확인한 번호를 손으로 고친 것은 다시 읽지 않음
-    render();
+    later(t.id);
   }
 });
 

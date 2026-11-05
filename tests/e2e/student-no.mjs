@@ -154,13 +154,14 @@ await run('student-no', [
     await page.waitForTimeout(1800);
     assert(await page.locator('#sheetRoot #noOk').count() === 0, '그만둔 읽기의 확인 표가 늦게 뜸');
   }],
-  ['「채점 안 함」 학생은 번호 확인 표에서 빼고(번호를 묻지 않음) 맨 뒤에 그대로', async () => {
+  ['번호로 맞춘 평가에 다시 올린 스캔은 「채점 안 함」 학생이 있어도 쪽이 있는 자리를 모두 읽음(자리와 학생이 따로라서)', async () => {
     await page.click(`${V} .steps [data-step="2"]`);
     await page.click(`${V} [data-un="skip"][data-i="0"]`);
     await page.click(`${V} [data-un="toGrade"]`);
     await page.click(`${V} [data-un="grade"]`);
     await page.waitForSelector('#sheetRoot #noOk');
-    assert(await page.locator('#sheetRoot [data-noi]').count() === 2, String(await page.locator('#sheetRoot [data-noi]').count()));
+    // [act-byno-skip-2] 처음 맞출 때만 「채점 안 함」 자리를 뺌(fix1105-evalnew에서 봄). 이 평가는 번호로 맞춘 적이 있어 3자리 모두 읽음
+    assert(await page.locator('#sheetRoot [data-noi]').count() === 3, String(await page.locator('#sheetRoot [data-noi]').count()));
     await page.click('#sheetRoot [data-close]');
   }],
   ['이름 칸을 가리기로 했는데 정하지 않았으면 번호를 읽기 전에 먼저 묻고(AI 부르기 전), 「가리지 않고 채점」은 한 번만', async () => {
