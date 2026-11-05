@@ -7,7 +7,7 @@ import { copyText, toast } from '../../core/ui.js';
 import { getPurchaseLimit, getMeetCap, getPurchaseFlow } from '../../core/settings.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
 import { TYPES, emptyForm, emptyItem, itemAmount, cleanItems, sumItems, checkPurchase, itemsTSV, purchaseQueueItems, composeReason, reasonTail, purchaseDoc, toNumber, findPersonal,
-  introOf, withIntro, relatedLine, relatedOf, withRelated,
+  introOf, withIntro, relatedLine, relatedOf, withRelated, ownHead,
   defaultUnit, quoteNote, withholding, INCOME, meetingItem, budgetHints, ATTACH, basisLine, draftMemo } from './rules.js';
 import { aiRowHTML, pick } from '../../core/ai-roles.js';
 import { reviewJSON, purchaseReviewPrompt, normPurchaseReview, opinionHTML, REVIEW_FAIL } from '../../core/ai-review.js';
@@ -173,8 +173,8 @@ function render() {
   const ta0 = box.querySelector('#pcIntake'), intake = ta0 ? ta0.value : '', typing = focusOf();
   const t = typeOf(st.form.type), ex = t.example;
   box.innerHTML = `<div class="m-page pc-page">
-    <div class="m-head pc-head"><div><h2>새 품의</h2><p class="muted">사려는 것·견적서를 넣고 [초안 만들기]를 누르면 에듀파인에 붙여넣을 제목·품의 사유·산출 내역을 써요.</p></div>
-</div>
+    <div class="m-head m-head-row"><div><h2>새 품의</h2><p class="muted">사려는 것·견적서를 넣고 [초안 만들기]를 누르면 에듀파인에 붙여넣을 제목·품의 사유·산출 내역을 써요.</p></div>
+      <div class="m-head-act">${aiRowHTML('purchase')}</div></div>
     <div class="pc-type-row"><div class="seg pc-types" role="radiogroup" aria-label="품의 종류">${TYPES.map(x => `<button type="button" role="radio" data-pctype="${x.id}" aria-pressed="${x.id === t.id}" aria-checked="${x.id === t.id}">${x.label}</button>`).join('')}</div>
       <div class="row pc-head-act"><button class="btn" type="button" data-pc="saveTpl">템플릿으로 저장</button><button class="btn text" type="button" data-pc="fresh">새로 쓰기</button></div></div>
     <p class="muted pc-hint" id="pcHint">${esc(t.hint)}</p>
@@ -273,7 +273,6 @@ function renderDraft() {
   const copyBtn = (k, label) => `<button class="btn text pc-copy" type="button" data-copy="${k}">${label}</button>`;
   const mark = f => (openRv(f) ? ' rv-mark' : '');
   card.innerHTML = `<h3 id="pcDraftH">에듀파인에 붙여넣을 초안</h3>
-    ${aiRowHTML('purchase')}
     ${msg ? `<div class="banner err" id="pcMsg" role="alert"><span class="grow">${esc(msg)}</span></div>` : ''}
     ${d ? `<div class="pc-chips" id="pcChips">${chipsHTML()}</div><div id="pcRvState">${rvStateHTML()}</div>
       <div class="pc-out"><div class="pc-out-h"><label class="lab" for="pcTitle">제목</label>${copyBtn('title', '복사')}</div>
@@ -355,6 +354,9 @@ function live() {
   if (bh) bh.innerHTML = hintsHTML();
   const ch = box.querySelector('#pcChips');
   if (ch) ch.innerHTML = chipsHTML();
+  // 관련 칸 안내(비우면 「…」)도 사업명·종류를 따라
+  const rf = box.querySelector('#pcRelated');
+  if (rf) rf.placeholder = `비우면 「${relatedLine(st.form, curYear())}」`;
   syncReason();
   if (tried) markBad(checks());
 }
@@ -363,10 +365,16 @@ function live() {
 const tailOk = () => !st.draft || st.draft.reason === composeReason({ intro: st.draft.intro, form: st.form, year: curYear() });
 // 줄 앞 공백은 보지 않음(예전 꼴의 들여쓰기 없는 「가.」도 같은 것으로)
 const flat = s => String(s || '').replace(/^[ \t]+/gm, '');
+/* [사유 다시 맞추기]에서 그대로 살릴 손으로 쓴 머리(「1. 근거:」·여러 줄 관련·지운 관련 줄 — ownHead).
+   그 뒤 관련 칸에 새 관련을 쓰면 칸의 관련으로(null) */
+function keptHead() {
+  const d = st.draft, h = d ? ownHead(d.reason) : null;
+  return h != null && !(String(st.form.related || '').trim() && d.rel !== relatedLine(st.form, curYear())) ? h : null;
+}
 function resyncHTML() {
   const d = st.draft;
   if (!d || !d.edited) return '';
-  const tail = flat(d.tail) !== flat(reasonTail(st.form)), rel = d.rel !== relatedLine(st.form, curYear());
+  const tail = flat(d.tail) !== flat(reasonTail(st.form)), rel = d.rel !== relatedLine(st.form, curYear()) && keptHead() == null;
   return tail || rel ? `<p class="muted pc-resync">${tail ? '품목·붙임' : '관련'}이 바뀌었어요 <button class="btn text tiny" type="button" data-pc="resync">사유 다시 맞추기</button></p>` : '';
 }
 function syncReason() {
@@ -460,9 +468,11 @@ async function makeDraft({ text = '' } = {}) {
   }
   busy = false;
   if (curTab === 'new' && box && box.isConnected) {
-    // 다른 칸에 치고 있으면 다시 그리지 않고 초안과 AI가 채운 칸만 고침(한글 조합이 끊기지 않게). 종류가 바뀌었거나 다른 품의면 다시 그림
+    // 다른 칸에 치고 있으면 다시 그리지 않고 초안과 AI가 채운 칸만 고침(한글 조합이 끊기지 않게). 종류가 바뀌었으면 다시 그림.
+    // 다른 품의([새로 쓰기]·불러오기)면 지금 품의는 그대로라 단추·「쓰는 중」만 되돌림
     const typing = focusOf();
-    if (typing && st === mine && !retype) {
+    if (st !== mine) { setBusyUI(); if (!st.draft) renderDraft(); }
+    else if (typing && !retype) {
       for (const k of filled) { const el = box.querySelector(`[data-k="${k}"]`); if (el && el !== document.activeElement) el.value = st.form[k]; }
       setBusyUI(); renderDraft(); live(); refocus(typing);
     } else render();
@@ -531,14 +541,15 @@ document.addEventListener('input', e => {
     st.draft[el.dataset.d] = el.value;
     if (el.dataset.d === 'reason') {
       const intro = firstPara(el.value), rel = relatedOf(el.value), y = curYear();
-      // 「1. 관련:」 줄을 고쳤으면(다른 줄과 함께 고쳐도) 관련 칸으로 옮김 — 칸·칩·[사유 다시 맞추기]가 같은 관련을 봄
-      const moved = !!rel && rel !== relatedLine(st.form, y);
+      // 「1. 관련:」 줄을 고쳤으면(다른 줄과 함께 고쳐도) 관련 칸으로 옮김 — 칸·칩·[사유 다시 맞추기]가 같은 관련을 봄.
+      // 관련 글을 다 지웠으면 칸도 비움(기본값). 「1. 근거:」·여러 줄 관련처럼 손으로 쓴 머리(rel null)는 옮기지 않음
+      const moved = rel != null && rel !== relatedLine(st.form, y);
       if (moved) {
         st.form.related = rel; st.form.guessed = st.form.guessed.filter(k => k !== 'related');
         const rf = box.querySelector('#pcRelated'); if (rf && document.activeElement !== rf) rf.value = rel;
         const ch = box.querySelector('#pcChips'); if (ch) ch.innerHTML = chipsHTML();
       }
-      if (rel) st.draft.rel = rel;
+      if (rel != null) st.draft.rel = rel;
       // 첫 문장(과 관련)만 고쳤으면(가~붙임은 앱이 만든 그대로) 계속 맞춤, 그 밖을 고쳤으면 손으로 고친 사유
       if (intro && el.value.trim() === composeReason({ intro, form: st.form, year: y }).trim()) { st.draft.intro = intro; st.draft.edited = false; st.draft.tail = reasonTail(st.form); }
       else st.draft.edited = true;
@@ -617,7 +628,9 @@ document.addEventListener('click', e => {
     const rel = relatedOf(st.draft.reason), y = curYear();
     if (rel && rel !== st.draft.rel && rel !== relatedLine(st.form, y)) { st.form.related = rel; const rf = box.querySelector('#pcRelated'); if (rf) rf.value = rel; }
     st.draft.intro = firstPara(st.draft.reason) || st.draft.intro;
-    st.draft.reason = composeReason({ intro: st.draft.intro, form: st.form, year: y }); st.draft.edited = false; st.draft.tail = reasonTail(st.form); st.draft.rel = relatedLine(st.form, y);
+    // 「1. 근거:」·여러 줄 관련·지운 관련 줄은 그대로 두고 2.~붙임만 맞춤(손으로 쓴 사유로 남음)
+    const head = keptHead();
+    st.draft.reason = composeReason({ intro: st.draft.intro, form: st.form, year: y, head }); st.draft.edited = head != null; st.draft.tail = reasonTail(st.form); st.draft.rel = relatedLine(st.form, y);
     save(); renderDraft();
   }
   else if (a === 'intake') { const t = box.querySelector('#pcIntake').value; if (!t.trim()) { toast('넣을 글을 쓰거나 붙여넣어 주세요. 파일·캡처는 끌어 놓거나 붙여넣으면 바로 읽어요.'); return; } runIntake({ text: t }); }
@@ -695,6 +708,18 @@ function askVendors(vs) {
     });
   });
 }
+/* 읽은 품목·칸을 화면에: 다른 칸에 치고 있으면 다시 그리지 않고 채운 칸·품목 표·계산만 고침(한글 조합이 끊기지 않게).
+   품목 칸에서 치고 있거나 치는 칸이 없으면 다시 그림 */
+function showRead() {
+  if (!(curTab === 'new' && box && box.isConnected)) return;
+  const typing = focusOf(), el = document.activeElement;
+  if (!typing || el.closest('#pcItems')) { render(); return; }
+  box.querySelectorAll('input[data-k]:not([type="checkbox"]),textarea[data-k]').forEach(f => {
+    const v = String(st.form[f.dataset.k] == null ? '' : st.form[f.dataset.k]);
+    if (f.value !== v && (f !== el || !f.value)) f.value = v;
+  });
+  renderItems();
+}
 /* 읽는 동안 다른 품의를 열었는지(같은 품의를 최근 작성에서 다시 열었으면 같은 품의) */
 const away = mine => st !== mine && st.id !== mine.id;
 /* 읽는 동안 다른 품의를 열었으면: 읽은 것은 쓰던 품의(mine)에 넣어 최근 작성에 남김(지금 품의는 그대로) */
@@ -724,9 +749,13 @@ async function runIntake(input, mine = st) {
   st.form = fillEmpty(st.form, r.fields);
   st.form.items = mergeItems(st.form.items, r.items, how);
   fresh = new Set(r.items);
-  if (input.text != null && !input.keepBox) { const ta = box && box.querySelector('#pcIntake'); if (ta) ta.value = ''; }
+  // 읽은 글만 넣기 칸에서 뗌(읽는 동안 더 친 줄은 남김)
+  if (input.text != null && !input.keepBox) {
+    const ta = box && box.querySelector('#pcIntake');
+    if (ta && ta.value.startsWith(input.text)) { const rest = ta.value.slice(input.text.length), cut = input.text.length + (rest.length - rest.replace(/^\s+/, '').length); ta.setRangeText('', 0, cut); }
+  }
   save();
-  if (curTab === 'new' && box && box.isConnected) render();
+  showRead();
   setTimeout(() => { fresh = new Set(); if (box) box.querySelectorAll('.pc-irow.new').forEach(el => el.classList.remove('new')); }, 3000);
   const ship = r.items.filter(it => it.name === '배송비').length;
   toast(`품목 ${r.items.length}개${ship ? '(배송비 포함)' : ''}를 넣었어요${r.missed && r.missed.length ? ` · 못 읽은 줄 ${r.missed.length}개` : ''}${r.by === 'ai' ? ' · AI가 읽었어요. 금액을 확인해 주세요' : ''}${note}`, 6000);
@@ -746,7 +775,7 @@ export async function addQuote(file, mine = st) {
   st.form = fillEmpty(st.form, r.fields);
   st.form.items = mergeItems(st.form.items, r.items, 'add');
   save();
-  if (curTab === 'new' && box && box.isConnected) render();
+  showRead();
   toast(`견적서에서 품목 ${r.items.length}개를 넣었어요${r.by === 'ai' ? '(AI가 읽었어요. 금액을 확인해 주세요)' : ''}.`, 6000);
   return r.items.length;
 }
