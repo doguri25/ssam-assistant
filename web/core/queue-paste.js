@@ -5,6 +5,8 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 const OPT = 'ssam:queue';
 const core = () => (window.__TAURI__ && window.__TAURI__.core ? window.__TAURI__.core : null);
 export const canQueue = () => !!core();
+/* 앱이 한 번에 받는 조각 수 — src-tauri/src/neis.rs MAX_ITEMS와 같아야 해요(바꾸면 둘 다) */
+export const QUEUE_MAX = 250;
 
 /* 화면 상태: state idle·arming·armed·end·expired·error, items [{ label, text }], next(다음 조각), gen */
 const Q = { state: 'idle', title: '', items: [], next: 0, gen: 0, msg: '', note: '', until: 0, timer: null, listening: false, seq: 0 };
@@ -34,6 +36,8 @@ export async function openQueue({ title = '', items = [] } = {}) {
   if (!core()) return false;
   Q.title = title; Q.items = items.map(x => ({ label: String(x.label || ''), text: String(x.text == null ? '' : x.text) }));
   if (nextFilled(0) < 0) { Q.state = 'error'; Q.msg = '붙여넣을 내용이 없어요'; render(); return false; }
+  // 앱이 받지 않는 수는 부르지 않고 알림([다시 준비]도 같은 오류라 보이지 않음)
+  if (Q.items.length > QUEUE_MAX) { Q.state = 'error'; Q.msg = `조각이 ${Q.items.length}개라 한 번에 차례로 붙여넣을 수 없어요(${QUEUE_MAX}개까지). 나누어 넣거나 복사해 붙여넣어 주세요.`; render(); return false; }
   await arm(0);
   return true;
 }
@@ -98,7 +102,7 @@ function render() {
     acts = `<button class="btn primary" type="button" data-qp="resume">이어서 준비</button><button class="btn" type="button" data-qp="close">닫기</button>`;
   } else {
     body = `<p class="muted err">${esc(Q.msg || '멈췄어요')}</p>`;
-    acts = `${Q.items.length && nextFilled(0) >= 0 ? '<button class="btn primary" type="button" data-qp="resume">다시 준비</button>' : ''}<button class="btn" type="button" data-qp="close">닫기</button>`;
+    acts = `${Q.items.length && Q.items.length <= QUEUE_MAX && nextFilled(0) >= 0 ? '<button class="btn primary" type="button" data-qp="resume">다시 준비</button>' : ''}<button class="btn" type="button" data-qp="close">닫기</button>`;
   }
   box.innerHTML = `<div class="neis-h"><h3>에듀파인에 차례로 붙여넣기${Q.title ? `<small>${esc(Q.title)}</small>` : ''}</h3><button class="icon-btn" type="button" data-qp="close" aria-label="닫기" title="닫기">✕</button></div>
     <div class="neis-b">${body}</div><div class="neis-a">${acts}</div>`;
