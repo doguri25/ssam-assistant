@@ -126,13 +126,14 @@ export function render() {
     <section class="pc-card" id="gmLists">${listHTML()}</section></div>`;
 }
 /* AI 읽기·파일 넣기 앞뒤: 넣기 칸은 두고 단추와 목록만 고침. 공문의 글 칸(할 일·기한)에 초점이 있으면 그 공문은 두고 다른 공문만 고치고,
-   그 칸을 떠날 때 차례를 맞춤(쓰던 글·한글 조합이 끊기지 않게). 단추·체크에 든 초점은 다시 그림([AI로 읽기]를 누르면 읽는 중 표시) */
-function refresh() {
+   그 칸을 떠날 때 차례를 맞춤(쓰던 글·한글 조합이 끊기지 않게). 단추·체크에 든 초점은 다시 그림([AI로 읽기]를 누르면 읽는 중 표시).
+   keep: 칸을 떠날 때(focusout) — 막 누른 단추·체크가 든 공문도 두어 첫 누름이 먹히게(떼기 전에 단추가 사라지지 않게) */
+function refresh(keep = false) {
   if (!box || box.hidden) return;
   const pk = box.querySelector('[data-gm="pick"]'), el = box.querySelector('#gmLists');
   if (!pk || !el) { render(); return; }
   pk.innerHTML = pickHTML();
-  const a = document.activeElement, li = a && el.contains(a) && a.matches('input:not([type=checkbox]), textarea, select') ? a.closest('[data-gm-id]') : null;
+  const a = document.activeElement, li = a && el.contains(a) && (keep || a.matches('input:not([type=checkbox]), textarea, select')) ? a.closest('[data-gm-id]') : null;
   if (!li) { S.listDirty = false; el.innerHTML = listHTML(); return; }
   const t = today(), shown = new Set();
   el.querySelectorAll('[data-gm-id]').forEach(x => {
@@ -189,7 +190,7 @@ document.addEventListener('focusout', e => {
   const due = e.target.dataset && e.target.dataset.gmDue != null && S.dueDirty;
   if (!due && !S.listDirty) return;
   S.dueDirty = false;
-  setTimeout(refresh, 0);
+  setTimeout(() => refresh(true), 0);
 });
 // 붙여 넣기 칸·할 일 칸 글은 다시 그려도 남게
 document.addEventListener('input', e => {
