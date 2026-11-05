@@ -17,7 +17,7 @@ import { pushRecent, newId, listRecent, deleteRecent, listTemplates, saveTemplat
 import { fileMessage, isFileCode } from '../../core/files.js';
 import { registerInbox } from '../../core/inbox.js';
 import { getYears } from '../../core/years.js';
-import { canQueue, openQueue } from '../../core/queue-paste.js';
+import { canQueue, openQueue, QUEUE_MAX } from '../../core/queue-paste.js';
 
 const CUR_KEY = 'purchase:current';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -85,12 +85,10 @@ const checks = () => checkPurchase(st.form, { limit: getPurchaseLimit(), meetCap
 export const getForm = () => JSON.parse(JSON.stringify(st.form));
 export const getDraft = () => (st.draft ? { ...st.draft } : null);
 export function setForm(form) { st.form = normForm(form); save(); if (curTab === 'new' && box && box.isConnected) render(); }
-/* 행사계획에서 [품의로 이어 가기] (P-10): 종류 「행사 운영」으로 칸을 채우고 품의 › 새 품의로 감 */
+/* 행사계획에서 [품의로 이어 가기] (P-10): 종류 「행사 운영」으로 칸을 채우고 품의 › 새 품의로 감.
+   초안 없이 쓰던 품의가 있으면 [새로 쓰기]처럼 먼저 물어봄(초안이 있으면 최근 작성에 남기고 바로) */
 export function openPurchase(prefill) {
-  keepRecent();
-  st = { id: newId(), form: normForm({ ...emptyForm('event'), ...(prefill || {}), type: 'event', typeSet: true }), draft: null }; msg = ''; tried = false;
-  save();
-  go('purchase', 'new');
+  swapTo({ id: newId(), form: normForm({ ...emptyForm('event'), ...(prefill || {}), type: 'event', typeSet: true }), draft: null }, { onlyIfLost: true });
 }
 export function setDraft(draft) { st.draft = normDraft(draft, st.form); save(); if (curTab === 'new' && box && box.isConnected) renderDraft(); }
 
@@ -379,20 +377,57 @@ function resyncHTML() {
   const tail = flat(d.tail) !== flat(reasonTail(st.form)), rel = d.rel !== relatedLine(st.form, curYear()) && keptHead() == null;
   return tail || rel ? `<p class="muted pc-resync">${tail ? '품목·붙임' : '관련'}이 바뀌었어요 <button class="btn text tiny" type="button" data-pc="resync">사유 다시 맞추기</button></p>` : '';
 }
+/* 앱이 다시 맞춘 사유를 칸에: 커서가 사유 칸에 있어도 바꿈(화면과 저장이 같게). 커서는 같은 글자 뒤에.
+   사유 칸에서 한글을 조합하는 중(imeEl)이면 조합이 끊기지 않게 칸은 조합을 마친 뒤 바꿈(lagEl, 그때 칸 글 lagBase) */
+let imeEl = null, lagEl = null, lagBase = '';
+function putReason(ta, v) {
+  if (!ta || ta.value === v) return;
+  if (document.activeElement !== ta) { ta.value = v; return; }
+  if (imeEl === ta) { if (lagEl !== ta) lagBase = ta.value; lagEl = ta; return; }
+  const old = ta.value, a = ta.selectionStart, b = ta.selectionEnd, top = ta.scrollTop;
+  let p = 0; while (p < old.length && p < v.length && old[p] === v[p]) p++;
+  let s = 0; while (s < old.length - p && s < v.length - p && old[old.length - 1 - s] === v[v.length - 1 - s]) s++;
+  const at = i => {
+    if (i <= p) return i;
+    if (i >= old.length - s) return v.length - (old.length - i);
+    // 바뀐 곳 사이(관련 줄과 가~ 줄이 함께 바뀜): 커서가 있던 줄을 새 글에서 찾아 그 줄의 같은 자리
+    const ls = old.lastIndexOf('\n', i - 1) + 1, le = old.indexOf('\n', i), line = old.slice(ls, le < 0 ? old.length : le), j = line.trim() ? v.indexOf(line) : -1;
+    return j >= 0 ? j + i - ls : Math.min(v.length, Math.max(p, v.length - (old.length - i)));
+  };
+  ta.value = v;
+  try { ta.setSelectionRange(at(a), at(b)); } catch (e) { /* 커서가 없는 칸 */ }
+  ta.scrollTop = top;
+}
+/* 조합을 마치면: 손대지 않은 사유는 앱이 맞춘 사유에 그동안 고친 첫 문장·관련만, 손으로 고친 사유는 칸 글에 앱이 맞춘 관련만 얹어 보이고 친 것처럼 처리 */
+function catchUp(ta) {
+  const base = lagBase; lagEl = null; lagBase = '';
+  if (!st.draft || !box || !box.contains(ta)) return;
+  const v = ta.value, d = st.draft;
+  let next = d.edited ? withRelated(v, d.rel) : d.reason;
+  if (!d.edited) {
+    if (introOf(v) !== introOf(base)) next = withIntro(next, introOf(v));
+    const r = relatedOf(v);
+    if (r != null && r !== relatedOf(base)) next = withRelated(next, r);
+  }
+  putReason(ta, next);
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+}
+document.addEventListener('compositionstart', e => { if (e.target && e.target.id === 'pcReason') imeEl = e.target; });
+document.addEventListener('compositionend', e => { if (e.target !== imeEl) return; imeEl = null; if (lagEl === e.target) catchUp(e.target); });
 function syncReason() {
   if (!st.draft || !box) return;
   const ta = box.querySelector('#pcReason'), rel = relatedLine(st.form, curYear());
   if (!st.draft.edited && !tailOk()) {
     st.draft.reason = composeReason({ intro: st.draft.intro, form: st.form, year: curYear() }); st.draft.tail = reasonTail(st.form); st.draft.rel = rel;
     save();
-    if (ta && document.activeElement !== ta) ta.value = st.draft.reason;
+    putReason(ta, st.draft.reason);
   } else if (st.draft.edited && st.draft.rel !== rel && keptHead() == null) {
     // 손으로 고친 사유: 관련 칸(사업명)이 바뀌면 첫 줄만 따라 바꿈(가~ 손으로 고친 것은 그대로). 「1. 관련:」 줄이 없으면 [사유 다시 맞추기]
     const w = withRelated(st.draft.reason, rel);
     if (relatedOf(w) === rel) {
       st.draft.reason = w; st.draft.rel = rel;
       save();
-      if (ta && document.activeElement !== ta) ta.value = w;
+      putReason(ta, w);
     }
   }
   const rb = box.querySelector('#pcResyncBox');
@@ -540,6 +575,8 @@ document.addEventListener('input', e => {
   if (el.dataset.k) { st.form[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value; st.form.guessed = st.form.guessed.filter(k => k !== el.dataset.k); }
   else if (el.dataset.item != null && el.dataset.f) { const it = st.form.items[+el.dataset.item]; if (it) it[el.dataset.f] = el.value; }
   else if (el.dataset.d && st.draft) {
+    // 앱이 맞춘 사유를 조합을 마친 뒤 보일 참이면(칸에는 옛 가~붙임) 조합 중의 글은 저장하지 않음
+    if (el === lagEl) { if (!e.isComposing) catchUp(el); return; }
     st.draft[el.dataset.d] = el.value;
     if (el.dataset.d === 'reason') {
       const intro = firstPara(el.value), rel = relatedOf(el.value), y = curYear();
@@ -604,7 +641,15 @@ document.addEventListener('click', e => {
   const b = e.target.closest('[data-pc]');
   if (!b) return;
   const a = b.dataset.pc;
-  if (a === 'queue' && st.draft) { openQueue({ title: st.draft.title, items: purchaseQueueItems(st.draft, st.form, queueCalc()) }); return; }
+  if (a === 'queue' && st.draft) {
+    // 「산출 내역 칸마다」는 조각이 2 + 품목마다 5개: 앱 한도를 넘으면 이번만 「표 한 번에」(고른 방식은 그대로)
+    let items = purchaseQueueItems(st.draft, st.form, queueCalc());
+    if (items.length > QUEUE_MAX) {
+      items = purchaseQueueItems(st.draft, st.form, 'table');
+      toast(`품목이 ${cleanItems(st.form.items).length}개라 산출 내역은 「표 한 번에」로 넣어요. 「산출 내역 칸마다」는 품목 ${Math.floor((QUEUE_MAX - 2) / 5)}개까지예요.`, 8000);
+    }
+    openQueue({ title: st.draft.title, items }); return;
+  }
   if (a === 'addItem') { st.form.items.push(emptyItem()); save(); renderItems(st.form.items.length - 1); }
   else if (a === 'delItem') {
     st.form.items.splice(+b.dataset.i, 1);
