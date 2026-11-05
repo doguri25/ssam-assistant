@@ -143,7 +143,8 @@ function refresh() {
     if (db) S.showDone = db.open;
     S.listDirty = false; el.innerHTML = listHTML();
     const b = k && el.querySelector(`[data-gm-id="${CSS.escape(c.dataset.gmId)}"] [${k.name}="${CSS.escape(k.value)}"]`);
-    if (b) b.focus();
+    // 초점만 돌리고 화면은 옮기지 않음(다른 공문을 보는 동안 AI 읽기·파일 넣기가 끝나도 예전에 누른 체크로 튀지 않게)
+    if (b) b.focus({ preventScroll: true });
     return;
   }
   const t = today(), shown = new Set();
