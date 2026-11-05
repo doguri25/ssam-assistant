@@ -95,6 +95,22 @@ export function renumber(test, except = []) {
   test.students.forEach((s, i) => { s.no = nos[i]; });
   return test;
 }
+/* 적힌 번호로 다시 맞추기(번호로 맞춘 적이 있는 평가·활동지에 다시 올린 스캔은 걷은 차례): 확인한 번호(nos)의 차례(order)마다 이어 붙일 학생.
+   같은 번호면 「채점 안 함」이 아닌 학생을 앞세움. 맞는 학생이 없는 줄(비운 줄·처음 보는 번호)은 아직 채점하지 않은 「채점 안 함」 자리(빈 답안지 등)에 붙여
+   묻지 않고 채점하지 않게 함. 그런 자리가 없으면 새 학생(비운 줄은 「채점 안 함」) */
+export function reattachByNo(students, nos, order, fresh, hasResult) {
+  const byNum = new Map([...students.filter(s => s.skip), ...students.filter(s => !s.skip)].map(s => [s.no, s]));
+  const named = new Set(nos.map(n => (n == null ? null : byNum.get(n))).filter(Boolean));
+  const spare = students.filter(s => s.skip && !named.has(s) && !hasResult(s));
+  return order.map(k => (nos[k] != null && byNum.get(nos[k])) || spare.shift() || (nos[k] == null ? { ...fresh(0), skip: true } : fresh(nos[k])));
+}
+/* 「채점 안 함」 학생 번호가 다른 학생과 겹치면(번호를 읽지 않은 자리는 스캔 차례 번호) 명단·지금 번호 뒤 번호로 바꿈 — 번호로 찾을 때 그 학생이 잡히지 않게 */
+export function spreadSkipNos(students, count = 0) {
+  const taken = new Set(students.filter(s => !s.skip).map(s => s.no));
+  let next = Math.max(Number(count) | 0, ...students.map(s => Number(s.no) || 0)) + 1;
+  for (const s of students) if (s.skip) { if (!(s.no >= 1) || taken.has(s.no)) s.no = next++; taken.add(s.no); }
+  return students;
+}
 /* 이 평가의 이름 칸 가림 (정하지 않았으면 null) */
 export const maskOf = t => (t && Array.isArray(t.mask) ? { mask: t.mask, all: !!t.maskAll } : null);
 /* 날짜의 학기: 학교 여름방학 끝 다음 날부터 2학기(활동지와 같게). 방학을 모르면 3~8월 1학기, 날짜가 없으면 2학기 */

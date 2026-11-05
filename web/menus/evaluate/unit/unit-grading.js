@@ -8,7 +8,7 @@ import { runPool } from '../../../core/ai-pool.js';
 import { newMeter, useText } from '../../../core/ai-wire.js';
 import * as store from '../../../core/store.js';
 import { ITEM_TYPES, autoJudge, gradeCell, mergeCells, needsCheck, studentTotal } from './unit-grade.js';
-import { getTest, getSet, saveSet, numbersFor, parseNos, renumber, maskOf, listTests } from './unit-model.js';
+import { getTest, getSet, saveSet, numbersFor, parseNos, renumber, maskOf, listTests, reattachByNo, spreadSkipNos } from './unit-model.js';
 import { registerInbox } from '../../../core/inbox.js';
 import { go } from '../../../core/shell.js';
 import { gradeParts, normGrade, validGrade } from './unit-ai.js';
@@ -109,7 +109,7 @@ function step2HTML(t) {
       <div class="row"><label class="switch"><input type="checkbox" id="unMaskOn"${set.maskOn ? ' checked' : ''}>이름 칸을 가리고 보내기</label>
         <button class="btn" type="button" data-un="mask"${hasPages(t.id) ? '' : ' disabled'}>이름 칸 정하기</button>
         <span class="muted">${m && m.mask.length ? `가릴 곳 ${m.mask.length}개${m.all ? ' · 모든 쪽' : ' · 첫 쪽'}` : '가릴 곳을 아직 정하지 않았어요'}</span></div>
-      ${note}${set.byNo && t.noOrdered && hasPages(t.id) && !nosOk(t) ? '<p class="banner warn" style="margin:8px 0 0">번호를 다시 읽기 전이라 아래 번호와 쪽이 맞지 않을 수 있어요. 채점을 시작하면 번호를 먼저 읽어 맞춰요.</p>' : ''}
+      ${note}${noStale(t) ? '<p class="banner warn" style="margin:8px 0 0">번호를 다시 읽기 전이라 아래 번호와 쪽이 맞지 않을 수 있어요. 채점을 시작하면 번호를 먼저 읽어 맞춰요.</p>' : ''}
     </div>
     ${t.students.length ? `<div class="yp-card"><h3>학생 ${t.students.filter(s => !s.skip).length}명</h3><ul class="un-stus">${t.students.map((s, i) => stuRow(t, s, i)).join('')}</ul></div>` : ''}
     <div class="row un-next"><button class="btn primary" type="button" data-un="toGrade"${t.students.length ? '' : ' disabled'}>다음: 채점</button></div>`;
@@ -143,6 +143,8 @@ function openNoBox(t, then) {
 /* 읽어 확인한 번호가 지금 스캔·학생 차례와 같은지 (스캔을 다시 올리거나 번호를 바꾸면 다시 읽음) */
 const noSig = t => G.idx.map((p, i) => `${p[0]}-${t.students[i] ? t.students[i].no : ''}`).join(',');
 const nosOk = t => !!G.noOk && G.noOk.pages === G.pages && G.noOk.sig === noSig(t);
+// 번호로 맞춘 평가에 다시 올린 스캔은 걷은 차례라, 번호를 다시 읽기 전에는 학생(번호 차례)과 쪽이 맞지 않음
+const noStale = t => !!getSet().byNo && !!t.noOrdered && hasPages(t.id) && !nosOk(t);
 const CHANGED = '번호를 읽는 동안 답안 스캔이 바뀌었어요. 채점 시작을 다시 눌러 주세요.';
 const freshStudent = no => ({ no, skip: false, status: 'idle', items: {}, good: '', cheer: '' });
 const hasResult = s => s.status === 'done' || Object.keys(s.items || {}).length > 0;
@@ -163,7 +165,8 @@ async function askNos(t, then) {
   finally { G.noBusy = false; }
   if (wait.gone()) return; // 그만두기
   if (stale()) { wait.close(); if (G.testId === id) toast(CHANGED, 6000); return; }
-  openNoCheck({ rows: list.map((x, k) => ({ crop: r.crops[k], ...r.nos[k] })), allowed: rosterAllowed(), onOk: nos => {
+  // 다시 올린 스캔(걷은 차례)은 「채점 안 함」 자리를 몰라 모두 읽음: 번호가 없는 빈 답안지 줄은 비워 두면 「채점 안 함」으로
+  openNoCheck({ rows: list.map((x, k) => ({ crop: r.crops[k], ...r.nos[k] })), allowed: rosterAllowed(), blank: t.noOrdered ? '번호 없음 · 채점 안 함으로 둬요' : '', onOk: nos => {
     const t2 = getTest(id) || t;
     if (stale() || busy(id)) { toast(CHANGED, 6000); return; }
     // 번호 차례로 학생과 그 학생의 쪽을 함께 늘어놓음
@@ -171,8 +174,7 @@ async function askNos(t, then) {
     let head, tail, tailIdx;
     if (t2.noOrdered) {
       // 번호로 맞춘 적이 있는 평가에 다시 올린 스캔은 걷은 순서: 결과는 자리가 아니라 번호로 이어 붙임
-      const byNum = new Map(t2.students.map(s => [s.no, s]));
-      head = order.map(k => byNum.get(nos[k]) || freshStudent(nos[k]));
+      head = reattachByNo(t2.students, nos, order, freshStudent, hasResult);
       const used = new Set(head);
       // 이번에 읽히지 않은 학생 중 결과가 있거나(결석 등) 「채점 안 함」인 학생은 뒤에 남김
       const rest = t2.students.map((s, i) => ({ s, i })).filter(x => !used.has(x.s) && (x.s.skip || hasResult(x.s)));
@@ -182,7 +184,9 @@ async function askNos(t, then) {
       const rest = t2.students.map((s, i) => ({ s, i })).filter(x => !inList.has(x.i));
       tail = rest.map(x => x.s); tailIdx = rest.map(x => G.idx[x.i] || []);
     }
-    t2.students = [...order.map((k, j) => ({ ...head[j], no: nos[k] })), ...tail];
+    t2.students = [...order.map((k, j) => ({ ...head[j], no: nos[k] ?? head[j].no })), ...tail];
+    // 「채점 안 함」 자리가 스캔 차례 번호를 그대로 가져 읽은 번호와 겹치지 않게
+    spreadSkipNos(t2.students, (store.get('class', null) || {}).count);
     G.idx = [...order.map(k => G.idx[list[k].i]), ...tailIdx];
     t2.noOrdered = true;
     commit(t2);
@@ -308,7 +312,7 @@ function startGrading(only) {
   // 번호 칸 그림에도 이름이 들어갈 수 있어서 이름 칸을 먼저 묻고, 번호를 읽어 확인한 뒤 채점
   if (getSet().byNo && !nosOk(t)) { askMask(() => askNos(t, () => startGrading(only))); return; }
   const all = t.students.map((s, i) => ({ s, i })).filter(x => !x.s.skip && pagesOf(id, x.i).length);
-  if (only != null) { const x = all.find(y => y.s.no === only); if (x) askMask(() => runQueue(id, [x.i])); return; }
+  if (only != null) { const x = all.find(y => y.s.no === only); if (x) askMask(() => runQueue(id, [x.i])); else toast('이 학생의 스캔이 없어요. 번호가 맞는지 확인하거나 답안 스캔을 다시 올려 주세요(2단계).', 5000); return; }
   const todo = all.filter(x => x.s.status !== 'done');
   if (todo.length) { askMask(() => runQueue(id, todo.map(x => x.i))); return; }
   SS().openSheet(`<h3>모두 다시 채점할까요?</h3><p class="muted" style="margin:0">학생 ${all.length}명을 다시 채점해요. 선생님이 고친 칸은 그대로 둬요.</p>
@@ -333,7 +337,8 @@ function step3HTML(t) {
   const id = t.id, items = t.key.items, run = busy(id);
   const done = t.students.filter(s => !s.skip && s.status === 'done').length, total = t.students.filter(s => !s.skip).length;
   const up = /업스테이지/.test(ai.providerName()) ? '<p class="muted cls-note">업스테이지는 이미지를 글자로 바꿔 보내요. 손글씨는 Claude·Gemini·GPT가 더 정확해요.</p>' : '';
-  const scanNote = hasPages(id) ? '' : '<p class="banner warn" style="margin:8px 0 0">스캔 이미지는 저장하지 않아요. 채점하려면 2단계에서 답안 스캔을 다시 올려 주세요.</p>';
+  const scanNote = !hasPages(id) ? '<p class="banner warn" style="margin:8px 0 0">스캔 이미지는 저장하지 않아요. 채점하려면 2단계에서 답안 스캔을 다시 올려 주세요.</p>'
+    : noStale(t) ? '<p class="banner warn" style="margin:8px 0 0">번호를 다시 읽기 전이라 학생과 답안 쪽이 맞지 않을 수 있어요. 칸의 답안 그림은 번호를 읽은 뒤에 보여요([채점 시작]이나 칸의 [번호 읽기]).</p>' : '';
   const head = `<tr><th scope="col">번호</th>${items.map(it => `<th scope="col"><button class="un-ih" type="button" data-item="${it.no}" title="${esc(it.content)}">${it.no}<small>${TYPE[it.type] || ''}</small></button></th>`).join('')}<th scope="col">총점</th></tr>`;
   const rows = t.students.map((s, i) => {
     if (s.skip) return '';
@@ -357,15 +362,19 @@ function step3HTML(t) {
     <div class="yp-card un-grid-card"><div class="un-grid-wrap"><table class="un-grid"><thead>${head}</thead><tbody>${rows}</tbody></table></div></div>`;
 }
 
+const stuIndex = (t, no) => { const i = t.students.findIndex(s => s.no === no && !s.skip); return i >= 0 ? i : t.students.findIndex(s => s.no === no); };
 const FLAG = { low: 'AI가 확신하지 못했어요.', differ: '앱과 AI의 판단이 달라요. 앱은 정답표와 글자로 맞춰 봤어요.', similar: '정답과 글자가 달라 AI가 뜻을 보고 판단했어요.', essay: '서술형이라 AI가 점수를 제안했어요.' };
 function openCell(no, itemNo) {
-  const t = cur(), si = t.students.findIndex(s => s.no === no), s = t.students[si], it = t.key.items.find(x => x.no === itemNo);
+  // 3단계 표는 「채점 안 함」이 아닌 학생만: 번호가 겹친 옛 자료여도 그 학생을 고름
+  const t = cur(), si = stuIndex(t, no), s = t.students[si], it = t.key.items.find(x => x.no === itemNo);
   if (!s || !it) return;
   if (s.status !== 'done') { toast('먼저 이 학생을 채점해 주세요'); return; }
   const c = s.items[itemNo] || gradeCell(it, undefined), full = Number(it.points) || 0;
   let pick = c.pts;
   const pg = pagesOf(t.id, si);
-  const imgs = pg.length ? `<div class="un-pages">${pg.map(k => `<img src="${G.pages[k].url}" alt="${no}번 평가지">`).join('')}</div>` : '<p class="muted">스캔 이미지는 저장하지 않아서 지금은 볼 수 없어요.</p>';
+  // 다시 올린 스캔의 번호를 읽기 전이면 다른 학생 답안이 보일 수 있어 그림 대신 [번호 읽기](번호만 맞추고 채점은 안 함)
+  const imgs = noStale(t) ? '<div class="row"><span class="muted">다시 올린 스캔은 걷은 차례라 번호를 다시 읽은 뒤에 이 학생 답안을 볼 수 있어요.</span><button class="btn" type="button" id="unCellNos">번호 읽기</button></div>'
+    : pg.length ? `<div class="un-pages">${pg.map(k => `<img src="${G.pages[k].url}" alt="${no}번 평가지">`).join('')}</div>` : '<p class="muted">스캔 이미지는 저장하지 않아서 지금은 볼 수 없어요.</p>';
   const ptsUI = it.type === 'essay'
     ? `<label class="cls-inline">점수 <input class="field num" type="number" id="unCellPts" min="0" max="${full}" value="${c.pts}"> / ${full}점</label>`
     : `<div class="seg" role="group" aria-label="점수"><button type="button" data-pts="${full}" aria-pressed="${c.pts >= full}">맞음 ${full}점</button><button type="button" data-pts="0" aria-pressed="${!c.pts}">틀림 0점</button></div>`;
@@ -378,10 +387,12 @@ function openCell(no, itemNo) {
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>닫기</button><button class="btn primary" type="button" id="unCellOk">확인</button></div>`,
   sh => {
     sh.classList.add('wide');
+    const nb = sh.querySelector('#unCellNos');
+    if (nb) nb.addEventListener('click', () => { SS().closeSheet(); askMask(() => askNos(getTest(t.id), () => openCell(no, itemNo))); });
     sh.querySelectorAll('[data-pts]').forEach(b => b.addEventListener('click', () => { pick = Number(b.dataset.pts); sh.querySelectorAll('[data-pts]').forEach(x => x.setAttribute('aria-pressed', x === b)); }));
     // 두 의견 고르기: 검토 안은 그 답을 같은 규칙으로 채점한 점수, 그대로 두기는 메인 안
     const choose = useRv => {
-      const t2 = getTest(t.id), s2 = t2 && t2.students.find(x => x.no === no);
+      const t2 = getTest(t.id), s2 = t2 && t2.students[stuIndex(t2, no)];
       if (!s2 || !s2.items[itemNo] || !s2.items[itemNo].rv) { SS().closeSheet(); return; }
       const c2 = s2.items[itemNo];
       if (useRv) {
@@ -398,7 +409,7 @@ function openCell(no, itemNo) {
       const ip = sh.querySelector('#unCellPts');
       if (ip) pick = Math.max(0, Math.min(full, Math.round(Number(ip.value) || 0)));
       if (read !== c.read && pick === c.pts) { const a = autoJudge(it, read); if (a != null) pick = a; }
-      const t2 = getTest(t.id), s2 = t2 && t2.students.find(x => x.no === no);
+      const t2 = getTest(t.id), s2 = t2 && t2.students[stuIndex(t2, no)];
       if (!s2) { SS().closeSheet(); return; }
       const changed = pick !== c.pts || read !== c.read;
       const next = { ...c, read, pts: pick, ok: true, manual: c.manual || changed };

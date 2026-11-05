@@ -138,14 +138,17 @@ function noViewHTML(r, i, pageUrl) {
     + (pageUrl ? `<figure class="no-view-page"><div class="no-view-stage"><img src="${esc(pageUrl)}" alt="${i + 1}번째 학생의 시험지 첫 쪽">${b ? `<span class="no-view-box" style="left:${pct(b.x)};top:${pct(b.y)};width:${pct(b.w)};height:${pct(b.h)}"></span>` : ''}</div><figcaption class="muted">시험지 첫 쪽${b ? ' · 빨간 칸이 번호 칸' : ''}</figcaption></figure>` : '');
 }
 /* rows: [{ crop, no, sure, page?, box? }] · allowed: Set|null · onOk(번호들). 노란 줄을 다 고쳐야 [이대로 채점].
+   blank: 줄을 비워 둘 수 있게 할 때 비운 줄에 보일 뜻(비운 줄은 null로 넘김) — 번호로 맞춘 평가에 다시 올린 스캔의 빈 답안지 등.
    번호 칸 그림이나 번호 칸을 누르면 그 줄 아래에 번호 칸·시험지 첫 쪽을 크게 보여 줌(한 번에 한 줄) */
-export function openNoCheck({ rows, allowed, onOk }) {
+export function openNoCheck({ rows, allowed, onOk, blank = '' }) {
   const SS = window.SSAM;
+  const probsOf = nos => noProblems(nos, allowed).map(p => (blank && p === 'unread' ? '' : p));
   const missing = () => (allowed ? [...allowed].filter(n => !cur().includes(n)) : []);
   let cur = () => rows.map(r => r.no);
   SS.openSheet(`<h3>읽은 번호를 확인해 주세요</h3>
     <p class="muted" style="margin:0">스캔 차례마다 학생이 쓴 번호 칸과 읽은 번호예요. 노란 줄을 고치면 번호 차례로 늘어놓고 채점해요. 번호 칸 그림이나 번호를 누르면 그 학생의 번호 칸과 시험지를 크게 볼 수 있어요.</p>
     <ol class="no-check">${rows.map((r, i) => `<li data-noline="${i}"><span class="muted num">${i + 1}번째</span><button type="button" class="no-zoom" data-nozoom="${i}" aria-expanded="false" aria-controls="noView${i}" title="크게 보기"><img src="${esc(r.crop)}" alt="${i + 1}번째 학생의 번호 칸 · 눌러서 크게 보기"></button><label class="cls-inline"><input class="field num" type="number" min="1" max="99" data-noi="${i}" value="${r.no == null ? '' : r.no}" aria-label="${i + 1}번째 학생 번호">번</label><span class="no-why" data-nowhy="${i}"></span><div class="no-view" id="noView${i}" data-noview="${i}" hidden></div></li>`).join('')}</ol>
+    ${blank ? `<p class="muted" style="margin:0">번호를 쓰지 않은 빈 답안지는 번호를 비워 두세요(${esc(blank)}).</p>` : ''}
     <p class="muted" id="noMissing"></p>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="noOk">이대로 채점</button></div>`,
   sh => {
@@ -153,10 +156,11 @@ export function openNoCheck({ rows, allowed, onOk }) {
     const inputs = [...sh.querySelectorAll('[data-noi]')];
     cur = () => inputs.map(el => { const v = Math.round(Number(el.value)); return el.value.trim() && v >= 1 && v <= 99 ? v : null; });
     const draw = () => {
-      const probs = noProblems(cur(), allowed);
+      const nos = cur(), probs = probsOf(nos);
       probs.forEach((p, i) => {
-        sh.querySelector(`[data-noline="${i}"]`).classList.toggle('warn', !!p || rows[i].sure === false);
-        sh.querySelector(`[data-nowhy="${i}"]`).textContent = p ? PROBLEM[p] : rows[i].sure === false && inputs[i].dataset.touched !== '1' ? '글씨를 확인해 주세요' : '';
+        const empty = !!blank && nos[i] == null;
+        sh.querySelector(`[data-noline="${i}"]`).classList.toggle('warn', !!p || rows[i].sure === false || empty);
+        sh.querySelector(`[data-nowhy="${i}"]`).textContent = p ? PROBLEM[p] : empty ? blank : rows[i].sure === false && inputs[i].dataset.touched !== '1' ? '글씨를 확인해 주세요' : '';
       });
       const bad = probs.filter(Boolean).length, miss = missing();
       sh.querySelector('#noOk').disabled = bad > 0;
@@ -176,7 +180,7 @@ export function openNoCheck({ rows, allowed, onOk }) {
     if (root) { const obs = new MutationObserver(() => { if (!sh.isConnected) { obs.disconnect(); rows.forEach(r => { if (r.page && r.page._noUrl) { URL.revokeObjectURL(r.page.url); delete r.page.url; delete r.page._noUrl; } }); } }); obs.observe(root, { childList: true }); }
     sh.querySelector('#noOk').addEventListener('click', () => {
       const nos = cur();
-      if (noProblems(nos, allowed).some(Boolean)) return;
+      if (probsOf(nos).some(Boolean)) return;
       SS.closeSheet(); onOk(nos);
     });
     draw();

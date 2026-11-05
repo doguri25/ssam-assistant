@@ -24,11 +24,29 @@ export function matchMap(s) {
 }
 
 // ⑴은 1로, ○× 표시(O·X·⭕·❌ 등)는 ○·×로 맞춤
-export const normShort = s => String(s || '').replace(/[⑴-⑽]/g, c => String(c.charCodeAt(0) - 0x2473)).replace(/[\s.,!?·'"“”‘’()[\]{}<>「」『』~\-…:;]/g, '').toLowerCase()
-  .replace(/[o◯⭕]/g, '○').replace(/[x✕✖❌]/g, '×');
-export function shortAnswers(answer) {
-  const a = String(answer || '').replace(/^\s*\(\s*예\s*\)\s*/, '').replace(/\s*등\s*$/, '');
-  return a.split(/\s*\/\s*|\s+또는\s+/).map(normShort).filter(Boolean);
+// 수의 뜻은 지킴: 소수점(12.6, 숫자 사이 가운뎃점 4·19도 점과 같게)·음수(-3)는 남기고, 큰 수 쉼표(1,000)는 빼고, 수 둘(3, 5·1 3/4)은 붙이지 않음.
+// list: 세 자리 앞 쉼표도 큰 수가 아니라 목록(300,400)으로 읽음
+const PC = String.raw`[\s.,!?·'"“”‘’()[\]{}<>「」『』~\-…:;]`;
+const PUNCT = new RegExp(PC, 'g'), NUM_GAP = new RegExp(String.raw`(\d)${PC}+(?=\d)`, 'g');
+const DOT = '\uE000', MINUS = '\uE001', SEP = '\uE002'; // 잠깐 남겨 둘 표시(글에 쓰지 않는 글자)
+function norm(s, list = false) {
+  let t = String(s || '').replace(/[⑴-⑽]/g, c => ` ${c.charCodeAt(0) - 0x2473} `).replace(/−/g, '-').replace(/[‧・･]/g, '·');
+  if (!list) t = t.replace(/(\d),(?=\d{3}(?!\d))/g, '$1');
+  return t.replace(/(\d)[.·](?=\d)/g, `$1${DOT}`)
+    .replace(/(?<!\d\s*)-\s*(?=\d)/g, MINUS)
+    .replace(NUM_GAP, `$1${SEP}`)
+    .replace(PUNCT, '').replaceAll(DOT, '.').replaceAll(MINUS, '-').replaceAll(SEP, ',').toLowerCase()
+    .replace(/[o◯⭕]/g, '○').replace(/[x✕✖❌]/g, '×');
+}
+export const normShort = s => norm(s);
+// 큰 수로 읽은 것과 목록으로 읽은 것(「1,500」 → 1500 · 1,500): 둘 중 하나라도 같으면 같은 답
+const readings = s => [...new Set([norm(s), norm(s, true)])];
+// 「/」는 「또는」으로 나눔. 단 양쪽이 수(3/4)면 분수 하나
+const splitShort = answer => String(answer || '').replace(/^\s*\(\s*예\s*\)\s*/, '').replace(/\s*등\s*$/, '').split(/\s*(?<!\d\s*)\/\s*|\s*\/(?!\s*\d)\s*|\s+또는\s+/);
+export const shortAnswers = answer => splitShort(answer).map(normShort).filter(Boolean);
+function sameShort(answer, read) {
+  const got = new Set(readings(read).filter(Boolean));
+  return splitShort(answer).some(a => readings(a).some(x => x && got.has(x)));
 }
 
 /* 앱이 정할 수 있으면 점수, 못 정하면 null */
@@ -41,7 +59,7 @@ export function autoJudge(item, read) {
     if (!ks.length) return null;
     return ks.length === Object.keys(r).length && ks.every(k => r[k] === a[k]) ? full : 0;
   }
-  if (item.type === 'short') return shortAnswers(item.answer).includes(normShort(read)) ? full : null;
+  if (item.type === 'short') return sameShort(item.answer, read) ? full : null;
   return null;
 }
 
