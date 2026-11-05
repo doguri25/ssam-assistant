@@ -1,7 +1,7 @@
 /* 기타 › 가정통신문 (스펙 2026-11-03 가정통신문): AI는 제목·인사·취지·항목·맺음·회신서 칸·알림 글·관련 공문만 뽑고,
    본문 줄·발송 기안·글 짜임 양식(.hwp·기본) 문서는 앱이 맞춤. 화면 없이 돌아감(시험) */
 import { parseTableLines } from '../../core/body-table.js';
-import { normDate, fmtDay } from './message-ai.js';
+import { normDate, fmtDay, schoolDate } from './message-ai.js';
 import { relText } from '../plan/report-ai.js';
 import { findRoles, swapDate, DATE, isSign, isDateLine, replyCells } from '../../core/hwpx-form.js';
 export { replyCells };
@@ -90,8 +90,16 @@ export function letterPrompt({ sources = [], memo = '', sample = '', today = '',
     '{"title":"…","greeting":["안녕하십니까?","…"],"intro":"…","items":["1. …","  가. …"],"closing":"…","reply":{"need":false},"short":"…","related":[],"target":"…"}'].join('\n');
 }
 
-/* AI 답 → 가정통신문 칸 */
-export function normLetter(v, { year } = {}) {
+/* 관련 공문 날짜: 연도가 없으면 학년도로(1·2월은 다음 해, 쪽지·공문 처리의 schoolDate와 같게).
+   이미 받은 공문이라 오늘보다 60일 넘게 뒤면 한 해 앞(3월에 쓴 「02-20」은 지난 2월) */
+function relDate(v, year, today) {
+  const s = String(v == null ? '' : v).trim(), iso = schoolDate(s, year);
+  if (!iso || /^\d{4}/.test(s) || !/^\d{4}-\d{2}-\d{2}$/.test(today || '')) return iso;
+  const lim = new Date(`${today}T00:00:00Z`); lim.setUTCDate(lim.getUTCDate() + 60);
+  return iso > lim.toISOString().slice(0, 10) ? normDate(`${+iso.slice(0, 4) - 1}${iso.slice(4)}`) || iso : iso;
+}
+/* AI 답 → 가정통신문 칸. today: 오늘(관련 공문 날짜를 지난 날로 맞춤) */
+export function normLetter(v, { year, today = '' } = {}) {
   const o = v && typeof v === 'object' && !Array.isArray(v) ? v : {};
   const arr = x => (Array.isArray(x) ? x : typeof x === 'string' && x.trim() ? [x] : []);
   const rp = o.reply && typeof o.reply === 'object' ? o.reply : {};
@@ -100,7 +108,7 @@ export function normLetter(v, { year } = {}) {
     intro: clean(o.intro, 600), items: arr(o.items).map(i => cleanLine(i, 300)).filter(Boolean).slice(0, 30), closing: clean(o.closing, 300),
     reply: { need: !!rp.need, title: clean(rp.title, 60), fields: arr(rp.fields).filter(f => typeof f === 'string').map(f => cleanKeep(f, 120)).filter(Boolean).slice(0, 8), due: clean(rp.due, 120) },
     short: String(o.short == null ? '' : o.short).split('\n').map(l => clean(l, 200)).filter(Boolean).slice(0, 6).join('\n'),
-    related: arr(o.related).filter(x => x && typeof x === 'object').slice(0, 3).map(x => ({ no: clean(x.no, 40), date: normDate(x.date, year), title: clean(x.title, 100) })).filter(x => x.no || x.title),
+    related: arr(o.related).filter(x => x && typeof x === 'object').slice(0, 3).map(x => ({ no: clean(x.no, 40), date: relDate(x.date, year, today), title: clean(x.title, 100) })).filter(x => x.no || x.title),
     target: clean(o.target, 60)
   };
 }

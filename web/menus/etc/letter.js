@@ -154,7 +154,7 @@ export async function write() {
     const year = schoolYearOf(today());
     const v = await ai.generateJSON(letterPrompt({ sources: x.sources, memo: cleanSheet(x.memo).text, sample: sampleOf(), today: today(), year }),
       { task: 'letter', valid: o => !!o && typeof o === 'object' && !Array.isArray(o) });
-    const n = normLetter(v, { year });
+    const n = normLetter(v, { year, today: today() });
     x.related = n.related; x.target = n.target;
     x.out = { title: n.title, date: (x.out && x.out.date) || today(), body: composeBody(n), replyOn: n.reply.need,
       reply: { title: n.reply.title || '회신서', fields: n.reply.fields, due: n.reply.due }, short: n.short };
