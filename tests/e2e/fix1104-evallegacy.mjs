@@ -168,11 +168,11 @@ await run('fix1104-evallegacy', [
     }, pdf);
     assert(r.pages === 4 && !r.student && !r.teacher && r.roles.every(x => x === 'student'), JSON.stringify(r).slice(0, 300));
   }],
-  ['[gr-bundle-ocr-privacy] 「정답」 이름의 글자층 PDF는 학생이 아니라 정답·교사용(카드), 정답·기준으로 들어가는 묶음 글은 이름 줄을 뺌', async () => {
+  ['[gr-bundle-ocr-privacy] 「정답」 이름의 글자층 PDF는 학생이 아니라 정답·교사용(카드), 정답·기준으로 들어가는 묶음 글은 이름 칸을 가림', async () => {
     await fresh();
     const key = await pdfOf(['<p>곱셈 평가</p><p>1. 92 (20 x 4 와 3 x 4 를 더함)</p><p>2. 128 (32 x 4)</p>']);
     const sum = await putBundle([{ name: '곱셈 정답.pdf', mimeType: 'application/pdf', buffer: key },
-      { name: '채점 기준.txt', mimeType: 'text/plain', buffer: Buffer.from('[채점 기준]\n1번 정답 92, 까닭이 있으면 만점\n잘 쓴 예: 김민수 이서연 박지훈 최하은') }]);
+      { name: '채점 기준.txt', mimeType: 'text/plain', buffer: Buffer.from('[채점 기준]\n1번 정답 92, 까닭이 있으면 만점\n잘 쓴 예: 3학년 2반 5번 이름: 김민수') }]);
     // 한글에서 내보낸 정답 PDF(글자층)는 정답·교사용 문서(쪽이 아님), 학생으로 세지 않음
     assert(sum.includes('정답·교사용') && !sum.includes('학생'), sum);
     await page.waitForFunction(() => document.querySelector('#grCritBox').textContent.includes('한꺼번에 넣은 정답·기준'));
@@ -214,15 +214,16 @@ await run('fix1104-evallegacy', [
     const g = grades[g0];
     assert(g && g.prompt.includes('1번 정답 999') && !g.prompt.includes('1번 정답 456') && g.images === 2, g ? `${g.images} ${g.prompt.slice(g.prompt.indexOf('[채점 기준]'), g.prompt.indexOf('[채점 기준]') + 200)}` : '요청 없음');
   }],
-  ['[gr-bundle-oldkey] 끝난 기록에 정답만 넣으면 새 채점(끝난 기록의 정답표는 그대로)', async () => {
+  // 1105 고침(gr-bundle-keyonly-wipe-2): 정답만 넣으면 새 채점이 아니라 [정답표 파일]처럼 지금 채점에 더함(스캔·학생은 그대로)
+  ['[gr-bundle-oldkey] 끝난 기록에 정답만 넣으면 지금 채점에 더함(새 채점 아님)', async () => {
     await page.click('[data-gr="back"]').catch(() => {});
     const id = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:grs'))[0]);
     await putBundle([{ name: 'C평가 정답.txt', mimeType: 'text/plain', buffer: Buffer.from('C평가 정답\n1번 정답 777') }]);
     await page.waitForTimeout(1000);
-    assert(JSON.stringify((await chips()).map(x => x.replace(/ · \d+자$/, ''))) === JSON.stringify(['한꺼번에 넣은 정답·기준']), JSON.stringify(await chips()));
+    assert(JSON.stringify((await chips()).map(x => x.replace(/ · \d+자$/, ''))) === JSON.stringify(['한꺼번에 넣은 정답·기준', '한꺼번에 넣은 정답·기준', 'B-1.png']), JSON.stringify(await chips()));
     const after = await page.evaluate(id => JSON.parse(localStorage.getItem('ssam:gr:' + id)), id);
-    assert(after && !JSON.stringify(after.critDocs).includes('777') && JSON.stringify(after.critDocs).includes('999'), JSON.stringify(after && after.critDocs));
-    assert(!(await page.$('[data-grhist][aria-current="true"]')), '새 채점이 아님');
+    assert(after && JSON.stringify(after.critDocs).includes('777') && JSON.stringify(after.critDocs).includes('999'), JSON.stringify(after && after.critDocs));
+    assert(await page.$('[data-grhist][aria-current="true"]'), '새 채점이 됨');
   }],
   ['[gr-bundle-empty-toast] 읽지 못하는 파일만 → 「넣을 수 있는 파일이 없었어요 …」와 파일 이름, 정답 문서만 → 「정답·기준 문서를 넣었어요」', async () => {
     await fresh();

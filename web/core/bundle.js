@@ -1,6 +1,6 @@
 /* 한꺼번에 넣기 (스펙 3장): 문서 안 학생용·교사용 나누기, 스캔 쪽 표시(정답·교사용 / 빈 활동지 / 학생), 확인 카드.
    활동지·단원평가·평가지 채점이 같이 씀. 이 파일의 규칙 함수는 화면 없이도 돌아감(시험) */
-import { nameCell } from './privacy.js';
+import { nameCell, stripNames, MASK } from './privacy.js';
 
 export const ROLE_NAME = { teacher: '정답·교사용', blank: '빈 활동지', student: '학생' };
 const ROLES = Object.keys(ROLE_NAME);
@@ -104,6 +104,55 @@ export function pickRoles(pages, ai) {
 }
 /* 나눌 것이 있을 때만 확인 카드(학생 스캔만이면 바로 넣음) */
 export const needsCard = ({ doc, roles } = {}) => !!(doc && String(doc.teacher || '').trim()) || (roles || []).some(r => r !== 'student');
+
+/* ---------- 이름 칸만 가리기 ---------- */
+/* 정답·기준 글(학생마다 채점 요청에 실려 감)과 행특 메모: 「이름: 김민수」「5번 이름 김민수」「성명 김철수」「이름 | 김민수」 같은 이름 칸만 ○○○로.
+   정답 속 인물 이름(안중근)·도형 이름(오각형)·큰 수·번호 줄은 그대로 둠(stripNames를 통째로 걸면 정답이 망가짐).
+   「도형의 이름: 오각형」「인물 이름: 세종대왕」처럼 앞말이 꾸미는 이름은 이름 칸이 아님 */
+const FIELD = /(이\s?름|성\s?명|학생명)(\s*[:：(（[|]\s*|\s+)([가-힣]{2,6})(?![가-힣])/g;
+const NOT_FIELD = /(?:의|인물|위인|사람|도형|모양|나라|도시|물건|기호|주인공|등장인물)$/;
+export function maskNameFields(text) {
+  return String(text || '').split('\n').map(line => line.replace(FIELD, (m, lab, sep, w, off) => {
+    const tok = (line.slice(0, off).match(/(\S{1,10})\s*$/) || ['', ''])[1];
+    if (NOT_FIELD.test(tok.replace(/[^가-힣]+$/, ''))) return m;
+    // 사람 이름인지는 privacy.js의 이름 칸 규칙으로(쌍점·「5번」 뒤면 두 글자도, 「이름 정답」「모둠 이름」은 아님). 표 칸(|)은 띄어 쓴 칸처럼
+    const s = /[|]/.test(sep) ? ' ' : sep, tail = line.slice(off + m.length, off + m.length + 3).replace(/[|]/g, ' ');
+    const run = head => { const r = stripNames(head + w + tail); return !r.dropped && r.text.startsWith(head) && r.text.endsWith(tail) ? r.text.slice(head.length, r.text.length - tail.length) : null; };
+    const got = run(`${tok} ${lab}${s}`) ?? run(lab + s); // 앞말까지 바뀌면(드묾) 이름 칸만 다시 봄
+    return got == null || got === w || !got.startsWith(MASK) ? m : lab + sep + got;
+  })).join('\n');
+}
+/* 행특 메모 한꺼번에 넣기: 줄마다 { no(앞 번호, 없으면 null), memo }. 엑셀에서 번호·이름·메모 칸을 함께 복사하면 이름 칸은 빼고(names: 뺀 수),
+   머리 줄(번호·이름·메모)은 넣지 않음. 이름 칸은 머리에 「이름」이 있거나, 칸이 둘 이상인 줄의 첫 칸이 대부분 사람 이름 모양일 때만 */
+const NAME_HEAD = /^(이\s?름|성\s?명|학생명|학생\s?이름)$/;
+const nameLike = c => nameCell(c) && !/[함임음됨]$/.test(c);
+export function memoRows(text) {
+  const lines = String(text || '').split('\n').map(l => l.trim()).filter(Boolean);
+  let nameAt = -1;
+  const rows = [];
+  for (const l of lines) {
+    const m = l.match(/^(\d{1,2})\s*(?:번)?[\s\t.)\-:]+(.+)$/);
+    const cells = (m ? m[2] : l).split('\t').map(c => c.trim()).filter(Boolean);
+    const head = m ? -1 : (/^(번호|번)$/.test(cells[0]) ? cells.slice(1) : cells).findIndex(c => NAME_HEAD.test(c));
+    if (head >= 0) { nameAt = head; continue; }
+    rows.push({ no: m ? +m[1] : null, cells });
+  }
+  if (nameAt < 0) {
+    const two = rows.filter(r => r.cells.length >= 2), hit = two.filter(r => nameLike(r.cells[0])).length;
+    if (hit && hit >= two.length * 0.6) nameAt = 0;
+  }
+  let names = 0;
+  const out = [];
+  for (const r of rows) {
+    // 칸이 하나뿐인 줄은 그 칸이 이름 모양일 때만 뺌(메모 한 칸은 그대로)
+    if (nameAt >= 0 && r.cells.length > nameAt && (r.cells.length >= 2 || nameLike(r.cells[nameAt]))) { r.cells.splice(nameAt, 1); names++; }
+    const memo = r.cells.join(', ').trim();
+    if (memo) out.push({ no: r.no, memo });
+  }
+  return { rows: out, names };
+}
+/* AI로 보내는 행특 메모: 예전에 붙여넣은 「김민수⇥메모」의 앞 이름 칸을 빼고 이름 칸을 가림 */
+export const memoForAI = memo => maskNameFields(String(memo || '').replace(/^\s*([가-힣]{2,4})\t+/, (m, n) => (nameLike(n) ? '' : m))).trim();
 
 /* ---------- 파일 읽기 ---------- */
 const DOC = /\.(hwpx?|txt)$/i;

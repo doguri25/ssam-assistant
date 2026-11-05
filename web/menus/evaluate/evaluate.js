@@ -1140,10 +1140,11 @@ function roleAI(use, task, role) {
   return r ? r.pick(task, role || 'main') : null;
 }
 /* shared: { text, images } 학생마다 같은 공통 부분(앞에 두어 캐시), meter: 사용량을 모을 곳 */
-/* 글쓰기 원칙(core/write-style.js — 번역투·AI 단골 표현 빼기): 글을 쓰는 업무는 요청 끝에 원칙을 붙이고, 답의 이중 피동 등은 고침 */
+/* 글쓰기 원칙(core/write-style.js — 번역투·AI 단골 표현 빼기): 글을 쓰는 업무는 요청 끝에 원칙을 붙이고, 답의 이중 피동 등은 고침.
+   style: 다른 업무의 AI로 글을 쓸 때 원칙을 고르는 업무(평가지 채점 평어는 채점 AI로 쓰고 원칙은 평어 것) */
 async function generate(prompt, opts = {}) {
-  const st = window.SSAM_STYLE, w = !!(st && opts && opts.task && st.WRITE_TASKS.includes(opts.task));
-  const r = await generateRaw(w ? st.withStyle(prompt, opts.task) : prompt, opts);
+  const st = window.SSAM_STYLE, k = opts && (opts.style || opts.task), w = !!(st && k && st.WRITE_TASKS.includes(k));
+  const r = await generateRaw(w ? st.withStyle(prompt, k) : prompt, opts);
   if (w && r && typeof r.text === 'string') r.text = st.tidyKo(r.text);
   return r;
 }
@@ -1607,14 +1608,15 @@ function errMsg(code, e) {
 /* ---------- 검토 AI (평어·행특·창체·평가지 평어 문장) ---------- */
 const RV = () => (window.SSAM && window.SSAM.review) || null;
 /* items: [{ o, f }] — o[f]가 문장. 검토 AI가 문제를 적은 문장에만 o[rv] = { problem, fix }, 검토한 문장은 o[d] = 1.
-   반환: 'off'(검토 꺼짐·볼 문장 없음) | 'ok' | 'fail'(키·한도·연결 — 쓴 글은 그대로) */
-async function reviewSentences(kind, info, items, signal, keys = { rv: 'rv', d: 'rvd' }) {
+   반환: 'off'(검토 꺼짐·볼 문장 없음) | 'ok' | 'fail'(키·한도·연결 — 쓴 글은 그대로)
+   task: 검토 AI를 고르는 업무(평가지 채점 평어는 'grade' — 채점 AI의 검토) */
+async function reviewSentences(kind, info, items, signal, keys = { rv: 'rv', d: 'rvd' }, task = 'writing') {
   const R = RV();
   if (!R || !R.texts) return 'off';
   const list = items.filter(x => x.o && !x.o[keys.d] && String(x.o[x.f] || '').trim());
   if (!list.length) return 'off';
   const sent = list.map(x => x.o[x.f]);
-  const res = await R.texts(kind, info, sent, { signal });
+  const res = await (task === 'writing' ? R.texts : reviewTextsBy(task))(kind, info, sent, { signal });
   if (res == null) return 'off';
   const got = Array.isArray(res) ? res : (res.partial || []);
   // 검토하는 동안 바뀐 문장(다시 쓰기·손으로 고침)의 의견은 버림
@@ -1623,6 +1625,20 @@ async function reviewSentences(kind, info, items, signal, keys = { rv: 'rv', d: 
   list.forEach((x, i) => { if (x.o[x.f] === sent[i]) x.o[keys.d] = 1; });
   return 'ok';
 }
+/* core/ai-review.js의 texts(평어 AI의 검토)와 같게, 다른 업무(task)의 검토 AI로: 10개씩, 꺼졌으면 null, 실패하면 { error, partial } */
+const reviewTextsBy = task => async (kind, info, texts, { signal } = {}) => {
+  const R = RV();
+  if (!R.pick(task, 'review')) return null;
+  const out = [];
+  for (let k = 0; k < texts.length; k += 10) {
+    const chunk = texts.slice(k, k + 10);
+    const v = await R.reviewJSON(task, R.textReviewPrompt(kind, info, chunk), { signal, valid: x => Array.isArray(x) || !!(x && Array.isArray(x.items)) });
+    if (v == null) return out.length ? out : null;
+    if (v.error) return { error: v.error, partial: out };
+    out.push(...R.normTextReview(v, chunk.length).map(r => ({ ...r, i: r.i + k })));
+  }
+  return out;
+};
 const rvOpen = (o, k = 'rv') => !!(o && o[k] && !o[k].done);
 function rvInline(o, key, title, k = 'rv', f = 't') {
   const R = RV();
@@ -2730,9 +2746,18 @@ const HK = {
   students: [], sel: null, showEditor: false,
   queue: [], running: new Map(), err: '', loaded: false
 };
-const KW = ['성실함', '책임감 강함', '1인 1역 꾸준함', '친구를 잘 도와줌', '배려심 깊음', '모둠 활동 적극적', '규칙을 잘 지킴', '정리정돈 잘함',
-  '발표에 자신감', '질문을 많이 함', '독서를 즐김', '꼼꼼함', '창의적인 생각', '리더십 있음', '밝고 긍정적', '교우 관계 원만',
-  '감정 표현 솔직함', '끈기 있게 도전', '운동을 좋아함', '그림·만들기 소질', '차분함', '유머 감각', '집중하는 시간이 늘어남', '감정 조절 노력 중'];
+/* 행특 메모의 특성 버튼: 묶음별(고쳐 나갈 점은 「~ 노력 중」처럼 성장 쪽으로, 낙인찍는 말은 넣지 않음) */
+const KW_GROUPS = [
+  ['생활', ['성실함', '책임감 강함', '1인 1역 꾸준함', '맡은 일을 끝까지 함', '규칙을 잘 지킴', '약속을 잘 지킴', '정리정돈 잘함', '준비물을 잘 챙김',
+    '예의 바름', '인사를 잘함', '바른 생활 습관', '봉사 정신', '환경 보호 실천', '꼼꼼함', '차분함']],
+  ['학습', ['발표에 자신감', '질문을 많이 함', '독서를 즐김', '창의적인 생각', '자기주도적 학습', '호기심 많음', '탐구심 강함', '끈기 있게 도전',
+    '표현력 풍부', '글쓰기를 좋아함', '수학적 사고', '과제를 성실히 해 옴']],
+  ['관계', ['친구를 잘 도와줌', '배려심 깊음', '교우 관계 원만', '모둠 활동 적극적', '협동심', '리더십 있음', '양보를 잘함', '공감 능력', '경청함',
+    '친구 갈등을 중재함', '새 친구와 잘 어울림', '밝고 긍정적', '유머 감각', '감정 표현 솔직함']],
+  ['특기', ['운동을 좋아함', '그림·만들기 소질', '음악 소질', '노래·춤 표현을 즐김', '과학 실험을 즐김', '컴퓨터·코딩에 관심', '동식물 돌보기를 좋아함']],
+  ['성장 중', ['집중하는 시간이 늘어남', '감정 조절 노력 중', '자신감이 자람', '바른 말 쓰기 노력 중', '수업 집중 노력 중', '발표 목소리가 커짐',
+    '정리 습관 기르는 중', '차례 지키기 노력 중', '스스로 하는 힘이 자람']]
+];
 
 /* 나이스 기준 세기: 한글 등 3바이트, 영문·숫자·공백 1바이트, 줄바꿈 2바이트 */
 const enc8 = new TextEncoder();
@@ -2813,6 +2838,20 @@ function hkStatus(s) {
   return ['', '메모 없음'];
 }
 
+/* ---------- 메모의 이름 칸 (core/bundle.js가 window.SSAM.memoNames로 줌) ---------- */
+const MEMO_NAMES = () => (window.SSAM && window.SSAM.memoNames) || null;
+// 한꺼번에 넣기 → { rows: [{ no, memo }], names: 뺀 이름 칸 수 }
+function hkMemoRows(text) {
+  if (MEMO_NAMES()) return MEMO_NAMES().rows(text);
+  const rows = String(text || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+    const m = l.match(/^(\d{1,2})\s*(?:번)?[\s\t.)\-:]+(.+)$/);
+    return { no: m ? +m[1] : null, memo: (m ? m[2] : l).trim() };
+  });
+  return { rows, names: 0 };
+}
+// AI로 보내는 메모: 예전에 붙여넣은 「김민수⇥메모」의 이름 칸, 「이름: 김민수」는 뺌
+const hkMemoOut = s => (MEMO_NAMES() ? MEMO_NAMES().forAI(s.memo) : String(s.memo || '').trim());
+
 /* ---------- 프롬프트 ---------- */
 function hkEndRule() {
   return HK.settings.ending === 'da'
@@ -2828,7 +2867,7 @@ function hkPrompt(s, count, others) {
     `아래 교사 메모를 바탕으로 ${grade}학생의 행동특성 및 종합의견을 ${count}가지 써 주세요.`,
     ``,
     `[교사 메모]`,
-    s.memo.trim(),
+    hkMemoOut(s),
     ``,
     `[분량] 글 하나는 공백을 포함해 ${t.tlo}~${t.thi}자로 씁니다.${byteNote}`,
     ``,
@@ -2858,7 +2897,7 @@ function hkFixPrompt(s, text, dir) {
     how,
     `${hkEndRule()} ${pronounRule()} 줄바꿈 없는 한 문단으로, 고친 글만 출력합니다.`,
     ``,
-    `[교사 메모]`, s.memo.trim(), ``, `[고칠 글]`, text
+    `[교사 메모]`, hkMemoOut(s), ``, `[고칠 글]`, text
   ].join('\n');
 }
 function hkClean(line) {
@@ -3052,9 +3091,9 @@ function renderHKEditor() {
     <div class="hk-top"><span class="badge num">${s.no}</span>
       <input class="field" id="hkLabel" value="${esc(s.label || '')}" placeholder="${s.no}번 · 별칭 (이름은 쓰지 마세요)" autocomplete="off">
       ${s.done ? `<span class="chip done">${ICON.check}완료</span>` : ''}</div>
-    <label class="lab" for="hkMemo">교사 메모 · 단어나 짧은 문장</label>
+    <label class="lab" for="hkMemo">교사 메모 · 단어나 짧은 문장 <span class="muted">(이름은 쓰지 마세요)</span></label>
     <textarea class="field" id="hkMemo" rows="4" placeholder="예) 1인 1역(우유 당번) 한 학기 동안 성실, 친구가 다치면 먼저 도와줌, 발표할 때 목소리가 작았는데 2학기에 자신감 생김, 수학 문제를 끝까지 풀려고 함">${esc(s.memo || '')}</textarea>
-    <div class="kw">${KW.map(k => `<button type="button" class="kwc" data-kw="${esc(k)}">${esc(k)}</button>`).join('')}</div>
+    <div class="kw-groups" style="display:flex;flex-direction:column;gap:6px">${KW_GROUPS.map(([g, ks]) => `<div role="group" aria-label="${esc(g)}" data-kwg="${esc(g)}" style="display:flex;gap:8px;align-items:flex-start"><span class="muted" style="font-size:12px;flex:0 0 3.6em;padding-top:5px">${esc(g)}</span><div class="kw">${ks.map(k => `<button type="button" class="kwc" data-kw="${esc(k)}">${esc(k)}</button>`).join('')}</div></div>`).join('')}</div>
     <div class="row">
       <button class="btn primary" type="button" data-hk="gen" ${busy ? 'disabled' : ''}>${busy ? '<span class="spin"></span>쓰는 중' : ICON.spark + (s.results && s.results.length ? '새 후보 만들기' : '행특 만들기')}</button>
       <span class="muted num">후보 ${HK.settings.variants}개 · ${HK.settings.min}~${HK.settings.max}${unitWord()}${engineReady() ? ' · ' + esc(engineName()) : ''}</span>
@@ -3179,17 +3218,17 @@ document.addEventListener('keydown', e => {
 });
 function openHKBulk() {
   openSheet(`<h3>메모 한꺼번에 넣기</h3>
-    <p class="muted" style="margin:0">한 줄에 학생 한 명씩 넣어요. 줄 앞에 번호를 쓰면 그 번호 학생에게, 번호가 없으면 차례대로 들어가요. 엑셀에서 번호 칸과 메모 칸을 함께 복사해 붙여넣어도 돼요.</p>
+    <p class="muted" style="margin:0">한 줄에 학생 한 명씩 넣어요. 줄 앞에 번호를 쓰면 그 번호 학생에게, 번호가 없으면 차례대로 들어가요. 엑셀에서 번호 칸과 메모 칸을 함께 복사해 붙여넣어도 돼요. 이름 칸은 빼고 넣어요.</p>
     <textarea class="field" id="hkBulkBox" rows="10" placeholder="1 성실함, 1인 1역 꾸준함, 발표 자신감 생김&#10;2 친구를 잘 도와줌, 정리정돈 잘함&#10;3	독서를 즐김, 질문을 많이 함"></textarea>
     <label class="switch"><input type="checkbox" id="hkBulkOver" checked>이미 있는 메모는 새 메모로 바꾸기</label>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="hkBulkOk">넣기</button></div>`,
     sh => sh.querySelector('#hkBulkOk').addEventListener('click', () => {
       const over = sh.querySelector('#hkBulkOver').checked;
-      const lines = sh.querySelector('#hkBulkBox').value.split('\n').map(l => l.trim()).filter(Boolean);
+      // 엑셀에서 번호·이름·메모 칸을 함께 복사했으면 이름 칸은 빼고 메모만 (학생 이름은 저장하지도 AI로 보내지도 않음)
+      const { rows, names } = hkMemoRows(sh.querySelector('#hkBulkBox').value);
       let next = 1, n = 0;
-      for (const l of lines) {
-        const m = l.match(/^(\d{1,2})\s*(?:번)?[\s\t.)\-:]+(.+)$/);
-        const no = m ? +m[1] : next; const memo = (m ? m[2] : l).trim();
+      for (const r of rows) {
+        const no = r.no || next, memo = r.memo;
         next = no + 1;
         let s = HK.students.find(x => x.no === no);
         if (!s) { s = { id: hkId(), no, label: '', memo: '', results: [], done: 0 }; HK.students.push(s); }
@@ -3197,7 +3236,7 @@ function openHKBulk() {
       }
       HK.students.sort((a, b) => a.no - b.no);
       if (!HK.sel && HK.students[0]) HK.sel = HK.students[0].id;
-      HKStore.save(); closeSheet(); renderHK(); toast(`${n}명의 메모를 넣었어요`);
+      HKStore.save(); closeSheet(); renderHK(); toast(`${n}명의 메모를 넣었어요${names ? ` · 이름 칸 ${names}개는 빼고 넣었어요` : ''}`, names ? 5000 : undefined);
     }));
 }
 
@@ -3702,10 +3741,12 @@ function grPutBundle(b) {
   const text = String(b.doc.teacher || b.doc.student || '').trim(), skipped = b.skipped || [];
   const names = skipped.slice(0, 3).join(', ') + (skipped.length > 3 ? ' 외' : '');
   if (!text && !crit.length && !stu.length) { toast(`넣을 수 있는 파일이 없었어요 (한글·txt·PDF·사진만 돼요)${skipped.length ? `: ${names}` : ''}`, 6000); return; }
-  // 끝난 채점(또는 불러온 기록)에 넣으면 새 채점. 정답·기준을 함께 넣었으면 지난 평가의 정답표는 비우고 새 것만 씀
-  if (GR.id || GR.students.some(s => s.status === 'done' || s.text)) {
+  // 학생 평가지를 끝난(멈춘·불러온) 채점에 넣을 때만 새 채점. 정답·기준만 넣으면 [정답표 파일]처럼 지금 채점에 더함(스캔·학생·결과는 그대로)
+  const added = !stu.length && GR.pages.length && grActive().some(s => s.status === 'done');
+  if (stu.length && (GR.id || GR.students.some(s => s.status === 'done' || s.text))) {
     grNew(false);
-    if (text || crit.length) { grFreePages(GR.critImgs); GR.critImgs = []; GR.critDocs = []; }
+    // 새 평가의 정답·기준도 함께 넣었으면 「새 채점」 단추처럼 지난 평가의 정답표·기준 글·제목을 비우고 새 것만 씀
+    if (text || crit.length) { grFreePages(GR.critImgs); GR.critImgs = []; GR.critDocs = []; GR.criteria = ''; GR.title = ''; GR.refs = []; GR.refsAll = false; }
   }
   if (text) GR.critDocs.push({ name: '한꺼번에 넣은 정답·기준', text: text.slice(0, CRIT_DOC_MAX) });
   const room = Math.max(0, CRIT_IMG_MAX - GR.critImgs.length), cut = crit.slice(room);
@@ -3714,7 +3755,8 @@ function grPutBundle(b) {
   if (stu.length) { GR.pages.push(...stu); grBuildStudents(); }
   GR._critCache = null; renderGR(); GRStore.save();
   const put = [text && '정답·기준 문서', crit.length > cut.length && `정답표 그림 ${crit.length - cut.length}쪽`, stu.length && `학생 ${GR.students.length}명`].filter(Boolean).join(' · ');
-  const notes = [cut.length && `정답표 그림은 ${CRIT_IMG_MAX}쪽까지라 ${cut.length}쪽은 빠졌어요`, skipped.length && `읽지 못한 파일: ${names}`].filter(Boolean);
+  const notes = [cut.length && `정답표 그림은 ${CRIT_IMG_MAX}쪽까지라 ${cut.length}쪽은 빠졌어요`, skipped.length && `읽지 못한 파일: ${names}`,
+    added && (text || crit.length > cut.length) && '이미 채점한 학생은 [다시 채점]을 누르면 넣은 정답표로 다시 채점해요'].filter(Boolean);
   toast([put && `${put}${jo(put, '을', '를')} 넣었어요`, ...notes].filter(Boolean).join('. '), notes.length ? 7000 : 5000);
 }
 function grWritePrompt(lv, group, avoid) {
@@ -3814,6 +3856,8 @@ async function grStart() {
   if (!GR.unitId && !GR.title.trim()) { toast('평가요소를 고르거나 수행평가 제목을 넣어 주세요'); $('#grTitle') && $('#grTitle').focus(); return; }
   const sum = LV_KEYS.reduce((a, k) => a + (+GR.settings.ratio[k] || 0), 0);
   if (sum !== 100) { toast(`비율의 합이 ${sum}%예요. 100%로 맞춰 주세요`); return; }
+  // 가릴 곳 없이 가리기가 켜져 있으면 먼저 물음 (번호 칸 그림에도 이름이 들어갈 수 있어 번호 읽기보다 먼저)
+  if (grNoMask()) { grAskMask(grStart); return; }
   // 적힌 번호로 학생 맞추기: 번호를 읽어 확인한 뒤에 채점 (스캔·번호가 바뀌면 다시 읽음)
   if (GR.settings.byNo && (GR.noSig !== grNoSig() || grActive().some(s => !(s.no > 0)))) { grAskNos(); return; }
   if (!GR.id) { GR.id = Date.now().toString(36); GR.createdAt = Date.now(); }
@@ -4006,11 +4050,11 @@ async function grWrite(only) {
       if (seen.has(k) && !ctl.signal.aborted) { const avoid = grActive().filter(x => x.level === s.level && x.text && x !== s).map(x => x.text); await grWriteChunk(s.level, [s], avoid, ctl.signal); }
       seen.set(normKey(s.text).slice(0, 18), s.id);
     }
-    // 검토 AI: 이번에 쓴 평어만 10개씩 (사용함 표시한 학생은 빼고). 검토하는 동안 창을 닫아도 평어는 남게 먼저 저장
+    // 검토 AI: 이번에 쓴 평어만 10개씩 (사용함 표시한 학생은 빼고). 평가지 채점 평어는 채점 AI의 검토로. 검토하는 동안 창을 닫아도 평어는 남게 먼저 저장
     const wrote = [...grWrote].filter(x => x.text && !x.d);
-    if (!ctl.signal.aborted && wrote.length && RV() && RV().pick('writing', 'review')) {
+    if (!ctl.signal.aborted && wrote.length && RV() && RV().pick('grade', 'review')) {
       GRStore.save();
-      const r = await reviewSentences('gr', grTaskText(), wrote.map(o => ({ o, f: 'text' })), ctl.signal, { rv: 'trv', d: 'trvd' });
+      const r = await reviewSentences('gr', grTaskText(), wrote.map(o => ({ o, f: 'text' })), ctl.signal, { rv: 'trv', d: 'trvd' }, 'grade');
       if (r === 'fail') GR.rvErr = 1; else if (r === 'ok') delete GR.rvErr;
     }
   } catch (e) {
@@ -4029,7 +4073,8 @@ async function grWrite(only) {
 }
 let grWrote = new Set(); // 이번 쓰기에서 평어를 쓴 학생 (검토는 이 학생만)
 async function grWriteChunk(lv, chunk, avoid, signal) {
-  const r = await generate(grWritePrompt(lv, chunk, avoid), { signal, fresh: true, task: 'writing' });
+  // 평가지 채점 탭은 AI 하나: 평어도 채점 AI로 씀(글쓰기 원칙은 평어 것)
+  const r = await generate(grWritePrompt(lv, chunk, avoid), { signal, fresh: true, task: 'grade', style: 'writing' });
   const arr = grJSON(r.text);
   const list = Array.isArray(arr) ? arr : (arr && Array.isArray(arr.items) ? arr.items : []);
   for (const x of list) {
@@ -4040,7 +4085,7 @@ async function grWriteChunk(lv, chunk, avoid, signal) {
   // 빠진 학생은 한 명씩
   for (const s of chunk.filter(c => c.writing)) {
     if (signal && signal.aborted) return;
-    const r2 = await generate(grWritePrompt(lv, [s], avoid.concat(chunk.filter(c => c.text).map(c => c.text))), { signal, fresh: true, task: 'writing' });
+    const r2 = await generate(grWritePrompt(lv, [s], avoid.concat(chunk.filter(c => c.text).map(c => c.text))), { signal, fresh: true, task: 'grade', style: 'writing' });
     const a2 = grJSON(r2.text);
     const x = Array.isArray(a2) ? a2[0] : a2;
     const t = x && cleanLine(String(x.text || ''));
@@ -4082,7 +4127,8 @@ function renderGRSetup() {
   const locked = ['grading', 'ranking', 'writing'].includes(GR.phase);
   const u = grUnit();
   const per = Math.max(1, st.pagesPer | 0), rem = GR.pages.length % per;
-  box.innerHTML = `<div class="ai-row" data-ai-row="grade"></div><div class="ai-row" data-ai-row="writing"></div>
+  // AI 줄은 하나: 채점과 이 탭의 평어 쓰기·검토 모두 채점 AI로
+  box.innerHTML = `<div class="ai-row" data-ai-row="grade"></div>
     <div class="gr-step">
       <div class="gr-h"><span class="sn">1</span><b>무엇을 채점할까요</b></div>
       ${!locked && window.SSAM.bundleBoxHTML ? window.SSAM.bundleBoxHTML('gr', '정답·채점 기준 문서와 학생 평가지 스캔을 한꺼번에 넣으면 알아서 나눠요') : ''}
@@ -4124,7 +4170,7 @@ function renderGRSetup() {
     <div class="gr-step">
       <div class="gr-h"><span class="sn">3</span><b>이름 칸 가리기</b></div>
       <label class="switch"><input type="checkbox" id="grMaskOn" ${st.maskOn ? 'checked' : ''} ${locked ? 'disabled' : ''}>이름 칸을 가리고 보내기</label>
-      ${st.maskOn ? `<div class="row"><button class="btn ${st.mask.length ? '' : 'tonal'}" type="button" data-gr="mask" ${GR.pages.length && !locked ? '' : 'disabled'}>${st.mask.length ? `가릴 곳 ${st.mask.length}개 · 고치기` : '가릴 곳 정하기'}</button>${!GR.pages.length ? '<span class="muted">평가지를 올리면 정할 수 있어요</span>' : ''}</div>` : '<p class="muted">학생 이름이 그대로 AI 회사로 보내져요.</p>'}
+      ${st.maskOn ? `<div class="row"><button class="btn ${st.mask.length ? '' : 'tonal'}" type="button" data-gr="mask" ${GR.pages.length && !locked ? '' : 'disabled'}>${st.mask.length ? `가릴 곳 ${st.mask.length}개 · 고치기` : '가릴 곳 정하기'}</button>${!GR.pages.length ? '<span class="muted">평가지를 올리면 정할 수 있어요</span>' : st.mask.length ? '' : '<span class="muted warn">정하지 않으면 학생 이름이 그대로 AI 회사로 보내져요</span>'}</div>` : '<p class="muted">학생 이름이 그대로 AI 회사로 보내져요.</p>'}
     </div>
     <div class="gr-step">
       <div class="gr-h"><span class="sn">4</span><b>수준 비율</b><span class="muted num ${sum === 100 ? '' : 'warn'}">합 ${sum}%</span></div>
@@ -4313,6 +4359,18 @@ function openGRMask() {
     save: (mask, all) => { GR.settings.mask = mask; GR.settings.maskAll = all; grSaveSettings(); renderGR(); }
   });
 }
+/* 「이름 칸을 가리고 보내기」가 켜졌는데 가릴 곳이 없으면 보내기 전에 물음 (단원평가 askMask와 같게).
+   「가리지 않고 채점」은 이번 채점에서 한 번만 물음(GR.noMaskOk, 새 채점이면 다시) */
+const grNoMask = () => !!(GR.settings.maskOn && !GR.settings.mask.length && GR.pages.length && !GR.noMaskOk);
+function grAskMask(go) {
+  if (!grNoMask()) { go(); return; }
+  openSheet(`<h3>이름 칸을 아직 정하지 않았어요</h3><p class="muted" style="margin:0">「이름 칸을 가리고 보내기」가 켜져 있지만 가릴 곳이 없어요. 정하지 않으면 학생 이름이 그대로 AI 회사로 보내져요. [이름 칸 정하기]로 이름이 적힌 곳을 상자로 표시해 주세요.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn" type="button" id="grNoMaskOk">가리지 않고 채점</button><button class="btn primary" type="button" id="grMaskGo">이름 칸 정하기</button></div>`,
+  sh => {
+    sh.querySelector('#grNoMaskOk').addEventListener('click', () => { GR.noMaskOk = true; closeSheet(); go(); });
+    sh.querySelector('#grMaskGo').addEventListener('click', () => { closeSheet(); openGRMask(); });
+  });
+}
 /* ---------- 적힌 번호로 학생 맞추기 (core/student-no.js가 window.SSAM.studentNo로 줌) ---------- */
 function openGRNoBox(then) {
   if (!GR.pages.length) return;
@@ -4412,7 +4470,7 @@ function grNew(keepPages) {
   if (GRStore.t) { clearTimeout(GRStore.t); GRStore.write(); } // 미뤄 둔 저장은 지금 기록에 먼저
   if (neisIsGr()) neisClose();
   grStop();
-  GR.id = null; GR.createdAt = 0; GR.calibrated = false; GR.err = ''; GR._critCache = null; GR.aiUse = null; GR.meter = null; GR.usedNow = false;
+  GR.id = null; GR.createdAt = 0; GR.calibrated = false; GR.err = ''; GR._critCache = null; GR.aiUse = null; GR.meter = null; GR.usedNow = false; GR.noMaskOk = false;
   if (!keepPages) { grFreePages(); GR.pages = []; GR.students = []; GR.settings.startNo = 1; }
   else GR.students.forEach(s => Object.assign(s, { status: 'idle', score: null, score0: null, level: null, manual: false, summary: '', evidence: [], strengths: '', improve: '', text: '', d: 0, stale: false, err: '' }));
   GR.phase = 'setup'; GR.showRes = false;
@@ -4430,6 +4488,9 @@ async function grOpenHistory(id) {
     if (text !== s.text) fixed++;
     return { ...s, text, pages: [], skip: !!s.skip, status: s.score == null ? 'idle' : 'done', manual: !!s.manual, stale: !!s.stale, d: s.d ? 1 : 0 };
   });
+  // 0.18.3 전 기록: 「채점에서 빼기」한 쪽이 스캔 차례 번호를 그대로 가져 다른 학생과 겹치면 번호 없음(0번)으로 (나이스 칸이 밀리지 않게)
+  const taken = new Set(GR.students.filter(s => !s.skip && s.no > 0).map(s => s.no));
+  GR.students.forEach(s => { if (s.skip && !s.text && taken.has(s.no)) { s.no = 0; fixed++; } });
   // 예전 기록에는 채점에서 뺀 학생이 없음 → 예외 번호가 아닌 빈 번호는 「채점 안 함」 학생으로 채움
   grFillNos((b.settings && b.settings.except) || []);
   GR.aiUse = b.aiUse && typeof b.aiUse === 'object' ? b.aiUse : null;
@@ -4489,10 +4550,13 @@ document.addEventListener('click', async e => {
     const s = grStudent(rg.dataset.grregrade); if (!s) return;
     if (!s.pages.length) { toast('스캔 이미지가 없어서 다시 채점할 수 없어요. 평가지를 다시 올려 주세요.', 4000); return; }
     if (!engineReady()) { openSettings(); return; }
-    GR.single = true; GR.phase = 'grading'; GR.queue.push(s.id); s.status = 'queued'; GR._critCache = null;
-    // 다시 채점한 양만 사용량 줄에(지난 채점에 더하지 않음)
-    GR.meter = window.SSAM_WIRE ? window.SSAM_WIRE.newMeter() : null; GR.usedNow = false;
-    grPump();
+    grAskMask(() => {
+      if (['grading', 'ranking', 'writing'].includes(GR.phase) || grStudent(s.id) !== s) return; // 묻는 사이 바뀜
+      GR.single = true; GR.phase = 'grading'; GR.queue.push(s.id); s.status = 'queued'; GR._critCache = null;
+      // 다시 채점한 양만 사용량 줄에(지난 채점에 더하지 않음)
+      GR.meter = window.SSAM_WIRE ? window.SSAM_WIRE.newMeter() : null; GR.usedNow = false;
+      grPump();
+    });
     return;
   }
   const sk = t.closest('[data-grskip]'); if (sk) { const s = grStudent(sk.dataset.grskip); if (s) { s.skip = !s.skip; renderGR(); } return; }
