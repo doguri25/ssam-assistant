@@ -105,7 +105,7 @@ export async function addFiles(files) {
     x.sources.push({ kind: guessSourceKind(f.name, cl.text, year()), name: f.name, text: cl.text });
   }
   R.adding--;
-  save(x); render();
+  save(x); live(); // 읽는 동안 한 일·사진 설명에 치고 있었으면 그 칸은 그대로
   if (fails.length) toast(`넣지 못한 것: ${fails.join(', ')}`, 7000);
   else if (cut) toast(`명단·전화번호가 적힌 줄 ${cut}곳은 빼고 넣었어요(AI로 보내지 않아요)`, 5000);
 }
@@ -131,7 +131,7 @@ export async function write() {
     const here = c() === x;
     // 사진 설명: 선생님이 쓴 것은 그대로, 빈 것만 그 사진의 AI 설명 (그새 다른 결과 보고로 옮겼으면 보낸 차례대로)
     const now = here ? R.photos : shots;
-    x.captions = now.map((p, i) => { const k = shots.indexOf(p); return (here ? String(x.captions[i] || '').trim() : '') || (k >= 0 ? x.r.photos[k] || '' : ''); });
+    x.captions = now.map((p, i) => { const k = shots.indexOf(p), own = here ? String(x.captions[i] || '') : ''; return own.trim() ? own : (k >= 0 ? x.r.photos[k] || '' : ''); });
     recompose(true, x);
     save(x, { now: true });
     toast(here ? '결과 보고 공문과 보고서를 썼어요. 내용을 확인해 주세요. 숫자·성과는 꼭 확인해 주세요.'
@@ -140,7 +140,7 @@ export async function write() {
     toast(e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 눌러 주세요.' : ai.errorMessage(e && e.code, e), 6000);
   }
   R.busy = false; R.msg = '';
-  render();
+  live();
 }
 
 /* ---------- 그리기 ---------- */
@@ -184,7 +184,7 @@ async function loadReportForms() {
   R.formsLoading = false;
   const id = String(get(FORM_KEY, '') || '');
   R.formId = R.forms.some(f => f.id === id) ? id : '';
-  render();
+  live(); // 다 쓴 뒤 처음 그릴 때 읽기 시작함 — 그사이 치는 칸은 그대로
 }
 async function formExport(x) {
   let rec = null;
@@ -209,8 +209,11 @@ const recentHTML = () => {
 };
 export function render() {
   if (!box || box.hidden) return;
+  box.innerHTML = pageHTML();
+}
+function pageHTML() {
   const x = c(), l = x.letter;
-  box.innerHTML = `<div class="m-page rp-page">
+  return `<div class="m-page rp-page">
     <div class="m-head"><div><h2>결과 보고</h2><p class="muted">계획서·공문·작년 보고서와 한 일·사진을 넣으면 결과 보고 공문과 결과 보고서(사진 포함)를 써요.</p></div>
       <div class="row"><button class="btn text" type="button" data-rp="new">새 결과 보고</button></div></div>
     ${aiRowHTML('report')}
@@ -240,6 +243,36 @@ export function render() {
       </section>
     </div>
     <section class="pc-card"><h3>최근 결과 보고</h3>${recentHTML()}</section></div>`;
+}
+/* AI가 다 썼을 때: 글 칸에 초점이 있으면 화면을 통째로 다시 그리지 않음(가정통신문과 같음).
+   그 칸의 글이 그대로면(한 일·사진 설명) 그 칸만 두고 둘레를 새로 그림(쓰던 글·한글 조합이 끊기지 않게),
+   AI가 그 칸 글을 바꿨으면(다시 쓰기 중 고치던 행사명 등) 다시 그리고 같은 칸 끝에 초점을 돌려 둠(이어 친 글자가 버려지지 않게) */
+const TYPING = 'input:not([type=checkbox]):not([type=file]), textarea';
+const KEYS = [['rpCap', 'rp-cap'], ['rf', 'rf'], ['rsH', 'rs-h'], ['rsL', 'rs-l']];
+const keyOf = el => { if (el.id) return '#' + el.id; const k = KEYS.find(([d]) => el.dataset[d] != null); return k ? `[data-${k[1]}="${el.dataset[k[0]]}"]` : ''; };
+function live() {
+  if (!box || box.hidden) return;
+  const a = document.activeElement, k = a && box.contains(a) && a.matches(TYPING) ? keyOf(a) : '';
+  if (!k) { render(); return; }
+  const tmp = document.createElement('div');
+  tmp.innerHTML = pageHTML();
+  const na = tmp.querySelector(k);
+  if (na && na.value === a.value && keepAround(a, na, tmp)) return;
+  render();
+  const b = box.querySelector(k);
+  if (b) { b.focus(); try { b.setSelectionRange(b.value.length, b.value.length); } catch (e) {} }
+}
+/* 칸 a는 그 자리에 두고, a에서 box까지 올라가며 둘레(앞뒤 형제)만 새 그림(na의 둘레)으로 바꿈. 짜임이 다르면 false */
+function keepAround(a, na, top) {
+  const up = (e, stop) => { const p = []; for (; e && e !== stop; e = e.parentElement) p.push(e); return e === stop ? p : null; };
+  const po = up(a, box), pn = up(na, top);
+  if (!po || !pn || po.length !== pn.length || po.some((e, i) => e.tagName !== pn[i].tagName)) return false;
+  po.forEach((o, i) => {
+    const sib = [...pn[i].parentNode.childNodes], j = sib.indexOf(pn[i]);
+    [...o.parentNode.childNodes].forEach(n => { if (n !== o) n.remove(); });
+    o.before(...sib.slice(0, j)); o.after(...sib.slice(j + 1));
+  });
+  return true;
 }
 /* 공문만 다시 넣기(입력 중인 칸은 덮지 않음) */
 function refreshLetter() {

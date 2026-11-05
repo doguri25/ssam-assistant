@@ -10,7 +10,7 @@ import { getSchool } from '../../core/settings.js';
 import { normName, periodStart, lessonYear, parseJindo, parseTimetable, jindoYear } from './class-import.js';
 import {
   getInfo, setInfo, getTimetable, setTimetable, listSubjects, saveSubject, removeSubject, setSubjects, resetRecords,
-  makeCtx, progressOf, setNext, alignToPlan, today, normLessons, normTimetableAI, hasTimetable, importSubjects, termStart, replaceLessons
+  makeCtx, progressOf, setNext, today, normLessons, normTimetableAI, hasTimetable, importSubjects, termStart, replaceLessons, addSubject
 } from './class-model.js';
 import { sampleData } from './class-sample.js';
 
@@ -243,8 +243,8 @@ async function runLessonAi(token, name, text, msg, btn) {
   // 시트가 그대로면 고치기 시트로, 그사이 닫았거나 다른 일을 하면 시작한 교과 이름으로 바로 저장
   if (open) { openEditor(old ? { ...old, lessons } : { id: '', name, lessons }); return; }
   // 있는 교과는 차시 목록만 바꿈(다음 학기 진도표면 앞 학기 체크는 세지 않음)
-  let s = old ? replaceLessons(old, lessons) : saveSubject({ name, start: today(), offset: 0, total: null, lessons });
-  if (s && !old) s = saveSubject(alignToPlan(makeCtx(), s));
+  // 새 교과는 계획 진도에 맞춤(지운 교과를 다시 넣어 체크 기록이 남았으면 이어서)
+  const s = old ? replaceLessons(old, lessons) : addSubject({ name, lessons });
   if (saved(!!s)) { changed('lessonAi'); toast(`「${name}」 차시 ${lessons.length}개를 넣었어요`, 5000); }
 }
 
@@ -321,8 +321,7 @@ function saveEditor() {
   const lessons = ed.lessons.filter(l => String(l.title || '').trim()).map(l => ({ ...l, from: periodStart(l.period, year) }));
   // 있는 교과: 저장된 차시와 견줘 다음 학기 진도표(AI로 뽑음·새로 씀)면 앞 학기 체크는 세지 않음
   const stored = ed.id ? listSubjects().find(x => x.id === ed.id) : null;
-  let s = ed.id ? replaceLessons(stored || ed.base, lessons, { name }) : saveSubject({ name, start: today(), offset: 0, total: null, lessons });
-  if (s && !ed.id) s = saveSubject(alignToPlan(makeCtx(), s));
+  const s = ed.id ? replaceLessons(stored || ed.base, lessons, { name }) : addSubject({ name, lessons });
   if (!saved(!!s)) return;
   S().closeSheet();
   ed = null;

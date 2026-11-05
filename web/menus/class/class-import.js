@@ -48,7 +48,10 @@ export function jindoYear(periods, { today, year } = {}) {
   return fit(year) > fit(base) ? year : base;
 }
 
-const cells = line => line.split(/\s*\|\s*/).map(c => c.trim());
+/* 칸 나누기: 한글 표 글은 「|」, 엑셀·CSV(readText)·붙여 넣은 엑셀 표는 탭(빈 칸도 자리를 지킴). 탭이 「|」보다 많은 줄만 탭으로
+   (한글 칸 안의 탭, 엑셀 칸 안의 「|」는 칸을 나누지 않게) */
+const count = (s, ch) => s.split(ch).length - 1;
+const cells = line => (count(line, '\t') > count(line, '|') ? line.split('\t') : line.split(/\s*\|\s*/)).map(c => c.trim());
 
 /* 진도표 글 → 교과마다 차시 목록. 한 줄 = 1시간. 글에 학년도가 없으면 jindoYear(지금 자료의 학년도 year·오늘·기간 요일), year가 없으면 오늘이 든 학년도 */
 export function parseJindo(text, { today, year: dataYear } = {}) {

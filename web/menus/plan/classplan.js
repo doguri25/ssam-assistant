@@ -360,7 +360,8 @@ async function runDraft() {
     }
     const target = getPlan(id);
     if (!target) { errs[id] = SAVE_FAIL; finish(id, 3); return; }
-    busy[id] = 'draft'; if (visible() && plan.id === id) renderMain();
+    // 지침 점검이 끝남: 3단계를 보고 있을 때만 다시 그림(다른 단계 칸에 치는 중이면 초점·한글 조합이 끊기지 않게, finish와 같음)
+    busy[id] = 'draft'; if (visible() && plan.id === id && plan.step === 3) renderMain();
     const prompt = draftPrompt(target, { bodies: sectionBodies(target.sources.lastPlan, target.outline), hours: hoursRows(target.attach), evalCount: target.evalRows.length });
     const v = await ai.generateJSON(prompt, { task: 'plan', valid: x => Object.keys(normSections(x, target.outline)).length > 0 });
     apply(id, p => {
