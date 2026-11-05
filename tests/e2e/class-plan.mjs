@@ -42,7 +42,7 @@ await run('class-plan', [
     await page.waitForSelector(`${V} ol.steps`);
     const steps = await page.locator(`${V} ol.steps li`).allInnerTexts();
     assert(steps.length === 4 && steps[1].includes('목차') && steps[3].includes('첨부'), steps.join('|'));
-    assert(await page.inputValue(`${V} #cpGrade`) === '3' && await page.inputValue(`${V} #cpRoom`) === '2' && await page.inputValue(`${V} #cpYear`) === '2027', '학급 정보');
+    assert(await page.inputValue(`${V} #cpGrade`) === '3' && await page.inputValue(`${V} #cpRoom`) === '2' && await page.inputValue(`${V} #cpYear`) === '2026', '학급 정보');
   }],
   ['작년 계획서 파일을 넣으면 이름·전화번호 줄을 빼고 넣고 알려 줌', async () => {
     await page.fill(`${V} #cpBoys`, '13'); await page.fill(`${V} #cpGirls`, '12');
@@ -269,13 +269,13 @@ await run('class-plan', [
   }],
   ['한글 파일: 제목, 시수표·평가 표, 끝에 붙임 목록', async () => {
     const [dl] = await Promise.all([page.waitForEvent('download'), page.click(`${V} [data-c="hwpx"]`)]);
-    assert(dl.suggestedFilename() === '2027학년도 3학년 2반 학급 교육과정 운영 계획.hwpx', dl.suggestedFilename());
+    assert(dl.suggestedFilename() === '2026학년도 3학년 2반 학급 교육과정 운영 계획.hwpx', dl.suggestedFilename());
     const b64 = readFileSync(await dl.path()).toString('base64');
     const txt = await page.evaluate(async b => {
       const { readText } = await import('./core/files.js');
       return readText(new File([Uint8Array.from(atob(b), c => c.charCodeAt(0))], 'x.hwpx'));
     }, b64);
-    assert(txt.includes('2027학년도 3학년 2반 학급 교육과정 운영 계획') && /국어\s*\|\s*12/.test(txt) && txt.includes('관찰'), txt.slice(0, 300));
+    assert(txt.includes('2026학년도 3학년 2반 학급 교육과정 운영 계획') && /국어\s*\|\s*12/.test(txt) && txt.includes('관찰'), txt.slice(0, 300));
     assert(txt.includes('1. 진도표(jindo-sample.txt) 1부.') && txt.includes('2. 평가계획(3학년 평가계획.txt) 1부.'), txt.slice(-300));
   }],
   ['확정하면 「확정」, 새 계획에서 지난 학급운영계획을 작년 계획서로 불러오면 목차가 그대로', async () => {
@@ -287,7 +287,7 @@ await run('class-plan', [
     await page.click(`${V} [data-c="importPrev"]`);
     await page.click(`${V} [data-prev="${A.id}"]`);
     const v = await page.inputValue(`${V} textarea[data-src="lastPlan"]`);
-    assert(v.includes('2027학년도 3학년 2반 학급 교육과정 운영 계획') && !v.includes('1부.'), v.slice(0, 200));
+    assert(v.includes('2026학년도 3학년 2반 학급 교육과정 운영 계획') && !v.includes('1부.'), v.slice(0, 200));
     await page.click(`${V} [data-c="next"]`);
     await page.waitForSelector(`${V} #cpOutline`);
     assert(await page.locator(`${V} #cpOutline li`).count() === A.outline.length, `${await page.locator(`${V} #cpOutline li`).count()} / ${A.outline.length}`);
