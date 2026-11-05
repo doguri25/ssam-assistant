@@ -277,18 +277,29 @@ export const alignToPlan = (ctx, sub) => setNext(ctx, sub, progressOf(ctx, sub).
 /* 있는 교과를 새 진도표로 바꿀 때 기준일(since): 새 진도표의 첫날 앞에 이 교과 체크 기록이 있으면(다음 학기 진도표) 그 첫날.
    첫날이 지금 기준일보다 앞이면(앞 학기 진도표로 되돌림) 기준일을 없앰(''), 그 밖에는 그대로(null).
    날짜가 없는 진도표(주만 있음·직접 씀)는 앞 진도표를 모두 마쳤고 차시가 거의 다르면(다음 학기 진도표) 오늘.
-   같은 진도표를 고친 것(차시 날짜가 대부분 앞 진도표에 있음 — 첫 주 줄을 지움 등)은 그대로 */
+   다만 앞 진도표 차시가 절반 넘게 남아 있으면(뒤에 다음 학기 줄을 덧붙임·글자 고침) 그대로.
+   같은 진도표를 고친 것(차시 날짜가 대부분 앞 진도표에 있음)은 그대로 — 첫 주 줄을 지움, 첫날을 기준일 앞으로 당김 등.
+   다만 그 가운데 1·2학기를 합친 진도표(첫날이 기준일 앞, 그 앞 기록 없음)는 기준일을 없애고,
+   합친 진도표에서 앞 학기 줄을 뺀 것(빠진 앞 차시가 새 차시 수의 절반 이상, 첫날 앞 기록 있음)은 다음 학기 진도표 */
 export function termStart(ctx, old, lessons) {
   const list = (lessons || []).filter(isObj), dates = list.map(l => l.from).filter(isDate);
   if (!dates.length) {
     const h = hours(ctx, old), titles = new Set(old.lessons.map(l => l.title));
     const same = list.filter(l => titles.has(String(l.title || '').trim())).length;
-    return h.plan > 0 && h.done >= h.plan && same * 2 < list.length ? ctx.today : null;
+    // 앞 진도표 차시가 새 목록에 남은 수: 새 줄 하나는 옛 줄 하나에만 맞춤(「학급 회의」처럼 되풀이되는 제목)
+    const left = new Map();
+    for (const l of list) { const t = String(l.title || '').trim(); left.set(t, (left.get(t) || 0) + 1); }
+    const kept = old.lessons.filter(l => { const n = left.get(l.title) || 0; if (n) left.set(l.title, n - 1); return n > 0; }).length;
+    return h.plan > 0 && h.done >= h.plan && same * 2 < list.length && kept * 2 < old.lessons.length ? ctx.today : null;
   }
-  const had = new Set(old.lessons.map(l => l.from).filter(Boolean));
-  if (dates.filter(d => had.has(d)).length * 2 >= dates.length) return null;
   const first = dates.sort()[0], back = !!old.since && first < old.since, base = back ? { ...old, since: '' } : old;
-  return records(ctx, base).some(r => r.date < first) ? first : back ? '' : null;
+  const had = new Set(old.lessons.map(l => l.from).filter(Boolean)), early = records(ctx, base).some(r => r.date < first);
+  if (dates.filter(d => had.has(d)).length * 2 >= dates.length) {
+    if (back) return early ? null : '';
+    const dropped = old.lessons.filter(l => l.from && l.from < first).length;
+    if (!(early && dropped * 2 >= dates.length)) return null;
+  }
+  return early ? first : back ? '' : null;
 }
 /* 있는 교과의 차시 목록 바꾸기(진도표 파일·AI로 뽑기·고치기 시트): 체크 기록은 그대로. 다음 학기 진도표면 그 첫날(날짜 없으면 오늘)
    앞의 기록은 세지 않고 새 교과처럼 계획 진도에 맞춤. fields: 함께 바꿀 값(이름·총 시수). 저장하지 못하면 null */
@@ -297,14 +308,25 @@ export function replaceLessons(old, lessons, fields = {}) {
   if (since) { const neu = saveSubject({ ...old, ...fields, since, start: since, offset: 0, lessons }); return neu && saveSubject(alignToPlan(makeCtx(), neu)); }
   return saveSubject({ ...old, ...(since === '' ? { since: '' } : {}), ...fields, lessons });
 }
-/* 진도표에서 고른 교과 넣기: 있는 교과는 차시 목록만 바꾸고(replaceLessons), 새 교과는 계획 진도에 맞춤. 하나라도 저장하지 못하면 false */
+/* 새 교과 넣기(진도표 파일·AI로 뽑기·직접 쓰기): 계획 진도에 맞춤. fields: 이름·차시 목록·총 시수. 저장하지 못하면 null.
+   지운 교과를 같은 이름으로 다시 넣어 체크 기록이 남아 있으면: 다음 학기 진도표면 그 첫날(termStart) 앞 기록은 세지 않고,
+   남은 기록이 있으면 기록대로 이어감(보정 0), 없으면 계획 진도에 맞춤. 기준일이 없으면 시작일은 남은 첫 기록 날 */
+export function addSubject(fields) {
+  const neu = saveSubject({ start: today(), offset: 0, total: null, ...fields });
+  if (!neu) return null;
+  const ctx = makeCtx(), left = records(ctx, neu).map(r => r.date).sort();
+  if (!left.length) return saveSubject(alignToPlan(ctx, neu));
+  const since = termStart(ctx, { ...neu, lessons: [] }, neu.lessons);
+  const s = since ? { ...neu, since, start: since } : { ...neu, start: left[0] < neu.start ? left[0] : neu.start };
+  return saveSubject(records(ctx, s).length ? s : alignToPlan(ctx, s));
+}
+/* 진도표에서 고른 교과 넣기: 있는 교과는 차시 목록만 바꾸고(replaceLessons), 새 교과는 addSubject. 하나라도 저장하지 못하면 false */
 export function importSubjects(picked) {
   let ok = true;
   for (const s of picked) {
     const old = listSubjects().find(h => h.name === s.name);
     if (old) { ok = !!replaceLessons(old, s.lessons, { total: s.total }) && ok; continue; }
-    const neu = saveSubject({ name: s.name, start: today(), offset: 0, total: s.total, lessons: s.lessons });
-    ok = !!(neu && saveSubject(alignToPlan(makeCtx(), neu))) && ok;
+    ok = !!addSubject({ name: s.name, total: s.total, lessons: s.lessons }) && ok;
   }
   return ok;
 }
