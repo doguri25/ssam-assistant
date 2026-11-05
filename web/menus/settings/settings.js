@@ -383,6 +383,11 @@ document.addEventListener('change', e => {
   if (f) (id === 'rosterFile' ? importRoster : restoreFile)(f);
 });
 
+// 바탕화면 버튼 메뉴의 「버튼 숨기기」처럼 다른 곳에서 바꾼 떠 있는 버튼 설정을 열린 칸에 맞춤(다시 그리지 않고 체크만)
+document.addEventListener('inbox:settings', e => {
+  if (!box || !e.detail) return;
+  box.querySelectorAll('[data-ib-set]').forEach(i => { const v = e.detail[i.dataset.ibSet]; i.checked = i.type === 'checkbox' ? !!v : i.value === v; });
+});
 // AI 창(평어 쓰는 방식)을 닫으면 설정 › AI의 요약을 다시 그림
 const sheetRoot = document.getElementById('sheetRoot');
 const aiShown = () => curTab === 'ai' && box && box.isConnected && !box.parentElement.hidden;
