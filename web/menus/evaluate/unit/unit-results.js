@@ -11,7 +11,7 @@ import {
 } from './unit-model.js';
 import { tableDoc, tableCsv } from './unit-docs.js';
 import { pyeongeoPrompt, normPyeongeo } from './unit-ai.js';
-import { U, esc, AI_KEY, registerResults, visible, render, refresh, editing, getBox } from './unit.js';
+import { U, esc, AI_KEY, registerResults, visible, render, refresh, later, editing, getBox } from './unit.js';
 
 const R = { rv: 'table', subject: '', term: 0, stuNo: null, weakId: null, pySubject: null, pyRun: null };
 const pct = r => `${Math.round(r * 100)}%`;
@@ -217,7 +217,11 @@ document.addEventListener('change', e => {
     } else if (['unCutTop', 'unCutHigh', 'unCutMid'].includes(el.id)) {
       const k = { unCutTop: 'top', unCutHigh: 'high', unCutMid: 'mid' }[el.id];
       const cuts = { ...st.saved.cuts, [k]: Math.max(0, Math.min(100, Number(el.value) || 0)) };
-      savePy({ ...st, students: st.students.map(s => (s.manual ? s : { ...s, level: levelOf(s.avg, cuts) })) }, { cuts }); render();
+      const students = st.students.map(s => (s.manual ? s : { ...s, level: levelOf(s.avg, cuts) }));
+      savePy({ ...st, students }, { cuts });
+      // 학생 수준 칸만 바로 바꾸고, 다시 그리기는 옮겨 간 칸을 떠날 때까지 미룸(Tab으로 기준 세 칸을 차례로 고침)
+      for (const s of students) { const sel = box.querySelector(`select[data-pylv="${s.no}"]`); if (sel) sel.value = s.level; }
+      later();
     } else if (el.dataset.pylv) {
       const s = st.students.find(x => x.no === Number(el.dataset.pylv)); if (s) { s.level = el.value; s.manual = true; savePy(st); }
     } else if (el.dataset.py) {

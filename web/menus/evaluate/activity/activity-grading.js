@@ -136,7 +136,9 @@ function openNoBox(a, then) {
 /* 적힌 번호로 학생 맞추기: 번호 칸만 읽어 확인 표 → 번호 차례로 학생·쪽을 늘어놓음 */
 async function matchNos(a, then) {
   if (!a.noBox) { toast('학생이 번호를 쓰는 칸을 먼저 정해 주세요.', 5000); openNoBox(a, () => matchNos(getActivity(a.id), then)); return; }
-  const list = a.students.map((s, i) => ({ i, pg: pagesFor(a, i) })).filter(x => x.pg.length && !a.students[x.i].skip);
+  // 「채점 안 함」 학생은 번호를 묻지 않음. 단 번호로 맞춘 적이 있는 활동지에 다시 올린 스캔은 걷은 순서라
+  // 자리와 학생이 따로 놀아(「채점 안 함」 학생 자리에 다른 학생 쪽이 옴) 쪽이 있는 자리는 모두 읽음
+  const list = a.students.map((s, i) => ({ i, pg: pagesFor(a, i) })).filter(x => x.pg.length && (a.noOrdered || !a.students[x.i].skip));
   if (!list.length) return;
   const pages0 = G.pages, wait = openNoWait();
   let r;
@@ -261,7 +263,8 @@ async function gradeAll(id) {
   // 지난 활동지에서 정한 칸은 양식이 다르면 이름을 가리지 못해, 이 활동지에서 확인받음(편집기에 먼저 보여 줌)
   if (m.on && !m.mask.length) { toast(lastMask(a).mask.length ? '이 활동지의 이름 칸을 먼저 정해 주세요. 지난 활동지에서 정한 칸을 먼저 보여 드려요. 이 활동지에서도 이름이 가려지는지 확인해 주세요.' : '이름 칸을 먼저 정해 주세요(가리지 않으려면 3단계에서 「이름 칸 가리기」를 꺼요).', 7000); openMask(a); return; }
   if (a.byNo && !G.nosOk) { matchNos(a, () => gradeAll(id)); return; }
-  const queue = a.students.map((s, i) => ({ s, i })).filter(x => !x.s.skip && (x.s.status !== 'done' || x.s.stale)).map(x => x.i);
+  // 이번 스캔에 쪽이 없는 학생(번호로 맞출 때 읽히지 않은 학생)은 지난 결과를 「스캔이 없어요」로 덮지 않게 뺌
+  const queue = a.students.map((s, i) => ({ s, i })).filter(x => !x.s.skip && (x.s.status !== 'done' || x.s.stale) && (pagesFor(a, x.i).length || !hasResult(x.s))).map(x => x.i);
   if (!queue.length) { toast('채점할 학생이 없어요. 고칠 칸을 눌러 바꿀 수 있어요.', 5000); return; }
   // 이 채점만의 표: 멈춘 앞 채점의 일꾼이 늦게 돌아와도 새 채점의 학생을 가져가거나 새 채점을 끝내지 않게
   const run = G.run = { id, queue, stop: false, wait: false }, meter = newMeter(), acc = ai.isAccount();

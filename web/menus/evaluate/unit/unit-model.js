@@ -1,5 +1,7 @@
 /* 단원평가 저장·통계 (스펙 2.3·4). 학년도마다 따로인 ssam:unit:* 키에 둠 */
 import * as store from '../../../core/store.js';
+import { getSchool } from '../../../core/settings.js';
+import { termOf as dayTerm } from '../activity/activity-read.js';
 import { keyTotal } from './unit-key.js';
 import { studentTotal } from './unit-grade.js';
 
@@ -95,9 +97,11 @@ export function renumber(test, except = []) {
 }
 /* 이 평가의 이름 칸 가림 (정하지 않았으면 null) */
 export const maskOf = t => (t && Array.isArray(t.mask) ? { mask: t.mask, all: !!t.maskAll } : null);
-export const termOf = date => { const m = Number(String(date || '').slice(5, 7)); return m >= 3 && m <= 8 ? 1 : 2; };
-export const filterTests = (list, { subject = '', term = 0 } = {}) =>
-  list.filter(s => (!subject || s.subject === subject) && (!term || termOf(s.date) === Number(term)));
+/* 날짜의 학기: 학교 여름방학 끝 다음 날부터 2학기(활동지와 같게). 방학을 모르면 3~8월 1학기, 날짜가 없으면 2학기 */
+export const termOf = (date, breaks = []) => (/^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? dayTerm(date, breaks) : 2);
+/* 학기 거르기: 정답지에서 읽은 학기(요약의 term)가 앞섬 */
+export const filterTests = (list, { subject = '', term = 0, breaks = getSchool().breaks } = {}) =>
+  list.filter(s => (!subject || s.subject === subject) && (!term || ([1, 2].includes(Number(s.term)) ? Number(s.term) : termOf(s.date, breaks)) === Number(term)));
 
 const order = (a, b) => String(a.meta.subject).localeCompare(String(b.meta.subject), 'ko') || ((a.meta.unitNo || 0) - (b.meta.unitNo || 0)) || ((a.meta.round || 0) - (b.meta.round || 0)) || String(a.meta.date).localeCompare(String(b.meta.date));
 
