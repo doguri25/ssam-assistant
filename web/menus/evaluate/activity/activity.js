@@ -100,10 +100,11 @@ function itemsHTML(a) {
   return a.items.length ? `<div class="act-items-wrap"><table class="act-items" id="actItems"><thead><tr><th>번호</th><th>종류</th><th>묻는 말</th><th>정답·예시 답안</th><th>○ 기준</th><th>△ 기준</th><th>출처</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '';
 }
 function step2HTML(a) {
-  const busy = A.busy === 'criteria:' + a.id;
+  const busy = A.busy === 'criteria:' + a.id, other = !!A.busy && !busy;
   return `<div class="yp-card"><h3>채점 기준</h3>${aiRowHTML('grade')}
       <p class="muted" style="margin:0">${a.sheet.teacher ? '교사용·예시·정답에서 가져오고 모자란 기준만 AI가 만들어요.' : '정답·예시 답안이 없어서 AI가 빈 활동지를 읽고 기준을 만들어요. 고친 뒤 [기준 확정]을 누르면 모든 학생에게 같은 기준을 써요.'}</p>
       ${busy ? '<p class="muted"><span class="spin"></span> AI가 기준을 만들고 있어요…</p>' : ''}
+      ${other ? `<p class="muted" id="actOtherBusy"><span class="spin"></span> 다른 활동지의 기준을 AI가 만들고 있어요. ${a.items.length ? '끝난 뒤에 눌러 주세요.' : '끝나면 이 활동지 기준도 이어서 만들어요.'}</p>` : ''}
       ${A.msg ? `<div class="banner err" role="alert"><span class="grow">${esc(A.msg)}</span></div>` : ''}
       ${A.note ? `<div class="banner" id="actNote"><span class="grow">${esc(A.note)}</span></div>` : ''}
       ${itemsHTML(a)}
@@ -219,7 +220,9 @@ async function critImages(id) {
 }
 async function makeCriteria(id) {
   const a0 = curAct();
-  if (!a0 || a0.id !== id || A.busy) return;
+  if (!a0 || a0.id !== id) return;
+  // 한 번에 한 활동지만: 만드는 중이면 말없이 끝내지 않고 알림
+  if (A.busy) { toast(A.busy === 'criteria:' + id ? 'AI가 기준을 만드는 중이에요.' : '다른 활동지의 기준을 만드는 중이에요. 끝난 뒤에 눌러 주세요.', 5000); return; }
   if (!ai.ready()) { toast('설정 › AI에서 키를 넣어 주세요', 5000); return; }
   A.busy = 'criteria:' + id; A.msg = ''; A.note = ''; render();
   try {
@@ -239,6 +242,12 @@ async function makeCriteria(id) {
   } catch (e) { A.msg = e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 눌러 주세요.' : ai.errorMessage(e && e.code, e); }
   A.busy = '';
   refresh(id);
+  // 다른 활동지 2단계에서 기다리던 기준: 비었으면 이어서 만들고, 아니면 「다른 활동지…」 줄만 지움(다시 그리지 않아 고치던 칸·첫 누름이 그대로)
+  const now = curAct();
+  if (!now || now.id === id || !visible() || A.view !== 'act' || A.step !== 2) return;
+  const note = box.querySelector('#actOtherBusy');
+  if (note) note.remove();
+  if (!now.items.length && !editing()) autoCriteria(now);
 }
 /* 기준을 고치면 확정이 풀리고, 채점한 학생은 「다시 채점」 */
 function editItem(a, el) {

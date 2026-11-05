@@ -24,11 +24,21 @@ export function matchMap(s) {
 }
 
 // ⑴은 1로, ○× 표시(O·X·⭕·❌ 등)는 ○·×로 맞춤
-export const normShort = s => String(s || '').replace(/[⑴-⑽]/g, c => String(c.charCodeAt(0) - 0x2473)).replace(/[\s.,!?·'"“”‘’()[\]{}<>「」『』~\-…:;]/g, '').toLowerCase()
+// 수의 뜻은 지킴: 소수점(12.6)·음수(-3)는 남기고, 큰 수 쉼표(1,000)는 빼고, 수 둘(3, 5·1 3/4)은 붙이지 않음
+const PC = String.raw`[\s.,!?·'"“”‘’()[\]{}<>「」『』~\-…:;]`;
+const PUNCT = new RegExp(PC, 'g'), NUM_GAP = new RegExp(String.raw`(\d)${PC}+(?=\d)`, 'g');
+const DOT = '\uE000', MINUS = '\uE001', SEP = '\uE002'; // 잠깐 남겨 둘 표시(글에 쓰지 않는 글자)
+export const normShort = s => String(s || '').replace(/[⑴-⑽]/g, c => ` ${c.charCodeAt(0) - 0x2473} `).replace(/−/g, '-')
+  .replace(/(\d),(?=\d{3}(?!\d))/g, '$1')
+  .replace(/(\d)\.(?=\d)/g, `$1${DOT}`)
+  .replace(/(?<!\d\s*)-\s*(?=\d)/g, MINUS)
+  .replace(NUM_GAP, `$1${SEP}`)
+  .replace(PUNCT, '').replaceAll(DOT, '.').replaceAll(MINUS, '-').replaceAll(SEP, ',').toLowerCase()
   .replace(/[o◯⭕]/g, '○').replace(/[x✕✖❌]/g, '×');
+// 「/」는 「또는」으로 나눔. 단 양쪽이 수(3/4)면 분수 하나
 export function shortAnswers(answer) {
   const a = String(answer || '').replace(/^\s*\(\s*예\s*\)\s*/, '').replace(/\s*등\s*$/, '');
-  return a.split(/\s*\/\s*|\s+또는\s+/).map(normShort).filter(Boolean);
+  return a.split(/\s*(?<!\d\s*)\/\s*|\s*\/(?!\s*\d)\s*|\s+또는\s+/).map(normShort).filter(Boolean);
 }
 
 /* 앱이 정할 수 있으면 점수, 못 정하면 null */

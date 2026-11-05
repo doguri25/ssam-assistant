@@ -9,7 +9,7 @@ import { runPool } from '../../../core/ai-pool.js';
 import { newMeter, useText } from '../../../core/ai-wire.js';
 import { readBundle, openBundleCard, needsCard, bundleBoxHTML, onBundle, bundleMsg } from '../../../core/bundle.js';
 import { readNos, openNoCheck, openNoWait, rosterAllowed, byNoOrder } from '../../../core/student-no.js';
-import { numbersFor, parseNos, renumber } from '../unit/unit-model.js';
+import { numbersFor, parseNos, renumber, reattachByNo, spreadSkipNos } from '../unit/unit-model.js';
 import { arrangePages } from '../unit/unit-pages.js';
 import { go } from '../../../core/shell.js';
 import { getActivity, getSet, saveSet, listActivities } from './activity-model.js';
@@ -145,14 +145,14 @@ async function matchNos(a, then) {
   try { r = await readNos(list.map(x => G.pages[x.pg[0]]), { box: a.noBox, mask: maskOf(a).on ? maskOf(a).mask : [], signal: wait.signal }); }
   catch (e) { if (wait.gone()) return; wait.close(); toast(e && e.code === 'NO_AI' ? '설정 › AI에서 키를 넣어 주세요' : ai.errorMessage(e && e.code, e), 6000); return; }
   if (wait.gone() || G.pages !== pages0) return;
-  openNoCheck({ rows: list.map((x, k) => ({ crop: r.crops[k], ...r.nos[k] })), allowed: rosterAllowed(), onOk: nos => {
+  // 다시 올린 스캔(걷은 차례)은 「채점 안 함」 자리를 몰라 모두 읽음: 번호가 없는 빈 답안지 줄은 비워 두면 「채점 안 함」으로
+  openNoCheck({ rows: list.map((x, k) => ({ crop: r.crops[k], ...r.nos[k] })), allowed: rosterAllowed(), blank: a.noOrdered ? '번호 없음 · 채점 안 함으로 둬요' : '', onOk: nos => {
     if (G.id !== a.id || G.pages !== pages0 || busy(a.id)) { toast('번호를 읽는 동안 학생 스캔이 바뀌었어요. [채점 시작]을 다시 눌러 주세요.', 6000); return; }
     const a2 = getActivity(a.id) || a, order = byNoOrder(nos), inList = new Set(list.map(x => x.i));
     let head, tail, tailIdx;
     if (a2.noOrdered) {
       // 번호로 맞춘 적이 있는 활동지에 다시 올린 스캔은 걷은 순서: 결과는 자리가 아니라 번호로 이어 붙임(단원평가와 같게)
-      const byNum = new Map(a2.students.map(s => [s.no, s]));
-      head = order.map(k => byNum.get(nos[k]) || fresh(nos[k]));
+      head = reattachByNo(a2.students, nos, order, fresh, hasResult);
       const used = new Set(head);
       // 이번에 읽히지 않은 학생 중 결과가 있거나(결석 등) 「채점 안 함」인 학생은 뒤에 남김
       const rest = a2.students.map((s, i) => ({ s, i })).filter(x => !used.has(x.s) && (x.s.skip || hasResult(x.s)));
@@ -162,7 +162,9 @@ async function matchNos(a, then) {
       const rest = a2.students.map((s, i) => ({ s, i })).filter(x => !inList.has(x.i));
       tail = rest.map(x => x.s); tailIdx = rest.map(x => G.idx[x.i] || []);
     }
-    a2.students = [...order.map((k, j) => ({ ...head[j], no: nos[k] })), ...tail];
+    a2.students = [...order.map((k, j) => ({ ...head[j], no: nos[k] ?? head[j].no })), ...tail];
+    // 「채점 안 함」 자리가 스캔 차례 번호를 그대로 가져 읽은 번호와 겹치지 않게
+    spreadSkipNos(a2.students, (store.get('class', null) || {}).count);
     G.idx = [...order.map(k => G.idx[list[k].i]), ...tailIdx];
     a2.noOrdered = true;
     G.nosOk = true; commitAct(a2); refresh(a.id); then();
