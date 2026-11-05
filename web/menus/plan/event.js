@@ -204,8 +204,11 @@ const refTotal = x => x.refs.reduce((n, r) => n + r.text.length, 0);
 /* 참고 자료를 그 행사(id)에 더함 — 파일을 읽는 동안 다른 행사로 가도 섞이지 않게 */
 /* 참고 자료를 바꾸면: 지난 「반영한 것」은 다시 만들기 전까지 옛 자료 기준이라 표시 */
 const refsChanged = x => { if (x.refNotes.options.length || x.refNotes.docs.length) x.refNotes = { ...x.refNotes, stale: true }; };
-function addRef(id, ref) {
+/* 참고 자료 넣기: 학생 이름·연락처 열과 명단·전화번호 줄은 빼고 이름은 가려 넣음(저장하지도 AI로 보내지도 않음) */
+function addRef(id, ref0) {
+  const p = stripPersonal(ref0.text), ref = { ...ref0, text: p.text };
   if (!String(ref.text || '').trim()) { toast(`「${ref.name}」에는 글이 없어 넣지 않았어요`, 5000); return; }
+  if (p.cols.length || p.dropped || p.masked) toast(personalMsg(p), 7000);
   const add = x => {
     const before = refTotal(x) + ref.text.length;
     x.refs = normRefs([...x.refs, { ...ref, id: 'ref' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }]);
@@ -225,10 +228,13 @@ function refSheet(r) {
     <textarea class="field" id="evRefText" rows="10" placeholder="공문·계획의 글을 붙여 넣어 주세요" aria-label="글">${esc(r ? r.text : '')}</textarea>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="evRefOk">${r ? '저장' : '넣기'}</button></div>`,
   sh => sh.querySelector('#evRefOk').addEventListener('click', () => {
-    const kind = sh.querySelector('#evRefKind').value, name = sh.querySelector('#evRefName').value.trim(), text = sh.querySelector('#evRefText').value;
-    if (!text.trim()) { toast('글을 넣어 주세요'); return; }
+    const kind = sh.querySelector('#evRefKind').value, name = sh.querySelector('#evRefName').value.trim(), raw = sh.querySelector('#evRefText').value;
+    if (!raw.trim()) { toast('글을 넣어 주세요'); return; }
     S.closeSheet();
-    if (!r) { addRef(ev.id, { kind, name: name || '붙여 넣은 자료', text }); return; }
+    if (!r) { addRef(ev.id, { kind, name: name || '붙여 넣은 자료', text: raw }); return; }
+    const p = stripPersonal(raw), text = p.text;
+    if (!text.trim()) { toast('글을 넣어 주세요'); return; }
+    if (p.cols.length || p.dropped || p.masked) toast(personalMsg(p), 7000);
     const before = refTotal(ev) - r.text.length + text.length;
     ev.refs = normRefs(ev.refs.map(x => (x.id === r.id ? { ...x, kind, name: name || x.name, text } : x)));
     if (refTotal(ev) < before) toast('참고 자료는 모두 합쳐 6만 자까지만 저장해요. 넘는 뒷부분은 잘랐어요', 5000);
@@ -236,7 +242,8 @@ function refSheet(r) {
   }));
 }
 const refNotesHTML = (list, stale) => (list && list.length ? `<div class="banner info ev-refnotes"><span class="grow"><b>참고 자료에서 반영한 것</b>${stale ? '<span class="muted"> · 참고 자료를 바꿨어요. 다시 만들면 바뀐 자료가 반영돼요</span>' : ''}<ul>${list.map(x => `<li>${esc(x)}</li>`).join('')}</ul></span></div>` : '');
-const refsPart = e => { const b = refsBlock(e.refs); return b ? `\n참고 자료(상위 계획·교육청 공문 등):\n${b}\n` : ''; };
+// 예전에 거르지 않고 저장한 참고 자료도 AI에는 이름·전화번호를 빼고 보냄
+const refsPart = e => { const b = refsBlock(e.refs.map(r => ({ ...r, text: stripPersonal(r.text).text }))); return b ? `\n참고 자료(상위 계획·교육청 공문 등):\n${b}\n` : ''; };
 const refsRule = e => (e.refs.length ? '- 참고 자료의 요구 사항(날짜·대상·필수 활동·안전 기준·제출할 것 등)을 지키고, 반영한 것을 refNotes에 짧게 씀(3~6개). 참고 자료에 없는 사실은 지어내지 않음\n' : '');
 
 function memosHTML() {
