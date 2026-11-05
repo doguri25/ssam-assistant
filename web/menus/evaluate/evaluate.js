@@ -2843,7 +2843,12 @@ const MEMO_NAMES = () => (window.SSAM && window.SSAM.memoNames) || null;
 // 한꺼번에 넣기 → { rows: [{ no, memo }], names: 뺀 이름 칸 수 }
 function hkMemoRows(text) {
   if (MEMO_NAMES()) return MEMO_NAMES().rows(text);
-  const rows = String(text || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+  // 번호만 있는 줄(「4⇥」)은 빈 메모, 번호 없이 붙이면 빈 줄도 한 학생 자리
+  const all = String(text || '').replace(/\s+$/, '').split('\n').map(l => l.trim());
+  const numbered = all.some(l => /^\d{1,2}\s*번?(?:[\s.)\-:]|$)/.test(l));
+  const rows = (numbered ? all.filter(Boolean) : all).map(l => {
+    const e = l.match(/^(\d{1,2})\s*번?\s*[.)\-:]?$/);
+    if (e) return { no: +e[1], memo: '' };
     const m = l.match(/^(\d{1,2})\s*(?:번)?[\s\t.)\-:]+(.+)$/);
     return { no: m ? +m[1] : null, memo: (m ? m[2] : l).trim() };
   });
@@ -3209,7 +3214,7 @@ document.addEventListener('change', e => {
     if (mn >= mx) { if (id === 'hkMin') mx = mn + 50; else mn = Math.max(20, mx - 50); }
     HK.settings.min = mn; HK.settings.max = mx; HKStore.save(); renderHK();
   }
-  if (id === 'hkGrade') { HK.settings.grade = +e.target.value; HKStore.save(); }
+  if (id === 'hkGrade') { HK.settings.grade = +e.target.value; HK.settings.gradeSet = 1; HKStore.save(); }
 });
 document.addEventListener('keydown', e => {
   if (S.mode !== 'hk' || !evalShown()) return;
@@ -3230,6 +3235,7 @@ function openHKBulk() {
       for (const r of rows) {
         const no = r.no || next, memo = r.memo;
         next = no + 1;
+        if (!memo) continue; // 메모 칸이 빈 학생: 있던 메모는 그대로(자리만 셈)
         let s = HK.students.find(x => x.no === no);
         if (!s) { s = { id: hkId(), no, label: '', memo: '', results: [], done: 0 }; HK.students.push(s); }
         s.memo = over || !s.memo ? memo : s.memo + ', ' + memo; n++;
@@ -3552,14 +3558,14 @@ function grRenumber() {
   const nos = grNumbers(GR.students.length);
   GR.students.forEach((s, i) => { s.no = nos[i]; });
 }
-function grBuildStudents() {
+/* 「채점에서 빼기」한 학생의 첫 쪽(쪽 그림 자체). 쪽 차례를 바꾸기 전에 모아 둠(채운 빈 번호 자리(쪽 없음)는 뺌) */
+const grSkipPages = () => new Set(GR.students.filter(s => s.skip && s.pages.length).map(s => GR.pages[s.pages[0]]).filter(Boolean));
+function grBuildStudents(skipPages = grSkipPages()) {
   const per = Math.max(1, GR.settings.pagesPer | 0);
-  // 「채점 안 함」은 스캔 차례로 이어 감 (적힌 번호로 늘어놓은 차례·채운 빈 번호 자리(쪽 없음)는 빼고 셈)
-  const withPages = GR.students.filter(s => s.pages.length).sort((a, b) => a.pages[0] - b.pages[0]);
-  const skipIdx = new Set(withPages.map((s, i) => s.skip ? i : -1).filter(i => i >= 0));
+  // 「채점 안 함」은 그 평가지(첫 쪽)를 따라 감 ([쪽 순서 거꾸로] 뒤에도 같은 평가지가 빠짐)
   GR.students = [];
-  for (let i = 0, k = 0; i < GR.pages.length; i += per, k++) {
-    GR.students.push({ id: grId(), no: 0, pages: Array.from({ length: Math.min(per, GR.pages.length - i) }, (_, j) => i + j), skip: skipIdx.has(k), status: 'idle' });
+  for (let i = 0; i < GR.pages.length; i += per) {
+    GR.students.push({ id: grId(), no: 0, pages: Array.from({ length: Math.min(per, GR.pages.length - i) }, (_, j) => i + j), skip: skipPages.has(GR.pages[i]), status: 'idle' });
   }
   grRenumber();
 }
@@ -3613,16 +3619,24 @@ async function grCritImages() {
 
 /* ---------- 프롬프트 ---------- */
 function grUnit() { return GR.unitId ? unitById(GR.unitId) : null; }
+/* 평가지 채점에 보낼 학년: 평가계획 → 학급 메뉴의 학년 → 행특 탭에서 고른 학년. 정한 곳이 없으면 ''(행특 기본값 3학년은 쓰지 않음) */
+function grClassGrade() {
+  if (S.plan && S.plan.grade) return S.plan.grade;
+  const info = Store.lsGet('ssam:class:info', null), g = info && +info.grade;
+  if (g >= 1 && g <= 6) return g;
+  // 행특 학년: 고른 적이 있거나(gradeSet) 기본값(3)이 아니면 고른 것
+  return HK.settings.grade && (HK.settings.gradeSet || HK.settings.grade !== 3) ? HK.settings.grade : '';
+}
 function grTaskText() {
   const u = grUnit();
-  const grade = (S.plan && S.plan.grade) || HK.settings.grade || '';
+  const grade = grClassGrade();
   if (u) return [
     `[학년·과목] ${grade ? grade + '학년 ' : ''}${u.subject}`,
     u.unit ? `[단원] ${u.unit}` : null, u.area ? `[평가영역] ${u.area}` : null, u.elem ? `[평가요소] ${u.elem}` : null,
     u.std ? `[성취기준] ${u.std.slice(0, 700)}` : null, u.focus ? `[수업·평가 방법과 주안점] ${u.focus.slice(0, 700)}` : null,
     `[평가기준] 상: ${u.crit.high || '-'} / 중: ${u.crit.mid || '-'} / 하: ${u.crit.low || '-'}`
   ].filter(Boolean).join('\n');
-  return [`[학년] ${grade ? grade + '학년' : '초등학교'}`, `[수행평가] ${GR.title || '(제목 없음)'}`].join('\n');
+  return [grade ? `[학년] ${grade}학년` : null, `[수행평가] ${GR.title || '(제목 없음)'}`].filter(Boolean).join('\n');
 }
 function grJSON(text) {
   let t = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
@@ -3982,14 +3996,21 @@ GR_RV.handle = (key, use) => {
   if (!String(key).startsWith('grs:')) return false;
   const s = grStudent(decodeURIComponent(String(key).slice(4)));
   if (!s || !rvOpen(s)) return true;
+  let re = [];
   if (use) {
     s.score = s.rv.score; if (s.rv.summary) s.summary = s.rv.summary;
-    if (!GR.running.size && !GR.writeCtl) grAssign(true);
+    if (!GR.running.size && !GR.writeCtl) {
+      const done = GR.phase === 'done';
+      grAssign(true);
+      // 평어까지 마친 뒤면 수준이 바뀐 학생 평어를 바로 다시 씀([비율대로 다시 나누기]처럼). 멈춘 채점(partial)은 [남은 평어 쓰기]로
+      if (done) re = grActive().filter(x => x.status === 'done' && x.level && x.stale).map(x => x.id);
+    }
     else if (GR.writeCtl) GR.needAssign = true; // 평어를 다 쓴 뒤에 맞춤
   }
   s.rv = { ...s.rv, done: use ? 'review' : 'main' };
   GRStore.save(); renderGR();
-  toast(use ? '검토 점수를 썼어요' : '그대로 두었어요');
+  if (re.length) { toast(`검토 점수를 썼어요 · ${re.length}명의 수준이 바뀌어 평어를 다시 써요`); grWrite(re); }
+  else toast(use ? '검토 점수를 썼어요' : '그대로 두었어요');
   return true;
 };
 
@@ -4510,7 +4531,7 @@ document.addEventListener('click', async e => {
     else if (a === 'new') { grNew(false); GR.title = ''; GR.criteria = ''; GR.critImgs = []; GR.critDocs = []; GR.refs = []; GR.refsAll = false; renderGR(); }
     else if (a === 'mask') openGRMask();
     else if (a === 'noBox') openGRNoBox();
-    else if (a === 'reverse') { GR.pages.reverse(); grBuildStudents(); renderGR(); toast('쪽 순서를 거꾸로 바꿨어요'); }
+    else if (a === 'reverse') { const sk = grSkipPages(); GR.pages.reverse(); grBuildStudents(sk); renderGR(); toast('쪽 순서를 거꾸로 바꿨어요'); }
     else if (a === 'clearPages') { grNew(false); renderGR(); }
     else if (a === 'critImg') {
       const fs = await grPickFiles('.hwp,.hwpx,.pdf,image/*', true); if (!fs || !fs.length) return;

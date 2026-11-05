@@ -108,13 +108,17 @@ export const needsCard = ({ doc, roles } = {}) => !!(doc && String(doc.teacher |
 /* ---------- 이름 칸만 가리기 ---------- */
 /* 정답·기준 글(학생마다 채점 요청에 실려 감)과 행특 메모: 「이름: 김민수」「5번 이름 김민수」「성명 김철수」「이름 | 김민수」 같은 이름 칸만 ○○○로.
    정답 속 인물 이름(안중근)·도형 이름(오각형)·큰 수·번호 줄은 그대로 둠(stripNames를 통째로 걸면 정답이 망가짐).
-   「도형의 이름: 오각형」「인물 이름: 세종대왕」처럼 앞말이 꾸미는 이름은 이름 칸이 아님 */
+   「도형의 이름: 오각형」「문화재 이름: 경복궁」「산 이름: 한라산」처럼 앞말이 꾸미는 이름은 정답 낱말이라 이름 칸이 아님.
+   앞말이 없거나 숫자·「5번」「2반」「학생」「짝」「5일」처럼 사람·양식 쪽 말이거나, 「과목: 국어 이름: 김민수」처럼 앞 칸의 값일 때만 이름 칸 */
 const FIELD = /(이\s?름|성\s?명|학생명)(\s*[:：(（[|]\s*|\s+)([가-힣]{2,6})(?![가-힣])/g;
-const NOT_FIELD = /(?:의|인물|위인|사람|도형|모양|나라|도시|물건|기호|주인공|등장인물)$/;
+const WHO = /^(?:번호|학번|학생|한글|한자|아동|어린이|본인|나|내|제|저|친구|짝|짝꿍|반장|부반장|회장|부회장|모둠장|모둠원|조장|조원|팀장|팀원|보호자|학부모|부모|어머니|아버지|담임|교사|선생님|작성자|제출자|응시자|날짜|요일|[반월일])$|(?:학년|번)$/;
+const HEAD_VAL = /(?:과목|교과|단원|날짜|일시|학교|학급|학년|반|번호|번|학번|모둠)\s*[:：]\s*\S{1,10}\s+$/;
 export function maskNameFields(text) {
   return String(text || '').split('\n').map(line => line.replace(FIELD, (m, lab, sep, w, off) => {
     const tok = (line.slice(0, off).match(/(\S{1,10})\s*$/) || ['', ''])[1];
-    if (NOT_FIELD.test(tok.replace(/[^가-힣]+$/, ''))) return m;
+    // 「이름」 바로 앞 한글 낱말(「학생의」는 「학생」으로): 사람 쪽 말이 아니면 이름 칸 아님
+    const word = tok.replace(/[^가-힣]+$/, '').match(/[가-힣]*$/)[0].replace(/(.)의$/, '$1');
+    if (word && !WHO.test(word) && !HEAD_VAL.test(line.slice(0, off))) return m;
     // 사람 이름인지는 privacy.js의 이름 칸 규칙으로(쌍점·「5번」 뒤면 두 글자도, 「이름 정답」「모둠 이름」은 아님). 표 칸(|)은 띄어 쓴 칸처럼
     const s = /[|]/.test(sep) ? ' ' : sep, tail = line.slice(off + m.length, off + m.length + 3).replace(/[|]/g, ' ');
     const run = head => { const r = stripNames(head + w + tail); return !r.dropped && r.text.startsWith(head) && r.text.endsWith(tail) ? r.text.slice(head.length, r.text.length - tail.length) : null; };
@@ -127,10 +131,16 @@ export function maskNameFields(text) {
 const NAME_HEAD = /^(이\s?름|성\s?명|학생명|학생\s?이름)$/;
 const nameLike = c => nameCell(c) && !/[함임음됨]$/.test(c);
 export function memoRows(text) {
-  const lines = String(text || '').split('\n').map(l => l.trim()).filter(Boolean);
+  // 끝의 빈 줄(엑셀 복사 끝 줄바꿈)은 버림. 번호 없이 붙이면 가운데 빈 줄도 한 학생 자리(메모 칸이 빈 학생)
+  const all = String(text || '').replace(/\s+$/, '').split('\n').map(l => l.trim());
+  const numbered = all.some(l => /^\d{1,2}\s*번?(?:[\s.)\-:]|$)/.test(l));
+  const lines = numbered ? all.filter(Boolean) : all;
   let nameAt = -1;
   const rows = [];
   for (const l of lines) {
+    // 번호만 있는 줄(엑셀 「4⇥」: 메모 칸이 빔)은 그 번호의 빈 메모
+    const e = l.match(/^(\d{1,2})\s*번?\s*[.)\-:]?$/);
+    if (e) { rows.push({ no: +e[1], cells: [] }); continue; }
     const m = l.match(/^(\d{1,2})\s*(?:번)?[\s\t.)\-:]+(.+)$/);
     const cells = (m ? m[2] : l).split('\t').map(c => c.trim()).filter(Boolean);
     const head = m ? -1 : (/^(번호|번)$/.test(cells[0]) ? cells.slice(1) : cells).findIndex(c => NAME_HEAD.test(c));
@@ -147,7 +157,8 @@ export function memoRows(text) {
     // 칸이 하나뿐인 줄은 그 칸이 이름 모양일 때만 뺌(메모 한 칸은 그대로)
     if (nameAt >= 0 && r.cells.length > nameAt && (r.cells.length >= 2 || nameLike(r.cells[nameAt]))) { r.cells.splice(nameAt, 1); names++; }
     const memo = r.cells.join(', ').trim();
-    if (memo) out.push({ no: r.no, memo });
+    // 메모가 빈 줄도 남김(그 학생 메모는 바꾸지 않고 자리만 셈). 번호도 메모도 없는 줄은 번호 붙인 붙여넣기에서는 버림
+    if (memo || r.no != null || !numbered) out.push({ no: r.no, memo });
   }
   return { rows: out, names };
 }
