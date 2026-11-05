@@ -3,7 +3,7 @@
 // 가정통신문: 1·2월에 쓰면 연도 없이 온 1·2월 관련 공문 날짜가 그해(발송 기안 「관련」)
 import { open, run, assert, mockClaude } from './helpers.mjs';
 
-const AI = { gate: null, gm: 0 };
+const AI = { gate: null, gm: 0, bad: false };
 // AI 답을 붙잡아 둠(돌려받은 함수를 부르면 놓음). 시험이 실패해도 끝에 놓아 줌(safe)
 const hold = () => { let r; AI.gate = new Promise(x => (r = x)); AI.release = () => { AI.gate = null; r(); }; return AI.release; };
 const safe = cases => cases.map(([n, fn]) => [n, async () => { try { await fn(); } finally { if (AI.gate) AI.release(); } }]);
@@ -18,6 +18,7 @@ await mockClaude(page, async ({ prompt }) => {
   if (!prompt.startsWith('[공문 처리]')) return '{}';
   AI.gm++;
   const g = AI.gate; if (g) await g;
+  if (AI.bad) return 'AI 답이 깨짐(JSON 아님)';
   const which = prompt.includes('A 공문 본문') ? 'A' : 'B';
   return JSON.stringify({ title: `AI가 읽은 ${which}`, due: iso(20), summary: `${which} 요약`, tasks: [{ text: `${which} 신청서 제출`, due: '' }], kinds: [] });
 });
@@ -143,6 +144,78 @@ await run('fix3-etc', safe([
     await humanClick(`${card('gmB')} [data-gm-task="0"]`);
     assert((await doc('gmB')).tasks[0].done === true, 'B 체크');
   }],
+  ['[gm-click-1] A의 [AI로 읽기] → 읽는 동안 A 할 일 칸에 침 → 다 읽은 뒤 A 할 일 체크를 사람처럼 누르면 체크되고 카드는 AI가 읽은 것으로', async () => {
+    await fresh({ A: { read: false, touched: true, due: '' } }); await go();
+    const release = hold();
+    await humanClick(`${card('gmA')} [data-gm-read]`);
+    assert(await page.locator(`${card('gmA')} .spin`).count() === 1, '읽는 중 표시');
+    await humanClick(`${card('gmA')} [data-gm-tadd]`);
+    await page.keyboard.insertText('메모');
+    release();
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('ssam:gongmun:list')).find(d => d.id === 'gmA').read === true, null, { timeout: 5000 });
+    await sleep(200);
+    // 치는 동안에는 그 칸·초점이 그대로
+    assert(await page.evaluate(() => document.activeElement && document.activeElement.dataset.gmTadd != null && document.activeElement.value === '메모'), '할 일 칸 초점');
+    await humanClick(`${card('gmA')} [data-gm-task="0"]`);
+    assert((await doc('gmA')).tasks[0].done === true, '첫 누름에 체크 안 됨');
+    assert(await page.isChecked(`${card('gmA')} [data-gm-task="0"]`), '화면 체크');
+    const tx = (await page.textContent(card('gmA'))).replace(/\s+/g, ' ');
+    assert(tx.includes('AI가 읽은 A') && tx.includes('A 요약') && tx.includes('D-20') && !tx.includes('읽는 중'), tx);
+    assert(await page.locator(`${card('gmA')} .spin`).count() === 0, '읽는 중 표시가 남음');
+    assert((await page.inputValue(`${card('gmA')} [data-gm-tadd]`)) === '메모', '쓰던 할 일 글');
+  }],
+  ['[gm-click-1] 같은 순서에서 AI가 실패하면 A 할 일 체크를 누른 뒤 카드에 [AI로 읽기]가 다시 보임', async () => {
+    await fresh({ A: { read: false, touched: true, due: '' } }); await go();
+    const release = hold();
+    AI.bad = true;
+    try {
+      await humanClick(`${card('gmA')} [data-gm-read]`);
+      await humanClick(`${card('gmA')} [data-gm-tadd]`);
+      await page.keyboard.insertText('메모');
+      release();
+      await page.waitForFunction(() => (document.querySelector('#toast') || {}).textContent?.includes('[AI로 읽기]를 눌러'), null, { timeout: 8000 });
+      await sleep(200);
+    } finally { AI.bad = false; }
+    await humanClick(`${card('gmA')} [data-gm-task="0"]`);
+    assert((await doc('gmA')).tasks[0].done === true, '첫 누름에 체크 안 됨');
+    assert(await page.locator(`${card('gmA')} [data-gm-read]`).count() === 1, '[AI로 읽기]가 없음');
+    assert(await page.locator(`${card('gmA')} .spin`).count() === 0, '읽는 중 표시가 남음');
+  }],
+  ['[gm-click-1] 기한을 고친 뒤 할 일 글(라벨)을 사람처럼 한 번 누르면 체크됨(같은 카드·다른 카드)', async () => {
+    await fresh(); await go();
+    await editDue('gmA');
+    await humanClick(`${card('gmA')} .gm-tasks label span`);
+    assert((await doc('gmA')).tasks[0].done === true, 'A 라벨 첫 누름');
+    await editDue('gmA');
+    await humanClick(`${card('gmB')} .gm-tasks label span`);
+    assert((await doc('gmB')).tasks[0].done === true, 'B 라벨 첫 누름');
+    assert(await page.isChecked(`${card('gmA')} [data-gm-task="0"]`) && await page.isChecked(`${card('gmB')} [data-gm-task="0"]`), '화면 체크');
+  }],
+  ['[gm-click-1] 기한을 고친 뒤 「다 한 공문 N개」를 한 번 누르면 열리고, 다시 그려도 열린 채', async () => {
+    await fresh({ B: { done: true } }); await go();
+    await editDue('gmA');
+    await humanClick(`${G} .gm-done-box summary`);
+    assert(await page.evaluate(s => document.querySelector(`${s} .gm-done-box`).open, G), '첫 누름에 안 열림');
+    await humanClick(`${G} h3`);
+    await editDue('gmA');
+    await humanClick(`${G} h3`);
+    assert(await page.evaluate(s => document.querySelector(`${s} .gm-done-box`).open, G), '다시 그린 뒤 닫힘');
+  }],
+  ['[gm-click-1] 기한을 키보드로 고친 뒤 Tab으로 할 일 체크로 옮기면 초점이 남아 Space로 체크됨, 기한 차례도 맞춤', async () => {
+    // 기한이 같으면 늦게 넣은 A가 위 → A 기한을 하루·한 달·한 해 늘리면 B 아래로
+    await fresh({ A: { due: '2030-06-14' }, B: { due: '2030-06-14' } }); await go();
+    assert((await page.$$eval(`${G} .gm-list > .gm-doc`, l => l.map(x => x.dataset.gmId))).join() === 'gmA,gmB', '처음 차례');
+    await editDue('gmA');
+    // 날짜 칸 안에서는 Tab이 월·일·연도를 옮겨 다님 → 칸을 떠날 때까지
+    for (let i = 0; i < 4 && await page.evaluate(() => document.activeElement && document.activeElement.dataset.gmDue != null); i++) await page.keyboard.press('Tab');
+    await sleep(200);
+    assert(await page.evaluate(() => document.activeElement && document.activeElement.dataset.gmTask === '0' && document.activeElement.closest('[data-gm-id]').dataset.gmId === 'gmA'), '초점: ' + await page.evaluate(() => document.activeElement.outerHTML.slice(0, 80)));
+    await page.keyboard.press('Space');
+    await sleep(100);
+    assert((await doc('gmA')).tasks[0].done === true, 'Space 체크');
+    const order = await page.$$eval(`${G} .gm-list > .gm-doc`, l => l.map(x => x.dataset.gmId));
+    assert(order.join() === 'gmB,gmA', order.join());
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]));
 await t.close();
@@ -157,7 +230,7 @@ await mockClaude(pg, async ({ prompt }) => {
   letters.push(prompt);
   return JSON.stringify({ title: '겨울방학 방과후 안내', greeting: ['안녕하십니까?'], intro: '방과후를 안내드립니다.', items: ['1. 기간: 1. 18.(월)~'], closing: '감사합니다.',
     reply: { need: false }, short: '방과후 안내', target: '전 학년 보호자',
-    related: [{ no: '교무부-321', date: '01-08', title: '겨울방학 운영 계획' }, { no: '교무부-300', date: '12-20', title: '방학 계획' }] });
+    related: [{ no: '교무부-321', date: '01-08', title: '겨울방학 운영 계획' }, { no: '교무부-300', date: '12-20', title: '방학 계획' }, { no: '교무부-123', date: '02-20', title: '방과후학교 운영 계획' }] });
 });
 await pg.goto(t2.url);
 await pg.waitForTimeout(300);
@@ -166,13 +239,13 @@ await pg.click('#menuTabs [data-tab="letter"]');
 await pg.waitForSelector(`${L} #lfMemo`);
 
 await run('fix3-etc-letter', [
-  ['[letter-year-2] 1월에 쓰면 연도 없는 1월 관련 공문은 그해(2027), 12월 공문은 지난해(2026)로 발송 기안 「관련」에', async () => {
+  ['[letter-year-2] 1월에 쓰면 연도 없는 1월 관련 공문은 그해(2027), 12월·아직 오지 않은 2월 공문은 지난해(2026)로 발송 기안 「관련」에', async () => {
     await pg.fill(`${L} #lfMemo`, '겨울방학 방과후 안내.');
     await pg.click(`${L} [data-lf="write"]`);
     await pg.waitForFunction(x => (document.querySelector('#toast') || {}).textContent?.includes(x), '가정통신문을 썼어요');
     assert(letters[letters.length - 1].includes('오늘: 2027-01-12, 학년도: 2026.'), letters[letters.length - 1].split('\n')[1]);
     const sb = await pg.inputValue(`${L} #lfSendBody`);
-    assert(sb.includes('교무부-321(2027. 1. 8.)') && sb.includes('교무부-300(2026. 12. 20.)') && !sb.includes('2026. 1. 8.'), sb);
+    assert(sb.includes('교무부-321(2027. 1. 8.)') && sb.includes('교무부-300(2026. 12. 20.)') && sb.includes('교무부-123(2026. 2. 20.)') && !sb.includes('2026. 1. 8.') && !sb.includes('2027. 2.'), sb);
   }],
   ['페이지 오류 없음', async () => { assert(t2.errors.length === 0, t2.errors.join(' | ')); }]
 ]);

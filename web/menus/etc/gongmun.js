@@ -125,16 +125,27 @@ export function render() {
       <div class="row"><button class="btn primary" type="button" data-gm="paste">넣기</button></div></section>
     <section class="pc-card" id="gmLists">${listHTML()}</section></div>`;
 }
-/* AI 읽기·파일 넣기 앞뒤: 넣기 칸은 두고 단추와 목록만 고침. 공문의 글 칸(할 일·기한)에 초점이 있으면 그 공문은 두고 다른 공문만 고치고,
-   그 칸을 떠날 때 차례를 맞춤(쓰던 글·한글 조합이 끊기지 않게). 단추·체크에 든 초점은 다시 그림([AI로 읽기]를 누르면 읽는 중 표시).
-   keep: 칸을 떠날 때(focusout) — 막 누른 단추·체크가 든 공문도 두어 첫 누름이 먹히게(떼기 전에 단추가 사라지지 않게) */
-function refresh(keep = false) {
+/* AI 읽기·파일 넣기 앞뒤·칸을 떠날 때: 넣기 칸은 두고 단추와 목록만 고침. 공문의 글 칸(할 일·기한)에 초점이 있으면 그 공문은 두고 다른 공문만 고치고,
+   그 칸을 떠날 때 차례를 맞춤(쓰던 글·한글 조합이 끊기지 않게). 단추·체크에 든 초점은 다시 그림([AI로 읽기]를 누르면 읽는 중 표시)
+   — 누르는 중이면 뗀 뒤(click·change 뒤)에, 그 단추·체크에 초점을 다시 둠 */
+function refresh() {
   if (!box || box.hidden) return;
+  if (pressing()) { later(); return; }
+  S.pending = false;
   const pk = box.querySelector('[data-gm="pick"]'), el = box.querySelector('#gmLists');
   if (!pk || !el) { render(); return; }
   pk.innerHTML = pickHTML();
-  const a = document.activeElement, li = a && el.contains(a) && (keep || a.matches('input:not([type=checkbox]), textarea, select')) ? a.closest('[data-gm-id]') : null;
-  if (!li) { S.listDirty = false; el.innerHTML = listHTML(); return; }
+  const a = document.activeElement, li = a && el.contains(a) && a.matches('input:not([type=checkbox]), textarea, select') ? a.closest('[data-gm-id]') : null;
+  if (!li) {
+    // 같은 공문의 같은 단추·체크로 초점을 돌림(Tab으로 옮겨 다니던 자리), 막 연 「다 한 공문」은 연 채(toggle 알림보다 먼저 그릴 때)
+    const c = a && el.contains(a) && a.closest('[data-gm-id]'), k = c && [...a.attributes].find(x => x.name.startsWith('data-gm-'));
+    const db = el.querySelector('.gm-done-box');
+    if (db) S.showDone = db.open;
+    S.listDirty = false; el.innerHTML = listHTML();
+    const b = k && el.querySelector(`[data-gm-id="${CSS.escape(c.dataset.gmId)}"] [${k.name}="${CSS.escape(k.value)}"]`);
+    if (b) b.focus();
+    return;
+  }
   const t = today(), shown = new Set();
   el.querySelectorAll('[data-gm-id]').forEach(x => {
     shown.add(x.dataset.gmId);
@@ -151,6 +162,20 @@ function refresh(keep = false) {
 
 /* ---------- 누르기·입력 ---------- */
 const mine = e => box && !box.hidden && box.contains(e.target);
+/* 누르는 동안(누름부터 뗀 뒤 click·change까지)은 다시 그리지 않고 뗀 뒤에 그림: 누른 단추·체크·할 일 글·「다 한 공문」이 click 전에 사라지지 않게.
+   글 칸을 누를 때는 미루지 않음. 떼기를 놓쳐도 2초 뒤에는 그림(단원평가 unit.js와 같은 방식) */
+const TYPING = 'textarea, select, input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=file])';
+let pressAt = 0;
+const pressing = () => Date.now() - pressAt < 2000;
+function later() { S.pending = true; clearTimeout(S.pendT); S.pendT = setTimeout(() => { if (S.pending) refresh(); }, 2100); }
+document.addEventListener('pointerdown', e => { if (mine(e) && !(e.target.closest && e.target.closest(TYPING))) pressAt = Date.now(); }, true);
+const release = () => {
+  const at = pressAt;
+  if (!at) return;
+  setTimeout(() => { if (pressAt === at) pressAt = 0; if (S.pending) refresh(); }, 0);
+};
+document.addEventListener('pointerup', release, true);
+document.addEventListener('pointercancel', release, true);
 const docOf = el => { const li = el.closest('[data-gm-id]'); return li ? getDoc(li.dataset.gmId) : null; };
 document.addEventListener('click', e => {
   if (!mine(e)) return;
@@ -190,7 +215,7 @@ document.addEventListener('focusout', e => {
   const due = e.target.dataset && e.target.dataset.gmDue != null && S.dueDirty;
   if (!due && !S.listDirty) return;
   S.dueDirty = false;
-  setTimeout(() => refresh(true), 0);
+  setTimeout(refresh, 0);
 });
 // 붙여 넣기 칸·할 일 칸 글은 다시 그려도 남게
 document.addEventListener('input', e => {
