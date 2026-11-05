@@ -1,7 +1,7 @@
 /* 설정 메뉴: 학급 명단 · AI · 화면 · 학교 정보 · 학년도 · 품의 기준 */
 import { onEnter, go as goMenu } from '../../core/shell.js';
 import { THEMES, getTheme, setTheme } from '../../core/theme.js';
-import { getSchool, setSchool, getPurchaseLimit, setPurchaseLimit, getMeetCap, setMeetCap, getPurchaseFlow, setPurchaseFlow } from '../../core/settings.js';
+import { getSchool, setSchool, defaultYear, getPurchaseLimit, setPurchaseLimit, getMeetCap, setMeetCap, getPurchaseFlow, setPurchaseFlow } from '../../core/settings.js';
 import * as ai from '../../core/ai.js';
 import { readTable } from '../../core/sheet.js';
 import { parseRoster } from '../../core/roster.js';
@@ -326,6 +326,8 @@ function readBreaks() {
 function readSchool() {
   return { name: box.querySelector('#schName').value, year: +box.querySelector('#schYear').value, classes: box.querySelector('#schClasses').value, students: box.querySelector('#schStudents').value, breaks: readBreaks() };
 }
+/* 계획 학년도는 선생님이 칸을 바꿨을 때만 저장: 보이던 값 그대로면 건드리지 않고(undefined), 자동값으로 바꿨으면 지움(null) */
+const pickYear = y => (y === getSchool().year ? undefined : y === defaultYear() ? null : y);
 
 document.addEventListener('click', e => {
   if (!box || !box.contains(e.target)) return;
@@ -349,7 +351,7 @@ document.addEventListener('click', e => {
       const empty = s.breaks.find(x => !x.from || !x.to);
       if (bad) { msg = `「${bad.label || '이름 없는 기간'}」의 시작일이 끝일보다 늦어요.`; school = s; again(); return; }
       if (empty) { msg = `「${empty.label || '이름 없는 기간'}」의 시작일과 끝일을 모두 넣어 주세요.`; school = s; again(); return; }
-      const saved = setSchool(s);
+      const saved = setSchool({ ...s, year: pickYear(s.year) });
       if (!saved) { msg = FULL; school = s; again(); return; }
       msg = ''; school = saved; again(); toast('학교 정보를 저장했어요');
     } else if (a === 'saveMeetCap') {
