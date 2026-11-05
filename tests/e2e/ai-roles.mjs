@@ -134,7 +134,8 @@ await run('ai-roles', [
     await page.waitForSelector('#grSetup [data-ai-row="grade"] .ai-row-t');
     const txt = (await page.textContent('#grSetup [data-ai-row="grade"] .ai-row-t')).trim();
     assert(txt === 'AI: Claude Opus 5.5 · 검토: Claude Opus 5.5', txt);
-    assert((await page.textContent('#grSetup [data-ai-row="writing"] .ai-row-t')).trim() === 'AI: Claude Sonnet 5.5 · 검토 끔', '평어 줄');
+    // 평가지 채점 탭은 AI 줄 하나(이 탭의 평어도 채점 AI로 씀)
+    assert(await page.locator('#grSetup [data-ai-row]').count() === 1, '평가지 채점 탭의 AI 줄이 둘');
     assert(!fb || fb.includes('검토 끔'), fb);
   }],
   ['설정 › AI: 기본 검토 AI 고르기·업무별 한눈에 10줄(품의·쪽지·결과 보고·가정통신문·공문 처리·회신서 읽기 포함)·[기본으로 되돌리기]', async () => {

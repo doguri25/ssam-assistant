@@ -55,7 +55,8 @@ await run('review-gr', [
     await page.fill('#grTitle', '세 자리 수 덧셈'); await page.dispatchEvent('#grTitle', 'input');
     await page.click('[data-gr="start"]');
     await until(async () => { const g = await cur(); return g && g.students.filter(s => s.text).length === 4; });
-    const rv = calls.filter(c => c.review);
+    // 점수 검토만 셈(이 탭의 평어 검토도 채점 검토 AI로 감 — 1105 기능)
+    const rv = calls.filter(c => c.review && c.main != null);
     assert(rv.length === 3 && rv.map(c => c.main).sort().join(',') === '40,74,75', rv.map(c => c.main).join(','));
     const s = (await cur()).students;
     const by = sc => s.find(x => x.score === sc);
