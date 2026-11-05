@@ -22,3 +22,10 @@ test('[reply-colon-1] 한글 양식(.hwpx) 회신서: 칸 이름의 시간(13:00
   assert.ok(!c.includes('1부(13'), JSON.stringify(c));
   assert.ok(c.includes('참가 여부') && c.includes('□ 참가 □ 불참') && c.includes('하고 싶은 말'), JSON.stringify(c));
 });
+
+// 2차(11. 5.): 이름 가리기 알림은 「다 막았다」고 장담하지 않고 확인을 부탁함(가리지 못하는 꼴이 남아 있음)
+import { personalMsg } from '../../web/core/survey.js';
+test('[privacy-msg] 개인정보를 뺀 알림은 「학생 이름은 … 보내지도 않아요」라고 장담하지 않음', () => {
+  const m = personalMsg({ cols: ['이름'], dropped: 1, masked: 2 });
+  assert.ok(m.includes('이름 2개는 ○○○로 가려') && m.includes('확인해 주세요') && !m.includes('보내지도 않아요'), m);
+});

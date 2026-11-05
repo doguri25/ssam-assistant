@@ -175,7 +175,7 @@ function attachFrom(name, raw) {
   attMem[id] = { text: r.text, jindo: j.subjects.length ? j : null };
   return { att: { id, name, kind, text: kind === 'eval' ? r.text : '', summary: { subjects: kind === 'jindo' ? jindoSubjects(attMem[id].jindo) : [] } }, privacy: kind === 'eval' ? r : null };
 }
-const privacyMsg = r => `${[r.dropped ? `이름·전화번호가 적힌 줄 ${r.dropped}개는 빼고` : '', r.masked ? `이름 ${r.masked}개는 ○○○로 가려` : ''].filter(Boolean).join(', ')} 넣었어요(학생 이름은 저장하지도 AI로 보내지도 않아요).`;
+const privacyMsg = r => `${[r.dropped ? `이름·전화번호가 적힌 줄 ${r.dropped}개는 빼고` : '', r.masked ? `이름 ${r.masked}개는 ○○○로 가려` : ''].filter(Boolean).join(', ')} 넣었어요. 가리지 못한 이름이 남았는지 한 번 확인해 주세요.`;
 async function addAttach(files) {
   const id = plan.id;
   if (!saved) persist();

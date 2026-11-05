@@ -93,7 +93,7 @@ export async function readStripped(file) {
 }
 export function personalMsg(r) {
   const out = [r.cols.length ? `개인정보로 보이는 열 ${r.cols.length}개(${r.cols.join(', ')})` : '', r.dropped ? `이름·전화번호가 적힌 줄 ${r.dropped}개` : ''].filter(Boolean).join(', ');
-  return `${[out ? out + '는 빼고' : '', r.masked ? `이름 ${r.masked}개는 ○○○로 가려` : ''].filter(Boolean).join(', ')} 넣었어요(학생 이름은 저장하지도 AI로 보내지도 않아요).`;
+  return `${[out ? out + '는 빼고' : '', r.masked ? `이름 ${r.masked}개는 ○○○로 가려` : ''].filter(Boolean).join(', ')} 넣었어요. 가리지 못한 이름이 남았는지 한 번 확인해 주세요.`;
 }
 const round2 = n => Math.round(n * 100) / 100;
 
