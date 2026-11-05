@@ -140,6 +140,21 @@ await run('fix3-evallegacy', [
     assert(['1. 문화유산 이름: 석굴암', '2. 산 이름: 한라산', '3. 마을 이름: 하회마을', '| 문화재 이름 | 석가탑 |'].every(x => crit.includes(x)), crit);
     assert(crit.includes('학생 이름: ○○○') && !p.includes('김민수'), crit);
   }],
+  ['[gr-maskkey-1] 정답 글의 「발표자 이름:」「<자기평가> 이름:」「응답자 성명:」「평가자 이름:」은 이름 칸이라 어느 채점 요청에도 이름이 가지 않음', async () => {
+    await fresh();
+    const key = ['모둠 발표 평가 정답', '1. 문화재 이름: 경복궁', '우수 답안 예시 (발표자 이름: 박지훈)', '<자기평가> 이름: 김민수', '응답자 성명: 정우진', '평가자 이름: 최하은', '채점 기준: 모두 맞으면 상'].join('\n');
+    await putBundle([txt('발표 정답.txt', key), await shot(300, 's-1.png'), await shot(310, 's-2.png')]);
+    await page.waitForFunction(() => document.querySelector('#grSetup').textContent.includes('학생 2명'));
+    await title('발표');
+    const g0 = grades.length;
+    await gradeAll();
+    const sent = grades.slice(g0);
+    assert(sent.length === 2, String(sent.length));
+    for (const g of sent) {
+      assert(['박지훈', '김민수', '정우진', '최하은'].every(n => !g.prompt.includes(n)), g.prompt.slice(g.prompt.indexOf('[채점 기준]'), g.prompt.indexOf('[할 일]')));
+      assert(g.prompt.includes('1. 문화재 이름: 경복궁') && g.prompt.includes('(발표자 이름: ○○○)') && g.prompt.includes('<자기평가> 이름: ○○○'), '정답·가림 모양');
+    }
+  }],
   // ---------- gr-reverse-skip-4 ----------
   ['[gr-reverse-skip-4] 2번째 쪽(a2)을 채점에서 뺀 뒤 [쪽 순서 거꾸로] → 「채점 안 함」은 a2를 따라 4번 자리로, a4는 채점함', async () => {
     await fresh();
@@ -161,6 +176,37 @@ await run('fix3-evallegacy', [
     // 다시 거꾸로 하면 처음 자리로
     await press('[data-gr="reverse"]');
     await until(async () => (await rows()).join(',') === '1,2s,3,4,5', 3000);
+    assert(errors.length === 0, errors.join(' | '));
+  }],
+  ['[gr-reverse-skip-4] 학생당 2쪽: 1번(a1+a2)을 뺀 뒤 [쪽 순서 거꾸로] → 「채점 안 함」은 a2+a1 학생(3번)으로, 학생당 1쪽으로 바꾸면 a2·a1 두 쪽이 빠짐', async () => {
+    await fresh();
+    const files = [];
+    for (let i = 1; i <= 6; i++) files.push(await shot(300 + i * 10, `a${i}.png`));
+    await upload(files);
+    await page.fill('#grPer', '2'); await page.dispatchEvent('#grPer', 'change');
+    await page.evaluate(() => document.querySelector('#grView').classList.add('show-pane'));
+    await until(async () => (await rows()).length === 3, 3000);
+    await press('#grResults [data-grskip]', 0);
+    await until(async () => (await rows()).join(',') === '1s,2,3', 3000);
+    const skipped = async () => {
+      const ids = await page.$$eval('#grResults [data-grrow].skip [data-grview1]', es => es.map(e => e.dataset.grview1));
+      const out = [];
+      for (const id of ids) {
+        await page.click(`#grResults [data-grview1="${id}"]`); await page.waitForSelector('#sheetRoot figcaption');
+        out.push((await page.$$eval('#sheetRoot figcaption', es => es.map(e => e.textContent.trim()))).join('+'));
+        await page.click('#sheetRoot [data-close]'); await page.waitForTimeout(150);
+      }
+      return out.join(' / ');
+    };
+    const before = await skipped();
+    assert(before.includes('a1.png') && before.includes('a2.png'), before);
+    await press('[data-gr="reverse"]');
+    await until(async () => (await rows()).join(',') === '1,2,3s', 3000);
+    const after = await skipped();
+    assert(after.includes('a1.png') && after.includes('a2.png') && !/a[3-6]/.test(after), after);
+    await page.fill('#grPer', '1'); await page.dispatchEvent('#grPer', 'change');
+    await until(async () => (await rows()).length === 6, 3000);
+    assert((await rows()).join(',') === '1,2,3,4,5s,6s', JSON.stringify(await rows()));
     assert(errors.length === 0, errors.join(' | '));
   }],
   // ---------- gr-rvscore-stale-3 ----------
@@ -210,7 +256,20 @@ await run('fix3-evallegacy', [
     await hkBulk('성실함\n친구를 잘 도와줌\n\n독서를 즐김\n');
     assert((await toastText()).includes('3명의 메모를 넣었어요'), await toastText());
     assert(JSON.stringify(await hkMemos()) === JSON.stringify([[1, '성실함'], [2, '친구를 잘 도와줌'], [3, ''], [4, '독서를 즐김'], [5, '']]), JSON.stringify(await hkMemos()));
+    assert((await toastText()).includes('(1·2·4번)'), await toastText());
     assert(errors.length === 0, errors.join(' | '));
+  }],
+  ['[hk-bulk-blank-2] 번호 없이 빈 줄로 띄워 친 메모는 1·2·3번에 차례대로(빈 줄은 자리가 아님), 맨 앞 빈 줄로 밀리지 않음, 알림에 넣은 번호', async () => {
+    await setLS({ 'ssam:hk': hkSeed('') });
+    await page.goto(url, { timeout: 30000 }); await page.waitForTimeout(500);
+    await hkOpen();
+    await hkBulk('성실하고 1인 1역을 꾸준히 함\n\n친구를 잘 도와줌\n\n독서를 즐김');
+    assert((await toastText()).includes('3명의 메모를 넣었어요(1·2·3번)'), await toastText());
+    assert(JSON.stringify(await hkMemos()) === JSON.stringify([[1, '성실하고 1인 1역을 꾸준히 함'], [2, '친구를 잘 도와줌'], [3, '독서를 즐김'], [4, ''], [5, '']]), JSON.stringify(await hkMemos()));
+    await hkBulk('\n차분함\n발표에 자신감');
+    assert((await toastText()).includes('(1·2번)'), await toastText());
+    const m = await hkMemos();
+    assert(m[0][1] === '차분함' && m[1][1] === '발표에 자신감' && m[2][1] === '독서를 즐김', JSON.stringify(m));
   }]
 ]);
 await t.close();

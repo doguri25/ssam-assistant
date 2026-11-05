@@ -50,7 +50,7 @@ test('[hk-bulk-blank-2] 엑셀 번호·메모 칸에서 메모 칸이 빈 줄(�
 
 test('[hk-bulk-blank-2] 번호 없이 메모 한 칸만 붙이면 빈 줄도 한 학생 자리(뒤 학생이 당겨지지 않음), 끝의 빈 줄은 버림', () => {
   assert.deepEqual(memoRows('성실함\n도와줌\n\n독서').rows, [{ no: null, memo: '성실함' }, { no: null, memo: '도와줌' }, { no: null, memo: '' }, { no: null, memo: '독서' }]);
-  assert.deepEqual(memoRows('성실함\r\n\r\n독서\r\n\r\n').rows, [{ no: null, memo: '성실함' }, { no: null, memo: '' }, { no: null, memo: '독서' }]);
+  assert.deepEqual(memoRows('성실함\r\n\r\n독서\r\n차분함\r\n\r\n').rows, [{ no: null, memo: '성실함' }, { no: null, memo: '' }, { no: null, memo: '독서' }, { no: null, memo: '차분함' }]);
   // 이름·메모 두 칸에서 메모 칸이 빈 학생도 자리를 지킴
   const r = memoRows('김민수\t성실함\n이서연\t\n박지훈\t독서를 즐김');
   assert.deepEqual(r.rows, [{ no: null, memo: '성실함' }, { no: null, memo: '' }, { no: null, memo: '독서를 즐김' }]);
@@ -71,4 +71,51 @@ test('[gr-maskkey-1] 양식 머리의 이름 칸(「월 일 이름」「과목: 
   for (const [a, b] of pairs) assert.equal(maskNameFields(a), b, a);
   // 번호 뒤 정답(「1)산 이름」「2번 산 이름」)은 그대로
   for (const k of ['1)산 이름: 한라산', '2번 산 이름: 한라산', '1.문화재 이름: 경복궁']) assert.equal(maskNameFields(k), k, k);
+});
+
+// ---------- 검토 뒤 고침: 앞말이 사람·역할·가족 말이거나 양식 제목이면 이름 칸 ----------
+const ROLES = ['발표자', '기록자', '사회자', '이끔이', '참가자', '응답자', '평가자', '관찰자', '질문자', '답변자', '채점자', '확인자', '면담자', '상담자',
+  '신청자', '대표자', '후보자', '추천인', '글쓴이', '쓴이', '그린이', '리더', '도우미', '멘토', '멘티', '단짝', '상대', '상대방', '인터뷰 대상', '롤모델',
+  '서명자', '수험자', '지원자', '면접자', '피면접자', '조사자', '실험자', '측정자', '기록이', '칭찬 대상', '감사 대상', '모둠 이끔이', '우리 모둠 발표자', '5번 발표자'];
+const FAMILY = ['동생', '형', '언니', '누나', '오빠', '가족', '부모님', '할머니', '할아버지', '담임교사'];
+const TITLES = ['[독서록]', '<자기평가>', '(서술형 평가)', '수행평가 활동지   ', '국어 3단원 평가지 ', '독서 감상문', '과학 실험 보고서', '관찰 기록', '학습지', '활동지', '평가지',
+  '서술형 평가', '단원평가', '진단평가', '자기평가', '동료평가', '모둠평가', '독서록', '일기', '편지', '받아쓰기', '수학 익힘', '나의 꿈 발표하기',
+  '[국어] 3. 마음을 전하는 글 쓰기', '마음을 전하는 글 쓰기', '단원: 3. 이야기', '사회 수행평가'];
+test('[gr-maskkey-1] 앞말이 역할(발표자·기록자·이끔이…)·가족(동생·형…)이거나 양식 제목([독서록]·감상문·활동지…)이면 이름 칸이라 가림', () => {
+  for (const p of [...ROLES, ...FAMILY, ...TITLES]) for (const [lab, sep] of [['이름', ': '], ['성명', ': '], ['이름', ' '], ['이름', ' | ']]) {
+    const line = `${p} ${lab}${sep}박지훈`;
+    assert.equal(maskNameFields(line), `${p} ${lab}${sep}○○○`, line);
+  }
+  assert.equal(maskNameFields('| 발표자 이름 | 박지훈 |'), '| 발표자 이름 | ○○○ |');
+  assert.equal(maskNameFields('응답자 성명: 정우진'), '응답자 성명: ○○○');
+  assert.equal(maskNameFields('과학 탐구 보고서 (작성자 이름: 최하은)'), '과학 탐구 보고서 (작성자 이름: ○○○)');
+  // 행특 메모(AI로 가는 글)
+  assert.equal(memoForAI('모둠 이끔이 이름: 김민수와 협력함'), '모둠 이끔이 이름: ○○○와 협력함');
+  assert.equal(memoForAI('동생 이름: 김민지'), '동생 이름: ○○○');
+  assert.equal(memoForAI('단짝 이름: 이서연과 늘 함께함'), '단짝 이름: ○○○과 늘 함께함');
+});
+test('[gr-maskkey-1] 정답 쪽 사람 말(과학자·화가·작가·인물·위인·임금·장군)과 문화재·산·마을 정답은 그대로', () => {
+  const keys = ['문화재 이름: 경복궁', '1. 문화유산 이름: 석굴암', '2. 산 이름: 한라산', '3. 마을 이름: 하회마을', '강 이름: 한강', '채소 이름: 고구마', '악기 이름: 장구',
+    '고장 이름: 경주', '임금 이름: 정조', '장군 이름: 강감찬', '| 문화재 이름 | 석가탑 |', '| 산 이름 | 백두산 |', '정답: 1. 문화재 이름: 경복궁', '호수 이름: 백록담',
+    '화가 이름: 김홍도', '작가 이름: 권정생', '과학자 이름: 장영실', '학자 이름: 정약용', '독립운동가 이름: 안중근', '시인 이름: 윤동주', '발명가 이름: 장영실',
+    '유물 이름: 금관', '행성 이름: 금성', '물질 이름: 소금', '광물 이름: 석영', '인물 이름: 세종대왕', '위인 이름: 이순신', '원자 이름: 산소', '글자 이름: 기역', '놀이 이름: 고무줄'];
+  for (const k of keys) assert.equal(maskNameFields(k), k, k);
+});
+test('[hk-bulk-blank-2] 번호 없이 빈 줄로 띄워 친 메모(빈 줄이 줄마다 하나씩)는 빈 줄을 자리로 세지 않음, 앞 빈 줄은 버림', () => {
+  const memos = r => r.rows.map(x => x.memo);
+  assert.deepEqual(memos(memoRows('성실하고 1인 1역을 꾸준히 함\n\n친구를 잘 도와줌\n\n독서를 즐김')), ['성실하고 1인 1역을 꾸준히 함', '친구를 잘 도와줌', '독서를 즐김']);
+  assert.deepEqual(memos(memoRows('성실함\n\n\n도와줌\n\n\n독서')), ['성실함', '도와줌', '독서']);
+  assert.deepEqual(memos(memoRows('\n성실함\n도와줌\n독서\n')), ['성실함', '도와줌', '독서']);
+  assert.deepEqual(memos(memoRows('   \n성실함\n도와줌\n')), ['성실함', '도와줌']);
+  assert.deepEqual(memos(memoRows('3월에 전학 옴, 적응 잘함\n\n1인 1역 꾸준함\n')), ['3월에 전학 옴, 적응 잘함', '1인 1역 꾸준함']);
+  // 엑셀 한 칸 복사의 가운데 빈 셀(불규칙)은 자리를 지킴
+  assert.deepEqual(memos(memoRows('성실함\r\n친구를 잘 도와줌\r\n\r\n독서를 즐김\r\n')), ['성실함', '친구를 잘 도와줌', '', '독서를 즐김']);
+  assert.deepEqual(memos(memoRows('성실함\t\n도와줌\t\n\t\n독서\t\n')), ['성실함', '도와줌', '', '독서']);
+});
+test('[hk-bulk-blank-2] 번호·이름·메모 엑셀에서 메모 칸이 빈 두 글자 이름(「2⇥김솔⇥」)도 이름 칸으로 빼고 메모에 넣지 않음', () => {
+  const r = memoRows('1\t김민수\t성실함\r\n2\t김솔\t\r\n3\t박지훈\t독서를 즐김\r\n');
+  assert.deepEqual(r.rows, [{ no: 1, memo: '성실함' }, { no: 2, memo: '' }, { no: 3, memo: '독서를 즐김' }]);
+  assert.equal(r.names, 3);
+  const last = memoRows('1\t김민수\t성실함\n2\t김솔\t');
+  assert.deepEqual(last.rows, [{ no: 1, memo: '성실함' }, { no: 2, memo: '' }]);
 });

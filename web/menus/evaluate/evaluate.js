@@ -2843,10 +2843,8 @@ const MEMO_NAMES = () => (window.SSAM && window.SSAM.memoNames) || null;
 // 한꺼번에 넣기 → { rows: [{ no, memo }], names: 뺀 이름 칸 수 }
 function hkMemoRows(text) {
   if (MEMO_NAMES()) return MEMO_NAMES().rows(text);
-  // 번호만 있는 줄(「4⇥」)은 빈 메모, 번호 없이 붙이면 빈 줄도 한 학생 자리
-  const all = String(text || '').replace(/\s+$/, '').split('\n').map(l => l.trim());
-  const numbered = all.some(l => /^\d{1,2}\s*번?(?:[\s.)\-:]|$)/.test(l));
-  const rows = (numbered ? all.filter(Boolean) : all).map(l => {
+  // 번호만 있는 줄(「4⇥」)은 빈 메모(번호 숫자를 메모로 넣지 않음)
+  const rows = String(text || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => {
     const e = l.match(/^(\d{1,2})\s*번?\s*[.)\-:]?$/);
     if (e) return { no: +e[1], memo: '' };
     const m = l.match(/^(\d{1,2})\s*(?:번)?[\s\t.)\-:]+(.+)$/);
@@ -3221,6 +3219,17 @@ document.addEventListener('keydown', e => {
   const p = e.target.closest && e.target.closest('[data-pick]');
   if (p && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); p.click(); }
 });
+/* 번호 목록 → 「1·2·3번」, 넷 이상 이어지면 「1~25번」 */
+function nosText(nos) {
+  const a = [...new Set(nos)].sort((x, y) => x - y), out = [];
+  for (let i = 0; i < a.length;) {
+    let j = i;
+    while (j + 1 < a.length && a[j + 1] === a[j] + 1) j++;
+    if (j - i >= 3) out.push(`${a[i]}~${a[j]}`); else for (let k = i; k <= j; k++) out.push(String(a[k]));
+    i = j + 1;
+  }
+  return out.join('·') + '번';
+}
 function openHKBulk() {
   openSheet(`<h3>메모 한꺼번에 넣기</h3>
     <p class="muted" style="margin:0">한 줄에 학생 한 명씩 넣어요. 줄 앞에 번호를 쓰면 그 번호 학생에게, 번호가 없으면 차례대로 들어가요. 엑셀에서 번호 칸과 메모 칸을 함께 복사해 붙여넣어도 돼요. 이름 칸은 빼고 넣어요.</p>
@@ -3232,17 +3241,19 @@ function openHKBulk() {
       // 엑셀에서 번호·이름·메모 칸을 함께 복사했으면 이름 칸은 빼고 메모만 (학생 이름은 저장하지도 AI로 보내지도 않음)
       const { rows, names } = hkMemoRows(sh.querySelector('#hkBulkBox').value);
       let next = 1, n = 0;
+      const put = [];
       for (const r of rows) {
         const no = r.no || next, memo = r.memo;
         next = no + 1;
         if (!memo) continue; // 메모 칸이 빈 학생: 있던 메모는 그대로(자리만 셈)
         let s = HK.students.find(x => x.no === no);
         if (!s) { s = { id: hkId(), no, label: '', memo: '', results: [], done: 0 }; HK.students.push(s); }
-        s.memo = over || !s.memo ? memo : s.memo + ', ' + memo; n++;
+        s.memo = over || !s.memo ? memo : s.memo + ', ' + memo; n++; put.push(no);
       }
       HK.students.sort((a, b) => a.no - b.no);
       if (!HK.sel && HK.students[0]) HK.sel = HK.students[0].id;
-      HKStore.save(); closeSheet(); renderHK(); toast(`${n}명의 메모를 넣었어요${names ? ` · 이름 칸 ${names}개는 빼고 넣었어요` : ''}`, names ? 5000 : undefined);
+      // 넣은 번호도 보여 줌(차례가 밀렸는지 바로 알 수 있게)
+      HKStore.save(); closeSheet(); renderHK(); toast(`${n}명의 메모를 넣었어요${n ? `(${nosText(put)})` : ''}${names ? ` · 이름 칸 ${names}개는 빼고 넣었어요` : ''}`, names || n ? 5000 : undefined);
     }));
 }
 
@@ -3558,14 +3569,15 @@ function grRenumber() {
   const nos = grNumbers(GR.students.length);
   GR.students.forEach((s, i) => { s.no = nos[i]; });
 }
-/* 「채점에서 빼기」한 학생의 첫 쪽(쪽 그림 자체). 쪽 차례를 바꾸기 전에 모아 둠(채운 빈 번호 자리(쪽 없음)는 뺌) */
-const grSkipPages = () => new Set(GR.students.filter(s => s.skip && s.pages.length).map(s => GR.pages[s.pages[0]]).filter(Boolean));
+/* 「채점에서 빼기」한 학생의 쪽들(쪽 그림 자체). 쪽 차례를 바꾸기 전에 모아 둠(채운 빈 번호 자리(쪽 없음)는 쪽이 없어 빠짐) */
+const grSkipPages = () => new Set(GR.students.filter(s => s.skip).flatMap(s => s.pages.map(i => GR.pages[i])).filter(Boolean));
 function grBuildStudents(skipPages = grSkipPages()) {
   const per = Math.max(1, GR.settings.pagesPer | 0);
-  // 「채점 안 함」은 그 평가지(첫 쪽)를 따라 감 ([쪽 순서 거꾸로] 뒤에도 같은 평가지가 빠짐)
+  // 「채점 안 함」은 그 평가지를 따라 감: 새 학생의 쪽이 대부분(반 넘게) 뺀 쪽이면 뺌 ([쪽 순서 거꾸로] 뒤에도 같은 평가지가 빠짐)
   GR.students = [];
   for (let i = 0; i < GR.pages.length; i += per) {
-    GR.students.push({ id: grId(), no: 0, pages: Array.from({ length: Math.min(per, GR.pages.length - i) }, (_, j) => i + j), skip: skipPages.has(GR.pages[i]), status: 'idle' });
+    const pages = Array.from({ length: Math.min(per, GR.pages.length - i) }, (_, j) => i + j);
+    GR.students.push({ id: grId(), no: 0, pages, skip: pages.filter(k => skipPages.has(GR.pages[k])).length * 2 > pages.length, status: 'idle' });
   }
   grRenumber();
 }
