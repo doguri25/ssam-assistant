@@ -3,10 +3,12 @@
    one: 한 번에 파일 하나만 처리 — 여러 개면 카드는 한 번, run은 파일마다 차례로(메뉴가 띄운 창이 닫힌 뒤에 다음)
    입력 칸 { key, label, type, options?, value?, required?, ask? } — ask: 바로 실행이어도 카드로 물어봄(여럿 중 고르기)
    ctx = opts = { texts: Map(파일 → 읽은 글) } (+ opts.plan) — 처리 함수가 파일을 다시 읽지 않아도 되게
-   웹판·Windows 쌤비서 창 안에서는 오른쪽 아래 버튼(누르면 파일 고르기, 끌고 오면 놓기 판) */
+   웹판·Windows 쌤비서 창 안에서는 오른쪽 아래 「쌤」 버튼(누르면 채팅 창 — core/chat.js, 끌고 오면 놓기 판) */
 import { get, set } from './store.js';
 import { readText, fileMessage } from './files.js';
 import { classify, groupFiles, KINDS, kindLabel } from './inbox-classify.js';
+import { initChat, toggleChat, isChatOpen } from './chat.js';
+import { MARK } from './ssam-mark.js';
 
 const KEY = 'inbox';
 export const DEFAULTS = { on: true, mode: 'confirm', plan: 'draft', keepOnClose: true, autostart: false };
@@ -188,14 +190,18 @@ function syncFab() {
 }
 function mount() {
   if (fab || !document.body) return;
-  fab = Object.assign(document.createElement('button'), { type: 'button', id: 'inboxFab', className: 'inbox-fab', title: '아무 파일이나 넣으면 쌤비서가 알아서 해요' });
-  fab.setAttribute('aria-label', '파일 넣기 — 쌤비서가 알아서 해요');
-  fab.innerHTML = `<span class="ib-glyph" aria-hidden="true">쌤</span><span class="ib-badge" aria-hidden="true">${DROP_ICON}</span>`;
+  fab = Object.assign(document.createElement('button'), { type: 'button', id: 'inboxFab', className: 'inbox-fab', title: '쌤비서에게 말하기 · 파일은 끌어다 놓으면 알아서 해요' });
+  fab.setAttribute('aria-label', '쌤비서 채팅 — 파일은 끌어다 놓으면 알아서 해요');
+  fab.setAttribute('aria-controls', 'chatPanel');
+  fab.setAttribute('aria-expanded', 'false');
+  fab.innerHTML = `<span class="ib-glyph" aria-hidden="true">${MARK}</span><span class="ib-badge" aria-hidden="true">${DROP_ICON}</span>`;
   input = Object.assign(document.createElement('input'), { type: 'file', id: 'inboxFile', multiple: true, hidden: true });
   pad = Object.assign(document.createElement('div'), { id: 'inboxPad', className: 'inbox-pad', hidden: true });
   pad.innerHTML = `<span class="ib-pad-icon" aria-hidden="true">${TRAY_ICON}</span><b>여기에 놓으면</b><span>쌤비서가 알아서 해요</span>`;
   document.body.append(fab, input, pad);
-  fab.addEventListener('click', () => input.click());
+  // 누르면 채팅 창(파일은 채팅 창의 📎나 끌어 놓기로)
+  fab.addEventListener('click', () => toggleChat());
+  initChat({ receive, pickFiles: () => input.click() });
   input.addEventListener('change', () => { const f = [...input.files]; input.value = ''; receive(f); });
   // 판은 자기에게 온 끌어 놓기만 받고 더 퍼뜨리지 않음 (다른 메뉴의 문서 전체 끌어 놓기 처리와 겹치지 않게)
   for (const ev of ['dragenter', 'dragover']) pad.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; pad.classList.add('on'); });
@@ -210,7 +216,8 @@ function mount() {
   const reset = () => { depth = 0; pad.hidden = true; pad.classList.remove('on'); fab.classList.remove('drag'); };
   const near = e => e.clientX >= window.innerWidth - NEAR.w && e.clientY >= window.innerHeight - NEAR.h;
   window.addEventListener('dragenter', e => { if (!hasFiles(e) || fab.hidden) return; depth++; fab.classList.add('drag'); }, true);
-  window.addEventListener('dragover', e => { if (hasFiles(e) && !fab.hidden) pad.hidden = !near(e); }, true);
+  // 채팅 창이 열려 있으면 판 대신 채팅 창이 받음(판이 창을 가리지 않게)
+  window.addEventListener('dragover', e => { if (hasFiles(e) && !fab.hidden) pad.hidden = !near(e) || isChatOpen(); }, true);
   window.addEventListener('dragleave', e => { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) reset(); }, true);
   for (const ev of ['drop', 'dragend']) window.addEventListener(ev, reset, true);
   // 판·메뉴의 칸이 아닌 곳에 놓으면 브라우저가 파일을 열어 창이 넘어감: 아무 칸도 받지 않은 끌어 놓기는 막음

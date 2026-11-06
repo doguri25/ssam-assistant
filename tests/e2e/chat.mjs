@@ -1,0 +1,252 @@
+// 「쌤」 버튼 채팅(스펙 2026-11-06 D·E·F): 손그림 버튼 → 채팅 창(닫기·Esc), 열면 「오늘 할 일」(AI 없이, 줄을 누르면 그 화면),
+// 분명하면 바로 시작(품의 초안·쪽지·가정통신문·공문·메뉴 탭), 애매하면 AI(notes, 전화번호 줄 빼고)·후보 버튼, 아직 없는 기능은 알림,
+// 「3·5번 …」 행동특성 메모 덧붙이기(이름 가림·되돌리기·메모 보기), 채팅 창에 파일 놓기·📎, 기록 30개·지우기, 바탕화면 버튼이 채팅을 엶
+import { join } from 'node:path';
+import { open, run, assert, mockClaude, FIXTURES } from './helpers.mjs';
+
+const t = await open();
+const { page, url, errors, ctx } = t;
+// 다른 영역이 줄 인수인계서(menus/settings/handover.js)는 이 갈래에 없어 불러 보기만 하고 404 — 그 밖의 404는 오류
+const missing = [];
+page.on('response', r => { if (r.status() === 404) missing.push(new URL(r.url()).pathname); });
+const THU = new Date('2026-11-05T09:00:00'), FRI = new Date('2026-11-06T09:00:00');
+await page.clock.setFixedTime(THU);
+await page.addInitScript(() => {
+  if (!localStorage.getItem('ssam:engine')) localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true }));
+  // 행동특성: 3번은 메모가 있음(그 끝에 덧붙임), 5번은 줄이 없음(만듦)
+  if (!localStorage.getItem('ssam:hk')) localStorage.setItem('ssam:hk', JSON.stringify({ settings: {}, students: [{ id: 'h3', no: 3, label: '', memo: '성실함, 책임감 강함', results: [], done: 0 }] }));
+});
+const prompts = [];
+await mockClaude(page, async ({ prompt }) => {
+  prompts.push(prompt);
+  if (prompt.startsWith('[채팅 할 일 고르기]')) {
+    const said = prompt.split('[글]')[1] || '';
+    if (said.includes('채점')) return JSON.stringify({ intent: '', candidates: ['unit', 'gr'] });
+    if (said.includes('상담')) return JSON.stringify({ intent: 'letter' });
+    return JSON.stringify({ intent: 'none' });
+  }
+  if (prompt.startsWith('[품의 초안]')) return JSON.stringify({ title: '과학 실험 재료 구입', intro: '과학 실험 재료를 다음과 같이 구입하고자 합니다.', fields: { purpose: '과학 실험 수업' }, type: 'goods' });
+  if (prompt.startsWith('[쪽지 안내]')) return JSON.stringify({ kind: 'training', title: 'AI 활용 수업 연수', when: [{ date: '2026-11-12', time: '15:00~16:00' }], place: '과학실', target: '전 교직원' });
+  if (prompt.startsWith('[가정통신문]')) return JSON.stringify({ title: '현장체험학습 안내', greeting: ['안녕하십니까?'], intro: '현장체험학습을 다음과 같이 실시합니다.', items: ['1. 일시: 2026. 11. 20.', '2. 준비물: 도시락'], closing: '협조를 부탁드립니다.', reply: { need: false }, short: '11월 20일 현장체험학습이 있어요.', target: '보호자' });
+  if (prompt.startsWith('[공문 처리]')) return JSON.stringify({ title: '과학의 날 행사 참가 신청', due: '2026-11-20', dueNote: '참가 신청서', summary: '참가 신청서를 내요.', tasks: [{ text: '참가 신청서 제출', due: '' }], kinds: ['message'] });
+  return '{}';
+});
+const of = p => prompts.filter(x => x.startsWith(p));
+const C = '#chatPanel';
+const sheet = '#sheetRoot .sheet';
+const openChat = async () => { if (await page.isHidden(C)) await page.click('#inboxFab'); await page.waitForSelector(`${C}:not([hidden])`); };
+const send = async text => { await openChat(); await page.fill('#chatText', text); await page.click('#chatSend'); };
+const lastBot = () => page.evaluate(() => { const l = [...document.querySelectorAll('#chatLog .chat-msg.bot .chat-bub')]; return l.length ? l[l.length - 1].textContent : ''; });
+const waitBot = s => page.waitForFunction(s => [...document.querySelectorAll('#chatLog .chat-msg.bot .chat-bub')].some(b => b.textContent.includes(s)), s);
+const cur = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:nav')));
+const hk = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:hk')));
+const chatLog = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:chat') || '[]'));
+await page.goto(url);
+await page.waitForTimeout(400);
+
+await run('chat', [
+  ['버튼: 손그림 「쌤」(글꼴 없이 SVG 경로·테마 색), 누르면 채팅 창 — 닫기·Esc·다시 누르면 닫힘', async () => {
+    assert(await page.locator('#inboxFab svg.ssam-mark path.sm-t').count() === 1 && (await page.textContent('#inboxFab')).trim() === '', '그림');
+    const fill = await page.evaluate(() => getComputedStyle(document.querySelector('#inboxFab .sm-fill')).fill);
+    const acc = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());
+    assert(fill === 'rgb(79, 70, 229)' && acc === '#4f46e5', fill + ' ' + acc);
+    await page.click('#inboxFab');
+    await page.waitForSelector(`${C}:not([hidden])`);
+    assert(await page.getAttribute('#inboxFab', 'aria-expanded') === 'true', 'aria-expanded');
+    assert(await page.evaluate(() => document.activeElement.id) === 'chatText', '글 칸에 초점');
+    await page.keyboard.press('Escape');
+    assert(await page.isHidden(C), 'Esc');
+    await page.click('#inboxFab');
+    await page.click(`${C} [data-chat="close"]`);
+    assert(await page.isHidden(C), '닫기');
+    await page.click('#inboxFab'); await page.click('#inboxFab');
+    assert(await page.isHidden(C) && await page.getAttribute('#inboxFab', 'aria-expanded') === 'false', '다시 누르면 닫힘');
+  }],
+  ['할 일이 없으면 「오늘은 급한 일이 없어요」', async () => {
+    await openChat();
+    await page.waitForFunction(() => !document.querySelector('#chatPanel .chat-brief').textContent.includes('세는 중'));
+    const b = await page.textContent(`${C} .chat-brief`);
+    assert(b.includes('오늘 할 일') && b.includes('11월 5일(목)') && b.includes('오늘은 급한 일이 없어요'), b);
+  }],
+  ['「오늘 할 일」: 공문 기한·학사일정·확정 전 행사계획·금요일 주간학습안내, 줄을 누르면 그 화면', async () => {
+    await page.click(`${C} [data-chat="close"]`);
+    await page.clock.setFixedTime(FRI);
+    await page.evaluate(() => {
+      localStorage.setItem('ssam:gongmun:list', JSON.stringify([{ id: 'gm1', name: '과학의 날', title: '과학의 날 참가 신청', due: '2026-11-09', tasks: [], kinds: [], text: '과학의 날 공문', at: 1, done: false },
+        { id: 'gm2', name: '먼 공문', title: '먼 공문', due: '2026-12-20', tasks: [], kinds: [], text: '먼 공문', at: 2, done: false }]));
+      localStorage.setItem('ssam:calendar', JSON.stringify([{ date: '2026-11-10', title: '교직원 회의', source: 'manual' }, { date: '2026-11-30', title: '먼 일정', source: 'manual' }]));
+      localStorage.setItem('ssam:events', JSON.stringify([{ id: 'ev1', name: '가을 운동회', kind: 'sports', date: '2026-11-12', status: 'draft', updatedAt: 1 }]));
+    });
+    await openChat();
+    await page.waitForFunction(() => document.querySelector('#chatPanel .chat-brief').textContent.includes('운동회'));
+    const b = await page.textContent(`${C} .chat-brief`);
+    for (const s of ['11월 6일(금)', '공문 「과학의 날 참가 신청」 제출', 'D-3', '교직원 회의', '11/10(화)', '행사계획 「가을 운동회」 확정 전', '다음 주 주간학습안내 만들기', '11/9~']) assert(b.includes(s), s + ' 없음: ' + b);
+    assert(!b.includes('먼 공문') && !b.includes('먼 일정'), b);
+    await page.click(`${C} .cb-line:has-text("과학의 날 참가 신청")`);
+    await page.waitForSelector('section[data-menu="etc"] .gm-box:not([hidden])');
+    assert(JSON.stringify(await cur()) === JSON.stringify({ menu: 'etc', tab: 'gongmun' }), JSON.stringify(await cur()));
+    await page.click(`${C} .cb-line:has-text("가을 운동회")`);
+    await page.waitForSelector('section[data-menu="plan"] [data-ev="ev1"][aria-current="true"]');
+  }],
+  ['품의: 「알코올램프 10개 5,000원 품의」 → 새 품의 넣기 칸에서 품목을 읽고 초안까지(AI 한 번), 올리기는 직접', async () => {
+    await send('알코올램프 10개 5,000원 품의');
+    await page.waitForFunction(() => { const s = JSON.parse(localStorage.getItem('ssam:purchase:current') || 'null'); return s && s.draft && s.draft.title === '과학 실험 재료 구입'; });
+    const s = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:purchase:current')));
+    assert(s.form.items[0].name === '알코올램프' && s.form.items[0].qty === '10' && s.form.items[0].price === '5000', JSON.stringify(s.form.items));
+    assert(of('[품의 초안]').length === 1 && of('[품의 초안]')[0].includes('알코올램프'), '초안 한 번');
+    assert((await cur()).menu === 'purchase', JSON.stringify(await cur()));
+    assert((await lastBot()).includes('초안을 만들어요') && (await lastBot()).includes('직접'), await lastBot());
+  }],
+  ['쪽지: 내용이 있으면 쪽지 작성에서 바로 읽고 칸·본문을 씀', async () => {
+    await send('11월 12일 3시 과학실 AI 연수 안내 쪽지 써 줘');
+    await page.waitForFunction(() => (document.querySelector('section[data-menu="etc"] [data-mf="title"]') || {}).value === 'AI 활용 수업 연수');
+    assert(of('[쪽지 안내]').length === 1 && of('[쪽지 안내]')[0].includes('11월 12일 3시 과학실 AI 연수'), of('[쪽지 안내]')[0]);
+    assert(JSON.stringify(await cur()) === JSON.stringify({ menu: 'etc', tab: 'message' }), '쪽지 탭');
+  }],
+  ['가정통신문: 넣을 내용에 넣고 바로 씀', async () => {
+    await send('가정통신문 써 줘 11월 20일 현장체험학습 안내 준비물 도시락');
+    await page.waitForFunction(() => { const v = JSON.parse(localStorage.getItem('ssam:letter:cur') || 'null'); return v && v.out && v.out.title === '현장체험학습 안내'; });
+    const p = of('[가정통신문]');
+    assert(p.length === 1 && p[0].includes('11월 20일 현장체험학습 안내 준비물 도시락') && !p[0].includes('써 줘'), p[0]);
+    assert(JSON.stringify(await cur()) === JSON.stringify({ menu: 'etc', tab: 'letter' }), '가정통신문 탭');
+  }],
+  ['공문 글 → 공문 처리에 넣고 기한·할 일 뽑기, 「공문 처리」만 쓰면 그 화면', async () => {
+    await send('공문: 과학의 날 행사 참가 신청서를 11월 20일까지 제출');
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('ssam:gongmun:list') || '[]').some(d => d.title === '과학의 날 행사 참가 신청' && d.due === '2026-11-20'));
+    assert(of('[공문 처리]').length === 1, '공문 AI');
+    await send('공문 처리');
+    await waitBot('공문 처리로 왔어요');
+    assert(of('[공문 처리]').length === 1, '또 읽음');
+  }],
+  ['메뉴로 가는 할 일: 주간학습안내·단원평가 채점·연간계획·AI 키', async () => {
+    for (const [text, nav] of [['주간학습안내', { menu: 'class', tab: 'weekly' }], ['단원평가 채점', { menu: 'evaluate', tab: 'unit' }], ['연간계획 보여 줘', { menu: 'plan', tab: 'year' }], ['AI 키 넣을래', { menu: 'settings', tab: 'ai' }]]) {
+      await send(text);
+      await page.waitForFunction(n => localStorage.getItem('ssam:nav') === JSON.stringify(n), nav);
+      assert(await page.getAttribute(`#menuTabs [data-tab="${nav.tab}"]`, 'aria-current') === 'page', text);
+    }
+  }],
+  ['관찰 메모: 「3·5번 …」 → 행동특성 메모 끝에 「[11. 6.] …」(이름은 가림, 5번 줄은 만듦), [되돌리기]', async () => {
+    await send('3·5번 김민수가 토론에서 근거 들어 반론 잘함');
+    await waitBot('행동특성 메모에 넣었어요');
+    await page.waitForFunction(() => (JSON.parse(localStorage.getItem('ssam:hk')) || { students: [] }).students.some(s => s.no === 5));
+    const h = await hk();
+    const m = no => (h.students.find(s => s.no === no) || {}).memo;
+    assert(m(3) === '성실함, 책임감 강함\n[11. 6.] ○○○가 토론에서 근거 들어 반론 잘함', JSON.stringify(m(3)));
+    assert(m(5) === '[11. 6.] ○○○가 토론에서 근거 들어 반론 잘함', JSON.stringify(m(5)));
+    assert((await lastBot()).includes('이름처럼 보이는 말은 ○○○로 가렸어요'), await lastBot());
+    assert(!JSON.stringify(await chatLog()).includes('김민수') && !JSON.stringify(await hk()).includes('김민수'), '이름이 저장됨');
+    await page.click(`${C} [data-undo]`);
+    await waitBot('메모를 되돌렸어요');
+    await page.waitForFunction(() => !JSON.parse(localStorage.getItem('ssam:hk')).students.some(s => s.no === 5));
+    assert((await hk()).students.find(s => s.no === 3).memo === '성실함, 책임감 강함', '되돌리기');
+    assert(await page.locator(`${C} [data-undo]`).count() === 0, '되돌리기 단추가 남음');
+  }],
+  ['「3번 메모 보기」는 그 메모를 채팅에(기록에는 남기지 않음), [행동특성 보기]는 그 학생', async () => {
+    await send('3번 발표 목소리가 커짐');
+    await waitBot('행동특성 메모에 넣었어요');
+    await send('3번 메모 보기');
+    await waitBot('3번 메모');
+    const b = await lastBot();
+    assert(b.includes('성실함, 책임감 강함') && b.includes('[11. 6.] 발표 목소리가 커짐'), b);
+    assert(!JSON.stringify(await chatLog()).includes('책임감 강함'), '메모 내용이 기록에 남음');
+    await page.locator(`${C} .chat-msg.bot`).last().locator('button:has-text("행동특성 보기")').click();
+    await page.waitForFunction(() => (document.getElementById('hkMemo') || {}).value === '성실함, 책임감 강함\n[11. 6.] 발표 목소리가 커짐');
+  }],
+  ['애매하면 AI(notes)에 묻고, 그래도 애매하면 후보 버튼 → 누르면 그 일', async () => {
+    await send('채점');
+    await page.waitForSelector(`${C} .chat-msg.bot:last-child .chat-chip`);
+    const chips = await page.$$eval(`${C} .chat-msg.bot:last-child .chat-chip`, l => l.map(x => x.textContent));
+    assert(chips.length >= 2 && chips.length <= 3 && chips[0] === '단원평가' && chips.includes('평가지 채점'), JSON.stringify(chips));
+    assert(of('[채팅 할 일 고르기]').length === 1, 'AI에 물음');
+    await page.click(`${C} .chat-msg.bot:last-child .chat-chip:has-text("평가지 채점")`);
+    await page.waitForFunction(() => localStorage.getItem('ssam:nav') === JSON.stringify({ menu: 'evaluate', tab: 'gr' }));
+  }],
+  ['AI가 고르면 바로 시작, AI로 보내는 글은 전화번호 줄을 빼고 이름을 가림', async () => {
+    await send('학부모 상담 주간 준비할 거 정리\n담임 김철수 010-1234-5678');
+    await page.waitForFunction(() => { const v = JSON.parse(localStorage.getItem('ssam:letter:cur') || 'null'); return v && /상담/.test(v.memo); });
+    const p = of('[채팅 할 일 고르기]').at(-1);
+    assert(p.includes('상담') && !p.includes('010-1234') && !p.includes('김철수'), p);
+    assert(!JSON.stringify(await chatLog()).includes('김철수') && !JSON.stringify(await chatLog()).includes('010-1234'), '기록에 남음');
+    await page.waitForFunction(() => document.querySelector('#chatLog').textContent.includes('가정통신문 넣을 내용에 넣고'));
+  }],
+  ['번역·인수인계서: 아직 없는 기능이면 알려 주고 그 화면으로, 언어가 없으면 언어 고르기', async () => {
+    await send('가정통신문 베트남어로');
+    await waitBot('번역은 아직 준비 중');
+    assert(JSON.stringify(await cur()) === JSON.stringify({ menu: 'etc', tab: 'letter' }), '가정통신문 탭');
+    await send('번역해 줘');
+    await page.waitForSelector(`${C} .chat-msg.bot:last-child .chat-chip`);
+    assert(JSON.stringify(await page.$$eval(`${C} .chat-msg.bot:last-child .chat-chip`, l => l.map(x => x.textContent))) === JSON.stringify(['베트남어', '중국어(간체)', '러시아어', '영어']), '언어');
+    await send('인수인계서 만들어 줘');
+    await waitBot('인수인계서는 아직 준비 중');
+    assert(JSON.stringify(await cur()) === JSON.stringify({ menu: 'settings', tab: 'years' }), '학년도');
+  }],
+  ['파일: 채팅 창에 놓으면 받는 곳 흐름(확인 카드)·창이 열려 있으면 놓기 판은 안 뜸, 📎는 파일 고르기', async () => {
+    await openChat();
+    const dt = await page.evaluateHandle(() => { const d = new DataTransfer(); d.items.add(new File(['번호,성명\n1,가\n2,나'], '명단.csv', { type: 'text/csv' })); return d; });
+    await page.dispatchEvent('body', 'dragenter', { dataTransfer: dt });
+    await page.dispatchEvent('body', 'dragover', { dataTransfer: dt, clientX: 1250, clientY: 830 });
+    assert(await page.isHidden('#inboxPad'), '판이 채팅 창을 가림');
+    await page.dispatchEvent(C, 'dragover', { dataTransfer: dt });
+    assert(await page.evaluate(() => document.getElementById('chatPanel').classList.contains('drop')), '놓기 표시');
+    await page.dispatchEvent(C, 'drop', { dataTransfer: dt });
+    await page.waitForSelector(`${sheet} #ibRun`);
+    assert((await page.textContent(sheet)).includes('명단.csv'), '확인 카드');
+    await page.keyboard.press('Escape');
+    assert(await page.locator(sheet).count() === 0 && await page.isVisible(C), 'Esc는 카드만 닫음');
+    const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click(`${C} [data-chat="attach"]`)]);
+    assert(fc.isMultiple(), '여러 파일');
+    await fc.setFiles(join(FIXTURES, 'roster-sample.csv'));
+    await page.waitForSelector(`${sheet} #ibRun`);
+    await page.click(`${sheet} [data-close]`);
+  }],
+  ['기록: 최근 30개만 저장, 새로 고침 뒤에도 남고 [지우기]로 비움', async () => {
+    await page.evaluate(() => localStorage.setItem('ssam:chat', JSON.stringify(Array.from({ length: 40 }, (_, i) => ({ id: 'old' + i, who: 'me', text: '옛 글 ' + i, at: i + 1 })))));
+    await send('창체');
+    await waitBot('창의적 체험활동으로 왔어요');
+    const l = await chatLog();
+    assert(l.length === 30 && l.at(-1).text.includes('창의적 체험활동') && !l.some(m => m.text === '옛 글 11'), l.length + ' ' + l[0].text);
+    await page.reload(); await page.waitForTimeout(400);
+    await openChat();
+    assert((await page.textContent('#chatLog')).includes('창의적 체험활동으로 왔어요'), '새로 고침 뒤');
+    await page.click(`${C} [data-chat="clear"]`);
+    assert((await chatLog()).length === 0 && (await page.locator(`${C} .chat-msg.me`).count()) === 0, '지우기');
+    await page.click(`${C} [data-chat="close"]`);
+  }],
+  ['Windows 바탕화면 버튼: 누르면 같은 저장소에 적고 쌤비서 창을 엶 → 쌤비서 창이 채팅을 엶', async () => {
+    assert(await page.isHidden(C), '닫혀 있어야 함');
+    const b = await ctx.newPage();
+    await b.clock.setFixedTime(FRI);
+    await b.addInitScript(() => {
+      window.__calls = [];
+      window.__TAURI__ = {
+        core: { invoke: (cmd, args) => { window.__calls.push([cmd, args]); return Promise.resolve(1); } },
+        event: { listen: () => Promise.resolve(() => {}) },
+        window: { getCurrentWindow: () => ({ onMoved: () => Promise.resolve(() => {}), setPosition: () => Promise.resolve(), startDragging: () => Promise.resolve() }), currentMonitor: () => Promise.resolve(null), availableMonitors: () => Promise.resolve([]) },
+        webview: { getCurrentWebview: () => ({ onDragDropEvent: () => Promise.resolve(() => {}) }) },
+        dpi: { PhysicalPosition: function (x, y) { this.x = x; this.y = y; } }
+      };
+    });
+    await b.goto(url + 'bubble.html');
+    await b.waitForSelector('#bubble svg.ssam-mark path.sm-t');
+    await b.click('#bubble');
+    assert((await b.evaluate(() => window.__calls)).some(c => c[0] === 'bubble_action' && c[1].action === 'open'), '창 열기');
+    await page.waitForSelector(`${C}:not([hidden])`);
+    assert(await page.evaluate(() => localStorage.getItem('ssam:chat:open')) === null, '알림을 지우지 않음');
+    await b.close();
+  }],
+  ['390px 폭: 채팅 창이 화면 안, 가로로 넘치지 않음', async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openChat();
+    const p = await page.locator(C).boundingBox();
+    assert(p && p.x >= 0 && p.x + p.width <= 390 && p.y >= 0, JSON.stringify(p));
+    const f = await page.locator('#inboxFab').boundingBox();
+    assert(f.y >= p.y + p.height, '버튼을 가림');
+    await page.setViewportSize({ width: 1280, height: 860 });
+  }],
+  ['페이지 오류 없음(없는 인수인계서 모듈을 불러 본 404만)', async () => {
+    assert(missing.every(p => p.endsWith('/menus/settings/handover.js')), missing.join(', '));
+    const rest = errors.filter(e => !(/status of 404/.test(e) && missing.length));
+    assert(rest.length === 0, rest.join(' | '));
+  }]
+]);
+await t.close();
