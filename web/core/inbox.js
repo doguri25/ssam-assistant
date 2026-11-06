@@ -202,6 +202,8 @@ function mount() {
   // 누르면 채팅 창(파일은 채팅 창의 📎나 끌어 놓기로)
   fab.addEventListener('click', () => toggleChat());
   initChat({ receive, pickFiles: () => input.click() });
+  const top = document.getElementById('chatTop');
+  if (top) top.addEventListener('click', () => toggleChat());
   input.addEventListener('change', () => { const f = [...input.files]; input.value = ''; receive(f); });
   // 판은 자기에게 온 끌어 놓기만 받고 더 퍼뜨리지 않음 (다른 메뉴의 문서 전체 끌어 놓기 처리와 겹치지 않게)
   for (const ev of ['dragenter', 'dragover']) pad.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; pad.classList.add('on'); });

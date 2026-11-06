@@ -6,7 +6,7 @@ import { open, run, assert, mockClaude, FIXTURES } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors, ctx } = t;
-// 다른 영역이 줄 인수인계서(menus/settings/handover.js)는 이 갈래에 없어 불러 보기만 하고 404 — 그 밖의 404는 오류
+// 없는 파일(404)은 오류
 const missing = [];
 page.on('response', r => { if (r.status() === 404) missing.push(new URL(r.url()).pathname); });
 const THU = new Date('2026-11-05T09:00:00'), FRI = new Date('2026-11-06T09:00:00');
@@ -169,16 +169,19 @@ await run('chat', [
     assert(!JSON.stringify(await chatLog()).includes('김철수') && !JSON.stringify(await chatLog()).includes('010-1234'), '기록에 남음');
     await page.waitForFunction(() => document.querySelector('#chatLog').textContent.includes('가정통신문 넣을 내용에 넣고'));
   }],
-  ['번역·인수인계서: 아직 없는 기능이면 알려 주고 그 화면으로, 언어가 없으면 언어 고르기', async () => {
+  ['번역·인수인계서: 앞에서 쓴 가정통신문을 번역 시작, 언어가 없으면 언어 고르기, 인수인계서는 열기', async () => {
     await send('가정통신문 베트남어로');
-    await waitBot('번역은 아직 준비 중');
+    await waitBot('베트남어로 번역하고 있어요');
     assert(JSON.stringify(await cur()) === JSON.stringify({ menu: 'etc', tab: 'letter' }), '가정통신문 탭');
     await send('번역해 줘');
     await page.waitForSelector(`${C} .chat-msg.bot:last-child .chat-chip`);
     assert(JSON.stringify(await page.$$eval(`${C} .chat-msg.bot:last-child .chat-chip`, l => l.map(x => x.textContent))) === JSON.stringify(['베트남어', '중국어(간체)', '러시아어', '영어']), '언어');
     await send('인수인계서 만들어 줘');
-    await waitBot('인수인계서는 아직 준비 중');
+    await waitBot('업무 인수인계서를 열었어요');
     assert(JSON.stringify(await cur()) === JSON.stringify({ menu: 'settings', tab: 'years' }), '학년도');
+    await page.waitForSelector(sheet);
+    assert((await page.textContent(sheet)).includes('인수인계서'), '인수인계서 창');
+    await page.keyboard.press('Escape');
   }],
   ['파일: 채팅 창에 놓으면 받는 곳 흐름(확인 카드)·창이 열려 있으면 놓기 판은 안 뜸, 📎는 파일 고르기', async () => {
     await openChat();
@@ -234,6 +237,16 @@ await run('chat', [
     assert(await page.evaluate(() => localStorage.getItem('ssam:chat:open')) === null, '알림을 지우지 않음');
     await b.close();
   }],
+  ['머리 줄 채팅 단추: 떠 있는 버튼을 꺼도(Windows 앱은 늘 숨김) 채팅을 열고 닫음', async () => {
+    if (!(await page.isHidden(C))) await page.click(`${C} [data-chat="close"]`);
+    await page.evaluate(() => { const b = document.getElementById('inboxFab'); if (b) b.hidden = true; });
+    await page.click('#chatTop');
+    await page.waitForSelector(`${C}:not([hidden])`);
+    assert(await page.getAttribute('#chatTop', 'aria-expanded') === 'true', '열림 표시');
+    await page.click('#chatTop');
+    await page.waitForSelector(C, { state: 'hidden' });
+    await page.evaluate(() => { const b = document.getElementById('inboxFab'); if (b) b.hidden = false; });
+  }],
   ['390px 폭: 채팅 창이 화면 안, 가로로 넘치지 않음', async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openChat();
@@ -243,10 +256,9 @@ await run('chat', [
     assert(f.y >= p.y + p.height, '버튼을 가림');
     await page.setViewportSize({ width: 1280, height: 860 });
   }],
-  ['페이지 오류 없음(없는 인수인계서 모듈을 불러 본 404만)', async () => {
-    assert(missing.every(p => p.endsWith('/menus/settings/handover.js')), missing.join(', '));
-    const rest = errors.filter(e => !(/status of 404/.test(e) && missing.length));
-    assert(rest.length === 0, rest.join(' | '));
+  ['페이지 오류 없음(없는 파일 없음)', async () => {
+    assert(missing.length === 0, missing.join(', '));
+    assert(errors.length === 0, errors.join(' | '));
   }]
 ]);
 await t.close();

@@ -83,6 +83,7 @@ export function openChat({ focus = true } = {}) {
   panel.classList.toggle('nofab', !f || f.hidden);
   panel.hidden = false;
   if (f) f.setAttribute('aria-expanded', 'true');
+  const top = document.getElementById('chatTop'); if (top) top.setAttribute('aria-expanded', 'true');
   refreshBrief();
   draw();
   if (focus) ta.focus();
@@ -93,6 +94,7 @@ export function closeChat() {
   panel.hidden = true;
   const f = fab();
   if (f) { f.setAttribute('aria-expanded', 'false'); if (inside && !f.hidden) f.focus(); }
+  const top = document.getElementById('chatTop'); if (top) top.setAttribute('aria-expanded', 'false');
 }
 export function toggleChat() { if (isChatOpen()) closeChat(); else openChat(); }
 
@@ -272,7 +274,13 @@ async function run(intent, p = {}) {
   if (intent === 'translate') {
     if (!p.lang) { say('어느 말로 번역할까요?', { chips: LANGS.map(([id, l]) => ({ intent: 'translate', label: l, lang: id })) }); return; }
     const fn = await optional('../menus/etc/letter.js', 'openLetterTranslate');
-    if (fn) { Promise.resolve().then(() => fn(p.lang)).catch(() => {}); say(`가정통신문을 ${langLabel(p.lang)}로 번역해요. AI 번역이라 보내기 전에 꼭 확인해 주세요.`); }
+    if (fn) {
+      // 쓴 가정통신문이 없으면 openLetterTranslate가 곧바로 false — 번역이 시작되면 끝까지 기다리지 않음
+      const r = Promise.resolve().then(() => fn(p.lang)).catch(() => false);
+      const quick = await Promise.race([r, new Promise(res => setTimeout(() => res('busy'), 400))]);
+      say(quick === false ? `먼저 가정통신문을 써 주세요. 기타 › 가정통신문으로 왔어요. 다 쓰면 「가정통신문 ${langLabel(p.lang)}로」라고 다시 말해 주세요.`
+        : `가정통신문을 ${langLabel(p.lang)}로 번역하고 있어요. AI 번역이라 보내기 전에 꼭 확인해 주세요.`);
+    }
     else { go('etc', 'letter'); say('가정통신문 번역은 아직 준비 중이에요. 기타 › 가정통신문으로 왔어요.'); }
     afterGo(); return;
   }
