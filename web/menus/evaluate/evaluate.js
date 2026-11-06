@@ -807,9 +807,11 @@ const PROVIDERS = {
   upstage: {
     name: '업스테이지 Solar', label: '업스테이지 API', keyUrl: 'https://console.upstage.ai/api-keys', keyHost: 'console.upstage.ai',
     keyHint: '업스테이지 콘솔에서 받은 키',
-    models: [['solar-pro3', 'Solar Pro 3 · 추천'], ['solar-pro2', 'Solar Pro 2'], ['solar-mini', 'Solar Mini · 빠르고 저렴']]
+    models: [['solar-pro4', 'Solar Pro 4 · 추천'], ['solar-pro2', 'Solar Pro 2']]
   }
 };
+/* 업스테이지가 더는 받지 않는 모델(2026. 11. 확인: 「deprecated」로 400) — 저장해 둔 값은 추천 모델로 바꿔 부름 */
+const UPSTAGE_RETIRED = ['solar-pro3', 'solar-mini'];
 const UPSTAGE_CHAT = 'https://api.upstage.ai/v1/chat/completions';
 const UPSTAGE_OCR = 'https://api.upstage.ai/v1/document-digitization';
 const E = {
@@ -824,6 +826,7 @@ function loadEngine() {
     if (v) {
       if (v.engine) E.engine = v.engine;
       if (v.models) Object.assign(E.models, v.models);
+      if (UPSTAGE_RETIRED.includes(E.models.upstage)) E.models.upstage = PROVIDERS.upstage.models[0][0];
       if (v.keys) Object.assign(E.keys, v.keys);
       if (typeof v.remember === 'boolean') E.remember = v.remember;
     }

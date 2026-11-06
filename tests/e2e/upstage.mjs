@@ -1,4 +1,4 @@
-// 업스테이지 AI: 고르기, 채팅 주소·키, 이미지는 글자 읽기(OCR) 뒤 글만 보냄, 실패 안내, 권장 안내(E-5), 연결 확인(S-2)
+// 업스테이지 AI: 고르기(기본 Solar Pro 4, 막힌 옛 모델은 Solar Pro 4로), 채팅 주소·키, 이미지는 글자 읽기(OCR) 뒤 글만 보냄, 실패 안내, 권장 안내(E-5), 연결 확인(S-2)
 import { join } from 'node:path';
 import { open, run, assert, FIXTURES } from './helpers.mjs';
 
@@ -64,7 +64,7 @@ await run('upstage', [
     await page.click('#genBtn'); await page.click('#pickGo');
     await page.waitForFunction(() => document.querySelectorAll('#pane .sent').length > 0, null, { timeout: 20000 });
     assert(lastChat && lastChat.auth === 'Bearer up-test-key', 'Authorization: ' + (lastChat && lastChat.auth));
-    assert(/^solar/.test(lastChat.body.model), '모델: ' + lastChat.body.model);
+    assert(lastChat.body.model === 'solar-pro4', '모델: ' + lastChat.body.model);
     assert(!log.includes('other'), '다른 AI로 요청이 감');
   }],
   ['창체·평가지 채점 화면에 손글씨 권장 안내 한 줄', async () => {
@@ -119,6 +119,22 @@ await run('upstage', [
     await page.click(`${S} [data-set="testAi"]`);
     await page.waitForFunction(s => document.querySelector(s).textContent.includes('키가 맞지 않아요'), S, { timeout: 8000 });
     chatStatus = 200;
+  }],
+  ['업스테이지가 막은 옛 모델(solar-pro3·solar-mini)을 저장해 두었으면 Solar Pro 4로 부르고, 모델 고르기에 옛 모델이 없음', async () => {
+    for (const old of ['solar-pro3', 'solar-mini']) {
+      await page.evaluate(m => { const e = JSON.parse(localStorage.getItem('ssam:engine')); e.models = { ...(e.models || {}), upstage: m }; localStorage.setItem('ssam:engine', JSON.stringify(e)); }, old);
+      await page.reload(); await page.waitForTimeout(500);
+      await page.click('nav.app-side [data-menu-go="settings"]'); await page.click('#menuTabs [data-tab="ai"]');
+      lastChat = null;
+      await page.click(`${S} [data-set="testAi"]`);
+      await page.waitForFunction(s => document.querySelector(s).textContent.includes('연결됐어요'), S, { timeout: 8000 });
+      assert(lastChat && lastChat.body.model === 'solar-pro4', `${old} → ${lastChat && lastChat.body.model}`);
+    }
+    await page.click(`${S} [data-set="openAi"]`);
+    await page.click('#engSeg [data-e="upstage"]');
+    const opts = await page.$$eval('#apiModel option', os => os.map(o => o.value));
+    await page.click('#sheetRoot [data-close]');
+    assert(opts[0] === 'solar-pro4' && opts.includes('solar-pro2') && !opts.includes('solar-pro3') && !opts.includes('solar-mini'), opts.join(','));
   }],
   ['페이지 오류 없음', async () => {
     // 일부러 돌려준 400·401·429·500 응답 기록은 뺌
