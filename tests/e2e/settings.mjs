@@ -76,8 +76,10 @@ await run('settings', [
     await page.fill(`${S} #limitWon`, '-5'); await page.click(`${S} [data-set="saveLimit"]`);
     assert((await page.textContent(S)).includes('1원 이상'), '거절 안내 없음');
   }],
-  ['설정 아래에 만든이·연락처', async () => {
+  ['설정 아래에 만든이(연수 3기 4조), 연락처는 없음', async () => {
     assert(await page.isVisible(`${S} .credit`), '만든이 표시가 안 보임');
+    const c = await page.textContent(`${S} .credit`);
+    assert(c.includes('만든이: 한국형-AI 기반 교사개발자 연수 3기 4조') && !c.includes('연락처') && !c.includes('@'), c);
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
