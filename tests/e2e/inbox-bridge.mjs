@@ -79,7 +79,7 @@ await run('inbox-bridge', [
     await page.waitForSelector(`${sheet} #ibRun`);
     await page.click(`${sheet} [data-close]`);
   }],
-  ['버튼 창 화면: 오류 없이 열리고, 끌어 놓은 경로를 inbox_take로, 누르면 쌤비서 열기', async () => {
+  ['버튼 창 화면: 오류 없이 열리고(손그림 「쌤」), 끌어 놓은 경로를 inbox_take로, 누르면 쌤비서 열기 + 쌤비서 창의 채팅 열기', async () => {
     const b = await ctx.newPage();
     const errs = [];
     b.on('pageerror', e => errs.push(String(e)));
@@ -101,7 +101,11 @@ await run('inbox-bridge', [
     await b.waitForSelector('#bubble');
     await b.waitForFunction(() => typeof window.__dd === 'function');
     await b.evaluate(() => window.__dd({ payload: { type: 'drop', paths: ['C:\\자료\\정답지.hwp'], position: { x: 1, y: 1 } } }));
+    assert(await b.locator('#bubble svg.ssam-mark path.sm-t').count() === 1, '손그림 「쌤」');
+    assert(await page.isHidden('#chatPanel'), '채팅이 미리 열림');
     await b.click('#bubble');
+    // 버튼 창이 같은 저장소(ssam:chat:open)에 누른 때를 적으면 쌤비서 창이 채팅을 엶(창 안 버튼은 숨어 있어 오른쪽 아래 끝에)
+    await page.waitForSelector('#chatPanel.nofab:not([hidden])');
     // 오른쪽 클릭 메뉴는 Rust가 띄우고 받음(bubble_menu) — 화면 쪽 메뉴 항목 동작은 Tauri가 버려서 눌러도 반응이 없었음
     await b.click('#bubble', { button: 'right' });
     const c = await b.evaluate(() => window.__calls);

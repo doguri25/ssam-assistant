@@ -77,6 +77,17 @@ export async function putGongmunFiles(files) {
   await addFiles(files || []);
 }
 
+/* 「쌤」 채팅: 공문 글 → 기타 › 공문 처리에 넣고 AI로 기한·할 일 뽑기(붙여 넣기 [넣기]와 같게) */
+export async function putGongmunText(text) {
+  const { go } = await import('../../core/shell.js');
+  go('etc', 'gongmun');
+  if (!String(text || '').trim()) return;
+  const r = addText(null, text);
+  if (r.cut) toast(`명단·전화번호가 적힌 줄 ${r.cut}곳은 빼고 넣었어요(AI로 보내지 않아요)`, 5000);
+  render();
+  await readDoc(r.id);
+}
+
 /* ---------- 넘기기 ---------- */
 const docTitle = d => d.title || d.name || '공문';
 function handOff(d, k) {

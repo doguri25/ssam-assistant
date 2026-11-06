@@ -1,9 +1,13 @@
 /* 바탕화면 위 버튼 창(Windows 앱, 스펙 2026-10-30-inbox-button 8): 끌어 놓은 파일 경로만 Rust(inbox_take)에 넘김.
-   누르면 쌤비서 열기, 끌면 옮기기(위치는 쌤비서와 같은 저장소의 bubble에), 오른쪽 클릭 메뉴 */
+   누르면 쌤비서 창과 채팅 열기(스펙 2026-11-06 D), 끌면 옮기기(위치는 쌤비서와 같은 저장소의 bubble에), 오른쪽 클릭 메뉴 */
 import { get, set } from './core/store.js';
+import { MARK } from './core/ssam-mark.js';
 
 const T = window.__TAURI__;
 const el = document.getElementById('bubble');
+// 그림은 쌤비서 창 안 버튼과 같은 손그림 「쌤」
+const mark = el && el.querySelector('.mark');
+if (mark) mark.innerHTML = MARK;
 // 버튼 색은 쌤비서 화면 테마를 따름 (쌤비서 창에서 테마를 바꾸면 저장소 알림으로 바로)
 const THEMES = ['dark-nav', 'mono', 'soft', 'paper', 'rail'];
 const applyTheme = () => { const t = get('theme', 'dark-nav'); document.documentElement.dataset.theme = THEMES.includes(t) ? t : 'dark-nav'; };
@@ -36,7 +40,8 @@ function start() {
     if (!down || !(e.buttons & 1)) return;
     if (Math.abs(e.screenX - down.x) + Math.abs(e.screenY - down.y) > 4) { down = null; win.startDragging().catch(() => {}); }
   });
-  el.addEventListener('click', () => { invoke('bubble_action', { action: 'open' }); down = null; });
+  // 쌤비서 창은 같은 저장소의 ssam:chat:open(누른 때)을 보고 채팅을 엶(core/chat.js) — 창을 연 뒤에도 알 수 있게 먼저 적음
+  el.addEventListener('click', () => { set('chat:open', Date.now()); invoke('bubble_action', { action: 'open' }); down = null; });
 
   // 오른쪽 클릭 메뉴: Rust가 띄우고 누른 항목도 Rust가 받음 (화면 쪽 메뉴 항목 동작은 Tauri가 이어 주지 않음)
   el.addEventListener('contextmenu', e => { e.preventDefault(); down = null; invoke('bubble_menu'); });

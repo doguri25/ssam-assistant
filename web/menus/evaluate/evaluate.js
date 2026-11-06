@@ -5862,6 +5862,41 @@ window.SSAM = {
     grBusy: () => GR.running.size > 0 || ['grading', 'ranking', 'writing'].includes(GR.phase)
   },
   setMode, getMode: () => S.mode,
+  // 「쌤」 채팅의 한 줄 관찰 메모(core/chat.js): 행동특성 그 번호 메모를 next(지금 메모)로 바꿈(학생 줄이 없으면 만듦), 되돌리기, 읽기
+  hk: {
+    async addMemo(nos, next) {
+      await HKStore.ready;
+      const done = [];
+      for (const no of nos) {
+        let s = HK.students.find(x => x.no === no);
+        const created = !s;
+        if (!s) { s = { id: hkId(), no, label: '', memo: '', results: [], done: 0 }; HK.students.push(s); }
+        const prev = s.memo || '';
+        s.memo = String(next(prev));
+        done.push({ no, prev, memo: s.memo, created, shown: inClass(no) });
+      }
+      HK.students.sort((a, b) => a.no - b.no);
+      if (!HK.sel && HK.students[0]) HK.sel = HK.students[0].id;
+      HKStore.save(); renderHK();
+      return done;
+    },
+    // 넣은 뒤 메모를 손으로 고쳤으면 그 번호는 그대로 둠 → 되돌린 번호
+    async undoMemo(list) {
+      await HKStore.ready;
+      const back = [];
+      for (const d of list || []) {
+        const s = HK.students.find(x => x.no === d.no);
+        if (!s || s.memo !== d.memo) continue;
+        if (d.created && !(s.results || []).length) { HK.students = HK.students.filter(x => x !== s); if (HK.sel === s.id) HK.sel = HK.students[0] ? HK.students[0].id : null; }
+        else s.memo = d.prev;
+        back.push(d.no);
+      }
+      HKStore.save(); renderHK();
+      return back;
+    },
+    async memoOf(no) { await HKStore.ready; const s = HK.students.find(x => x.no === no); return s ? String(s.memo || '') : null; },
+    select(no) { const s = HK.students.find(x => x.no === no); if (s) { HK.sel = s.id; renderHK(); } }
+  },
   // 평가지 채점 한꺼번에 넣기(gr-bundle.js)
   gr: { putBundle: b => grPutBundle(b), refresh: () => { if (S.mode === 'gr') renderGRSetup(); }, mask: () => (GR.settings.maskOn ? GR.settings.mask : []) },
   // 평가 영역 이음(활동지·단원평가 → 평가지 채점): 지금 평가계획의 영역 [{ id, subject, label }]
