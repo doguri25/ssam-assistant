@@ -1,7 +1,8 @@
 /* 「쌤」 채팅의 글 → 할 일 (스펙 2026-11-06 D·F). 화면 없이 돌아감(시험).
    먼저 앱 규칙(낱말)으로 고르고(routeText), 모르면 AI(notes)에 할 일 목록을 주고 하나 고르게 함(aiRoutePrompt·normAiRoute).
    「3번 …」은 행동특성 관찰 메모(parseMemo·maskMemo·memoLine) */
-import { stripNames, nameCell, MASK } from './privacy.js';
+import { stripNames, nameCell, maskContacts, MASK } from './privacy.js';
+import { stripPersonal } from './survey.js';
 
 /* 할 일: [id, 이름(후보 버튼 글), AI에 주는 설명] */
 export const INTENTS = [
@@ -35,6 +36,9 @@ export const LANGS = [['vi', '베트남어'], ['zh', '중국어(간체)'], ['ru'
 export const langLabel = id => (LANGS.find(l => l[0] === id) || [])[1] || '';
 const LANG_RE = [['vi', /베트남/], ['zh', /중국|중문|간체/], ['ru', /러시아/], ['en', /영어|영문|english/i]];
 const langOf = t => (LANG_RE.find(([, re]) => re.test(t)) || [''])[0];
+// 번역을 바라는 말: 언어 이름 바로 뒤 「~로·~으로」「~판·~버전」「~ 가정통신문·안내장」(「베트남어로」「영문으로」「중국어판」「러시아어 가정통신문」).
+// 「영어 캠프 안내 가정통신문」「중국 문화 체험 행사 안내장」처럼 언어 낱말이 내용에만 있으면 번역이 아님(「번역」 낱말은 따로 셈)
+const LANG_CUE = /(?:(?:베트남|중국|러시아)(?:어|문)?|영어|영문|중문|간체)\s*(?:으로|로|(?:판|버전)(?![가-힣])|가정\s*통신문|통신문|안내장|안내문)/;
 
 /* 낱말 규칙: [할 일, 낱말, 무게]. 한 할 일에서 맞은 무게 중 큰 것만 셈 */
 const RULES = [
@@ -71,13 +75,18 @@ const KW = {
   purchase: /품의\s*(?:서|초안)?(?:\s*초안)?/g, message: /(?:안내\s*)?쪽지(?:로|를|\s*초안)?/g, letter: /가정\s*통신문(?:으로|을|\s*초안)?|안내장(?:으로|을)?/g,
   gongmun: /공문(?:\s*처리)?(?:을|으로)?/g, report: /결과\s*보고(?:서)?(?:를)?/g
 };
-// 글 앞의 「가정통신문 써 줘」「쪽지:」 (뒤에 내용이 이어질 때)
-const LEAD = /^(?:가정\s*통신문|안내장|(?:안내\s*)?쪽지|공문|결과\s*보고(?:서)?)(?:\s*(?:좀\s*)?(?:써|만들어|작성해|처리해|정리해)\s*(?:줘|주세요|줄래요?)?)?\s*[:,.]\s*|^(?:가정\s*통신문|안내장|(?:안내\s*)?쪽지|공문|결과\s*보고(?:서)?)\s*(?:좀\s*)?(?:써|만들어|작성해|처리해|정리해)\s*(?:줘|주세요|줄래요?)\s*[:,.]?\s*/;
+// 글 앞의 「가정통신문 써 줘」「쪽지:」「공문 처리」+줄바꿈 (뒤에 내용이 이어질 때)
+const LEAD_W = '(?:가정\\s*통신문|안내장|(?:안내\\s*)?쪽지|공문(?:[ \\t]*처리)?|결과\\s*보고(?:서)?)';
+const LEAD_V = '[ \\t]*(?:좀[ \\t]*)?(?:써|만들어|작성해|처리해|정리해|부탁해)[ \\t]*';
+const LEAD = new RegExp(`^${LEAD_W}(?:${LEAD_V}(?:줘|주세요|줄래요?)?)?[ \\t]*(?:[:,.][ \\t]*\\n?|\\n)\\s*|^${LEAD_W}${LEAD_V}(?:줘|주세요|줄래요?)[ \\t]*[:,.]?\\s*`);
 const meat = s => String(s || '').replace(/[^가-힣a-zA-Z0-9]/g, '');
-/* 할 일마다 메뉴에 넘길 것: 품의는 품의 낱말까지 뺀 글(앱이 품목으로 읽음), 쪽지·가정통신문·공문·결과 보고는 명령 꼬리만 뺀 글(내용이 없으면 빈칸) */
+// 줄마다 빈칸만 정리(줄바꿈은 살림: 공문·안내 글은 줄로 나뉘고, 전화번호 줄만 빼려면 줄이 남아야 함)
+const tidy = s => String(s || '').replace(/\r\n?/g, '\n').split('\n').map(l => l.replace(/[ \t\u00a0]+/g, ' ').trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+/* 할 일마다 메뉴에 넘길 것: 품의는 품의 낱말까지 뺀 글(앱이 품목으로 읽음), 쪽지·가정통신문·공문·결과 보고는 명령 꼬리만 뺀 글(내용이 없으면 빈칸).
+   줄바꿈은 그대로 둠. 전화번호·전자 우편 가리기는 부르는 쪽(chat.js maskContacts) */
 export function payloadFor(intent, text) {
-  const t = String(text || '').trim();
-  if (intent === 'purchase') { const s = trimTail(t.replace(KW.purchase, ' ').replace(/\s+/g, ' ')); return { text: meat(s).length >= 2 ? s : '' }; }
+  const t = tidy(text);
+  if (intent === 'purchase') { const s = trimTail(tidy(t.replace(KW.purchase, ' '))); return { text: meat(s).length >= 2 ? s : '' }; }
   if (['message', 'letter', 'gongmun', 'report'].includes(intent)) {
     const s = trimTail(t).replace(LEAD, ''), rest = meat(s.replace(KW[intent], ''));
     return { text: rest.length >= 4 ? s : '' };
@@ -121,16 +130,17 @@ export function nosText(nos) {
   return out.join('·') + '번';
 }
 
-/* 글 → { intent, payload, confidence(0~1), candidates([할 일 id], 애매할 때 2~3개) }. 모르면 intent null */
+/* 글 → { intent, payload, confidence(0~1), candidates([할 일 id], 애매할 때 2~3개) }. 모르면 intent null.
+   낱말은 한 줄로 이어 보고, 넘길 글(payload)은 받은 글 그대로(줄바꿈 살림) */
 export function routeText(text) {
-  const t = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
+  const raw = String(text == null ? '' : text), t = raw.replace(/\s+/g, ' ').trim();
   const none = { intent: null, payload: {}, confidence: 0, candidates: [] };
   if (!t) return none;
   const scores = {};
   for (const [id, re, w] of RULES) if (re.test(t)) scores[id] = Math.max(scores[id] || 0, w);
-  // 번역: 언어 낱말 + (번역·통신문·안내장·「~어로」)면 번역(가정통신문보다 앞섬)
+  // 번역: 언어 낱말 + 번역을 바라는 말(「번역」「베트남어로」「영문으로」「러시아어 가정통신문」)이면 번역(가정통신문보다 앞섬)
   const lang = langOf(t);
-  if (lang && /번역|통신문|안내장|(?:어|문)\s*으?로/.test(t)) scores.translate = 5;
+  if (lang && (/번역/.test(t) || LANG_CUE.test(t))) scores.translate = 5;
   // 관찰 메모: 글 앞이 「n번」
   const memo = parseMemo(t);
   if (memo && !NOT_MEMO.test(memo.body)) {
@@ -145,7 +155,7 @@ export function routeText(text) {
   const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1]);
   if (!ranked.length) return none;
   const [top, s1] = ranked[0], s2 = ranked[1] ? ranked[1][1] : 0;
-  if (s1 >= SURE && s1 - s2 >= GAP) return { intent: top, payload: payloadFor(top, t), confidence: Math.min(1, 0.6 + (s1 - s2) / 10 + s1 / 20), candidates: [] };
+  if (s1 >= SURE && s1 - s2 >= GAP) return { intent: top, payload: payloadFor(top, raw), confidence: Math.min(1, 0.6 + (s1 - s2) / 10 + s1 / 20), candidates: [] };
   return { intent: null, payload: {}, confidence: Math.min(0.5, s1 / 8), candidates: ranked.slice(0, 3).map(r => r[0]) };
 }
 export const isSure = r => !!(r && r.intent && r.confidence >= 0.6);
@@ -187,6 +197,12 @@ export function maskMemo(text) {
     return w;
   });
   return { text: t.replace(/\s+/g, ' ').trim(), masked, dropped: r.dropped };
+}
+/* 채팅 기록·AI 분류에 쓰는 글: 전화번호·전자 우편은 그 자리만 가리고(줄을 통째로 빼면 같은 줄 내용까지 없어짐),
+   명단·개인정보 열·줄은 빼고(stripPersonal), 줄마다 이름처럼 보이는 말은 가림(maskMemo) */
+export function safeText(text) {
+  const s = stripPersonal(maskContacts(text)).text;
+  return s.split('\n').map(l => maskMemo(l).text).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 /* 행특 메모 끝에 한 줄 더하기(있던 메모 끝의 빈칸·빈 줄은 정리하고 줄을 바꿔서) */
 export const appendMemo = (prev, line) => { const p = String(prev || '').replace(/\s+$/, ''); return p.trim() ? `${p}\n${line}` : String(line || ''); };

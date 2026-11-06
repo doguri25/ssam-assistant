@@ -27,6 +27,13 @@ await page.waitForTimeout(400);
 await page.click('nav.app-side [data-menu-go="etc"]');
 await page.click('#menuTabs [data-tab="letter"]');
 await page.waitForSelector(`${P} #lfFormFile`, { state: 'attached' });
+// 탭을 열면 양식 목록을 IndexedDB에서 읽은 뒤 화면을 다시 그려 파일 칸이 바뀜 — 그 전에 넣은 파일은 떨어져 나간 칸에 들어가 양식이 안 들어감(가끔 실패하던 것)
+await page.evaluate(async () => {
+  const m = await import('/menus/etc/letter.js');
+  while (!m.F.store) await new Promise(r => setTimeout(r, 20));
+  await m.F.store.list();
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+});
 
 await run('letter-fixes', [
   ['양식 맞추기: 날짜를 본문 안 줄에 두면 본문 끝이 그 위로 줄어 「날짜」로 보임, 회신서를 날짜 위에 두면 고르지 않고 알림', async () => {

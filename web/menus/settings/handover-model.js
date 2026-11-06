@@ -4,7 +4,7 @@
 import { get, set } from '../../core/store.js';
 import { isDate, listEvents } from '../../core/calendar.js';
 import { currentYear } from '../../core/years.js';
-import { stripNames, nameCell, looksLikeName, MASK } from '../../core/privacy.js';
+import { stripNames, nameCell, looksLikeName, maskStaff, staffName, MASK } from '../../core/privacy.js';
 import { listPlans } from '../plan/year-model.js';
 import { listEventPlans } from '../plan/event-model.js';
 import { listRecent } from '../purchase/library.js';
@@ -30,11 +30,15 @@ export const inSchoolYear = (iso, year) => isDate(iso) && iso >= `${year}-03-01`
 /* ---------- 이름·전화번호 빼기 ---------- */
 const PHONE = /(?<!\d)\(?0\d{1,2}\)?[-.\s)]{0,2}\d{3,4}[-.\s]?\d{4}(?!\d)/g;
 const EMAIL = /[\w.+-]+@[\w-]+\.[\w.]+/g;
-// 「김가람 선생님」「이나래 부장님께」처럼 직함 앞의 세 글자 이름, 「강사 김가람」「담당: 박하늘」처럼 직함 뒤의 이름 (부서·과목 이름은 뺌)
-const STAFF_AFTER = /(^|[^가-힣])([가-힣]{3})(\s*)(선생님|선생|교사|부장님?|교감님?|교장님?|주무관님?|실무사님?|강사님?|담당자|님)(?=$|[^가-힣]|[은는이가을를과와의에도께랑만한])/g;
-const STAFF_BEFORE = /((?:강사|담당자?|주무관|선생님|부장|문의)(?:\s*[:：]\s*|\s+))([가-힣]{3})(?![가-힣])/g;
-const STAFF_WORD = new Set(['원어민', '방과후', '행정실', '교무실', '연구부', '정보부', '교무부', '학년부', '진로부', '안전부', '인성부', '체육부', '과학부', '돌봄반', '특수반', '전담반', '정보화', '보건실']);
-const staffName = n => nameCell(n) && !STAFF_WORD.has(n);
+// 직함 앞뒤의 교직원 이름(「김가람 선생님」「김솔 선생님께」「강사 김가람」「3학년 부장 김솔」)은 core/privacy.js maskStaff(가정통신문 번역과 같게)
+
+/* 강사 수당 품의 품목 이름의 강사 이름: 「강사수당(김가람)」「김솔」 → 이름만(「강사 수당(외부 강사)」「강사료」「전문가」는 이름 아님) */
+const LECT_WORD = /강사|수당|전문가|연구원|해설가|[사료비금]$/;
+export function lecturerNames(v) {
+  const out = new Set();
+  for (const w of String(v == null ? '' : v).split(/[\s,·/()（）[\]\-–:：]+/)) if (/^[가-힣]{2,3}$/.test(w) && !LECT_WORD.test(w) && staffName(w)) out.add(w);
+  return [...out];
+}
 
 /* 사람 이름으로 쓴 칸(담당자·행사 교직원·역할 분담)에서 가릴 이름들: 칸 전체와 그 안의 이름 모양 낱말 */
 export function nameTokens(v) {
@@ -55,8 +59,7 @@ export function cleanText(v, names = []) {
   s = s.replace(PHONE, '\u0000').replace(EMAIL, '\u0000')
     .replace(/(?:문의|연락처|전화|휴대폰|☎|tel|e-?mail|이메일)?\s*[:：]?\s*\u0000/gi, '')
     .replace(/\(\s*[,，·]?\s*\)/g, '').replace(/[,，·]\s*(?=[)\n]|$)/g, '').replace(/\(\s*[,，]\s*/g, '(').replace(/^\s*[,，·]\s*/gm, '');
-  s = s.replace(STAFF_AFTER, (m, pre, n, sp, who) => (staffName(n) ? pre + MASK + sp + who : m))
-    .replace(STAFF_BEFORE, (m, pre, n) => (staffName(n) ? pre + MASK : m));
+  s = maskStaff(s).text;
   s = stripNames(s).text;
   return s.replace(/[ \t]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
@@ -66,7 +69,7 @@ const typeLabel = id => (TYPES.find(t => t.id === id) || TYPES[0]).label;
 const purchaseAmount = f => sumItems((f && f.items) || []) || Math.max(0, Math.round(toNumber(f && f.total)));
 
 /* 지금 학년도 자료 → { year, school, names, duties, events, purchases, docs, reports, calendar }.
-   names: 가릴 이름(담당자·행사 교직원·역할 분담) — 「다음 담당자에게」·AI 답을 다듬을 때만 쓰고 문서에는 넣지 않음.
+   names: 가릴 이름(담당자·행사 교직원·역할 분담·강사 수당 품의의 강사) — 「다음 담당자에게」·AI 답을 다듬을 때만 쓰고 문서에는 넣지 않음.
    on: 처음에 고른 것(연간계획은 그 학년도 계획, 행사는 날짜가 그 학년도이거나 없는 것, 나머지는 모두) */
 export function collectHandover({ year = currentYear(), school = '' } = {}) {
   const plans = listPlans(), events = listEventPlans();
@@ -76,6 +79,8 @@ export function collectHandover({ year = currentYear(), school = '' } = {}) {
     for (const s of e.staff || []) nameTokens(s.name).forEach(n => names.add(n));
     for (const r of (e.docs && e.docs.roles) || []) nameTokens(r.name).forEach(n => names.add(n));
   }
+  const recent = listRecent();
+  for (const r of recent) if (r.form && r.form.type === 'lecturer') for (const it of r.form.items || []) lecturerNames(it && it.name).forEach(n => names.add(n));
   const c = t => cleanText(t, names);
   const duties = plans.map(p => ({
     id: p.id, name: c(p.name) || '이름 없는 업무', goal: c(p.goal), year: p.year, on: p.year === year,
@@ -87,7 +92,7 @@ export function collectHandover({ year = currentYear(), school = '' } = {}) {
     id: e.id, name: c(e.name) || '이름 없는 행사', date: e.date, status: e.status === 'final' ? '확정' : '준비 중',
     memo: c(e.survey && e.survey.nextMemo), on: !e.date || inSchoolYear(e.date, year)
   }));
-  const purchases = listRecent().map(r => ({
+  const purchases = recent.map(r => ({
     id: r.id, title: c((r.draft && r.draft.title) || r.form.project) || '제목 없는 품의', kind: typeLabel(r.form.type),
     amount: purchaseAmount(r.form), date: r.at ? isoOf(r.at) : '', on: true
   })).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));

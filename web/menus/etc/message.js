@@ -198,14 +198,21 @@ function addFiles(files) {
 /* 쓰던 쪽지를 바꿈([새 쪽지]·[열기]·[다시 안내]·공문 처리 [쪽지]): 읽던 쪽지는 다 읽으면 최근 쪽지에만 넣고, 새 쪽지는 바로 읽을 수 있게 */
 let readTok = 0;
 function switchDraft(next) { d = next; readTok++; M.busy = false; M.msg = ''; }
-/* 넣은 파일·붙여 넣은 글을 읽어 AI 한 번 → 칸 → 쪽지 */
-export async function readAll() {
-  if (M.busy) return;
-  const x = cur(), paste = M.paste, files = M.files.filter(Boolean), tok = ++readTok;
-  const here = () => tok === readTok && cur() === x; // 읽는 동안 다른 쪽지로 옮기지 않았나
-  if (!files.length && !paste.trim()) { toast('공문·계획 파일을 넣거나 글을 붙여 넣어 주세요.', 5000); return; }
-  if (!ai.ready()) { toast('설정 › AI에서 키를 넣어 주세요', 5000); return; }
+/* 넣은 파일·붙여 넣은 글을 읽어 AI 한 번 → 칸 → 쪽지. 바로 상태를 돌려주고(쌤 채팅이 맞는 말을 하게) 읽기는 이어서
+   → 'started' | 'busy'(읽는 중) | 'empty'(넣은 것이 없거나 명단·전화번호 줄을 빼니 남은 글이 없음) | 'no-ai' */
+export function readAll() {
+  if (M.busy) return 'busy';
+  const x = cur(), paste = M.paste, files = M.files.filter(Boolean);
+  if (!files.length && !paste.trim()) { toast('공문·계획 파일을 넣거나 글을 붙여 넣어 주세요.', 5000); return 'empty'; }
+  if (!files.length && !cleanSheet(paste).text.trim()) { toast('명단·전화번호가 적힌 줄을 빼니 남은 글이 없어요. 안내할 내용을 붙여 넣어 주세요.', 6000); return 'empty'; }
+  if (!ai.ready()) { toast('설정 › AI에서 키를 넣어 주세요', 5000); return 'no-ai'; }
+  const tok = ++readTok;
   M.busy = true; M.msg = '읽는 중…'; live();
+  readJob(x, tok, paste, files);
+  return 'started';
+}
+async function readJob(x, tok, paste, files) {
+  const here = () => tok === readTok && cur() === x; // 읽는 동안 다른 쪽지로 옮기지 않았나
   try {
     const texts = paste.trim() ? [paste] : [], images = [];
     for (const f of files) {
@@ -240,13 +247,13 @@ export async function readAll() {
   }
   live();
 }
-/* 떠 있는 버튼 등: 기타 › 쪽지 작성으로 가서 새 쪽지로 넣고 바로 읽기(읽던 쪽지가 있어도) */
+/* 떠 있는 버튼 등: 기타 › 쪽지 작성으로 가서 새 쪽지로 넣고 바로 읽기(읽던 쪽지가 있어도 — 그 쪽지는 다 읽으면 최근 쪽지에) → readAll 상태 */
 export async function putMessageFiles(files, { text = '' } = {}) {
   go('etc', 'message');
   switchDraft(blankDraft()); M.files = []; M.paste = String(text || ''); saveDraft(d);
   addFiles(files || []);
   render();
-  await readAll();
+  return readAll();
 }
 
 /* ---------- 누르기·입력 ---------- */

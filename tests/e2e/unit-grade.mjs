@@ -74,6 +74,9 @@ await run('unit-grade', [
   }],
   ['이름 칸 상자를 그리면 이 평가에 저장(다음 평가용으로 unit:set에도)', async () => {
     await page.click(`${V} [data-un="mask"]`);
+    // 답안 그림이 다 불려 와 상자 칸 크기가 정해진 뒤에 잼(그 전에는 칸 높이가 2px라 끌기가 칸 밖에 떨어짐)
+    await page.waitForFunction(() => { const i = document.querySelector('#sheetRoot #mkImg'), s = document.querySelector('#sheetRoot #mkStage');
+      return !!i && i.complete && i.naturalWidth > 0 && !!s && s.getBoundingClientRect().height > 50; });
     const b = await page.locator('#sheetRoot #mkStage').boundingBox();
     await page.mouse.move(b.x + b.width * 0.6, b.y + 10); await page.mouse.down();
     await page.mouse.move(b.x + b.width * 0.95, b.y + 40, { steps: 4 }); await page.mouse.up();
