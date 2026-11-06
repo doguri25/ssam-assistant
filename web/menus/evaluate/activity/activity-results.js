@@ -3,38 +3,20 @@ import { toast, copyText } from '../../../core/ui.js';
 import { exportButton, exportDoc, downloadsButton } from '../../../core/doc-export.js';
 import { linkHTML, openLinkSheet } from '../../../core/eval-link.js';
 import { listActivities, getActivity, records, markCounts } from './activity-model.js';
-import { TYPES, MARK, LEVEL } from './activity-ai.js';
+import { TYPES, LEVEL } from './activity-ai.js';
+import { graded, markOf, titleOf, tableRows, tableDoc, slipsDoc } from './activity-docs.js';
+import { onePerPage, setOnePerPage } from '../../../core/slip-layout.js';
 import { SUBJECTS } from './activity-read.js';
 import { A, registerStep, registerView, curAct, commitAct, render, esc, getBox, visible } from './activity.js';
 
 const TYPE_NAME = Object.fromEntries(TYPES);
-const graded = a => a.students.filter(s => !s.skip && s.status === 'done');
-const markOf = (s, it) => MARK[(s.marks && s.marks[it.no] && s.marks[it.no].mark) || ''] || '-';
-const titleOf = a => a.meta.title || '활동지';
 
 /* ---------- 5단계 ---------- */
 export function statsOrder(a) {
   const c = markCounts(a);
   return a.items.map(it => ({ it, ...c[it.no] })).sort((p, q) => (q.x - p.x) || (q.n - p.n) || (q.t - p.t) || (p.it.no - q.it.no));
 }
-const tableRows = a => [['번호', ...a.items.map(it => `${it.no}번`), '수준', '잘한 점', '더 해 볼 점'],
-  ...graded(a).map(s => [`${s.no}번`, ...a.items.map(it => markOf(s, it)), LEVEL[s.level] || '', s.good || '', s.next || ''])];
-export const tableDoc = a => ({ title: `${titleOf(a)} 결과`, blocks: [
-  { type: 'h', text: `${titleOf(a)} 결과` },
-  { type: 'p', text: [a.meta.subject, a.meta.date, a.meta.pages].filter(Boolean).join(' · ') + ' · ○ 잘함 · △ 조금 더 · × 틀림 · 안 함 빈칸' },
-  { type: 'table', head: true, rows: tableRows(a) }] });
-/* 학생 피드백 쪽지: 한 쪽에 4명 */
-export function slipsDoc(a) {
-  const blocks = [];
-  graded(a).forEach((s, i) => {
-    if (i && i % 4 === 0) blocks.push({ type: 'break' });
-    blocks.push({ type: 'h', text: `${s.no}번 · ${titleOf(a)}` });
-    blocks.push({ type: 'p', text: a.items.map(it => `${it.no}번 ${markOf(s, it)}`).join('  ') + (s.level ? `  · ${LEVEL[s.level]}` : '') });
-    blocks.push({ type: 'p', text: `잘한 점: ${s.good || '-'}` });
-    blocks.push({ type: 'p', text: `더 해 볼 점: ${s.next || '-'}` });
-  });
-  return { title: `${titleOf(a)} 피드백`, blocks };
-}
+const SLIP_NOTE = one => (one ? '피드백 쪽지는 번호마다 한 장씩, 번호만 적혀요. 자르지 않고 나눠 주면 돼요.' : '피드백 쪽지는 한 쪽에 4명, 번호만 적혀요.');
 function step5HTML(a) {
   const g = graded(a);
   const stats = statsOrder(a).map(r => `<li><b>${r.it.no}번</b> ${esc(TYPE_NAME[r.it.type] || '')} · ${esc(r.it.ask)}: ○ ${r.o} · △ ${r.t} · × ${r.x} · 안 함 ${r.n}</li>`).join('');
@@ -43,8 +25,8 @@ function step5HTML(a) {
   return `<div class="yp-card"><h3>문항별</h3><p class="muted" style="margin:0">× · 안 함이 많은 문항 먼저예요.</p><ul class="ac-stats" id="acStats">${stats}</ul></div>
     <div class="yp-card"><h3>반 표 · 학생 ${g.length}명</h3>
       <div class="ac-grid-wrap"><table class="ac-grid" id="acTable"><thead>${head}</thead><tbody>${rows}</tbody></table></div>
-      <div class="row">${exportButton('data-ac="exportTable"', { prefix: '반 표 · ' })}<button class="btn text" type="button" data-ac="copyTable">표 복사</button>${exportButton('data-ac="exportSlips"', { prefix: '피드백 쪽지 · ' })}${downloadsButton()}</div>
-      <p class="muted" style="margin:0">피드백 쪽지는 한 쪽에 4명, 번호만 적혀요.</p></div>
+      <div class="row">${exportButton('data-ac="exportTable"', { prefix: '반 표 · ' })}<button class="btn text" type="button" data-ac="copyTable">표 복사</button>${exportButton('data-ac="exportSlips"', { prefix: '피드백 쪽지 · ' })}<label class="switch"><input type="checkbox" data-one-page${onePerPage() ? ' checked' : ''}>번호별로 한 장씩</label>${downloadsButton()}</div>
+      <p class="muted" id="acSlipNote" style="margin:0">${SLIP_NOTE(onePerPage())}</p></div>
     <div class="yp-card"><h3>교과 평어</h3>${linkHTML(a.link, a.meta.subject, 'data-ac')}${a.link && !a.done ? '<p class="muted" id="acLinkWait" style="margin:0">[확정]하면 평가지 채점의 참고 목록에 나와요.</p>' : ''}</div>
     <div class="row act-next">${a.done ? '<span class="chip ok">확정함 · 학생별 모아 보기에 남아요</span><button class="btn text" type="button" data-ac="undone">확정 풀기</button>' : `<button class="btn primary" type="button" data-ac="done"${g.length ? '' : ' disabled'}>확정</button>`}</div>`;
 }
@@ -90,7 +72,7 @@ document.addEventListener('click', async e => {
   }
   if (!a) return;
   if (act === 'exportTable') { try { toast(await exportDoc(tableDoc(a), `${titleOf(a)} 결과`), 6000); } catch (er) { toast('파일을 저장하지 못했어요'); } }
-  else if (act === 'exportSlips') { try { toast(await exportDoc(slipsDoc(a), `${titleOf(a)} 피드백 쪽지`), 6000); } catch (er) { toast('파일을 저장하지 못했어요'); } }
+  else if (act === 'exportSlips') { try { toast(await exportDoc(slipsDoc(a, { one: onePerPage() }), `${titleOf(a)} 피드백 쪽지`), 6000); } catch (er) { toast('파일을 저장하지 못했어요'); } }
   else if (act === 'copyTable') copyText(tableRows(a).map(r => r.join('\t')).join('\n')).then(ok => toast(ok ? '표를 복사했어요. 한글·엑셀에 붙여넣으세요' : '복사하지 못했어요'));
   else if (act === 'done') { a.done = true; commitAct(a); render(); toast('확정했어요. 학생별 모아 보기에 남아요'); }
   else if (act === 'undone') { a.done = false; commitAct(a); render(); }
@@ -99,6 +81,12 @@ document.addEventListener('click', async e => {
 document.addEventListener('change', e => {
   if (!mine(e)) return;
   const el = e.target;
+  if (el.matches('[data-one-page]')) {
+    // 화면은 다시 그리지 않고 안내 글만 바꿈
+    setOnePerPage(el.checked);
+    const n = getBox().querySelector('#acSlipNote'); if (n) n.textContent = SLIP_NOTE(el.checked);
+    return;
+  }
   if (el.id === 'recNo') { R.no = Number(el.value); render(); return; }
   if (el.id === 'recSubject') { R.subject = el.value; render(); return; }
   if (el.id === 'recTerm') { R.term = el.value; render(); return; }

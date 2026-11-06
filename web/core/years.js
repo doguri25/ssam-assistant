@@ -6,7 +6,7 @@ import { periodStart } from '../menus/class/class-import.js';
 
 const PREFIX = 'ssam:';
 // testkey:told(시험용 키 알림을 보였음)·queue(차례로 붙여넣기 설정)·queueCalc(산출 내역 넣는 방식)는 화면 설정이라 학년도 자료가 아님
-export const GLOBAL = ['engine', 'theme', 'nav', 'mode', 'updSkip', 'years', 't', 'backupAt', 'inbox', 'bubble', 'export', 'ai-roles', 'purchase:view', 'purchase:flow', 'msg:sender', 'testkey:told', 'queue', 'queueCalc'];
+export const GLOBAL = ['engine', 'theme', 'nav', 'mode', 'updSkip', 'years', 't', 'backupAt', 'inbox', 'bubble', 'export', 'ai-roles', 'purchase:view', 'purchase:flow', 'msg:sender', 'testkey:told', 'queue', 'queueCalc', 'slips'];
 export const isYearKey = k => !!k && !GLOBAL.includes(k) && !k.startsWith('mig:');
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const pad = n => String(n).padStart(2, '0');

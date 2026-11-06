@@ -1,10 +1,11 @@
-/* 단원평가 문서: 학생 결과지(한 쪽에 2명), 성적 일람표(한글 파일·CSV) */
+/* 단원평가 문서: 학생 결과지(한 쪽에 2명, 또는 번호별로 한 장씩), 성적 일람표(한글 파일·CSV) */
 import { makeTitle, feedbackOf } from './unit-model.js';
 
-export function feedbackDoc(test, students) {
+/* one이면 번호마다 새 쪽(가운데 자르는 줄 없음) */
+export function feedbackDoc(test, students, { one = false } = {}) {
   const title = makeTitle(test.meta), blocks = [];
   students.forEach((st, i) => {
-    if (i && i % 2 === 0) blocks.push({ type: 'break' });
+    if (i && (one || i % 2 === 0)) blocks.push({ type: 'break' });
     else if (i) blocks.push({ type: 'p', text: '✂ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -' });
     const f = feedbackOf(test, st);
     blocks.push({ type: 'h', text: `${title} · ${st.no}번` });

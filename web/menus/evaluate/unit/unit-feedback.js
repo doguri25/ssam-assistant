@@ -1,9 +1,10 @@
-/* 단원평가 4단계 피드백 (스펙 2.2·3.3): 잘한 점·격려(AI, 글만), 학생별 미리 보기, 결과지 한글 파일·인쇄(한 쪽에 2명), 번호별 복사 */
+/* 단원평가 4단계 피드백 (스펙 2.2·3.3): 잘한 점·격려(AI, 글만), 학생별 미리 보기, 결과지 한글 파일·인쇄(한 쪽에 2명, 또는 번호별로 한 장씩), 번호별 복사 */
 import { toast, copyText } from '../../../core/ui.js';
 import * as ai from '../../../core/ai.js';
 import { aiRowHTML, pick } from '../../../core/ai-roles.js';
 import { reviewJSON, notesReviewPrompt, normNotesReview, opinionHTML, reviewBar, REVIEW_FAIL } from '../../../core/ai-review.js';
 import { exportButton, exportDoc, downloadsButton } from '../../../core/doc-export.js';
+import { onePerPage, setOnePerPage } from '../../../core/slip-layout.js';
 import { getTest, graded, makeTitle, feedbackOf, feedbackText } from './unit-model.js';
 import { feedbackDoc } from './unit-docs.js';
 import { feedbackPrompt, normFeedback } from './unit-ai.js';
@@ -32,10 +33,11 @@ function card(t, s) {
     ${['good', 'cheer'].map(f => { const r = rvOf(s, f); return `<label class="yp-f"><span class="lab">${FIELD[f]}</span><textarea class="field${r ? ' rv-mark' : ''}" data-fb="${s.no}-${f}" rows="2">${esc(s[f])}</textarea></label>${r ? `<div data-rv-for="${s.no}-${f}">${opinionHTML({ title: `${s.no}번 ${FIELD[f]}`, main: s[f], alt: r.fix, why: r.problem, use: `${s.no}-${f}`, keep: `${s.no}-${f}` })}</div>` : ''}`; }).join('\n    ')}
   </div>`;
 }
-/* 인쇄 틀: 학생마다 한 칸, 두 명마다 쪽 나눔 (CSS) */
+const SLIP_NOTE = one => (one ? '결과지는 번호마다 한 장씩이라 자르지 않고 나눠 주면 돼요.' : '결과지는 한 쪽에 2명이라 가운데를 잘라 나눠 주면 돼요.');
+/* 인쇄 틀: 학생마다 한 칸, 두 명마다(번호별로 한 장씩이면 한 명마다) 쪽 나눔 (CSS) */
 function printHTML(t, list) {
   const title = makeTitle(t.meta);
-  return `<div class="un-print">${list.map(s => {
+  return `<div class="un-print${onePerPage() ? ' one' : ''}">${list.map(s => {
     const f = feedbackOf(t, s);
     return `<section class="un-ps"><h2>${esc(title)} · ${s.no}번</h2><p><b>점수 ${f.score} / ${f.total}점</b></p>${wrongTable(t, s)}
       ${s.good ? `<p>잘한 점: ${esc(s.good)}</p>` : ''}${s.cheer ? `<p>한마디: ${esc(s.cheer)}</p>` : ''}</section>`;
@@ -47,8 +49,8 @@ function step4HTML(t) {
   const nRv = list.reduce((n, s) => n + openRv(s).length, 0), rs = rvState[t.id];
   return `${aiRowHTML('notes')}${rs === 'busy' ? '<p class="muted rv-busy"><span class="spin"></span> 검토 AI가 잘한 점·격려를 살펴보고 있어요…</p>' : rs === 'fail' ? `<p class="rv-fail" role="status">${REVIEW_FAIL} 쓴 글은 그대로 쓸 수 있어요.</p>` : ''}${reviewBar(nRv, 'data-un="fbNextRv"')}<div class="yp-card">
       <div class="row"><button class="btn primary" type="button" data-un="fbAI"${run ? ' disabled' : ''}>${run ? '<span class="spin"></span>쓰는 중…' : '잘한 점·격려 쓰기'}</button>
-        ${exportButton('data-un="fbHwpx"', { prefix: '결과지 · ' })}${downloadsButton()}<button class="btn" type="button" data-un="fbPrint">인쇄</button><button class="btn" type="button" data-un="fbCopyAll">모두 복사</button></div>
-      <p class="muted cls-note">AI에는 번호·점수·평가 내용만 보내요. 학생이 쓴 답과 이름은 보내지 않아요. 결과지는 한 쪽에 2명이라 가운데를 잘라 나눠 주면 돼요.</p>
+        ${exportButton('data-un="fbHwpx"', { prefix: '결과지 · ' })}${downloadsButton()}<button class="btn" type="button" data-un="fbPrint">인쇄</button><button class="btn" type="button" data-un="fbCopyAll">모두 복사</button><label class="switch"><input type="checkbox" data-one-page${onePerPage() ? ' checked' : ''}>번호별로 한 장씩</label></div>
+      <p class="muted cls-note">AI에는 번호·점수·평가 내용만 보내요. 학생이 쓴 답과 이름은 보내지 않아요. <span id="unSlipNote">${SLIP_NOTE(onePerPage())}</span></p>
     </div>
     <div class="un-fbs">${list.map(s => card(t, s)).join('')}</div>
     ${printHTML(t, list)}`;
@@ -115,7 +117,7 @@ function chooseRv(key, useRv) {
   saveOrWarn(t); refresh(t.id);
 }
 async function saveHwpx(t) {
-  try { toast(await exportDoc(feedbackDoc(t, graded(t)), `${makeTitle(t.meta)} 결과지`), 6000); }
+  try { toast(await exportDoc(feedbackDoc(t, graded(t), { one: onePerPage() }), `${makeTitle(t.meta)} 결과지`), 6000); }
   catch (e) { toast('파일을 저장하지 못했어요', 5000); }
 }
 async function copy(text) { toast((await copyText(text)) === false ? '복사하지 못했어요' : '복사했어요'); }
@@ -140,7 +142,16 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('change', e => {
   const box = getBox();
-  if (!box || !box.contains(e.target) || !inStep(4) || !e.target.dataset.fb) return;
+  if (!box || !box.contains(e.target) || !inStep(4)) return;
+  if (e.target.matches('[data-one-page]')) {
+    // 화면은 다시 그리지 않고 안내 글과 인쇄 틀만 바꿈
+    const one = e.target.checked;
+    setOnePerPage(one);
+    const n = box.querySelector('#unSlipNote'); if (n) n.textContent = SLIP_NOTE(one);
+    const p = box.querySelector('.un-print'); if (p) p.classList.toggle('one', one);
+    return;
+  }
+  if (!e.target.dataset.fb) return;
   const [no, k] = e.target.dataset.fb.split('-'), t = cur();
   const s = t.students.find(x => x.no === Number(no));
   if (!s) return;

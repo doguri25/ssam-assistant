@@ -66,6 +66,9 @@ section[data-menu="evaluate"].ev-new > :not(.unit-box):not(.act-box){display:non
   /* 한 쪽에 2명: 칸은 반 쪽 이상, 틀린 문항이 많으면 늘어나고 잘리지 않음 */
   .un-ps{box-sizing:border-box;min-height:48vh;overflow:visible;padding:4mm 2mm;border-bottom:1px dashed #999}
   .un-ps:nth-child(2n){border-bottom:0;break-after:page}
+  /* 번호별로 한 장씩: 한 명마다 새 쪽, 자르는 선 없음 */
+  .un-print.one .un-ps{min-height:0;border-bottom:0;break-after:page}
+  .un-print.one .un-ps:last-child{break-after:auto}
   .un-ps h2{font-size:15px;margin:0 0 4px}
   .un-ps p{margin:4px 0;font-size:12.5px}
   .un-ps .un-fb-t{font-size:11.5px}

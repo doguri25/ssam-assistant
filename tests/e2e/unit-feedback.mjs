@@ -1,4 +1,4 @@
-// 단원평가 4단계 피드백: 잘한 점·격려(AI, 비운 학생만, 학생 답 글은 안 보냄), 고치기, 미리 보기, 결과지 한글 파일(한 쪽 2명),
+// 단원평가 4단계 피드백: 잘한 점·격려(AI, 비운 학생만, 학생 답 글은 안 보냄), 고치기, 미리 보기, 결과지 한글 파일(한 쪽 2명 · 번호별로 한 장씩),
 // 번호별 복사·모두 복사, 인쇄, AI 도중 다른 평가로 가도 결과는 시작한 평가에, 좁은 화면
 import { readFileSync } from 'node:fs';
 import { open, run, assert, mockClaude } from './helpers.mjs';
@@ -92,6 +92,23 @@ await run('unit-feedback', [
     await page.click(`${V} [data-un="fbPrint"]`);
     assert(await page.evaluate(() => window.__printed) === 1, '인쇄 안 부름');
     assert(await page.locator(`${V} .un-print .un-ps`).count() === 6, '인쇄 틀');
+  }],
+  ['「번호별로 한 장씩」 켜면 결과지 한글 파일이 번호마다 새 쪽(자르는 줄 없음), 인쇄 틀도 한 명씩 쪽 나눔, 끄면 2명씩', async () => {
+    const chk = `${V} [data-one-page]`;
+    assert(!(await page.isChecked(chk)), '처음부터 켜짐');
+    await page.check(chk);
+    assert((await page.textContent(`${V} #unSlipNote`)).includes('번호마다 한 장씩'), '안내');
+    assert(await page.locator(`${V} .un-print.one`).count() === 1, '인쇄 틀 표시');
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click(`${V} [data-un="fbHwpx"]`)]);
+    const sec = new TextDecoder().decode((await unzip(new Uint8Array(readFileSync(await dl.path())))).get('Contents/section0.xml'));
+    assert((sec.match(/pageBreak="1"/g) || []).length === 5, '쪽 나누기 ' + (sec.match(/pageBreak="1"/g) || []).length);
+    assert(!sec.includes('✂') && sec.includes('6번'), '자르는 줄');
+    await page.emulateMedia({ media: 'print' });
+    const after = await page.$$eval(`${V} .un-print .un-ps`, els => els.map(e => getComputedStyle(e).breakAfter));
+    await page.emulateMedia({ media: 'screen' });
+    assert(after.length === 6 && after.slice(0, 5).every(x => x === 'page') && after[5] !== 'page', after.join(','));
+    await page.uncheck(chk);
+    assert(await page.locator(`${V} .un-print.one`).count() === 0 && (await page.textContent(`${V} #unSlipNote`)).includes('한 쪽에 2명'), '끈 뒤');
   }],
   ['AI 도중 다른 평가로 가도 결과는 시작한 평가에', async () => {
     await clear('sample-1', [4]); await clear('sample-2', [4]);

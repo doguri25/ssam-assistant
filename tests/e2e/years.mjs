@@ -71,6 +71,8 @@ await run('years', [
   }],
   ['2026학년도로 돌아가기: 학급·평가 자료가 돌아옴', async () => {
     await yearsTab();
+    // 보관한 학년도 줄은 보관함(IndexedDB)을 읽은 뒤 그려짐: 지금 학년도 줄만 보고 넘어가지 않게 기다림
+    await page.waitForSelector(`${S} [data-yr="2026"] [data-set="goYear"]`, { timeout: 5000 }).catch(() => {});
     assert(await page.locator(`${S} [data-yr="2026"] [data-set="goYear"]`).count() === 1, '목록에 2026');
     await page.click(`${S} [data-yr="2026"] [data-set="goYear"]`);
     await page.waitForSelector('#sheetRoot #yrGoOk');

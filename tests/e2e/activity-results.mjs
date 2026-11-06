@@ -1,4 +1,4 @@
-// 평가 › 활동지 5단계: 문항별 통계(× 많은 문항 먼저), 반 표·피드백 쪽지 워드 내려받기(번호만), [확정] → 학생별 모아 보기(교과·학기),
+// 평가 › 활동지 5단계: 문항별 통계(× 많은 문항 먼저), 반 표·피드백 쪽지 워드 내려받기(번호만, 「번호별로 한 장씩」), [확정] → 학생별 모아 보기(교과·학기),
 // 「교과 평어에 참고하기」 기본 꺼짐 → 켜면 평가계획 영역 고르기 → 이음 저장, 영역 id가 바뀌어도 이름으로 이어짐, 이름도 바뀌면 「찾지 못했어요」
 import { readFileSync } from 'node:fs';
 import { open, run, assert } from './helpers.mjs';
@@ -38,6 +38,27 @@ await run('activity-results', [
     assert(tbl.includes('번호') && tbl.includes('○') && tbl.includes('잘한 점') && !tbl.includes('이름'), '표');
     const slips = await docxText('exportSlips');
     assert(slips.includes('1번') && slips.includes('더 해 볼 점') && slips.includes('물의 여행을 차례대로 설명했어요'), '쪽지');
+  }],
+  ['「번호별로 한 장씩」: 처음엔 꺼짐(한 쪽에 4명), 켜면 피드백 쪽지가 번호마다 새 쪽·안내도 바뀌고, 다시 그려도 켜져 있음, 끄면 다시 4명씩', async () => {
+    const n = (await acts())[0].students.filter(s => !s.skip && s.status === 'done').length;
+    assert(n >= 2, '채점한 학생 ' + n);
+    const pb = x => (x.match(/<w:pageBreakBefore\/>/g) || []).length;
+    const chk = `${P} .row:has([data-ac="exportSlips"]) [data-one-page]`;
+    assert(!(await page.isChecked(chk)), '처음부터 켜짐');
+    assert((await page.textContent(`${P} #acSlipNote`)).includes('한 쪽에 4명'), '처음 안내');
+    let slips = await docxText('exportSlips');
+    assert(pb(slips) === Math.ceil(n / 4) - 1, `4명씩: ${pb(slips)}`);
+    await page.check(chk);
+    assert((await page.textContent(`${P} #acSlipNote`)).includes('번호마다 한 장씩'), '켠 뒤 안내');
+    slips = await docxText('exportSlips');
+    assert(pb(slips) === n - 1, `한 장씩: ${pb(slips)} / ${n}명`);
+    assert(slips.includes('1번') && slips.includes('더 해 볼 점'), '쪽지 내용');
+    await page.click('#menuTabs [data-tab="unit"]'); await page.click('#menuTabs [data-tab="activity"]');
+    await page.waitForSelector(chk);
+    assert(await page.isChecked(chk), '다시 그리면 꺼짐');
+    assert(JSON.stringify(await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:slips')))) === '{"one":true}', '저장');
+    await page.uncheck(chk);
+    assert(pb(await docxText('exportSlips')) === Math.ceil(n / 4) - 1, '끈 뒤 4명씩');
   }],
   ['[확정] → 학생별 모아 보기: 3번 기록, 과학·2학기로 거르면 있고 국어면 없음', async () => {
     await page.click(`${P} [data-ac="done"]`);
