@@ -72,7 +72,10 @@ function graded(meta, date, shift, id) {
       const read = reads[it.no - 1];
       const auto = autoJudge(it, read);
       const pts = it.no === 9 ? p9 : it.no === 10 ? p10 : auto != null ? auto : (it.no === 7 && read === '도서관' ? it.points : 0);
-      items[it.no] = { ...gradeCell(it, { read, points: pts, sure: true, why: it.type === 'essay' ? '채점 기준에 비추어 판단' : '' }), ok: true };
+      const c = gradeCell(it, { read, points: pts, sure: true, why: it.type === 'essay' ? '채점 기준에 비추어 판단' : '' });
+      // AI 처음 값(채점 정확도): 두 칸은 선생님이 고친 것으로(7번 「도서관」은 AI가 틀렸다고 봄, 10번은 AI가 12점)
+      const k = (s + shift) % ANS.length, fixed = k === 1 && it.no === 7 ? 0 : k === 3 && it.no === 10 ? 12 : null;
+      items[it.no] = { ...c, ok: true, ai0: fixed ?? c.pts, ...(fixed != null ? { manual: true } : {}) };
     }
     return { no: s + 1, skip: false, status: 'done', items, good: GOOD[(s + shift) % 6], cheer: CHEER[(s + shift) % 6] };
   });

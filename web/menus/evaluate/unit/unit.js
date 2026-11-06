@@ -14,6 +14,7 @@ import { keyPrompt, normKeyAI } from './unit-ai.js';
 import { sampleTests } from './unit-sample.js';
 import { readBundle, openBundleCard, needsCard, bundleBoxHTML, onBundle } from '../../../core/bundle.js';
 import { linkHTML, openLinkSheet } from '../../../core/eval-link.js';
+import { accuracyText, yearAccuracy, yearText } from '../grade-accuracy.js';
 
 export const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const SS = () => window.SSAM || {};
@@ -81,14 +82,17 @@ export function openTest(id, step) {
 export const goStep = n => { U.step = n; render(); };
 
 /* ---------- 그리기 ---------- */
+/* AI 채점 정확도 글 (이 기능 전에 저장한 요약엔 acc가 없어 「기록 없음」) */
+const accOf = s => accuracyText(s.acc || null, { finished: s.done, graded: s.n > 0 });
 function listHTML() {
-  const list = listTests();
+  const list = listTests(), year = yearText(yearAccuracy(list));
   const cards = list.map(s => `<li class="yp-card un-card" data-un-open="${esc(s.id)}">
     <b class="un-c-t">${esc(s.title)}</b>
-    <span class="muted">${esc(s.date)} · 학생 ${s.n}명${s.avg != null ? ` · 반 평균 ${s.avg}점` : ''}</span>
+    <span class="muted">${esc(s.date)} · 학생 ${s.n}명${s.avg != null ? ` · 반 평균 ${s.avg}점` : ''}</span>${accOf(s) ? `<span class="muted un-c-acc">${esc(accOf(s))}</span>` : ''}
     <span class="chip${s.done ? ' ok' : ''}">${s.done ? '마침' : '채점 중'}</span>
     <span class="grow"></span><button class="btn text" type="button" data-un="del" data-id="${esc(s.id)}">지우기</button></li>`).join('');
   return `<div class="row"><button class="btn primary" type="button" id="unNew">새 단원평가</button><button class="btn" type="button" data-un="sample">예시로 채우기</button>${list.some(s => s.sample) ? '<button class="btn text" type="button" data-un="sampleDel">예시 지우기</button>' : ''}</div>
+    ${year ? `<p class="un-year" id="unYear">${esc(year)}</p>` : ''}
     ${list.length ? `<ul class="un-list">${cards}</ul>` : '<div class="yp-card"><p class="muted" style="margin:0">아직 단원평가가 없어요. [새 단원평가]로 정답지부터 넣어 주세요. 바로 보려면 [예시로 채우기].</p></div>'}`;
 }
 function metaHTML(m) {

@@ -49,8 +49,9 @@ function docxPic(n, cx, cy) {
 
 function docxBody(doc, photos = photoList(doc)) {
   let out = '', brk = false, ph = 0;
-  const para = (text, { style, bold, pb, keep, center } = {}) => `<w:p><w:pPr>${style ? `<w:pStyle w:val="${style}"/>` : ''}${keep ? '<w:keepNext/>' : ''}${pb ? '<w:pageBreakBefore/>' : ''}${center ? '<w:jc w:val="center"/>' : ''}</w:pPr>`
-    + `<w:r>${bold ? '<w:rPr><w:b/></w:rPr>' : ''}<w:t xml:space="preserve">${xesc(text)}</w:t></w:r></w:p>`;
+  // small: 작은 글 8pt (결과지 맨 아래 정답 등)
+  const para = (text, { style, bold, pb, keep, center, small } = {}) => `<w:p><w:pPr>${style ? `<w:pStyle w:val="${style}"/>` : ''}${keep ? '<w:keepNext/>' : ''}${pb ? '<w:pageBreakBefore/>' : ''}${center ? '<w:jc w:val="center"/>' : ''}</w:pPr>`
+    + `<w:r>${bold || small ? `<w:rPr>${bold ? '<w:b/>' : ''}${small ? '<w:sz w:val="16"/><w:szCs w:val="16"/>' : ''}</w:rPr>` : ''}<w:t xml:space="preserve">${xesc(text)}</w:t></w:r></w:p>`;
   const lines = (text, opt) => linesOf(text).map((l, i) => para(l, { ...opt, pb: opt.pb && !i })).join('');
   out += para(doc.title || '', { style: 'Title' });
   for (const b of doc.blocks || []) {
@@ -85,7 +86,8 @@ function docxBody(doc, photos = photoList(doc)) {
         + `<w:tblGrid><w:gridCol w:w="${cw}"/><w:gridCol w:w="${cw}"/></w:tblGrid>`;
       for (let i = 0; i < list.length; i += 2) out += `<w:tr><w:trPr><w:cantSplit/></w:trPr>${cell(list[i])}${cell(list[i + 1])}</w:tr>`;
       out += '</w:tbl><w:p/>';
-    } else out += lines(b.text, { pb });
+    } else if (b.type === 'small') out += lines(b.text, { pb, small: true });
+    else out += lines(b.text, { pb, bold: !!b.bold });
   }
   return out;
 }
@@ -146,7 +148,8 @@ export function docHtml(doc) {
       out += '<table class="pd-photos">';
       for (let i = 0; i < list.length; i += 2) out += `<tr>${cell(list[i])}${cell(list[i + 1])}</tr>`;
       out += '</table>';
-    } else out += linesOf(b.text).map(l => `<p>${hesc(l)}</p>`).join('');
+    } else if (b.type === 'small') out += linesOf(b.text).map(l => `<p class="sm">${hesc(l)}</p>`).join('');
+    else out += linesOf(b.text).map(l => `<p>${b.bold ? `<b>${hesc(l)}</b>` : hesc(l)}</p>`).join('');
   }
   return out;
 }
@@ -172,6 +175,7 @@ const PRINT_CSS = `#printDoc{display:none}
   #printDoc .nw{white-space:nowrap}
   #printDoc .pd-break{break-before:page}
   #printDoc p.c{text-align:center}
+  #printDoc p.sm{font-size:8pt;line-height:1.4}
   #printDoc .pd-photos td{width:50%;text-align:center;vertical-align:middle}
   #printDoc .pd-photos img{display:block;margin:0 auto 3pt;max-width:100%;max-height:60mm;object-fit:contain}
   #printDoc .pd-photos p{text-align:center}

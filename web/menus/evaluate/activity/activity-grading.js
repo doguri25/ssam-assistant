@@ -13,8 +13,9 @@ import { numbersFor, parseNos, renumber, reattachByNo, spreadSkipNos } from '../
 import { arrangePages } from '../unit/unit-pages.js';
 import { go } from '../../../core/shell.js';
 import { getActivity, getSet, saveSet, listActivities } from './activity-model.js';
-import { gradeParts, validGrade, normGrade, judgeCell, reviewParts, normReview, MARK, LEVEL } from './activity-ai.js';
+import { gradeParts, validGrade, normGrade, mergeMarks, reviewParts, normReview, MARK, LEVEL } from './activity-ai.js';
 import { A, registerStep, curAct, commitAct, refresh, render, goStep, esc, SS, getBox, visible, openActivity } from './activity.js';
+import { activityAccuracy, accuracyText } from '../grade-accuracy.js';
 
 /* 세션 상태: 올린 학생 쪽은 한 활동지에만 붙음. idx[i] = i번째 학생의 쪽 번호들. 채점은 한 번에 한 활동지만 */
 /* raw: 올린 학생 쪽(정리 전), pages: 모아찍기·뒷면을 정리한 쪽 */
@@ -218,8 +219,8 @@ async function gradeOne(id, i, meter) {
     const r = normGrade(v, a0.items);
     const a = getActivity(id), s = a && a.students[i];
     if (!s || s.no !== no) return;
-    // 선생님이 고친 칸은 그대로
-    s.marks = Object.fromEntries(a.items.map(it => { const old = s.marks && s.marks[it.no]; return [it.no, old && old.manual ? old : judgeCell(it, r.marks[it.no])]; }));
+    // 선생님이 고친 칸은 그대로, AI가 새로 매긴 칸은 처음 값(ai0)도 기억
+    s.marks = mergeMarks(a.items, s.marks, r.marks);
     // 선생님이 고친 잘한 점·더 해 볼 점도 그대로(비운 칸은 AI 글로 채움)
     for (const f of ['good', 'next']) if (!(s[f + 'Manual'] && s[f])) { s[f] = r[f]; delete s[f + 'Manual']; }
     if (!s.levelManual) { s.level = r.level; s.levelWhy = r.levelWhy; }
@@ -306,6 +307,7 @@ function step4HTML(a) {
       ${a.aiUse && useText(a.aiUse) ? `<p class="muted" id="acAiUse">${G.usedNow.has(a.id) ? '' : '지난 채점 '}${esc(useText(a.aiUse))}</p>` : ''}
       ${!ready ? '<p class="muted">스캔이 이 화면에 없어요. 3단계에서 학생 활동지를 올리면 채점할 수 있어요. 채점한 결과는 그대로 고칠 수 있어요.</p>' : ''}
       ${chk ? `<p class="muted">노란 칸 ${chk}개는 AI가 확신하지 못했거나 앱 판정과 달라요. 눌러서 확인해 주세요.</p>` : ''}
+      ${done ? `<p class="muted act-acc" id="acAcc">${esc(accuracyText(activityAccuracy(a), { finished: a.done, graded: true }))}</p>` : ''}
       <div class="ac-grid-wrap"><table class="ac-grid" id="acGrid"><thead><tr><th>번호</th>${a.items.map(it => `<th title="${esc(it.ask)}">${it.no}</th>`).join('')}<th>수준</th><th>잘한 점</th><th>더 해 볼 점</th></tr></thead><tbody>${rows}</tbody></table></div>
     </div>
     <div class="row act-next"><button class="btn primary" type="button" data-ac="toResults"${done ? '' : ' disabled'}>다음: 결과</button></div>`;

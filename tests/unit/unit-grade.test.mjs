@@ -70,7 +70,7 @@ test('다시 채점: 선생님이 고친 칸은 그대로', () => {
   const old = { 1: { read: '③', pts: 5, ai: 0, flag: 'differ', why: '', ok: true, manual: true }, 2: { read: '', pts: 0, ai: 0, flag: '', why: '', ok: false, manual: false } };
   const fresh = { 1: { read: '②', pts: 0, ai: 0, flag: '', why: '', ok: false, manual: false }, 2: { read: '④', pts: 10, ai: 10, flag: '', why: '', ok: false, manual: false } };
   const m = mergeCells(old, fresh);
-  assert.equal(m[1], old[1]); assert.equal(m[2], fresh[2]);
+  assert.equal(m[1], old[1]); assert.deepEqual(m[2], { ...fresh[2], ai0: 10 }); // AI가 새로 매긴 칸은 처음 값(ai0)도 기억
   assert.equal(needsCheck({ flag: 'essay', ok: false }), true);
   assert.equal(needsCheck({ flag: 'essay', ok: true }), false);
   assert.equal(needsCheck({ flag: '', ok: false }), false);

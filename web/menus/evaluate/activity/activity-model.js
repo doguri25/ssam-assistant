@@ -1,6 +1,7 @@
 /* 활동지 저장(스펙 5장): 학년도 자료 activity:list(요약)·activity:a:<id>(활동지 하나)·activity:set(올리기 설정).
    학생 결과는 번호만(이름 없음) */
 import * as store from '../../../core/store.js';
+import { activityAccuracy } from '../grade-accuracy.js';
 
 const LIST = 'activity:list', A = id => 'activity:a:' + id, SET = 'activity:set';
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -17,8 +18,9 @@ export function newActivity(meta = {}) {
 const valid = a => isObj(a) && typeof a.id === 'string' && isObj(a.meta) && Array.isArray(a.items) && Array.isArray(a.students);
 export function getActivity(id) { const a = store.get(A(id), null); return valid(a) ? a : null; }
 
+// acc: AI 채점 정확도(목록·누적에 씀, 이 기능 전 요약엔 없음)
 const summary = a => ({ id: a.id, title: a.meta.title || '', subject: a.meta.subject || '', date: a.meta.date || '', term: a.meta.term || null,
-  n: a.students.filter(s => !s.skip && s.status === 'done').length, done: !!a.done, at: a.createdAt || 0 });
+  n: a.students.filter(s => !s.skip && s.status === 'done').length, done: !!a.done, at: a.createdAt || 0, sample: !!a.meta.sample, acc: activityAccuracy(a) });
 /* 저장할 때 긴 글을 자름 */
 const trimmed = a => ({
   ...a, sheet: { student: String((a.sheet && a.sheet.student) || '').slice(0, 12000), teacher: String((a.sheet && a.sheet.teacher) || '').slice(0, 12000) },

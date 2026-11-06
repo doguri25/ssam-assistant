@@ -155,6 +155,13 @@ export function judgeCell(item, cell) {
   }
   return { ...c, chk: !c.sure || !c.mark };
 }
+/* AI 채점 결과를 칸에 넣음(처음·다시 채점): 선생님이 고친 칸은 그대로, AI가 새로 매긴 칸은 그 표시를 AI 처음 값(ai0, 채점 정확도)으로 기억 */
+export const mergeMarks = (items, old = {}, fresh = {}) => Object.fromEntries(items.map(it => {
+  const o = old && old[it.no];
+  if (o && o.manual) return [it.no, o];
+  const c = judgeCell(it, fresh[it.no]);
+  return [it.no, { ...c, ai0: c.mark }];
+}));
 
 /* ---------- 검토 (노란 칸만) ---------- */
 /* 공통: 검토 지시·문항과 기준 전체(학생마다 같아 캐시). 학생 글: 먼저 채점한 결과(다시 볼 칸) */
