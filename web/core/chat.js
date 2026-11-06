@@ -345,11 +345,13 @@ async function addMemo({ nos = [], body = '' }) {
   if (!hk) { say('행동특성 메모를 열지 못했어요. 평가 › 행동특성에서 넣어 주세요.'); return; }
   const line = memoLine(m.text, today());
   const done = await hk.addMemo(nos, prev => appendMemo(prev, line));
-  const hidden = done.filter(d => !d.shown).map(d => d.no);
-  const msg = say([`${nosText(nos)} 행동특성 메모에 넣었어요.`, `「${line}」`, m.masked ? '이름처럼 보이는 말은 ○○○로 가렸어요.' : '',
-    hidden.length ? `${nosText(hidden)}은(는) 학급 명단에 없는 번호예요.` : ''].filter(Boolean).join('\n'),
-  { links: [{ label: '행동특성 보기', route: { to: 'hk', no: nos[0] } }] });
-  mem.set(msg.id, { undo: done });
+  // 학급 명단에 없는 번호(학생 수 밖·예외 번호)는 행동특성이 만들지 않음(목록에 보이지 않는 메모가 생기지 않게)
+  const put = done.filter(d => !d.skipped), out = done.filter(d => d.skipped).map(d => d.no);
+  if (!put.length) { say(`${nosText(out)}은(는) 학급 명단에 없는 번호라 메모를 넣지 않았어요. 번호를 확인해 주세요.`); return; }
+  const msg = say([`${nosText(put.map(d => d.no))} 행동특성 메모에 넣었어요.`, `「${line}」`, m.masked ? '이름처럼 보이는 말은 ○○○로 가렸어요.' : '',
+    out.length ? `${nosText(out)}은(는) 학급 명단에 없는 번호라 넣지 않았어요.` : ''].filter(Boolean).join('\n'),
+  { links: [{ label: '행동특성 보기', route: { to: 'hk', no: put[0].no } }] });
+  mem.set(msg.id, { undo: put });
   draw();
 }
 async function viewMemo({ nos = [] }) {

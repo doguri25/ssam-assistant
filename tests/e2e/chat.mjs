@@ -2,7 +2,7 @@
 // 분명하면 바로 시작(품의 초안·쪽지·가정통신문·공문·메뉴 탭), 애매하면 AI(notes, 전화번호 줄 빼고)·후보 버튼, 아직 없는 기능은 알림,
 // 「3·5번 …」 행동특성 메모 덧붙이기(이름 가림·되돌리기·메모 보기), 채팅 창에 파일 놓기·📎, 기록 30개·지우기, 바탕화면 버튼이 채팅을 엶.
 // 검토 고침(2026-11-06): 기록에는 이름·파일 이름을 가린 글, 여러 줄 글은 줄을 살려 넘기고 전화번호만 가림, 넘길 것이 없거나 AI가 없거나 쓰는 중이면
-// 시작했다고 하지 않음, 쓰던 가정통신문은 바꾸지 않고 덧붙임
+// 시작했다고 하지 않음, 쓰던 가정통신문은 바꾸지 않고 덧붙임, 학급 명단에 없는 번호는 메모를 만들지 않음
 import { join } from 'node:path';
 import { open, run, assert, mockClaude, FIXTURES } from './helpers.mjs';
 
@@ -17,6 +17,8 @@ await page.addInitScript(() => {
   if (!localStorage.getItem('ssam:engine')) localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true }));
   // 행동특성: 3번은 메모가 있음(그 끝에 덧붙임), 5번은 줄이 없음(만듦)
   if (!localStorage.getItem('ssam:hk')) localStorage.setItem('ssam:hk', JSON.stringify({ settings: {}, students: [{ id: 'h3', no: 3, label: '', memo: '성실함, 책임감 강함', results: [], done: 0 }] }));
+  // 학급 명단은 아직 안 정함(학생 수 0: 모든 번호를 보여 줌, 메모 줄이 없으면 만듦) — 검토 고침 M2에서 25명으로 정함
+  if (!localStorage.getItem('ssam:class')) localStorage.setItem('ssam:class', JSON.stringify({ count: 0, except: [] }));
 });
 const prompts = [];
 let slow = 0; // 가정통신문·번역 답을 늦춤(쓰는 중에 또 부를 때)
@@ -288,6 +290,17 @@ await run('chat', [
     assert(prompts.length === n, 'AI를 부름');
     await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true })));
     await page.reload(); await page.waitForTimeout(400);
+  }],
+  ['검토 고침 M2: 학급 명단에 없는 번호(35번)는 메모 줄을 만들지 않고 알림', async () => {
+    await page.evaluate(() => window.SSAM.setClass(25, []));
+    const b = await sendWait('35번 발표 목소리가 커짐');
+    assert(b.includes('35번') && b.includes('학급 명단에 없는 번호') && !b.includes('메모에 넣었어요'), b);
+    const c = await sendWait('3·35번 줄 서기 잘함');
+    assert(c.includes('3번 행동특성 메모에 넣었어요') && c.includes('35번') && c.includes('학급 명단에 없는 번호'), c);
+    // 행특은 0.5초 뒤에 저장함
+    await page.waitForFunction(() => ((JSON.parse(localStorage.getItem('ssam:hk')) || { students: [] }).students.find(s => s.no === 3) || {}).memo?.endsWith('[11. 6.] 줄 서기 잘함'));
+    const h = await hk();
+    assert(!h.students.some(s => s.no === 35) && h.students.some(s => s.no === 25), JSON.stringify(h.students.map(s => [s.no, s.memo])));
   }],
   ['파일: 채팅 창에 놓으면 받는 곳 흐름(확인 카드)·창이 열려 있으면 놓기 판은 안 뜸, 📎는 파일 고르기', async () => {
     await openChat();

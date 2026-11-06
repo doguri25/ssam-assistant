@@ -2741,7 +2741,7 @@ document.addEventListener('change', e => {
     toast(ex.length ? `${ex.join(', ')}번은 나이스에 칸이 없는 번호로 건너뛰어요` : '예외 번호를 지웠어요');
   }
 });
-storeReady.then(() => ClassStore.load());
+const classReady = storeReady.then(() => ClassStore.load());
 
 /* ===== 행동특성 및 종합의견 ===== */
 const HK = {
@@ -5862,18 +5862,21 @@ window.SSAM = {
     grBusy: () => GR.running.size > 0 || ['grading', 'ranking', 'writing'].includes(GR.phase)
   },
   setMode, getMode: () => S.mode,
-  // 「쌤」 채팅의 한 줄 관찰 메모(core/chat.js): 행동특성 그 번호 메모를 next(지금 메모)로 바꿈(학생 줄이 없으면 만듦), 되돌리기, 읽기
+  // 「쌤」 채팅의 한 줄 관찰 메모(core/chat.js): 행동특성 그 번호 메모를 next(지금 메모)로 바꿈(학생 줄이 없으면 만듦), 되돌리기, 읽기.
+  // 학급 명단에 없는 번호(학생 수 밖·예외 번호)는 줄을 만들지도 고치지도 않음(행특 목록에 보이지 않아 메모가 숨어 버림) → { no, skipped: true }
   hk: {
     async addMemo(nos, next) {
       await HKStore.ready;
+      await classReady.catch(() => {});
       const done = [];
       for (const no of nos) {
+        if (!inClass(no)) { done.push({ no, skipped: true }); continue; }
         let s = HK.students.find(x => x.no === no);
         const created = !s;
         if (!s) { s = { id: hkId(), no, label: '', memo: '', results: [], done: 0 }; HK.students.push(s); }
         const prev = s.memo || '';
         s.memo = String(next(prev));
-        done.push({ no, prev, memo: s.memo, created, shown: inClass(no) });
+        done.push({ no, prev, memo: s.memo, created });
       }
       HK.students.sort((a, b) => a.no - b.no);
       if (!HK.sel && HK.students[0]) HK.sel = HK.students[0].id;
@@ -5885,6 +5888,7 @@ window.SSAM = {
       await HKStore.ready;
       const back = [];
       for (const d of list || []) {
+        if (d.skipped) continue;
         const s = HK.students.find(x => x.no === d.no);
         if (!s || s.memo !== d.memo) continue;
         if (d.created && !(s.results || []).length) { HK.students = HK.students.filter(x => x !== s); if (HK.sel === s.id) HK.sel = HK.students[0] ? HK.students[0].id : null; }
