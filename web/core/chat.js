@@ -22,7 +22,7 @@ const hasFiles = e => !!(e.dataTransfer && [...(e.dataTransfer.types || [])].inc
 const newId = () => 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 let deps = { receive: () => {}, pickFiles: () => {} };
-let panel = null, logEl = null, ta = null, brief = [];
+let panel = null, logEl = null, ta = null, brief = null; // brief: 오늘 할 일 줄(처음 세기 전에는 null)
 const mem = new Map(); // 메시지 id → { text(보낸 글 그대로), undo(관찰 메모 되돌리기) } — 이 창에만(저장하지 않음)
 let temp = []; // 저장하지 않는 메시지(기다리는 중·메모 보기)
 
@@ -101,7 +101,7 @@ const dayText = d => `${+d.slice(5, 7)}월 ${+d.slice(8, 10)}일(${DAY[weekday(d
 function briefHTML() {
   const t = today();
   return `<section class="chat-brief" aria-label="오늘 할 일"><h4>오늘 할 일 <small>${esc(dayText(t))}</small></h4>
-    ${brief.length ? `<ul>${brief.map((l, i) => `<li><button type="button" class="cb-line" data-brief="${i}">${l.when ? `<span class="cb-when${l.hot ? ' hot' : ''}">${esc(l.when)}</span>` : ''}<span class="cb-t">${esc(l.text)}</span></button></li>`).join('')}</ul>`
+    ${!brief ? '<p class="muted cb-none"><span class="spin"></span>세는 중…</p>' : brief.length ? `<ul>${brief.map((l, i) => `<li><button type="button" class="cb-line" data-brief="${i}">${l.when ? `<span class="cb-when${l.hot ? ' hot' : ''}">${esc(l.when)}</span>` : ''}<span class="cb-t">${esc(l.text)}</span></button></li>`).join('')}</ul>`
     : `<p class="muted cb-none">${EMPTY}</p>`}</section>`;
 }
 const HELLO = '무엇을 도와드릴까요? 예) 「알코올램프 10개 5,000원 품의」 「3번 토론에서 근거 들어 반론 잘함」 「가정통신문 베트남어로」 「주간학습안내」';
@@ -151,7 +151,7 @@ async function onClick(e) {
   if (b.dataset.chat === 'close') { closeChat(); return; }
   if (b.dataset.chat === 'clear') { clearHistory(); ta.focus(); return; }
   if (b.dataset.chat === 'attach') { deps.pickFiles(); return; }
-  if (b.dataset.brief != null) { const l = brief[+b.dataset.brief]; if (l) { await goRoute(l.route); afterGo(); } return; }
+  if (b.dataset.brief != null) { const l = (brief || [])[+b.dataset.brief]; if (l) { await goRoute(l.route); afterGo(); } return; }
   if (b.dataset.chip != null) {
     const m = findMsg(b.dataset.msg), c = m && (m.chips || [])[+b.dataset.chip];
     if (!c) return;
@@ -296,7 +296,7 @@ async function run(intent, p = {}) {
     else { go('settings', 'years'); say('업무 인수인계서는 아직 준비 중이에요. 설정 › 학년도로 왔어요.'); }
     afterGo(); return;
   }
-  if (intent === 'briefing') { await refreshBrief(); say(brief.length ? `오늘 할 일 ${brief.length}개를 맨 위에 모았어요. 누르면 그 화면으로 가요.` : EMPTY); if (logEl) logEl.scrollTop = 0; return; }
+  if (intent === 'briefing') { await refreshBrief(); say(brief && brief.length ? `오늘 할 일 ${brief.length}개를 맨 위에 모았어요. 누르면 그 화면으로 가요.` : EMPTY); if (logEl) logEl.scrollTop = 0; return; }
   if (intent === 'memo') { await addMemo(p); return; }
   if (intent === 'memoView') { await viewMemo(p); return; }
   say('그 일은 아직 못 해요.');

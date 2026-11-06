@@ -64,6 +64,7 @@ await run('chat', [
   }],
   ['할 일이 없으면 「오늘은 급한 일이 없어요」', async () => {
     await openChat();
+    await page.waitForFunction(() => !document.querySelector('#chatPanel .chat-brief').textContent.includes('세는 중'));
     const b = await page.textContent(`${C} .chat-brief`);
     assert(b.includes('오늘 할 일') && b.includes('11월 5일(목)') && b.includes('오늘은 급한 일이 없어요'), b);
   }],
