@@ -1,15 +1,16 @@
 /* 「쌤」 채팅 창 (스펙 2026-11-06 D·E·F): 오른쪽 아래 「쌤」 버튼을 누르면 열리고(닫기·Esc), Windows 바탕화면 「쌤」 버튼을 눌러도 열림.
    글 → 할 일(chat-route.js routeText, 모르면 AI notes에 할 일 목록을 주고 고르게) → 분명하면 그 메뉴로 가서 칸을 채우고 바로 시작, 애매하면 후보 버튼.
    열면 맨 위 「오늘 할 일」(briefing.js, AI 없이). 「3번 …」은 평가 › 행동특성 그 번호 메모 끝에 한 줄([되돌리기]).
-   파일은 버튼·창에 끌어 놓거나 📎로 — 받는 곳(inbox.js) 흐름 그대로. 기록은 최근 30개(ssam:chat, 학년도와 상관없음, 이름은 가려서).
+   파일은 버튼·창에 끌어 놓거나 📎로 — 받는 곳(inbox.js) 흐름 그대로. 기록은 최근 30개(ssam:chat, 학년도와 상관없음, 이름·전화번호는 가려서, 파일 이름은 남기지 않음).
+   메뉴에 넘기는 글은 줄바꿈을 살리고 전화번호·전자 우편만 그 자리에서 가림(그 메뉴가 개인정보 규칙으로 다시 거름).
+   메뉴가 돌려준 상태('started'·'no-ai'·'busy'·'empty' …)대로 말함 — 시작하지 않았으면 「쓰고 있어요」라고 하지 않음.
    저장·결재·상신은 언제나 선생님이 직접 */
 import { get, set, remove } from './store.js';
 import { go } from './shell.js';
 import * as ai from './ai.js';
-import { stripPersonal } from './survey.js';
-import { stripNames } from './privacy.js';
+import { maskContacts } from './privacy.js';
 import { listEvents, addDays, weekday } from './calendar.js';
-import { routeText, payloadFor, isSure, aiRoutePrompt, normAiRoute, intentLabel, LANGS, langLabel, parseMemo, maskMemo, memoLine, appendMemo, nosText } from './chat-route.js';
+import { routeText, payloadFor, isSure, aiRoutePrompt, normAiRoute, intentLabel, LANGS, langLabel, parseMemo, maskMemo, memoLine, appendMemo, nosText, safeText } from './chat-route.js';
 import { briefing, EMPTY } from './briefing.js';
 
 const KEY = 'chat', FLAG = 'chat:open', MAX = 30;
@@ -23,7 +24,7 @@ const newId = () => 'c' + Date.now().toString(36) + Math.random().toString(36).s
 
 let deps = { receive: () => {}, pickFiles: () => {} };
 let panel = null, logEl = null, ta = null, brief = null; // brief: 오늘 할 일 줄(처음 세기 전에는 null)
-const mem = new Map(); // 메시지 id → { text(보낸 글 그대로), undo(관찰 메모 되돌리기) } — 이 창에만(저장하지 않음)
+const mem = new Map(); // 메시지 id → { text(보낸 글, 전화번호만 가림), shown(이 창에만 보일 글), undo(관찰 메모 되돌리기) } — 이 창에만(저장하지 않음)
 let temp = []; // 저장하지 않는 메시지(기다리는 중·메모 보기)
 
 /* ---------- 기록 ---------- */
@@ -112,7 +113,7 @@ function msgHTML(m) {
   const chips = (m.chips || []).map((c, i) => `<button type="button" class="chip chat-chip" data-chip="${i}" data-msg="${esc(m.id)}">${esc(c.label)}</button>`).join('');
   const links = (m.links || []).map((l, i) => `<button type="button" class="btn text tiny" data-link="${i}" data-msg="${esc(m.id)}">${esc(l.label)}</button>`).join('');
   const undo = extra.undo ? `<button type="button" class="btn text tiny" data-undo="${esc(m.id)}">되돌리기</button>` : '';
-  return `<div class="chat-msg ${m.who}${m.wait ? ' wait' : ''}" data-id="${esc(m.id)}"><div class="chat-bub">${m.wait ? '<span class="spin"></span>' : ''}${esc(m.text).replace(/\n/g, '<br>')}</div>
+  return `<div class="chat-msg ${m.who}${m.wait ? ' wait' : ''}" data-id="${esc(m.id)}"><div class="chat-bub">${m.wait ? '<span class="spin"></span>' : ''}${esc(extra.shown || m.text).replace(/\n/g, '<br>')}</div>
     ${chips || links || undo ? `<div class="chat-acts">${chips}${links}${undo}</div>` : ''}</div>`;
 }
 function draw() {
@@ -203,7 +204,10 @@ function sendBox() {
 }
 function takeFiles(files) {
   if (!files.length) return;
-  say(`파일 ${files.length}개를 받았어요(${files.slice(0, 3).map(f => `「${f.name}」`).join(', ')}${files.length > 3 ? ' …' : ''}). 확인 카드를 봐 주세요.`);
+  // 파일 이름(「김민수_상담일지.hwp」처럼 학생 이름이 들 수 있음)은 기록에 남기지 않고 이 창에서만 보임
+  const m = say(`파일 ${files.length}개를 받았어요. 확인 카드를 봐 주세요.`);
+  mem.set(m.id, { shown: `파일 ${files.length}개를 받았어요(${files.slice(0, 3).map(f => `「${f.name}」`).join(', ')}${files.length > 3 ? ' …' : ''}). 확인 카드를 봐 주세요.` });
+  draw();
   deps.receive(files);
 }
 /* 다른 화면·시험이 부름: 글 하나 보내기 */
@@ -211,11 +215,13 @@ export async function send(text) {
   const raw = String(text || '').trim();
   if (!raw) return;
   mount();
-  const r = routeText(raw), pm = parseMemo(raw);
-  // 기록에는 이름을 가린 글: 「3번 …」(학생 이야기)은 관찰 메모에 저장하는 모양, 그 밖은 개인정보 규칙(명단·전화번호 줄 빼기·이름 칸 가리기). 너무 긴 글은 줄여서
-  const shown = (pm ? `${nosText(pm.nos)} ${maskMemo(pm.body).text}` : stripNames(raw).text) || '(이름·전화번호만 있는 글)';
+  // 메뉴에 넘길 글: 전화번호·전자 우편만 그 자리에서 가림(줄을 통째로 빼면 같은 줄의 내용까지 없어짐), 줄바꿈은 그대로
+  const said = maskContacts(raw);
+  const r = routeText(said), pm = parseMemo(raw);
+  // 기록에는 이름을 가린 글: 「3번 …」(학생 이야기)은 관찰 메모에 저장하는 모양, 그 밖은 AI로 보내는 글과 같게(명단 줄 빼기·전화번호·이름 가리기). 너무 긴 글은 줄여서
+  const shown = (pm ? `${nosText(pm.nos)} ${maskMemo(pm.body).text}` : safeText(raw)) || '(이름·전화번호만 있는 글)';
   const me = push({ who: 'me', text: shown.length > 1000 ? shown.slice(0, 1000) + '…' : shown });
-  mem.set(me.id, { text: raw });
+  mem.set(me.id, { text: said });
   if (isSure(r)) { await run(r.intent, r.payload); return; }
   let cands = r.candidates.slice();
   // 규칙으로 모르면 AI(notes)에 할 일 목록을 주고 고르게(개인정보 줄은 빼고 이름은 가려서)
@@ -223,11 +229,11 @@ export async function send(text) {
     const wait = say('무엇을 할지 알아보는 중이에요…', { wait: true }, { keep: false });
     let v = null;
     try {
-      // 명단·전화번호 줄은 빼고(stripPersonal) 이름처럼 보이는 말은 가려서(maskMemo) 보냄
-      v = normAiRoute(await ai.generateJSON(aiRoutePrompt(maskMemo(stripPersonal(raw).text).text), { task: 'notes', valid: o => !!o && typeof o === 'object' && !Array.isArray(o) }));
+      // 명단 줄은 빼고(stripPersonal) 전화번호·이름처럼 보이는 말은 가려서(safeText) 보냄
+      v = normAiRoute(await ai.generateJSON(aiRoutePrompt(safeText(raw)), { task: 'notes', valid: o => !!o && typeof o === 'object' && !Array.isArray(o) }));
     } catch (e) { v = null; }
     drop(wait);
-    if (v && v.intent) { const p = payloadFor(v.intent, raw); if (v.intent === 'translate' && v.lang) p.lang = v.lang; await run(v.intent, p); return; }
+    if (v && v.intent) { const p = payloadFor(v.intent, said); if (v.intent === 'translate' && v.lang) p.lang = v.lang; await run(v.intent, p); return; }
     if (v) cands = [...new Set([...v.candidates, ...cands])];
   }
   cands = cands.slice(0, 3);
@@ -248,6 +254,9 @@ const NAV = {
   weekly: ['class', 'weekly', '학급 › 주간학습안내로 왔어요.'], today: ['class', 'today', '학급 › 오늘 수업으로 왔어요.'], progress: ['class', 'progress', '학급 › 진도표·시수로 왔어요.'],
   aikey: ['settings', 'ai', '설정 › AI로 왔어요. 키를 넣어 주세요.']
 };
+const NO_AI = 'AI가 준비되지 않아 시작하지 못했어요. 설정 › AI에서 키를 넣거나 시험용 AI를 써 주세요.';
+/* 메뉴가 돌려준 상태 → 할 말(started: 시작함, no-ai, busy: 이미 하는 중, empty: 넣을 것이 없음). 모르는 상태는 error */
+const tell = (st, words) => say(words[st] || words.error || '하지 못했어요. 그 화면에서 다시 해 주세요.');
 /* 할 일 하기: 분명하면 그 메뉴로 가서 칸을 채우고 바로 시작(저장·결재·상신은 선생님이 직접) */
 async function run(intent, p = {}) {
   if (NAV[intent]) { const [m, t, msg] = NAV[intent]; go(m, t); say(msg); afterGo(); return; }
@@ -259,43 +268,60 @@ async function run(intent, p = {}) {
   }
   if (intent === 'message') {
     if (!p.text) { go('etc', 'message'); say('기타 › 쪽지 작성으로 왔어요. 공문·계획 파일을 넣거나 내용을 붙여 넣어 주세요.'); afterGo(); return; }
-    (await import('../menus/etc/message.js')).putMessageFiles([], { text: p.text }).catch(() => {});
-    say('쪽지 작성에 넣고 쪽지를 쓰고 있어요. 다 되면 칸과 본문을 확인해 주세요. 보내기는 직접 해 주세요.');
+    const st = await (await import('../menus/etc/message.js')).putMessageFiles([], { text: p.text }).catch(() => 'error');
+    tell(st, { started: '쪽지 작성에 넣고 쪽지를 쓰고 있어요. 다 되면 칸과 본문을 확인해 주세요. 보내기는 직접 해 주세요.',
+      'no-ai': `쪽지 작성에 글을 넣었어요. ${NO_AI}`, busy: '이미 쪽지를 쓰는 중이에요. 다 되면 다시 말해 주세요.',
+      empty: '쪽지에 넣을 내용이 없어요(명단·전화번호 줄을 빼니 남은 글이 없어요). 기타 › 쪽지 작성에 안내할 내용을 붙여 넣어 주세요.' });
     afterGo(); return;
   }
   if (intent === 'letter') {
     if (!p.text) { go('etc', 'letter'); say('기타 › 가정통신문으로 왔어요. 넣을 내용을 적어 주세요.'); afterGo(); return; }
     const m = await import('../menus/etc/letter.js');
-    m.putLetterSources({ memo: p.text });
-    Promise.resolve(m.write()).catch(() => {});
-    say('가정통신문 넣을 내용에 넣고 글을 쓰고 있어요. 날짜·장소·금액은 꼭 확인해 주세요.');
+    // 쓰던 가정통신문(넣을 내용·공문)이 있으면 바꾸지 않고 끝에 덧붙임 — 두 내용이 섞여 써지지 않게 바로 쓰지 않음
+    if (m.putLetterSources({ memo: p.text }) === 'added') {
+      say('쓰던 가정통신문(넣을 내용·공문)이 있어서 바꾸지 않고 넣을 내용 끝에 덧붙였어요. 두 내용이 섞이지 않게 확인한 뒤 [가정통신문 쓰기]를 눌러 주세요.');
+      afterGo(); return;
+    }
+    let st;
+    try { st = m.write(); } catch (e) { st = 'error'; }
+    tell(st, { started: '가정통신문 넣을 내용에 넣고 글을 쓰고 있어요. 날짜·장소·금액은 꼭 확인해 주세요.',
+      'no-ai': `가정통신문 넣을 내용에 넣었어요. ${NO_AI}`,
+      busy: '다른 가정통신문을 쓰는 중이에요. 이 글은 새 가정통신문의 넣을 내용에 넣어 두었으니, 다 쓴 뒤 [가정통신문 쓰기]를 눌러 주세요.',
+      empty: '가정통신문에 넣을 내용이 없어요(명단·전화번호 줄을 빼니 남은 글이 없어요). 넣을 내용을 적어 주세요.' });
     afterGo(); return;
   }
   if (intent === 'translate') {
     if (!p.lang) { say('어느 말로 번역할까요?', { chips: LANGS.map(([id, l]) => ({ intent: 'translate', label: l, lang: id })) }); return; }
     const fn = await optional('../menus/etc/letter.js', 'openLetterTranslate');
     if (fn) {
-      // 쓴 가정통신문이 없으면 openLetterTranslate가 곧바로 false — 번역이 시작되면 끝까지 기다리지 않음
-      const r = Promise.resolve().then(() => fn(p.lang)).catch(() => false);
-      const quick = await Promise.race([r, new Promise(res => setTimeout(() => res('busy'), 400))]);
-      say(quick === false ? `먼저 가정통신문을 써 주세요. 기타 › 가정통신문으로 왔어요. 다 쓰면 「가정통신문 ${langLabel(p.lang)}로」라고 다시 말해 주세요.`
-        : `가정통신문을 ${langLabel(p.lang)}로 번역하고 있어요. AI 번역이라 보내기 전에 꼭 확인해 주세요.`);
+      // 번역이 시작되면 끝까지 기다리지 않음(openLetterTranslate는 곧바로 상태를 돌려줌)
+      const st = await Promise.resolve().then(() => fn(p.lang)).catch(() => 'error'), L = langLabel(p.lang);
+      tell(st, { started: `가정통신문을 ${L}로 번역하고 있어요. AI 번역이라 보내기 전에 꼭 확인해 주세요.`,
+        saved: `저장해 둔 ${L} 번역본을 열었어요. AI 번역이라 보내기 전에 꼭 확인해 주세요.`,
+        empty: `먼저 가정통신문을 써 주세요. 기타 › 가정통신문으로 왔어요. 다 쓰면 「가정통신문 ${L}로」라고 다시 말해 주세요.`,
+        writing: `가정통신문을 쓰는 중이에요. 다 쓰면 「가정통신문 ${L}로」라고 다시 말해 주세요.`,
+        busy: `이미 번역하는 중이에요. 다 되면 「가정통신문 ${L}로」라고 다시 말해 주세요.`,
+        'no-ai': `${L} 번역본 칸을 열었어요. ${NO_AI}`, 'no-lang': '어느 말로 번역할지 번역본 칸에서 골라 주세요.' });
     }
     else { go('etc', 'letter'); say('가정통신문 번역은 아직 준비 중이에요. 기타 › 가정통신문으로 왔어요.'); }
     afterGo(); return;
   }
   if (intent === 'gongmun') {
     if (!p.text) { go('etc', 'gongmun'); say('기타 › 공문 처리로 왔어요. 공문 파일을 끌어 놓거나 글을 붙여 넣어 주세요.'); afterGo(); return; }
-    (await import('../menus/etc/gongmun.js')).putGongmunText(p.text).catch(() => {});
-    say('공문 처리에 넣고 기한·할 일을 뽑고 있어요.');
+    const st = await (await import('../menus/etc/gongmun.js')).putGongmunText(p.text).catch(() => 'error');
+    tell(st, { started: '공문 처리에 넣고 기한·할 일을 뽑고 있어요.', 'no-ai': '공문 처리에 글만 넣었어요. AI가 준비되지 않아 기한·할 일은 뽑지 못했어요. 설정 › AI에서 키를 넣거나 시험용 AI를 써 주세요.',
+      empty: '기타 › 공문 처리로 왔어요. 명단·전화번호 줄을 빼니 넣을 공문 글이 없어요. 공문 파일을 끌어 놓거나 글을 붙여 넣어 주세요.' });
     afterGo(); return;
   }
   if (intent === 'report') {
     if (!p.text) { go('plan', 'report'); say('계획 › 결과 보고로 왔어요. 계획서·공문이나 한 일을 넣어 주세요.'); afterGo(); return; }
     const m = await import('../menus/plan/report.js');
     m.putReportSources({ memo: p.text });
-    Promise.resolve(m.write()).catch(() => {});
-    say('결과 보고에 넣고 보고서를 쓰고 있어요. 다 되면 확인해 주세요.');
+    let st;
+    try { st = m.write(); } catch (e) { st = 'error'; }
+    tell(st, { started: '결과 보고에 넣고 보고서를 쓰고 있어요. 다 되면 확인해 주세요.', 'no-ai': `결과 보고 한 일 메모에 넣었어요. ${NO_AI}`,
+      busy: '다른 결과 보고를 쓰는 중이에요. 이 글은 새 결과 보고에 넣어 두었으니, 다 쓴 뒤 [결과 보고 쓰기]를 눌러 주세요.',
+      empty: '결과 보고에 넣을 내용이 없어요(명단·전화번호 줄을 빼니 남은 글이 없어요). 한 일을 적어 주세요.' });
     afterGo(); return;
   }
   if (intent === 'handover') {

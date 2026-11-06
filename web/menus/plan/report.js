@@ -111,15 +111,20 @@ export async function addFiles(files) {
 }
 
 /* ---------- AI 한 번 → 칸 → 공문·보고서 ---------- */
-export async function write() {
-  if (R.busy) return;
+/* [결과 보고 쓰기]: 바로 상태를 돌려주고(쌤 채팅이 맞는 말을 하게) 쓰기는 이어서 → 'started' | 'busy'(쓰는 중) | 'empty'(넣을 것 없음) | 'no-ai' */
+export function write() {
+  if (R.busy) return 'busy';
   const x = c();
-  const hasText = x.sources.some(s => s.text.trim()) || x.memo.trim();
+  const hasText = x.sources.some(s => s.text.trim()) || cleanSheet(x.memo).text.trim();
   // 쪽 그림은 지금 목록에 있는 문서 것만(뺀 문서 것은 보내지 않음), 모두 6쪽까지
   const scans = R.scans.filter(e => x.sources.includes(e.src)).flatMap(e => e.imgs).slice(0, 6);
-  if (!hasText && !R.photos.length && !scans.length) { toast('계획서·공문 파일이나 한 일 메모, 사진을 넣어 주세요.', 5000); return; }
-  if (!ai.ready()) { toast('설정 › AI에서 키를 넣어 주세요', 5000); return; }
+  if (!hasText && !R.photos.length && !scans.length) { toast('계획서·공문 파일이나 한 일 메모, 사진을 넣어 주세요.', 5000); return 'empty'; }
+  if (!ai.ready()) { toast('설정 › AI에서 키를 넣어 주세요', 5000); return 'no-ai'; }
   R.busy = true; R.msg = 'AI가 결과 보고를 쓰는 중…'; render();
+  writeJob(x, scans);
+  return 'started';
+}
+async function writeJob(x, scans) {
   try {
     const memo = cleanSheet(x.memo).text;
     // 보낸 사진 차례를 기억: 기다리는 동안 사진을 빼거나 옮겨도 설명이 제 사진에 감

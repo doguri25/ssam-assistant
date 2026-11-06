@@ -43,7 +43,7 @@ await page.waitForTimeout(400);
 await run('letter-translate', [
   ['openLetterTranslate: 쓴 글이 없으면 가정통신문 탭으로 가서 먼저 쓰라고 알림(AI 안 부름)', async () => {
     const r = await openTr('vi');
-    assert(r === false, String(r));
+    assert(r === 'empty', String(r));
     await page.waitForSelector(`${P} #lfMemo`);
     assert(await page.isVisible(P), '가정통신문 화면');
     assert((await toast()).includes('먼저 가정통신문을 써 주세요'), await toast());
@@ -86,7 +86,7 @@ await run('letter-translate', [
     await goLetter();
     await page.waitForSelector(`${C} .lf-tr-note`);
     assert((await trOf('2026학년도 가을 현장체험학습 안내')) === 'Thông báo trải nghiệm thực tế mùa thu', '고친 번역');
-    assert(await openTr('베트남어') === true, '다시 열기');
+    assert(await openTr('베트남어') === 'saved', '다시 열기');
     assert((await toast()).includes('저장해 둔 번역본'), await toast());
     assert(reqs.length === n, 'AI를 다시 부름');
   }],
@@ -131,7 +131,7 @@ await run('letter-translate', [
   }],
   ['openLetterTranslate("zh") → 중국어(간체) 번역을 바로 시작(베트남어 번역은 그대로 남음)', async () => {
     const n = trCalls().length;
-    assert(await openTr('zh') === true, 'zh');
+    assert(await openTr('zh') === 'started', 'zh');
     await page.waitForFunction(s => document.querySelector(`${s} [data-lf-lang="zh"][aria-pressed="true"]`) && document.querySelector(`${s} .lf-tr-note`), C, { timeout: 8000 });
     assert(trCalls().length === n + 1 && trCalls()[n].includes('简体中文'), '중국어 AI');
     assert((await trOf('2026학년도 가을 현장체험학습 안내')) === 'ZH: 2026학년도 가을 현장체험학습 안내');

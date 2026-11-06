@@ -145,12 +145,17 @@ function sampleOf() {
   if (f.rec.kind === 'plain') return cleanSample(f.rec.plain.sample || '');
   return f.parsed ? formSample(f.parsed.lines, f.rec.roles) : '';
 }
-export async function write() {
-  if (F.busy) return;
+/* [가정통신문 쓰기]: 바로 상태를 돌려주고(쌤 채팅이 맞는 말을 하게) 쓰기는 이어서 → 'started' | 'busy'(쓰는 중) | 'empty'(넣을 것 없음) | 'no-ai' */
+export function write() {
+  if (F.busy) return 'busy';
   const x = c();
-  if (!x.memo.trim() && !x.sources.some(s => s.text.trim())) { toast('넣을 내용을 적거나 공문·계획 파일을 넣어 주세요.', 5000); return; }
-  if (!ai.ready()) { toast('설정 › AI에서 키를 넣어 주세요', 5000); return; }
+  if (!cleanSheet(x.memo).text.trim() && !x.sources.some(s => s.text.trim())) { toast('넣을 내용을 적거나 공문·계획 파일을 넣어 주세요.', 5000); return 'empty'; }
+  if (!ai.ready()) { toast('설정 › AI에서 키를 넣어 주세요', 5000); return 'no-ai'; }
   F.busy = true; render();
+  writeJob(x);
+  return 'started';
+}
+async function writeJob(x) {
   try {
     // 학년도: 오늘이 든 학년도(1·2월은 앞 해, 쪽지·공문 처리와 같게). 설정의 계획 학년도는 1월부터 다음 해라 쓰지 않음
     const year = schoolYearOf(today());
@@ -201,11 +206,13 @@ async function download() {
 /* ---------- 번역본 (스펙 2026-11-06 K) ---------- */
 const TR_NOTE = 'AI 번역이에요. 보내기 전에 확인해 주세요.';
 const trLangOf = x => F.trLang || LANG_IDS.find(k => x.tr && x.tr[k]) || LANG_IDS[0];
-/* 그 언어 번역: 저장해 둔 번역(원문 글이 같은 줄)은 다시 부르지 않고, 없는 줄만 AI로. all: 처음부터 다시 */
-async function translate(lang, { all = false } = {}) {
+/* 그 언어 번역: 저장해 둔 번역(원문 글이 같은 줄)은 다시 부르지 않고, 없는 줄만 AI로. all: 처음부터 다시.
+   바로 상태를 돌려주고 AI 번역은 이어서 → 'started' | 'saved'(저장해 둔 번역으로 다 됨) | 'busy'(번역 중) | 'writing'(글을 쓰는 중) | 'empty'(쓴 글 없음) | 'no-ai' */
+function translate(lang, { all = false } = {}) {
   const x = c();
-  if (!x.out) { toast('먼저 가정통신문을 써 주세요. 다 쓰면 번역본을 만들 수 있어요.', 5000); return; }
-  if (F.trBusy) { toast('번역하는 중이에요. 잠시만 기다려 주세요.'); return; }
+  if (!x.out && F.busy) { toast('가정통신문을 쓰는 중이에요. 다 쓰면 번역본을 만들 수 있어요.', 5000); return 'writing'; }
+  if (!x.out) { toast('먼저 가정통신문을 써 주세요. 다 쓰면 번역본을 만들 수 있어요.', 5000); return 'empty'; }
+  if (F.trBusy) { toast('번역하는 중이에요. 잠시만 기다려 주세요.'); return 'busy'; }
   F.trLang = lang;
   if (!x.tr) x.tr = {};
   const old = x.tr[lang], base = all || !old ? {} : old.units, plan = planTr(x.out, base);
@@ -213,10 +220,14 @@ async function translate(lang, { all = false } = {}) {
   if (!plan.jobs.length) {
     done(plan.finish({})); render();
     toast(old && !all ? `저장해 둔 번역본을 열었어요. ${TR_NOTE}` : TR_NOTE, 5000);
-    return;
+    return 'saved';
   }
-  if (!ai.ready()) { render(); toast('설정 › AI에서 키를 넣어 주세요', 5000); return; }
+  if (!ai.ready()) { render(); toast('설정 › AI에서 키를 넣어 주세요', 5000); return 'no-ai'; }
   F.trBusy = lang; render();
+  trJob(lang, plan, done);
+  return 'started';
+}
+async function trJob(lang, plan, done) {
   const ans = {};
   let err = null;
   for (const b of batches(plan.jobs)) {
@@ -236,18 +247,18 @@ async function trDownload() {
   const bi = bilingualLetter(x.out, e.units, lang, { date: x.out.date || today() });
   await saveLetter(bi, fileBase(`${x.out.title || '가정통신문'} (${L.name})`), bi.missing ? ` · 번역이 없는 ${bi.missing}줄은 한국어만 넣었어요` : '');
 }
-/* 다른 메뉴(쌤 채팅 등)에서: 가정통신문 탭으로 가서 그 언어(vi·zh·ru·en, '베트남어'도) 번역을 시작. 쓴 글이 없으면 먼저 쓰라고 알림 → 시작했으면 true */
-export async function openLetterTranslate(lang) {
+/* 다른 메뉴(쌤 채팅 등)에서: 가정통신문 탭으로 가서 그 언어(vi·zh·ru·en, '베트남어'도) 번역을 시작. 쓴 글이 없으면 먼저 쓰라고 알림.
+   → 'started'(AI 번역 시작) | 'saved'(저장해 둔 번역본을 엶) | 'busy'(번역 중) | 'writing'(글을 쓰는 중) | 'empty'(쓴 글 없음) | 'no-ai' | 'no-lang'(모르는 언어) */
+export function openLetterTranslate(lang) {
   go('etc', 'letter');
   const x = c(), id = langOf(lang);
-  if (!x.out) { render(); toast('먼저 가정통신문을 써 주세요. 다 쓰면 번역본을 만들 수 있어요.', 5000); return false; }
-  if (id) F.trLang = id;
+  if (!x.out) { render(); return translate(id || LANG_IDS[0]); }
+  if (id && !F.trBusy) F.trLang = id; // 다른 말로 번역하는 중이면 보던 언어 그대로(translate가 'busy')
   render();
   const card = box && box.querySelector('#lfTrCard');
   if (card && card.scrollIntoView) card.scrollIntoView({ block: 'start' });
-  if (!id) { toast('베트남어·중국어(간체)·러시아어·영어 중에서 골라 주세요.', 5000); return false; }
-  await translate(id);
-  return true;
+  if (!id) { toast('베트남어·중국어(간체)·러시아어·영어 중에서 골라 주세요.', 5000); return 'no-lang'; }
+  return translate(id);
 }
 
 /* ---------- 그리기 ---------- */
@@ -497,14 +508,23 @@ export function putLetterDraft({ title = '', body = [], memo = '' } = {}) {
   cur = { ...blank(), ...keep, ...(memo ? { memo: String(memo) } : {}), out: { title: String(title || ''), date: today(), body: lines, replyOn: false, reply: { title: '회신서', fields: [], due: '' }, short: '' } };
   rcReset(); resend(true); save(cur, { push: true }); render();
 }
-/* 공문 처리 등: 넣기 칸에 공문을 넣은 새 가정통신문(쓰기는 선생님이 누름) */
+/* 공문 처리·쌤 채팅 등: 넣기 칸에 공문·넣을 내용을 넣음(쓰기는 부르는 쪽이나 선생님이) → 'new'(새 가정통신문) | 'put'(빈 글에 넣음) | 'added'(쓰던 글에 덧붙임).
+   - 이미 쓴 가정통신문이거나 쓰는 중이면(다 쓰면 최근에 들어감) 새 가정통신문
+   - 아직 쓰지 않은 가정통신문: 공문은 더하고 쓰던 메모는 그대로. 넣을 내용(memo)이 왔는데 쓰던 메모·공문이 있으면 바꾸지 않고 메모 끝에 덧붙임
+     (가정통신문은 쓰던 글을 하나만 두므로, 새로 시작하면 쓰던 내용이 없어지고, 바꾸면 남은 공문과 섞여 써짐 — 'added'면 부르는 쪽이 바로 쓰지 않음) */
 export function putLetterSources({ sources = [], memo = '' } = {}) {
   go('etc', 'letter');
   const add = sources.filter(s => s && String(s.text || '').trim()).map(s => ({ name: String(s.name || '공문'), text: cleanSheet(s.text).text }));
-  const x0 = c();
-  // 아직 쓰지 않은 가정통신문이면 거기에 공문을 더하고 쓰던 메모는 그대로, 이미 쓴 것이면 새 가정통신문
-  cur = !x0.out ? { ...x0, memo: memo ? String(memo) : x0.memo, sources: [...x0.sources, ...add].slice(-10) } : { ...blank(), memo: String(memo || ''), sources: add.slice(0, 10) };
+  const x0 = c(), m = String(memo || '').trim(), had = !!(x0.memo.trim() || x0.sources.length);
+  const srcs = [...x0.sources, ...add].slice(-10);
+  let how;
+  if (x0.out || F.busy) { cur = { ...blank(), memo: m, sources: add.slice(0, 10) }; how = 'new'; }
+  else if (!m) { cur = { ...x0, sources: srcs }; how = had ? 'added' : 'put'; }
+  else if (!had || x0.memo.trim() === m) { cur = { ...x0, memo: m, sources: srcs }; how = 'put'; }
+  else { cur = { ...x0, memo: x0.memo.trim() ? `${x0.memo.replace(/\s+$/, '')}\n\n(쌤 채팅에서 더한 내용)\n${m}` : m, sources: srcs }; how = 'added'; }
   rcReset(); save(); render();
+  if (how === 'added' && m) toast('쓰던 가정통신문이 있어서 넣을 내용 끝에 덧붙였어요. 확인한 뒤 [가정통신문 쓰기]를 눌러 주세요.', 6000);
+  return how;
 }
 
 /* ---------- 누르기·입력 ---------- */

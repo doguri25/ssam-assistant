@@ -77,15 +77,18 @@ export async function putGongmunFiles(files) {
   await addFiles(files || []);
 }
 
-/* 「쌤」 채팅: 공문 글 → 기타 › 공문 처리에 넣고 AI로 기한·할 일 뽑기(붙여 넣기 [넣기]와 같게) */
+/* 「쌤」 채팅: 공문 글 → 기타 › 공문 처리에 넣고 AI로 기한·할 일 뽑기(붙여 넣기 [넣기]와 같게). 뽑기는 기다리지 않고 상태를 돌려줌
+   → 'started' | 'no-ai'(글만 넣음) | 'empty'(명단·전화번호 줄을 빼니 남은 글이 없어 넣지 않음) */
 export async function putGongmunText(text) {
   const { go } = await import('../../core/shell.js');
   go('etc', 'gongmun');
-  if (!String(text || '').trim()) return;
+  if (!/[가-힣a-zA-Z0-9]/.test(cleanSheet(String(text || '')).text.replace(/○○○/g, ''))) { render(); return 'empty'; }
   const r = addText(null, text);
   if (r.cut) toast(`명단·전화번호가 적힌 줄 ${r.cut}곳은 빼고 넣었어요(AI로 보내지 않아요)`, 5000);
   render();
-  await readDoc(r.id);
+  const ready = ai.ready();
+  readDoc(r.id);
+  return ready ? 'started' : 'no-ai';
 }
 
 /* ---------- 넘기기 ---------- */

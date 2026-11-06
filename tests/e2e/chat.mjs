@@ -1,6 +1,8 @@
 // 「쌤」 버튼 채팅(스펙 2026-11-06 D·E·F): 손그림 버튼 → 채팅 창(닫기·Esc), 열면 「오늘 할 일」(AI 없이, 줄을 누르면 그 화면),
 // 분명하면 바로 시작(품의 초안·쪽지·가정통신문·공문·메뉴 탭), 애매하면 AI(notes, 전화번호 줄 빼고)·후보 버튼, 아직 없는 기능은 알림,
-// 「3·5번 …」 행동특성 메모 덧붙이기(이름 가림·되돌리기·메모 보기), 채팅 창에 파일 놓기·📎, 기록 30개·지우기, 바탕화면 버튼이 채팅을 엶
+// 「3·5번 …」 행동특성 메모 덧붙이기(이름 가림·되돌리기·메모 보기), 채팅 창에 파일 놓기·📎, 기록 30개·지우기, 바탕화면 버튼이 채팅을 엶.
+// 검토 고침(2026-11-06): 기록에는 이름·파일 이름을 가린 글, 여러 줄 글은 줄을 살려 넘기고 전화번호만 가림, 넘길 것이 없거나 AI가 없거나 쓰는 중이면
+// 시작했다고 하지 않음, 쓰던 가정통신문은 바꾸지 않고 덧붙임
 import { join } from 'node:path';
 import { open, run, assert, mockClaude, FIXTURES } from './helpers.mjs';
 
@@ -17,8 +19,10 @@ await page.addInitScript(() => {
   if (!localStorage.getItem('ssam:hk')) localStorage.setItem('ssam:hk', JSON.stringify({ settings: {}, students: [{ id: 'h3', no: 3, label: '', memo: '성실함, 책임감 강함', results: [], done: 0 }] }));
 });
 const prompts = [];
+let slow = 0; // 가정통신문·번역 답을 늦춤(쓰는 중에 또 부를 때)
 await mockClaude(page, async ({ prompt }) => {
   prompts.push(prompt);
+  if (slow && /^\[가정통신문( 번역)?\]/.test(prompt)) await new Promise(r => setTimeout(r, slow));
   if (prompt.startsWith('[채팅 할 일 고르기]')) {
     const said = prompt.split('[글]')[1] || '';
     if (said.includes('채점')) return JSON.stringify({ intent: '', candidates: ['unit', 'gr'] });
@@ -29,6 +33,7 @@ await mockClaude(page, async ({ prompt }) => {
   if (prompt.startsWith('[쪽지 안내]')) return JSON.stringify({ kind: 'training', title: 'AI 활용 수업 연수', when: [{ date: '2026-11-12', time: '15:00~16:00' }], place: '과학실', target: '전 교직원' });
   if (prompt.startsWith('[가정통신문]')) return JSON.stringify({ title: '현장체험학습 안내', greeting: ['안녕하십니까?'], intro: '현장체험학습을 다음과 같이 실시합니다.', items: ['1. 일시: 2026. 11. 20.', '2. 준비물: 도시락'], closing: '협조를 부탁드립니다.', reply: { need: false }, short: '11월 20일 현장체험학습이 있어요.', target: '보호자' });
   if (prompt.startsWith('[공문 처리]')) return JSON.stringify({ title: '과학의 날 행사 참가 신청', due: '2026-11-20', dueNote: '참가 신청서', summary: '참가 신청서를 내요.', tasks: [{ text: '참가 신청서 제출', due: '' }], kinds: ['message'] });
+  if (prompt.startsWith('[가정통신문 번역]')) { const out = {}; for (const m of prompt.matchAll(/^\[(\d+)\] (.*)$/gm)) out[m[1]] = `TR: ${m[2]}`; return JSON.stringify(out); }
   return '{}';
 });
 const of = p => prompts.filter(x => x.startsWith(p));
@@ -41,6 +46,22 @@ const waitBot = s => page.waitForFunction(s => [...document.querySelectorAll('#c
 const cur = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:nav')));
 const hk = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:hk')));
 const chatLog = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:chat') || '[]'));
+// 글을 보내고 새 봇 답이 맨 끝에 올 때까지(기다리는 중 말풍선은 빼고, 기록은 30개라 수는 그대로일 수 있어 id로) → 그 답
+const lastId = () => page.evaluate(() => { const l = [...document.querySelectorAll('#chatLog .chat-msg')]; return l.length ? l[l.length - 1].dataset.id || '' : ''; });
+const sendWait = async text => {
+  await openChat();
+  const prev = await lastId();
+  await send(text);
+  await page.waitForFunction(prev => { const l = [...document.querySelectorAll('#chatLog .chat-msg')], m = l[l.length - 1];
+    return !!m && m.classList.contains('bot') && !m.classList.contains('wait') && m.dataset.id !== prev; }, prev);
+  return lastBot();
+};
+const until = async (fn, what, ms = 6000) => { const end = Date.now() + ms; while (!(await fn())) { if (Date.now() > end) throw new Error(what); await page.waitForTimeout(50); } };
+const letterCur = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:letter:cur') || 'null'));
+const gmList = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:gongmun:list') || '[]'));
+const LB = 'section[data-menu="etc"] .lf-box';
+const letterF = () => page.evaluate(async () => { const F = (await import('/menus/etc/letter.js')).F; return { busy: F.busy, trBusy: F.trBusy }; });
+const letterIdle = () => until(async () => { const f = await letterF(); return !f.busy && !f.trBusy; }, '가정통신문을 다 쓰지 않음', 8000);
 await page.goto(url);
 await page.waitForTimeout(400);
 
@@ -183,9 +204,94 @@ await run('chat', [
     assert((await page.textContent(sheet)).includes('인수인계서'), '인수인계서 창');
     await page.keyboard.press('Escape');
   }],
+  ['검토 고침 I1: 이름이 든 글도 기록에는 가린 글로(「박지훈 결석계 가정통신문」「김민수 단원평가 다시 채점」「김민수 엄마한테 쪽지」)', async () => {
+    for (const text of ['박지훈 결석계 가정통신문', '김민수 단원평가 다시 채점', '김민수 엄마한테 쪽지']) await sendWait(text);
+    const l = JSON.stringify(await chatLog());
+    assert(!l.includes('박지훈') && !l.includes('김민수'), l.slice(-600));
+    assert(l.includes('○○○ 결석계 가정통신문') && l.includes('○○○ 단원평가 다시 채점') && l.includes('○○○ 엄마한테 쪽지'), l.slice(-600));
+    await letterIdle();
+  }],
+  ['검토 고침 I2: 여러 줄 공문(전화번호 줄 있음) → 줄을 살려 공문 처리에 넣고 번호만 가림', async () => {
+    const n = of('[공문 처리]').length;
+    await sendWait('공문 처리\n제목: 2026 과학의 날 운영 안내\n담당: 교무부장 (031-123-4567)');
+    await until(async () => (await gmList()).some(d => /운영 안내/.test(d.text)), '공문 처리에 없음');
+    const d = (await gmList()).find(x => /운영 안내/.test(x.text));
+    assert(d.text.includes('제목: 2026 과학의 날 운영 안내') && d.text.includes('교무부장') && !d.text.includes('031-123-4567') && !d.text.includes('공문 처리'), JSON.stringify(d.text));
+    await until(() => of('[공문 처리]').length > n, '공문 AI 안 부름');
+    const p = of('[공문 처리]').at(-1);
+    assert(p.includes('과학의 날 운영 안내') && p.includes('교무부장') && !p.includes('031-123-4567'), p.slice(-300));
+    assert(!JSON.stringify(await chatLog()).includes('031-123-4567'), '기록에 전화번호');
+  }],
+  ['검토 고침 I2·I3: 한 줄 가정통신문에 전화번호 → 번호만 가리고 그대로 씀, 언어 낱말이 내용에만 있으면 번역이 아님', async () => {
+    const n = of('[가정통신문]').length, t = of('[가정통신문 번역]').length;
+    const b = await sendWait('영어 캠프 안내 가정통신문 써 줘: 11월 27일 영어 캠프, 준비물 필기도구, 문의 031-123-4567');
+    assert(b.includes('쓰고 있어요'), b);
+    await until(() => of('[가정통신문]').length > n, '가정통신문 AI 안 부름');
+    const p = of('[가정통신문]').at(-1);
+    assert(p.includes('11월 27일 영어 캠프') && p.includes('필기도구') && !p.includes('031-123-4567'), p.slice(-400));
+    assert(of('[가정통신문 번역]').length === t, '번역으로 감');
+    await letterIdle();
+  }],
+  ['검토 고침 I2: 넘길 내용이 전화번호뿐이면 그 화면으로만(시작했다고 하지 않음)', async () => {
+    const n = of('[공문 처리]').length, docs = (await gmList()).length;
+    const b = await sendWait('공문 처리\n031-123-4567');
+    assert(b.includes('공문 처리로 왔어요') && !b.includes('뽑고 있어요'), b);
+    await page.waitForTimeout(300);
+    assert(of('[공문 처리]').length === n && (await gmList()).length === docs, '빈 공문을 넣음');
+  }],
+  ['검토 고침 I5: 쓰던 가정통신문(넣을 내용)이 있으면 바꾸지 않고 끝에 덧붙이고, 섞어 쓰지 않음', async () => {
+    await page.click('nav.app-side [data-menu-go="etc"]'); await page.click('#menuTabs [data-tab="letter"]');
+    await page.click(`${LB} [data-lf="new"]`);
+    await page.fill(`${LB} #lfMemo`, '가을 운동회 준비물 안내(체육복·물)');
+    const n = of('[가정통신문]').length;
+    const b = await sendWait('가정통신문 써 줘: 12월 4일 학예회 안내');
+    const x = await letterCur();
+    assert(x.memo.includes('가을 운동회 준비물 안내(체육복·물)') && x.memo.includes('12월 4일 학예회 안내') && x.memo.indexOf('운동회') < x.memo.indexOf('학예회') && !x.out, JSON.stringify(x.memo));
+    assert(b.includes('덧붙였어요') && !b.includes('쓰고 있어요'), b);
+    await page.waitForTimeout(300);
+    assert(of('[가정통신문]').length === n, '두 내용을 섞어 씀');
+    assert((await page.inputValue(`${LB} #lfMemo`)).includes('12월 4일 학예회 안내'), '화면');
+  }],
+  ['검토 고침 M10: 이미 쓰는 중·번역하는 중이면 「쓰는 중이에요」(시작했다고 하지 않음)', async () => {
+    await page.click(`${LB} [data-lf="new"]`);
+    slow = 1500;
+    const n = of('[가정통신문]').length;
+    const a = await sendWait('가정통신문 써 줘: 12월 11일 겨울방학 안내');
+    assert(a.includes('쓰고 있어요'), a);
+    const b = await sendWait('가정통신문 써 줘: 12월 18일 졸업식 안내');
+    assert(b.includes('쓰는 중이에요') && !b.includes('쓰고 있어요'), b);
+    const c = await sendWait('가정통신문 러시아어로');
+    assert(c.includes('쓰는 중이에요') && !c.includes('번역하고 있어요'), c);
+    await letterIdle();
+    assert(of('[가정통신문]').length === n + 1, '한 번만 씀');
+    // 쓰는 중에 받은 글은 새 가정통신문의 넣을 내용에 남아 있음
+    assert((await letterCur()).memo.includes('12월 18일 졸업식 안내'), JSON.stringify((await letterCur()).memo));
+    // 다 쓴 겨울방학 안내를 열고 번역 → 번역하는 중에 또 부르면
+    await page.click(`${LB} #lfRecent [data-lf-open]`);
+    const d = await sendWait('가정통신문 러시아어로');
+    assert(d.includes('러시아어로 번역하고 있어요'), d);
+    const e = await sendWait('가정통신문 중국어로');
+    assert(e.includes('번역하는 중이에요') && !e.includes('번역하고 있어요'), e);
+    await letterIdle();
+    await page.waitForSelector(`${LB} #lfTrCard .lf-tr-note`);
+    slow = 0;
+  }],
+  ['검토 고침 M1: AI가 준비되지 않으면 「쓰고 있어요·뽑고 있어요·번역하고 있어요」 대신 설정 안내', async () => {
+    await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: '' }, remember: true })));
+    await page.reload(); await page.waitForTimeout(400);
+    const n = prompts.length;
+    for (const [text, no] of [['가정통신문 영어로', '번역하고 있어요'], ['11월 12일 3시 과학실 AI 연수 안내 쪽지 써 줘', '쓰고 있어요'], ['가정통신문 써 줘: 12월 24일 겨울방학식 안내', '쓰고 있어요'],
+      ['공문: 독서 주간 운영 결과를 12월 1일까지 제출', '뽑고 있어요'], ['결과 보고 써 줘: 과학의 날 행사를 4월 21일에 했어요', '쓰고 있어요']]) {
+      const b = await sendWait(text);
+      assert(b.includes('설정 › AI') && b.includes('시험용 AI') && !b.includes(no), `${text} → ${b}`);
+    }
+    assert(prompts.length === n, 'AI를 부름');
+    await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true })));
+    await page.reload(); await page.waitForTimeout(400);
+  }],
   ['파일: 채팅 창에 놓으면 받는 곳 흐름(확인 카드)·창이 열려 있으면 놓기 판은 안 뜸, 📎는 파일 고르기', async () => {
     await openChat();
-    const dt = await page.evaluateHandle(() => { const d = new DataTransfer(); d.items.add(new File(['번호,성명\n1,가\n2,나'], '명단.csv', { type: 'text/csv' })); return d; });
+    const dt = await page.evaluateHandle(() => { const d = new DataTransfer(); d.items.add(new File(['번호,성명\n1,가\n2,나'], '김민수네_명단.csv', { type: 'text/csv' })); return d; });
     await page.dispatchEvent('body', 'dragenter', { dataTransfer: dt });
     await page.dispatchEvent('body', 'dragover', { dataTransfer: dt, clientX: 1250, clientY: 830 });
     assert(await page.isHidden('#inboxPad'), '판이 채팅 창을 가림');
@@ -194,6 +300,10 @@ await run('chat', [
     await page.dispatchEvent(C, 'drop', { dataTransfer: dt });
     await page.waitForSelector(`${sheet} #ibRun`);
     assert((await page.textContent(sheet)).includes('명단.csv'), '확인 카드');
+    // 검토 고침 I1: 파일 이름(학생 이름이 들 수 있음)은 기록에 남기지 않음 — 이 창에서만 보임
+    const l = JSON.stringify(await chatLog());
+    assert(l.includes('파일 1개를 받았어요') && !l.includes('김민수') && !l.includes('명단.csv'), l.slice(-300));
+    assert((await page.textContent('#chatLog')).includes('김민수네_명단.csv'), '이 창에서는 보임');
     await page.keyboard.press('Escape');
     assert(await page.locator(sheet).count() === 0 && await page.isVisible(C), 'Esc는 카드만 닫음');
     const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click(`${C} [data-chat="attach"]`)]);
