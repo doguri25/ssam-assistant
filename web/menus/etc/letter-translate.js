@@ -1,11 +1,11 @@
 /* 기타 › 가정통신문 번역본 (스펙 2026-11-06 K): 다문화 가정에 보낼 번역본 — 베트남어·중국어(간체)·러시아어·영어.
    원문(제목·본문 줄·회신서·알림 글)을 조각으로 나눠 AI로 보냄: 전화번호·날짜·숫자만 있는 줄·칸은 보내지 않고 그대로,
-   줄 머리(「1.」「  가.」「□」)·표 짜임(「| 시간 | 내용 |」)은 앱이 지키고, 전화번호·이메일은 {{1}}로, 이름은 ○○○로 가려 보냄(명단 줄은 보내지 않음).
+   줄 머리(「1.」「  가.」「□」)·표 짜임(「| 시간 | 내용 |」)은 앱이 지키고, 전화번호·이메일은 {{1}}로, 이름(학생·교직원)은 ○○○로 가려 보냄(명단 줄은 보내지 않음).
    번역은 원문 글을 열쇠로 가정통신문마다·언어마다 저장(원문을 고치면 그 줄만 다시). 문서는 원문과 나란히(문단마다 한국어 뒤에 번역).
    화면 없이 돌아감(시험) */
 import { isTableLine, splitCells } from '../../core/body-table.js';
 import { replyCells } from '../../core/hwpx-form.js';
-import { MASK } from '../../core/privacy.js';
+import { MASK, maskStaff, maskJosaNames } from '../../core/privacy.js';
 import { cleanSheet } from '../evaluate/activity/activity-read.js';
 
 /* no·student·parent·sign: 회신서의 정해진 칸 이름(앱이 넣음, AI 안 부름) */
@@ -79,19 +79,21 @@ function restore(t, keep, names) {
   return left.length ? `${s} ${left.join(' ')}`.trim() : s;
 }
 /* 보낼 조각 → { text(AI로 보낼 글), back(번역 → 가린 것을 되돌린 글) }. 명단·주민번호처럼 뺄 줄이거나 이름을 되돌릴 수 없으면 null(보내지 않음).
-   전화번호·이메일은 {{n}}, 이름은 ○○○(activity-read의 cleanSheet 규칙) */
+   전화번호·이메일은 {{n}}, 이름은 ○○○: activity-read의 cleanSheet 규칙에 더해 직함 앞뒤 교직원 이름(「교무부장 박영희 선생님」「강사: 최하은」
+   「3학년 부장 김솔」)과 조사가 붙은 이름(「김민수의 보호자님께」) — core/privacy.js maskStaff·maskJosaNames. 문서에는 원래 이름을 되돌려 넣음 */
 export function guard(text) {
   const keep = [];
   const s = String(text == null ? '' : text).trim().replace(SECRET, m => { keep.push(m); return `{{${keep.length}}}`; });
   const cl = cleanSheet(s);
   if (cl.lines) return null;
+  const st = maskStaff(cl.text), jn = maskJosaNames(st.text), out = jn.text;
   let names = [];
-  if (cl.names) {
-    const m = new RegExp(`^${cl.text.split(MASK).map(reEsc).join('(.+?)')}$`, 's').exec(s);
+  if (cl.names || st.masked || jn.masked) {
+    const m = new RegExp(`^${out.split(MASK).map(reEsc).join('(.+?)')}$`, 's').exec(s);
     if (!m || m.length < 2) return null;
     names = m.slice(1);
   }
-  return { text: cl.text, back: t => restore(t, keep, names) };
+  return { text: out, back: t => restore(t, keep, names) };
 }
 
 /* ---------- 계획·저장 ---------- */

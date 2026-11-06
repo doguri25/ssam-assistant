@@ -76,6 +76,55 @@ const NUMBERED = /^(\s*\d{1,2}[.)]?\s+)([가-힣]{3})(?=\s|$)/;
 const numName = l => { const m = NUMBERED.exec(l); return !!m && cellName(m[2]); };
 export const MASK = '○○○';
 
+/* ---------- 줄 안의 전화번호·전자 우편 (줄은 남기고 그 자리만) ---------- */
+export const CONTACT = new RegExp(`${PHONE.source}(?!\\d)|[\\w.+-]+@[\\w-]+\\.[\\w.]+`, 'g');
+/* 「문의 031-123-4567」 → 「문의 ○○○」: 전화번호 줄을 통째로 빼면(stripNames) 같은 줄의 내용까지 없어질 때 먼저 */
+export const maskContacts = text => String(text == null ? '' : text).replace(CONTACT, m => (m[0] === '(' && !m.includes(')') ? '(' + MASK : MASK)); // 「(031-…)」의 여는 괄호는 남김
+
+/* ---------- 교직원 이름 (업무 인수인계서·가정통신문 번역) ---------- */
+// 직함 앞의 이름: 「김가람 선생님」「이나래 부장님께」「김솔 선생님께」 (두 글자 이름은 「님」만 붙은 것은 빼고 — 선배님·원장님)
+const STAFF_AFTER = /(^|[^가-힣])([가-힣]{2,3})(\s*)(선생님|선생|교사|부장님?|교감님?|교장님?|주무관님?|실무사님?|강사님?|담당자|님)(?=$|[^가-힣]|[은는이가을를과와의에도께랑만한])/g;
+// 직함 뒤의 이름: 「강사 김가람」「담당: 박하늘」「3학년 부장 김솔」「담당 이나래에게」
+const STAFF_BEFORE = /((?:강사|담당자?|주무관|선생님|부장|문의)(?:\s*[:：]\s*|\s+))([가-힣]{2,5})(?![가-힣])/g;
+// 부서·과목 이름(세 글자)
+const STAFF_WORD = new Set(['원어민', '방과후', '행정실', '교무실', '연구부', '정보부', '교무부', '학년부', '진로부', '안전부', '인성부', '체육부', '과학부', '돌봄반', '특수반', '전담반', '정보화', '보건실']);
+// 직함 앞뒤에 흔히 오는 두 글자 낱말(흔한 성 글자로 시작해도 이름이 아님): 「전담 교사」「연구 부장」「우리 선생님」「강사 선정」「문의 전화」
+const TWO_WORD = new Set(('전담 연구 정보 안전 인성 진로 진학 도서 방송 문화 예술 인권 기획 홍보 공문 문서 국어 국제 한문 한국 도덕 기술 지리 지구 기초 기본 '
+  + '우리 모든 여러 전체 전교 전원 전문 명예 원로 신규 신임 기간 남자 여자 이번 이전 지난 선배 하나 한분 한명 모두 연수 선정 기관 전화 '
+  + '이름 성함 성명 명단 연락 경력 소개 위촉 배정 지정 신청 안내 지원 지도 지급 진행 채용 모집 공고 구인 선발 추천 문의 변경 인원 장소 '
+  + '이상 이하 우선 모임 정함 배치 조정 조회 현황 명의 구성 방문 서명 도장 원고 강의 강연 소속 주소 연령 성별 경험 전공 명함 차량 강당 반별 주번 반장 '
+  + '유치 초등 중등 고등 특기 방과 정규 주간 야간 오전 오후 당번 장학 인솔 임시 대체 기존 현장 강사').split(' '));
+/* 직함 옆 낱말 하나가 교직원 이름 모양인지: 세 글자(흔한 성, 부서 이름 아님) 또는 두 글자(흔한 성 + 흔한 낱말 아님) */
+export const staffName = n => (n.length === 3 ? cellName(n) && !STAFF_WORD.has(n) : n.length === 2 && SURNAME.has(n[0]) && !TWO_WORD.has(n));
+/* 「김솔께」「이나래에게」 → [이름, 조사] (세 글자 이름부터) */
+const staffJosa = w => { for (const k of [3, 2]) { if (w.length < k) continue; const n = w.slice(0, k), j = w.slice(k); if (JOSA.test(j) && staffName(n)) return [n, j]; } return null; };
+/* 직함 앞뒤의 교직원 이름만 ○○○로(그 밖의 글은 그대로 — 가린 자리를 되돌릴 수 있게 바꾸기만 함) → { text, masked } */
+export function maskStaff(text) {
+  let masked = 0;
+  const s = String(text == null ? '' : text)
+    .replace(STAFF_AFTER, (m, pre, n, sp, who) => (staffName(n) && !(n.length === 2 && who === '님') ? (masked++, pre + MASK + sp + who) : m))
+    .replace(STAFF_BEFORE, (m, pre, w) => { const r = staffJosa(w); return r ? (masked++, pre + MASK + r[1]) : m; });
+  return { text: s, masked };
+}
+
+/* ---------- 조사가 붙은 이름 (「김민수의 보호자님께」「이서연이 상을 받았어요」) ---------- */
+// 이름으로 보지 않는 끝 글자(「도시락을」「안내문을」「구급약을」「박물관을」 같은 낱말) — 이름 끝에 드문 글자
+const THING_END = /[락문약료비금권증품물판표실관장소당번처넷스]$/;
+// 「~서·~지·~구·~형·~하·~리·~일·~효」는 가운데가 이름에 흔한 글자일 때만 이름(김민서·이은지·김준형 — 신청서·설문지·서술형·소통하는·이메일은 아님)
+const NAME_MID = /[나도동리미민보서세소수승시아연영예우유윤은재정주준지채태하현혜효희성경상진용혁인선건]/;
+const josaName = n => plainOk(n) && !THING_END.test(n) && (!/[서지구형하리일효]$/.test(n) || NAME_MID.test(n[1]));
+/* 흔한 성으로 시작하는 세 글자 낱말 + 조사(빈 조사는 아님)만 ○○○로 → { text, masked } */
+export function maskJosaNames(text) {
+  let masked = 0;
+  const s = String(text == null ? '' : text).replace(/(^|[^가-힣○])([가-힣]{4,6})(?![가-힣])/g, (m, pre, w) => {
+    const n = w.slice(0, 3), j = w.slice(3);
+    if (!j || !JOSA.test(j) || !josaName(n)) return m;
+    masked++;
+    return pre + MASK + j;
+  });
+  return { text: s, masked };
+}
+
 /* 명단·담임 표처럼 이름이 늘어선 줄과 전화번호 줄은 빼고, 한 줄에 하나씩 적힌 이름(임원·학생 명단 표, 직책 옆 이름, 「이름 김민수」 칸, 번호 명단)은 ○○○로 가림
    → { text, dropped(뺀 줄), masked(가린 이름) } */
 export function stripNames(text) {
