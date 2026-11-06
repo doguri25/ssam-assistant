@@ -129,6 +129,8 @@ const VIEWS = {
         <div class="row"><button class="btn primary" type="button" data-set="backup">백업 파일 만들기</button><button class="btn" type="button" data-set="restore">백업 파일 불러오기</button></div>
         <input type="file" id="backupFile" accept=".json,application/json" hidden>`) +
       card('학년도 목록', `<ul class="yr-list"><li class="yr-row" data-yr="${cur}"><b>${cur}학년도</b><span class="muted">지금</span></li>${rows}</ul>`) +
+      card('업무 인수인계서', `<p class="muted" style="margin:0">올해 연간계획·행사·품의·공문을 모아 다음 담당자에게 넘길 문서를 만들어요. 학생 자료·이름·전화번호는 넣지 않아요.</p>
+        <div class="row"><button class="btn" type="button" data-set="handover">업무 인수인계서 만들기</button></div>`) +
       card('새 학년도', `<p class="muted" style="margin:0">학년도가 끝나면 새 학년도를 시작해요. 지금 자료는 보관함에 남고, 연간계획·행사계획은 새 학년도로 가져가요.</p>
         <div class="row"><button class="btn" type="button" data-set="newYear">${(yrList || []).some(x => x.year === cur + 1) ? `${cur + 1}학년도 자료가 이미 있어요 · 그 학년도로 가기` : `${cur + 1}학년도 시작하기`}</button></div>`));
   },
@@ -343,6 +345,7 @@ document.addEventListener('click', e => {
     else if (a === 'newYear') askNewYear();
     else if (a === 'goYear') askGo(+b.dataset.y);
     else if (a === 'delYear') askDel(+b.dataset.y);
+    else if (a === 'handover') import('./handover.js').then(m => m.openHandover(), () => toast('인수인계서를 열지 못했어요. 다시 눌러 주세요.', 5000));
     else if (a === 'addBreak') { school = { ...readSchool(), breaks: [...readBreaks(), { label: '', from: '', to: '' }] }; again(); }
     else if (a === 'delBreak') { const br = readBreaks(); br.splice(+b.dataset.i, 1); school = { ...readSchool(), breaks: br }; again(); }
     else if (a === 'saveSchool') {
