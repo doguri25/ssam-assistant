@@ -19,8 +19,26 @@ export const hasContact = v => CONTACT.test(String(v == null ? '' : v));
 const WON = /([\d,]*\d(?:\.\d+)?)\s*(?:(만)\s*원|(만)(?![가-힣])|원)/g;
 const MEASURE = /^(g|kg|ml|L|m|매|입)$/; // 규격에 가까운 단위(100매·80g) — 포장 단위가 따로 있으면 수량이 아님
 const SHIP = /^(배송비|택배비|운송비|배달비)$/;
+/* 「알코올램프 10개 5,000원, 다음 주 화요일 과학실 실험」: 쉼표로 이은 조각 중 수량·금액이 없는 조각(일시·장소·목적)은 품명에서 뺌.
+   숫자 속 쉼표(5,000)·괄호 속 쉼표(볼펜(검정, 빨강))는 나누지 않음. 일시·장소·목적은 AI가 넣기 글 전체에서 따로 채움 */
+const hasNumber = p => new RegExp(QTY.source).test(p) || new RegExp(WON.source).test(p) || /[×xX*]\s*[\d,]+/.test(p) || /(?:^|\s)[\d,]{2,}\s*$/.test(p.trim());
+function dropContext(s) {
+  const parts = [];
+  let depth = 0, cur = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if ('([{（'.includes(c)) depth++;
+    else if (')]}）'.includes(c)) depth = Math.max(0, depth - 1);
+    if (depth === 0 && /[,，;]/.test(c) && !(/\d/.test(s[i - 1] || '') && /\d/.test(s[i + 1] || ''))) { parts.push(cur); cur = ''; continue; }
+    cur += c;
+  }
+  parts.push(cur);
+  if (parts.length < 2) return s;
+  const keep = parts.filter(hasNumber);
+  return keep.length && keep.length < parts.length ? keep.join(', ') : s;
+}
 function parseLine(raw) {
-  let s = String(raw).replace(/^\s*(?:[-•·*▪◦]|\d+[).]|\(\d+\))\s*/, '').trim();
+  let s = dropContext(String(raw).replace(/^\s*(?:[-•·*▪◦]|\d+[).]|\(\d+\))\s*/, '').trim());
   if (!s) return null;
   let price = null, total = null;
   const tot = /(?:총|합계|전체)\s*(?:금액)?\s*:?\s*([\d,]+(?:\.\d+)?)\s*(만)?\s*원?/.exec(s);
@@ -56,7 +74,7 @@ function parseLine(raw) {
   }
   // 「내가 필요한 책」·「A4 용지 사주세요」 같은 1인칭·구어는 품명에서 뺌
   const name = plainItemName(s.replace(/[=@×*]|\(\s*\)|\[\s*\]/g, ' ').replace(/(^|\s)(?:x|X|각|개당|단가|금액)(?=\s|$)/g, ' ')
-    .replace(/[,:\-–·]+\s*$/, '').replace(/\s+/g, ' ').trim());
+    .replace(/(^|\s)[,，;]+(?=\s|$)/g, ' ').replace(/[,:\-–·]+\s*$/, '').replace(/\s+/g, ' ').trim());
   if (!name || price == null || !Number.isFinite(price)) return null;
   if (!unit && SHIP.test(name)) unit = '건';
   return { it: { ...emptyItem(), name, spec, unit, qty: String(qty), price: String(price) }, stated: total };
