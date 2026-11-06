@@ -85,9 +85,10 @@ export function gradeCell(item, ai) {
   return cell(read, auto, aiPts, auto !== aiPts ? 'differ' : (unsure ? 'low' : ''), why);
 }
 
-/* 다시 채점: 선생님이 고친 칸은 그대로 둠 */
+/* AI 채점 결과를 칸에 넣음(처음·다시 채점): AI가 새로 매긴 칸은 그 점수를 AI 처음 값(ai0, 채점 정확도)으로 기억.
+   선생님이 고친 칸은 처음 값까지 그대로 둠 */
 export function mergeCells(old = {}, fresh = {}) {
-  const out = { ...fresh };
+  const out = Object.fromEntries(Object.entries(fresh).map(([k, c]) => [k, c ? { ...c, ai0: c.pts } : c]));
   for (const k of Object.keys(old)) if (old[k] && old[k].manual) out[k] = old[k];
   return out;
 }
@@ -95,7 +96,8 @@ export function mergeCells(old = {}, fresh = {}) {
 export const needsCheck = c => !!(c && c.flag && !c.ok);
 
 /* 정답표의 한 문항을 고친 뒤: 채점한 학생의 그 칸을 읽은 답으로 다시 맞춤.
-   선생님이 고친 칸은 그대로 두되 배점 안으로만 줄임. 정답·유형을 고쳤으면 단답의 지난 AI 판단은 쓰지 않음 */
+   선생님이 고친 칸은 그대로 두되 배점 안으로만 줄임. 정답·유형을 고쳤으면 단답의 지난 AI 판단은 쓰지 않음.
+   AI 처음 값(ai0): 정답표 고침은 칸 채점이 틀린 것이 아니라서 손대지 않은 칸은 새 점수를 따르고, 고친 칸은 배점 안으로만(처음 값이 없던 옛 칸은 그대로 없음) */
 export function rescoreItem(test, no, field = '') {
   const stale = field === 'answer' || field === 'type';
   const it = test.key.items.find(i => i.no === no);
@@ -104,10 +106,11 @@ export function rescoreItem(test, no, field = '') {
   for (const st of test.students || []) {
     const c = st.items && st.items[no];
     if (!c) continue;
-    if (c.manual) { c.pts = Math.min(Number(c.pts) || 0, full); continue; }
+    if (c.manual) { c.pts = Math.min(Number(c.pts) || 0, full); if (c.ai0 != null) c.ai0 = Math.min(Number(c.ai0) || 0, full); continue; }
     // 지난 AI 판단이 낡았으면 앱이 맞춘 점수를 AI 점수로 봄(글자가 다른 단답은 0 → 노란 칸)
     const ai = stale && it.type !== 'essay' ? (autoJudge(it, c.read) ?? 0) : Math.min(Number(c.ai) || 0, full);
-    st.items[no] = gradeCell(it, { read: c.read, points: ai, sure: c.flag !== 'low', why: stale ? '' : c.why });
+    const g = gradeCell(it, { read: c.read, points: ai, sure: c.flag !== 'low', why: stale ? '' : c.why });
+    st.items[no] = c.ai0 != null ? { ...g, ai0: g.pts } : g;
   }
 }
 

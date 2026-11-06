@@ -2,6 +2,7 @@
 import { itemType } from './unit-key.js';
 import { ITEM_TYPES, studentTotal } from './unit-grade.js';
 import { makeTitle, LEVEL_NAME } from './unit-model.js';
+import { redoKind } from './unit-redo.js';
 
 const TYPE_NAME = Object.fromEntries(ITEM_TYPES);
 const TYPES = ITEM_TYPES.map(t => t[0]);
@@ -128,6 +129,48 @@ export function normPyeongeo(v) {
   for (const x of listOf(v, 'students')) {
     const no = Number(x && x.no);
     if (Number.isInteger(no) && no > 0 && x.text) out[no] = String(x.text).trim().slice(0, 400);
+  }
+  return out;
+}
+
+/* 결과지 복습 문제 (스펙 2026-11-06 A): 평가 하나에 한 번. 문항 번호·평가 내용·영역·유형·정답·교과서 쪽만 보냄(학생 정보·채점 기준 없음) */
+const KIND_NAME = { choice: '고르기(보기 4개)', short: '단답', essay: '서술형' };
+export function redoPrompt(test, items) {
+  const m = test.meta || {};
+  return [
+    '[단원평가 복습 문제]',
+    `${m.grade ? m.grade + '학년' : '초등학교'} ${makeTitle({ ...m, sample: false })} 단원평가에서 틀린 학생이 있는 문항입니다. 문항마다 같은 개념을 묻는 비슷한 복습 문제를 1개씩 만듭니다.`,
+    '', '[문항] 번호 | 평가 내용 | 영역 | 유형 | 정답 | 교과서 쪽 | 만들 꼴',
+    ...items.map(it => `- ${it.no} | ${it.content || ''} | ${it.domain || ''} | ${TYPE_NAME[it.type] || '단답'} | ${it.answer || ''} | ${it.pages || ''} | ${KIND_NAME[redoKind(it.type)]}`),
+    '', '[규칙]',
+    '- 원래 문제를 그대로 베끼지 않고, 같은 개념을 묻는 새 문제로 씁니다. 그 학년 학생이 혼자 풀 수 있게 쉽고 짧게(물음 80자 안).',
+    '- 고르기(보기 4개): q에 물음, choices에 보기 글 4개(번호 없이), answer에 정답 번호(①~④ 중 하나).',
+    '- 단답: q에 물음, answer에 짧은 정답(낱말·수).',
+    '- 서술형: q에 짧은 물음, answer에 예시 답(60자 안).',
+    '- explain: 왜 그 답인지 짧은 풀이(40자 안). 「~해요」처럼 씁니다.',
+    '- 그림·표를 봐야 풀 수 있는 문제는 만들지 않습니다.',
+    '', '[출력] JSON 하나만 출력합니다.',
+    '{"items":[{"no":1,"q":"물음","choices":["보기1","보기2","보기3","보기4"],"answer":"②","explain":"짧은 풀이"}]}'
+  ].join('\n');
+}
+const clip = (v, n) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n);
+const CIRC4 = '①②③④';
+export function normRedo(v, items) {
+  const by = new Map(items.map(i => [i.no, i])), out = {};
+  for (const x of listOf(v, 'items')) {
+    const it = by.get(Number(x && x.no));
+    if (!it || out[it.no]) continue;
+    const q = clip(x.q, 200);
+    if (!q) continue;
+    const kind = redoKind(it.type);
+    const choices = kind === 'choice' && Array.isArray(x.choices) ? x.choices.map(c => clip(String(c == null ? '' : c).replace(/^\s*(?:[①-⑩]|\(?\d+\s*[).])\s*/, ''), 60)).filter(Boolean).slice(0, 4) : [];
+    let answer = clip(x.answer, 120);
+    if (choices.length >= 2) {
+      // 정답은 ①~④로: 「2」「(2)」「②」, 또는 보기 글 그대로
+      const m = /^\(?\s*([1-4])\s*[).]?$|^([①-④])/.exec(answer), k = choices.indexOf(answer);
+      if (m) answer = m[2] || CIRC4[m[1] - 1]; else if (k >= 0) answer = CIRC4[k];
+    }
+    out[it.no] = { kind, q, choices: choices.length >= 2 ? choices : [], answer, explain: clip(x.explain, 40) };
   }
   return out;
 }

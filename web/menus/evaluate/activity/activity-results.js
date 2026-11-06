@@ -8,6 +8,7 @@ import { graded, markOf, titleOf, tableRows, tableDoc, slipsDoc } from './activi
 import { onePerPage, setOnePerPage } from '../../../core/slip-layout.js';
 import { SUBJECTS } from './activity-read.js';
 import { A, registerStep, registerView, curAct, commitAct, render, esc, getBox, visible } from './activity.js';
+import { activityAccuracy, accuracyText } from '../grade-accuracy.js';
 
 const TYPE_NAME = Object.fromEntries(TYPES);
 
@@ -23,7 +24,7 @@ function step5HTML(a) {
   const head = `<tr><th>번호</th>${a.items.map(it => `<th>${it.no}</th>`).join('')}<th>수준</th><th>잘한 점</th></tr>`;
   const rows = g.map(s => `<tr><td>${s.no}번</td>${a.items.map(it => `<td>${markOf(s, it)}</td>`).join('')}<td>${esc(LEVEL[s.level] || '')}</td><td class="ac-good">${esc(s.good)}</td></tr>`).join('');
   return `<div class="yp-card"><h3>문항별</h3><p class="muted" style="margin:0">× · 안 함이 많은 문항 먼저예요.</p><ul class="ac-stats" id="acStats">${stats}</ul></div>
-    <div class="yp-card"><h3>반 표 · 학생 ${g.length}명</h3>
+    <div class="yp-card"><h3>반 표 · 학생 ${g.length}명</h3>${g.length ? `<p class="muted act-acc" id="acAcc5">${esc(accuracyText(activityAccuracy(a), { finished: a.done, graded: true }))}</p>` : ''}
       <div class="ac-grid-wrap"><table class="ac-grid" id="acTable"><thead>${head}</thead><tbody>${rows}</tbody></table></div>
       <div class="row">${exportButton('data-ac="exportTable"', { prefix: '반 표 · ' })}<button class="btn text" type="button" data-ac="copyTable">표 복사</button>${exportButton('data-ac="exportSlips"', { prefix: '피드백 쪽지 · ' })}<label class="switch"><input type="checkbox" data-one-page${onePerPage() ? ' checked' : ''}>번호별로 한 장씩</label>${downloadsButton()}</div>
       <p class="muted" id="acSlipNote" style="margin:0">${SLIP_NOTE(onePerPage())}</p></div>

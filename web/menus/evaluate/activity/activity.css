@@ -3,6 +3,9 @@
 .act-card{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;cursor:pointer}
 .act-card .act-c-t{flex:1 1 100%;font-size:15.5px}
 .act-card .grow{flex:1}
+.act-card .act-c-acc{flex:1 1 100%;font-size:13px}
+.act-year{margin:10px 0 0;font-weight:600;color:var(--ink2,inherit)}
+.act-acc{margin:4px 0 0}
 .act-meta{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 12px}
 .act-text pre{white-space:pre-wrap;font:inherit;font-size:13px;max-height:260px;overflow:auto;background:var(--surface-2,#f5f6f8);border-radius:8px;padding:8px}
 .act-items-wrap{overflow-x:auto}

@@ -11,6 +11,7 @@ import {
 } from './unit-model.js';
 import { tableDoc, tableCsv } from './unit-docs.js';
 import { pyeongeoPrompt, normPyeongeo } from './unit-ai.js';
+import { unitAccuracy, accuracyText } from '../grade-accuracy.js';
 import { U, esc, AI_KEY, registerResults, visible, render, refresh, later, editing, getBox } from './unit.js';
 
 const R = { rv: 'table', subject: '', term: 0, stuNo: null, weakId: null, pySubject: null, pyRun: null };
@@ -69,6 +70,7 @@ function weakHTML(tests) {
   const stats = itemStats(t).sort((a, b) => a.rate - b.rate), re = reteach(t);
   return `<div class="yp-card">
     <label class="cls-inline">평가 <select class="field" id="unWeakTest">${byDate.map(x => `<option value="${esc(x.id)}"${x.id === t.id ? ' selected' : ''}>${esc(makeTitle(x.meta))}</option>`).join('')}</select></label>
+    <p class="muted un-acc" id="unWeakAcc">${esc(accuracyText(unitAccuracy(t), { finished: t.done, graded: true }))}</p>
     <h3>다시 가르칠 내용</h3>${re.length ? `<ul class="un-weaklist">${re.map(x => `<li><b>${x.no}번</b> ${esc(x.content)} <span class="muted">정답률 ${pct(x.rate)}${x.pages ? ` · ${esc(x.pages)}` : ''}</span></li>`).join('')}</ul>` : '<p class="muted" style="margin:0">정답률이 60%보다 낮은 문항이 없어요.</p>'}
     <h3>영역별 정답률</h3><p style="margin:0">${domainStats([t]).map(d => `<span class="chip">${esc(d.name)} ${pct(d.rate)}</span>`).join(' ') || '<span class="muted">없음</span>'}</p>
     <h3>문항별 정답률</h3>

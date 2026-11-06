@@ -7,9 +7,10 @@ const ITEMS = [
   { no: 3, type: 'write', ask: '물의 여행을 설명해 봅시다.', answer: '바다의 물이 증발해 구름이 되고 비로 내려 다시 바다로 갑니다.', ok: '증발·구름·비를 차례대로 씀', part: '두 가지만 씀', src: 'teacher' },
   { no: 4, type: 'draw', ask: '물의 여행을 그려 봅시다.', answer: '바다·구름·비와 화살표', ok: '바다·구름·비가 모두 있고 화살표로 이음', part: '일부만 그림', src: 'ai' }
 ];
-const S = (no, m, good, next, level) => ({
+// ai: AI 처음 값(채점 정확도)이 지금 표시와 다른 칸(선생님이 고친 칸) — { 문항 번호: AI 표시 }
+const S = (no, m, good, next, level, ai = {}) => ({
   no, skip: false, status: 'done', level, levelWhy: '', good, next,
-  marks: Object.fromEntries(ITEMS.map((it, i) => [it.no, { read: m[i] === 'n' ? '' : '(예시 답)', mark: m[i], why: '', sure: true, chk: false }]))
+  marks: Object.fromEntries(ITEMS.map((it, i) => [it.no, { read: m[i] === 'n' ? '' : '(예시 답)', mark: m[i], why: '', sure: true, chk: false, ai0: ai[it.no] || m[i], ...(ai[it.no] ? { manual: true } : {}) }]))
 });
 
 export function sampleActivity() {
@@ -21,7 +22,7 @@ export function sampleActivity() {
     S(1, 'ooot', '물의 여행을 차례대로 설명했어요.', '그림에 화살표를 더해 보세요.', 'good'),
     S(2, 'oxto', '그림에 바다·구름·비를 모두 그렸어요.', '증발이라는 말을 써 보세요.', 'ok'),
     S(3, 'oooo', '설명과 그림이 모두 꼼꼼해요.', '친구에게 설명해 보세요.', 'good'),
-    S(4, 'xntt', '그림을 끝까지 그렸어요.', '2번 빈칸을 다시 채워 보세요.', 'try'),
+    S(4, 'xntt', '그림을 끝까지 그렸어요.', '2번 빈칸을 다시 채워 보세요.', 'try', { 3: 'x' }),
     S(5, 'ootx', '빈칸 답을 바르게 썼어요.', '구름이 되는 까닭을 더 써 보세요.', 'ok'),
     S(6, 'oooo', '자기 말로 쉽게 설명했어요.', '비가 내린 뒤도 그려 보세요.', 'good')
   ];

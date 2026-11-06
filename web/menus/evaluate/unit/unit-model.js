@@ -4,6 +4,7 @@ import { getSchool } from '../../../core/settings.js';
 import { termOf as dayTerm } from '../activity/activity-read.js';
 import { keyTotal } from './unit-key.js';
 import { studentTotal } from './unit-grade.js';
+import { unitAccuracy } from '../grade-accuracy.js';
 
 const LIST = 'unit:list', T = id => 'unit:t:' + id, SET = 'unit:set', PY = s => 'unit:pyeongeo:' + s;
 export const LEVEL_NAME = { top: '최상', high: '상', mid: '중', low: '하' };
@@ -33,7 +34,8 @@ function summary(t) {
   const g = graded(t);
   return {
     id: t.id, title: makeTitle(t.meta), subject: t.meta.subject || '', grade: t.meta.grade, term: t.meta.term, unitNo: t.meta.unitNo, round: t.meta.round,
-    date: t.meta.date || '', total: keyTotal(t.key.items), n: g.length, avg: mean(g.map(s => studentTotal(t, s).pct)), done: !!t.done, at: t.createdAt || 0, sample: !!t.meta.sample, savedAt: Date.now() + Math.random()
+    date: t.meta.date || '', total: keyTotal(t.key.items), n: g.length, avg: mean(g.map(s => studentTotal(t, s).pct)), done: !!t.done, at: t.createdAt || 0, sample: !!t.meta.sample,
+    acc: unitAccuracy(t), savedAt: Date.now() + Math.random() // acc: AI 채점 정확도(목록·누적에 씀, 이 기능 전 요약엔 없음)
   };
 }
 /* 저장할 때 긴 글을 자름 (한 평가 약 50KB) */
@@ -205,7 +207,17 @@ export function feedbackOf(test, st) {
   return { score, total, wrong, partial };
 }
 
-export function feedbackText(test, st) {
+/* 결과지 표 줄 [문항, 평가 내용, 내 답, 정답, 다시 볼 곳]: 틀린 문항·부분 점수 문항을 번호 차례로 (결과지 문서와 남는 자리 셈이 같이 씀) */
+export function feedbackRows(test, st) {
+  const f = feedbackOf(test, st);
+  return [
+    ...f.wrong.map(w => ({ no: w.no, r: [`${w.no}번`, w.content, w.read || '(빈칸)', w.answer, w.pages] })),
+    ...f.partial.map(p => { const it = test.key.items.find(x => x.no === p.no) || {}; return { no: p.no, r: [`${p.no}번`, p.content, `부분 점수 ${p.pts}/${p.points}`, it.answer || '', it.pages || ''] }; })
+  ].sort((a, b) => a.no - b.no).map(x => x.r);
+}
+
+/* extra: 끝에 붙일 줄(복습 문제 등) */
+export function feedbackText(test, st, extra = []) {
   const f = feedbackOf(test, st);
   const out = [`[${makeTitle(test.meta)}] ${st.no}번 · 점수 ${f.score}/${f.total}`];
   const items = [
@@ -216,6 +228,7 @@ export function feedbackText(test, st) {
   else out.push('다시 볼 문항: 없어요. 모두 맞혔어요!');
   if (st.good) out.push(`잘한 점: ${st.good}`);
   if (st.cheer) out.push(`한마디: ${st.cheer}`);
+  out.push(...extra);
   return out.join('\n');
 }
 

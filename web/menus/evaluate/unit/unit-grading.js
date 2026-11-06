@@ -12,6 +12,7 @@ import { getTest, getSet, saveSet, numbersFor, parseNos, renumber, maskOf, listT
 import { registerInbox } from '../../../core/inbox.js';
 import { go } from '../../../core/shell.js';
 import { gradeParts, normGrade, validGrade } from './unit-ai.js';
+import { unitAccuracy, accuracyText } from '../grade-accuracy.js';
 import { arrangePages } from './unit-pages.js';
 import { readNos, openNoCheck, openNoWait, rosterAllowed, byNoOrder } from '../../../core/student-no.js';
 import { esc, SS, AI_KEY, registerStep, inStep, cur, curId, commit, saveOrWarn, refresh, later, render, goStep, getBox, openTest, U } from './unit.js';
@@ -357,6 +358,7 @@ function step3HTML(t) {
       ${up}${scanNote}
       ${reviewBar(rvCount(t), 'data-un="nextRv"')}
       <div class="row"><b id="unPending">확인할 칸 ${pending(t)}개</b><button class="btn text" type="button" data-un="nextChk">다음 확인할 칸</button><span class="grow"></span><button class="btn primary" type="button" data-un="finish">채점 마치기</button></div>
+      ${done ? `<p class="muted cls-note un-acc" id="unAcc">${esc(accuracyText(unitAccuracy(t), { finished: t.done, graded: true }))}</p>` : ''}
       <p class="muted cls-note">노란 칸은 확인할 칸이에요: AI가 확신하지 못했거나, 앱과 AI의 판단이 다르거나, 단답이 정답과 글자가 다르거나, 서술형이에요. 문항 번호를 누르면 반 전체 답을 모아 봐요.</p>
     </div>
     <div class="yp-card un-grid-card"><div class="un-grid-wrap"><table class="un-grid"><thead>${head}</thead><tbody>${rows}</tbody></table></div></div>`;

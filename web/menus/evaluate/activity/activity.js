@@ -12,6 +12,7 @@ import { newActivity, listActivities, getActivity, saveActivity, removeActivity,
 import { readMeta, termOf, SUBJECTS, cleanSheet } from './activity-read.js';
 import { TYPES, criteriaPrompt, normCriteria, applyKey, itemsFromSheets } from './activity-ai.js';
 import { sampleActivity } from './activity-sample.js';
+import { accuracyText, yearAccuracy, yearText } from '../grade-accuracy.js';
 
 export const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const SS = () => window.SSAM || {};
@@ -60,15 +61,18 @@ export function refresh(id) {
   pendingRefresh = false; render();
 }
 const termName = t => (t === 1 ? '1학기' : t === 2 ? '2학기' : '');
+/* AI 채점 정확도 글 (이 기능 전에 저장한 요약엔 acc가 없어 「기록 없음」) */
+const accOf = s => accuracyText(s.acc || null, { finished: s.done, graded: s.n > 0 });
 function listHTML() {
-  const list = listActivities();
+  const list = listActivities(), year = yearText(yearAccuracy(list));
   const cards = list.map(s => `<li class="yp-card act-card" data-ac-open="${esc(s.id)}">
     <b class="act-c-t">${esc(s.title || '이름 없는 활동지')}</b>
-    <span class="muted">${esc([s.subject, s.date, termName(s.term)].filter(Boolean).join(' · '))} · 학생 ${s.n}명</span>
+    <span class="muted">${esc([s.subject, s.date, termName(s.term)].filter(Boolean).join(' · '))} · 학생 ${s.n}명</span>${accOf(s) ? `<span class="muted act-c-acc">${esc(accOf(s))}</span>` : ''}
     <span class="chip${s.done ? ' ok' : ''}">${s.done ? '확정' : s.n ? '채점 중' : '준비 중'}</span>
     <span class="grow"></span><button class="btn text" type="button" data-ac="del" data-id="${esc(s.id)}">지우기</button></li>`).join('');
   return `<div class="m-head"><h2>활동지</h2><p class="muted">수업 중·수업 후 활동지를 넣으면 문항마다 ○·△·×·안 함으로 보고, 학생마다 잘한 점·더 해 볼 점과 수준(잘함·보통·노력)을 써요. 정답이 없는 활동지는 AI가 기준을 먼저 만들어요.</p></div>
     <div class="row"><button class="btn primary" type="button" data-ac="new">새 활동지</button><button class="btn" type="button" data-ac="sample">예시로 채우기</button>${views.records ? '<button class="btn" type="button" data-ac="records">학생별 모아 보기</button>' : ''}</div>
+    ${year ? `<p class="act-year" id="acYear">${esc(year)}</p>` : ''}
     ${list.length ? `<ul class="act-list">${cards}</ul>` : '<div class="yp-card"><p class="muted" style="margin:0">아직 활동지가 없어요. [새 활동지]로 활동지 파일을 넣어 주세요. 바로 보려면 [예시로 채우기].</p></div>'}`;
 }
 function metaHTML(m) {
