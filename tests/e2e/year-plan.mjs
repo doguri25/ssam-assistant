@@ -4,6 +4,7 @@ import { makeHwpx } from '../../web/core/hwpx.js';
 
 const t = await open();
 const { page, ctx, url, errors } = t;
+await page.clock.setFixedTime(new Date('2027-01-12T09:00:00')); // 1월이라 새 계획은 2027학년도
 await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: url.replace(/\/$/, '') });
 await page.addInitScript(() => {
   if (!localStorage.getItem('ssam:engine')) localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true }));
