@@ -1,6 +1,7 @@
 /* 기타 › 가정통신문 (스펙 2026-11-03 가정통신문): 학교 양식 + 상위기관 공문·계획 + 넣을 내용 → AI 한 번 →
    학교 양식에 맞춘 가정통신문(.hwpx 양식은 모양 그대로, .hwp·기본 양식은 글 짜임만), 알림 앱용 짧은 글, 발송 기안.
-   양식은 IndexedDB(form-store.js), 글은 학년도 자료(letter-model.js). 원본 공문 파일은 저장하지 않음(글만) */
+   양식은 IndexedDB(form-store.js), 글은 학년도 자료(letter-model.js). 원본 공문 파일은 저장하지 않음(글만).
+   번역본(스펙 2026-11-06 K, letter-translate.js): 다문화 가정용 원문과 나란히 문서, 언어마다 저장. 다른 메뉴는 openLetterTranslate(lang)로 엶 */
 import { onEnter, go } from '../../core/shell.js';
 import { parseTableLines } from '../../core/body-table.js';
 import * as ai from '../../core/ai.js';
@@ -19,15 +20,16 @@ import { plainFromText, defaultPlain, plainLetterDoc, letterPrompt, normLetter, 
 import { rosterAllowed } from '../../core/student-no.js';
 import { replyOptions, replyPrompt, normReply, flagRows, tally, missingNos, collectTSV, collectDoc, fitAnswers } from './reply-collect.js';
 import { getCurrent, saveCurrent, clearCurrent, listLetters, pushLetter, newLetterId, getFormId, setFormId } from './letter-model.js';
+import { LANGS, LANG_IDS, langInfo, langOf, planTr, pruneUnits, batches, trPrompt, normAnswers, trPairs, missingCount, bilingualLetter } from './letter-translate.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const today = () => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
 const baseName = n => String(n || '').replace(/\.[^.]+$/, '').trim() || '양식';
 const ROLE_NAMES = [['title', '제목'], ['bodyStart', '본문 시작'], ['bodyEnd', '본문 끝'], ['date', '날짜'], ['reply', '회신서 시작']];
-/* 화면에만: list(양식 목록), form(고른 양식 { rec, parsed }), busy, adding, mapOpen, mapSel */
-export const F = { list: [], form: null, busy: false, adding: 0, mapOpen: false, mapSel: -1, store: null };
+/* 화면에만: list(양식 목록), form(고른 양식 { rec, parsed }), busy, adding, mapOpen, mapSel, trLang(번역본 언어), trBusy(번역 중인 언어) */
+export const F = { list: [], form: null, busy: false, adding: 0, mapOpen: false, mapSel: -1, store: null, trLang: '', trBusy: '' };
 let box = null, cur = null;
-const blank = () => ({ id: newLetterId(), sources: [], memo: '', related: [], target: '', out: null, send: { title: '', body: '' }, sendEdited: false, collect: { mask: [], rows: [] } });
+const blank = () => ({ id: newLetterId(), sources: [], memo: '', related: [], target: '', out: null, send: { title: '', body: '' }, sendEdited: false, collect: { mask: [], rows: [] }, tr: {} });
 const SS = () => window.SSAM || {};
 /* 회신서 스캔(화면에만): pages, busy, tok(읽는 중 다른 가정통신문·새 스캔이면 버림) */
 const RC = { pages: [], busy: false, tok: 0, adding: false, batch: '', checked: '' }; // batch: 이번 스캔 묶음 id, checked: 가린 모습을 모든 장에서 본 묶음
@@ -169,27 +171,83 @@ export async function write() {
   live();
 }
 const letterOf = x => ({ title: x.out.title, date: x.out.date || today(), body: x.out.body, reply: x.out.replyOn ? x.out.reply : null });
-async function download() {
-  const x = c();
-  if (!x.out) return;
-  const name = (x.out.title || '가정통신문').replace(/[\\/:*?"<>|]/g, '_');
+const fileBase = s => String(s || '가정통신문').replace(/[\\/:*?"<>|]/g, '_');
+/* 글(letterOf·번역본) → 학교 양식(.hwpx)이면 그 양식 그대로, 아니면 글 짜임 양식(.hwp·기본)으로 한글·워드·PDF. more: 알림 끝에 붙일 말 */
+async function saveLetter(letter, name, more = '') {
   const f = F.form;
   if (f && f.rec.kind === 'hwpx' && f.parsed) {
     const r = f.rec.roles;
     if (!rolesOk(r)) { F.mapOpen = true; render(); toast('양식의 제목·본문·날짜 자리를 먼저 정해 주세요.', 5000); return; }
     let bytes, warn, where;
     try {
-      ({ bytes, warn } = await fillForm(f.parsed, r, letterOf(x)));
+      ({ bytes, warn } = await fillForm(f.parsed, r, letter));
       where = await saveFile(`${name}.hwpx`, bytes, 'application/hwp+zip');
     } catch (e) { toast(`한글 파일을 만들지 못했어요: ${String((e && e.message) || e || '').slice(0, 80)}`, 7000); return; }
     const m = window.__TAURI__ ? `다운로드 폴더에 저장했어요: ${String(where).split(/[\\/]/).pop()}` : '한글 파일을 내려받았어요';
     toast(m + (warn.includes('reply-in-box') ? ' · 양식의 회신서가 본문과 같은 표 안에 있어 회신서는 바꾸지 않았어요' : '')
       + (warn.includes('overlap') ? ' · 겹치는 자리가 있어 일부를 바꾸지 못했어요. [양식 맞추기]를 확인해 주세요' : '')
-      + (warn.includes('no-border') ? ' · 이 양식에는 표 테두리를 더할 수 없어 표는 글로 넣고 회신서는 넣지 못했어요' : ''), 8000);
+      + (warn.includes('no-border') ? ' · 이 양식에는 표 테두리를 더할 수 없어 표는 글로 넣고 회신서는 넣지 못했어요' : '') + more, 8000);
     return;
   }
   const plain = f && f.rec.kind === 'plain' ? f.rec.plain : defaultPlain(getSchool().name);
-  toast(await exportDoc(plainLetterDoc(plain, letterOf(x)), name), 6000);
+  toast(await exportDoc(plainLetterDoc(plain, letter), name) + more, 6000);
+}
+async function download() {
+  const x = c();
+  if (!x.out) return;
+  await saveLetter(letterOf(x), fileBase(x.out.title));
+}
+
+/* ---------- 번역본 (스펙 2026-11-06 K) ---------- */
+const TR_NOTE = 'AI 번역이에요. 보내기 전에 확인해 주세요.';
+const trLangOf = x => F.trLang || LANG_IDS.find(k => x.tr && x.tr[k]) || LANG_IDS[0];
+/* 그 언어 번역: 저장해 둔 번역(원문 글이 같은 줄)은 다시 부르지 않고, 없는 줄만 AI로. all: 처음부터 다시 */
+async function translate(lang, { all = false } = {}) {
+  const x = c();
+  if (!x.out) { toast('먼저 가정통신문을 써 주세요. 다 쓰면 번역본을 만들 수 있어요.', 5000); return; }
+  if (F.trBusy) { toast('번역하는 중이에요. 잠시만 기다려 주세요.'); return; }
+  F.trLang = lang;
+  if (!x.tr) x.tr = {};
+  const old = x.tr[lang], base = all || !old ? {} : old.units, plan = planTr(x.out, base);
+  const done = r => { x.tr[lang] = { units: pruneUnits({ ...(all ? {} : (x.tr[lang] || {}).units), ...r.units }, x.out), at: Date.now() }; save(x, { push: true }); };
+  if (!plan.jobs.length) {
+    done(plan.finish({})); render();
+    toast(old && !all ? `저장해 둔 번역본을 열었어요. ${TR_NOTE}` : TR_NOTE, 5000);
+    return;
+  }
+  if (!ai.ready()) { render(); toast('설정 › AI에서 키를 넣어 주세요', 5000); return; }
+  F.trBusy = lang; render();
+  const ans = {};
+  let err = null;
+  for (const b of batches(plan.jobs)) {
+    try { Object.assign(ans, normAnswers(await ai.generateJSON(trPrompt(b, lang), { task: 'letter', valid: o => !!o && typeof o === 'object' }), b)); }
+    catch (e) { err = e; break; }
+  }
+  const r = plan.finish(ans);
+  if (Object.keys(r.units).length || !err) done(r);
+  F.trBusy = '';
+  if (err) toast(`${err.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 눌러 주세요.' : ai.errorMessage(err.code, err)}${Object.keys(r.units).length ? ' 번역한 줄은 남겨 두었어요.' : ''}`, 7000);
+  else toast(r.miss ? `${r.miss}줄은 번역하지 못했어요. [번역본 만들기]를 다시 눌러 주세요.` : `${TR_NOTE}${plan.personal ? ` 개인정보가 있는 ${plan.personal}곳은 AI로 보내지 않았어요.` : ''}`, 6000);
+  live();
+}
+async function trDownload() {
+  const x = c(), lang = trLangOf(x), e = x.tr && x.tr[lang], L = langInfo(lang);
+  if (!x.out || !e) return;
+  const bi = bilingualLetter(x.out, e.units, lang, { date: x.out.date || today() });
+  await saveLetter(bi, fileBase(`${x.out.title || '가정통신문'} (${L.name})`), bi.missing ? ` · 번역이 없는 ${bi.missing}줄은 한국어만 넣었어요` : '');
+}
+/* 다른 메뉴(쌤 채팅 등)에서: 가정통신문 탭으로 가서 그 언어(vi·zh·ru·en, '베트남어'도) 번역을 시작. 쓴 글이 없으면 먼저 쓰라고 알림 → 시작했으면 true */
+export async function openLetterTranslate(lang) {
+  go('etc', 'letter');
+  const x = c(), id = langOf(lang);
+  if (!x.out) { render(); toast('먼저 가정통신문을 써 주세요. 다 쓰면 번역본을 만들 수 있어요.', 5000); return false; }
+  if (id) F.trLang = id;
+  render();
+  const card = box && box.querySelector('#lfTrCard');
+  if (card && card.scrollIntoView) card.scrollIntoView({ block: 'start' });
+  if (!id) { toast('베트남어·중국어(간체)·러시아어·영어 중에서 골라 주세요.', 5000); return false; }
+  await translate(id);
+  return true;
 }
 
 /* ---------- 그리기 ---------- */
@@ -319,6 +377,44 @@ function sideHTML(x) {
       <div id="lfResync">${x.sendEdited ? '<p class="muted pc-resync">기안을 고쳤어요 <button class="btn text tiny" type="button" data-lf="resync">칸으로 다시 맞추기</button></p>' : ''}</div>
       <div class="row"><button class="btn" type="button" data-lf="copySend">모두 복사</button>${canQueue() ? '<button class="btn primary" type="button" data-lf="queue">에듀파인 기안에 차례로 붙여넣기</button>' : ''}</div></section>`;
 }
+/* 번역본: 언어 고르기 → [번역본 만들기] → 원문 줄마다 번역(고칠 수 있음) → 내려받기 */
+const trRows = (ko, tr) => (ko.includes('\n') ? Math.max(3, String(tr || '').split('\n').length + 1) : Math.min(5, Math.max(1, Math.ceil(Math.max(String(tr || '').length, ko.length * 1.5) / 56))));
+function pairHTML(q, lab = '') {
+  if (!q.ko.trim()) return '';
+  const ko = `<p class="lf-ko">${lab ? `<b>${esc(lab)}</b> ` : ''}${esc(q.ko)}</p>`;
+  if (q.fixed) return `<div class="lf-tr-pair fixed">${ko}<span class="muted">그대로 둬요</span></div>`;
+  return `<div class="lf-tr-pair${q.tr == null ? ' miss' : ''}">${ko}
+    <textarea class="field" rows="${trRows(q.ko, q.tr)}" data-lt-ko="${esc(q.ko)}" aria-label="${esc(lab || q.ko.slice(0, 30))} 번역"${q.tr == null ? ' placeholder="번역이 없어요. [번역본 만들기]를 눌러 주세요"' : ''}>${esc(q.tr == null ? '' : q.tr)}</textarea>
+    ${q.tr != null && q.tr === q.ko ? '<span class="muted">개인정보가 있어 AI로 보내지 않았어요. 직접 번역해 주세요.</span>' : ''}</div>`;
+}
+function trHTML(x) {
+  if (!x.out) return '';
+  const lang = trLangOf(x), L = langInfo(lang), e = x.tr && x.tr[lang], busy = F.trBusy === lang;
+  const p = e ? trPairs(x.out, e.units) : null, miss = p ? missingCount(p) : 0;
+  const hwpx = F.form && F.form.rec.kind === 'hwpx';
+  const make = !e || miss || busy ? `<button class="btn primary" type="button" data-lf="trMake"${F.trBusy ? ' disabled' : ''}>${busy ? '<span class="spin"></span>번역하는 중…' : '번역본 만들기'}</button>` : '';
+  return `<section class="pc-card lf-tr" id="lfTrCard"><h3>번역본 <span class="muted">다문화 가정</span></h3>
+    <p class="muted" style="margin:0">문단마다 한국어 아래에 번역을 넣은 가정통신문을 만들어요. 전화번호·날짜·숫자만 있는 줄은 AI로 보내지 않고 그대로 둬요.</p>
+    <div class="seg" role="group" aria-label="번역할 언어">${LANGS.map(l => `<button type="button" data-lf-lang="${l.id}" aria-pressed="${l.id === lang}">${esc(l.name)}${x.tr && x.tr[l.id] ? ' ✓' : ''}</button>`).join('')}</div>
+    ${make ? `<div class="row">${make}</div>` : ''}
+    ${e ? `<p class="banner warn lf-tr-note" role="note">${TR_NOTE}</p>
+      ${miss ? `<p class="muted warn" style="margin:0">번역이 없는 줄이 ${miss}개 있어요(원문을 고쳤거나 번역하지 못한 줄). [번역본 만들기]를 누르면 그 줄만 번역해요.</p>` : ''}
+      <div class="lf-tr-list" lang="${lang}">${pairHTML(p.title, '제목')}${p.body.map(q => pairHTML(q)).join('')}</div>
+      ${p.reply ? `<h4 class="lf-tr-sub">회신서</h4><div class="lf-tr-list" lang="${lang}">${pairHTML(p.reply.title, '제목')}${p.reply.fields.map(q => pairHTML(q)).join('')}${pairHTML(p.reply.due, '제출 안내')}</div>` : ''}
+      ${p.short.ko.trim() ? `<h4 class="lf-tr-sub">알림 앱용 짧은 글</h4><div class="lf-tr-list" lang="${lang}">${pairHTML(p.short)}</div>
+        ${p.short.tr != null ? '<div class="row"><button class="btn" type="button" data-lf="trCopyShort">번역 복사</button></div>' : ''}` : ''}
+      <div class="row">${hwpx ? `<button class="btn primary" type="button" data-lf="trDownload">${esc(L.name)} 번역본 한글로 내려받기</button>` : exportButton('data-lf="trDownload"', { cls: 'primary', prefix: `${L.name} 번역본 · ` })}
+        <button class="btn text" type="button" data-lf="trRedo"${F.trBusy ? ' disabled' : ''}>처음부터 다시 번역</button></div>` : ''}
+  </section>`;
+}
+/* 원문을 고칠 때: 번역본 칸만 다시(번역 칸에서 쓰는 중이면 그대로) */
+function refreshTr() {
+  const el = box && box.querySelector('#lfTrCard'), a = document.activeElement;
+  if (!el || (a && el.contains(a))) return;
+  const t = document.createElement('div');
+  t.innerHTML = trHTML(c());
+  if (t.firstElementChild) el.replaceWith(t.firstElementChild);
+}
 const recentHTML = () => {
   const l = listLetters();
   return l.length ? `<ul class="pc-lib-list" id="lfRecent">${l.map(r => `<li class="pc-lib-row"><div class="grow"><b>${esc(r.out.title || '가정통신문')}</b><span class="muted">${new Date(r.at).toLocaleDateString('ko-KR')}</span></div>
@@ -349,6 +445,7 @@ function pageHTML() {
       <section class="pc-card"><h3>가정통신문</h3>${outHTML(x)}</section>
     </div>
     <div class="msg-grid">${sideHTML(x)}</div>
+    ${trHTML(x)}
     ${collectHTML(x)}
     <section class="pc-card"><h3>최근 가정통신문</h3>${recentHTML()}</section></div>`;
 }
@@ -356,7 +453,8 @@ function pageHTML() {
    그 칸의 글이 그대로면 그 칸만 두고 둘레를 새로 그림(쓰던 글·한글 조합이 끊기지 않게),
    AI가 그 칸 글을 바꿨으면(다시 쓰기 중 고치던 기안 등) 다시 그리고 같은 칸에 초점을 돌려 둠(이어 친 글자가 버려지지 않게) */
 const TYPING = 'input:not([type=checkbox]):not([type=file]), textarea';
-const keyOf = el => (el.id ? `#${el.id}` : el.dataset.lo ? `[data-lo="${el.dataset.lo}"]` : el.dataset.lr ? `[data-lr="${el.dataset.lr}"]` : '');
+const keyOf = el => (el.id ? `#${el.id}` : el.dataset.lo ? `[data-lo="${el.dataset.lo}"]` : el.dataset.lr ? `[data-lr="${el.dataset.lr}"]`
+  : el.dataset.ltKo != null ? `[data-lt-ko="${CSS.escape(el.dataset.ltKo)}"]` : '');
 function live() {
   if (!box || box.hidden || drawing) return;
   const a = document.activeElement, k = a && box.contains(a) && a.matches(TYPING) ? keyOf(a) : '';
@@ -446,6 +544,8 @@ document.addEventListener('click', async e => {
   if (del) { x.sources.splice(+del.dataset.lfDel, 1); save(); render(); return; }
   const op = e.target.closest('[data-lf-open]');
   if (op) { const r = listLetters().find(y => y.id === op.dataset.lfOpen); if (r) { cur = fitOld({ ...r }); delete cur.at; saveCurrent(cur); rcReset(); render(); } return; }
+  const lg = e.target.closest('[data-lf-lang]');
+  if (lg) { F.trLang = lg.dataset.lfLang; render(); return; }
   const b = e.target.closest('[data-lf]');
   if (!b) return;
   const a = b.dataset.lf;
@@ -475,6 +575,13 @@ document.addEventListener('click', async e => {
   else if (a === 'rcCopy') copyText(collectTSV(x.collect.rows, rcOpts(x))).then(ok => toast(ok ? '표를 복사했어요. 엑셀·한글 표에 붙여 넣으세요' : '복사하지 못했어요'));
   else if (a === 'rcExport') exportDoc(collectDoc(x.collect.rows, rcOpts(x), { title: x.out.reply.title || x.out.title, allowed: rosterAllowed() }), `${x.out.reply.title || '회신서'} 회신 결과`).then(m => toast(m, 6000));
   else if (a === 'rcClear') { if (confirm('읽은 회신서 표를 비울까요?')) { x.collect.rows = []; save(x, { push: true }); render(); } }
+  else if (a === 'trMake') translate(trLangOf(x));
+  else if (a === 'trRedo') { const l = trLangOf(x); if (confirm(`${langInfo(l).name} 번역을 처음부터 다시 할까요? 고친 번역은 없어져요.`)) translate(l, { all: true }); }
+  else if (a === 'trDownload') trDownload();
+  else if (a === 'trCopyShort') {
+    const e2 = x.tr && x.tr[trLangOf(x)], s = e2 && x.out ? trPairs(x.out, e2.units).short.tr : '';
+    copyText(s || '').then(ok => toast(ok ? '번역을 복사했어요. 알림 앱에 붙여 넣으세요' : '복사하지 못했어요'));
+  }
 });
 document.addEventListener('change', e => {
   if (!mine(e)) return;
@@ -492,15 +599,23 @@ document.addEventListener('input', e => {
   const el = e.target, x = c();
   if (el.id === 'lfMemo') { x.memo = el.value; save(x, { push: !!x.out }); return; }
   if (!x.out) return;
+  if (el.dataset.ltKo != null) {
+    // 번역 고치기: 그 원문 글의 번역(같은 글이 또 있으면 그 칸도), 비우면 번역 없음(다시 번역할 수 있게)
+    const ent = x.tr && x.tr[trLangOf(x)], ko = el.dataset.ltKo;
+    if (!ent) return;
+    if (el.value.trim()) ent.units[ko] = el.value; else delete ent.units[ko];
+    box.querySelectorAll('[data-lt-ko]').forEach(t => { if (t !== el && t.dataset.ltKo === ko) t.value = el.value; });
+    save(x, { push: true }); return;
+  }
   if (el.dataset.lo) {
     const k = el.dataset.lo;
     x.out[k] = k === 'body' ? el.value.split('\n') : el.value;
     if (k === 'body') { const tb = box.querySelector('#lfTbl'); if (tb) tb.innerHTML = tablesHTML(x.out.body); }
     if (k === 'title' || k === 'date') { resend(); refreshSend(); }
-    save(x, { push: true }); return;
+    save(x, { push: true }); refreshTr(); return;
   }
-  if (el.dataset.lr) { const k = el.dataset.lr; x.out.reply[k] = k === 'fields' ? el.value.split('\n').map(s => s.trim()).filter(Boolean) : el.value; save(x, { push: true }); return; }
-  if (el.id === 'lfShort') { x.out.short = el.value; save(x, { push: true }); return; }
+  if (el.dataset.lr) { const k = el.dataset.lr; x.out.reply[k] = k === 'fields' ? el.value.split('\n').map(s => s.trim()).filter(Boolean) : el.value; save(x, { push: true }); refreshTr(); return; }
+  if (el.id === 'lfShort') { x.out.short = el.value; save(x, { push: true }); refreshTr(); return; }
   if (el.id === 'lfSendTitle' || el.id === 'lfSendBody') { x.send = { ...x.send, [el.id === 'lfSendTitle' ? 'title' : 'body']: el.value }; x.sendEdited = true; save(x, { push: true }); refreshSend(); }
 });
 document.addEventListener('dragover', e => { const z = box && e.target.closest && e.target.closest('[data-lf-drop]'); if (z && box.contains(z)) { e.preventDefault(); z.classList.add('over'); } });

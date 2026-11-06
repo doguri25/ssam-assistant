@@ -51,24 +51,30 @@ export function defaultPlain(school) {
   return { kind: 'plain', head: ['가 정 통 신 문', name || '○○초등학교'], sign: spaced(`${name || '○○초등학교'}장`), dateFmt: '{날짜}', sample: '' };
 }
 
-/* 회신서 표의 줄: 학년 반 번호 · 학생 이름 · 칸마다 「이름: 내용」 → [이름, 내용] */
+/* 회신서 표의 줄: 학년 반 번호 · 학생 이름 · 칸마다 「이름: 내용」 → [이름, 내용] (번역본은 rows를 직접 줌) */
 export function replyRows(reply) {
+  if (reply && Array.isArray(reply.rows)) return reply.rows;
   const fields = ((reply && reply.fields) || []).map(f => String(f || '').trim()).filter(Boolean);
   return [['학년 반 번호', '      학년        반        번'], ['학생 이름', ''], ...fields.map(replyCells)];
 }
 
-/* 글 짜임 양식 + 가정통신문 → 쌤비서 문서(한글·워드·PDF) */
+/* 글 짜임 양식 + 가정통신문 → 쌤비서 문서(한글·워드·PDF).
+   번역본(letter-translate.js bilingualLetter)은 subTitle(제목 아래 번역 제목)·reply.subTitle·reply.rows·reply.due(줄 여럿)·reply.sign도 줌 */
 export function plainLetterDoc(plain, letter) {
   const p = plain || defaultPlain(''), x = letter || {};
   const big = (p.head || []).find(l => squash(l) === '가정통신문');
   const blocks = (p.head || []).filter(l => l !== big).map(text => ({ type: 'c', text }));
-  blocks.push({ type: 'p', text: '' }, { type: 'c', text: x.title || '', bold: true }, { type: 'p', text: '' });
+  blocks.push({ type: 'p', text: '' }, { type: 'c', text: x.title || '', bold: true });
+  if (String(x.subTitle || '').trim()) blocks.push({ type: 'c', text: x.subTitle, bold: true });
+  blocks.push({ type: 'p', text: '' });
   for (const pt of parseTableLines(x.body || [])) blocks.push(pt.type === 'table' ? { type: 'table', head: true, rows: pt.rows } : { type: 'p', text: pt.text });
   blocks.push({ type: 'p', text: '' }, { type: 'c', text: swapDate(p.dateFmt || '{날짜}', x.date) }, { type: 'c', text: p.sign || '', bold: true });
   if (x.reply) {
-    blocks.push({ type: 'p', text: '' }, { type: 'c', text: CUT }, { type: 'c', text: x.reply.title || '회신서', bold: true }, { type: 'table', rows: replyRows(x.reply) });
-    if (String(x.reply.due || '').trim()) blocks.push({ type: 'p', text: x.reply.due });
-    blocks.push({ type: 'c', text: `${String(x.date || '').slice(0, 4)} .     .     .          보호자 :                (서명)` });
+    blocks.push({ type: 'p', text: '' }, { type: 'c', text: CUT }, { type: 'c', text: x.reply.title || '회신서', bold: true });
+    if (String(x.reply.subTitle || '').trim()) blocks.push({ type: 'c', text: x.reply.subTitle, bold: true });
+    blocks.push({ type: 'table', rows: replyRows(x.reply) });
+    for (const d of [].concat(x.reply.due == null ? [] : x.reply.due)) if (String(d || '').trim()) blocks.push({ type: 'p', text: d });
+    blocks.push({ type: 'c', text: x.reply.sign || `${String(x.date || '').slice(0, 4)} .     .     .          보호자 :                (서명)` });
   }
   return { title: big || '가 정 통 신 문', blocks };
 }

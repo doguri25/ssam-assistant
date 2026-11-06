@@ -1,5 +1,6 @@
-/* 가정통신문 저장 (학년도 자료): 지금 쓰는 것·최근 20개(글만), 마지막에 고른 양식 id */
+/* 가정통신문 저장 (학년도 자료): 지금 쓰는 것·최근 20개(글만, 번역본 포함), 마지막에 고른 양식 id */
 import { get, set } from '../../core/store.js';
+import { LANG_IDS } from './letter-translate.js';
 
 const CUR = 'letter:cur', LIST = 'letter:list', FORM = 'letter:form';
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
@@ -21,7 +22,19 @@ function normCollect(c) {
         b: str(r.b, 16), pg: Number.isInteger(pg) && pg >= 0 ? pg : -1 }; // b: 어느 스캔 묶음, pg: 그 묶음의 몇째 장
     }) };
 }
-/* { id, sources: [{ name, text }], memo, related, target, out: { title, date, body: [줄], replyOn, reply: { title, fields, due }, short }, send: { title, body }, sendEdited } */
+/* 번역본(스펙 2026-11-06 K): 언어마다 { units: { 원문 글: 번역 }, at } — 원문 글이 열쇠라 원문을 고친 줄만 번역이 없어짐 */
+function normTr(t) {
+  const o = isObj(t) ? t : {}, out = {};
+  for (const k of LANG_IDS) {
+    const e = o[k];
+    if (!isObj(e) || !isObj(e.units)) continue;
+    const units = {};
+    for (const [ko, tr] of Object.entries(e.units).slice(0, 300)) if (typeof tr === 'string' && ko.trim()) units[str(ko, 2100)] = str(tr, 6000);
+    out[k] = { units, at: Number(e.at) || 0 };
+  }
+  return out;
+}
+/* { id, sources: [{ name, text }], memo, related, target, out: { title, date, body: [줄], replyOn, reply: { title, fields, due }, short }, send: { title, body }, sendEdited, tr } */
 function norm(d) {
   if (!isObj(d) || typeof d.id !== 'string') return null;
   const o = isObj(d.out) ? d.out : {}, rp = isObj(o.reply) ? o.reply : {}, sd = isObj(d.send) ? d.send : {};
@@ -31,7 +44,7 @@ function norm(d) {
     related: (Array.isArray(d.related) ? d.related : []).filter(isObj).slice(0, 3).map(r => ({ no: str(r.no, 40), date: str(r.date, 10), title: str(r.title, 100) })),
     out: o.title || (o.body || []).length ? { title: str(o.title, 100), date: str(o.date, 10), body: strs(o.body, 200, 2000), replyOn: !!o.replyOn,
       reply: { title: str(rp.title, 60), fields: strs(rp.fields, 8, 120), due: str(rp.due, 120) }, short: str(o.short, 1200) } : null,
-    send: { title: str(sd.title, 200), body: str(sd.body, 4000) }, sendEdited: !!d.sendEdited, collect: normCollect(d.collect) };
+    send: { title: str(sd.title, 200), body: str(sd.body, 4000) }, sendEdited: !!d.sendEdited, collect: normCollect(d.collect), tr: normTr(d.tr) };
 }
 export const getCurrent = () => norm(get(CUR, null));
 export const saveCurrent = d => { const n = norm(d); return n ? set(CUR, n) : false; };

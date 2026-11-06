@@ -312,12 +312,12 @@ function textWidth(secXml) {
   const w = pw ? +pw[1] - (mg ? +mg[1] + +mg[2] : 11338) : 48190;
   return w > 5000 ? w : 48190;
 }
-/* 표 문단 하나: rows([[칸 글]]), 칸 너비 colW(없으면 같게), 칸 문단은 보통 모양 */
+/* 표 문단 하나: rows([[칸 글]]), 칸 너비 colW(없으면 같게), 칸 문단은 보통 모양(칸 글의 줄바꿈은 문단을 나눔 — 번역본 회신서 「한국어\n번역」) */
 function tableXml(rows, { normal, border, width, nid, colW = null, rowH = 1800 }) {
   const n = Math.max(1, ...rows.map(r => r.length)), w = colW || Array.from({ length: n }, (_, i) => Math.floor(width / n) + (i === n - 1 ? width % n : 0));
   const cell = (txt, ci, ri) => `<hp:tc name="" header="${ri === 0 ? 1 : 0}" hasMargin="0" protect="0" editable="0" dirty="0" borderFillIDRef="${border}">`
     + '<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="CENTER" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0">'
-    + paraFrom(normal, txt, nid(), { keepLead: false }) + '</hp:subList>'
+    + String(txt == null ? '' : txt).split('\n').map(t => paraFrom(normal, t, nid(), { keepLead: false })).join('') + '</hp:subList>'
     + `<hp:cellAddr colAddr="${ci}" rowAddr="${ri}"/><hp:cellSpan colSpan="1" rowSpan="1"/><hp:cellSz width="${w[ci]}" height="${rowH}"/><hp:cellMargin left="510" right="510" top="141" bottom="141"/></hp:tc>`;
   const tbl = `<hp:tbl id="${nid()}" zOrder="0" numberingType="TABLE" textWrap="TOP_AND_BOTTOM" textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" pageBreak="CELL" repeatHeader="1" rowCnt="${rows.length}" colCnt="${n}" cellSpacing="0" borderFillIDRef="${border}" noAdjust="0">`
     + `<hp:sz width="${w.reduce((a, b) => a + b, 0)}" widthRelTo="ABSOLUTE" height="${rowH * rows.length}" heightRelTo="ABSOLUTE" protect="0"/>`
@@ -379,18 +379,22 @@ export function replyCells(f) {
   const m = /(?<!\d)[:：]|[:：](?!\d)/.exec(b === 0 ? '' : s);
   return m && m.index > 0 ? [s.slice(0, m.index).trim(), s.slice(m.index + 1).trim()] : [s, ''];
 }
+/* reply { title, fields, due } — 번역본은 subTitle(제목 아래 번역 제목)·rows(칸을 직접)·due(줄 여럿)·sign(보호자 줄)도 */
 function replyXml(reply, { normal, center, head, border, width, nid, year }) {
   const fields = (reply.fields || []).map(f => String(f || '').trim()).filter(Boolean);
-  const rows = [['학년 반 번호', '      학년        반        번'], ['학생 이름', ''], ...fields.map(replyCells)];
+  const rows = Array.isArray(reply.rows) ? reply.rows : [['학년 반 번호', '      학년        반        번'], ['학생 이름', ''], ...fields.map(replyCells)];
   const tblPara = tableXml(rows, { normal, border, width, nid, colW: [Math.round(width * 0.3), width - Math.round(width * 0.3)] });
+  const dues = [].concat(reply.due == null ? [] : reply.due).map(d => String(d || '')).filter(d => d.trim());
   return [paraFrom(normal, '', nid()), paraFrom(center, '✂ - - - - - - - - - - - 자 르 는 선 - - - - - - - - - - -', nid(), { keepLead: false }),
-    paraFrom(head, reply.title || '회신서', nid(), { keepLead: false }), tblPara,
-    ...(String(reply.due || '').trim() ? [paraFrom(normal, reply.due, nid(), { keepLead: false })] : []),
-    paraFrom(center, `${year} .     .     .          보호자 :                (서명)`, nid(), { keepLead: false })].join('');
+    paraFrom(head, reply.title || '회신서', nid(), { keepLead: false }),
+    ...(String(reply.subTitle || '').trim() ? [paraFrom(head, reply.subTitle, nid(), { keepLead: false })] : []), tblPara,
+    ...dues.map(d => paraFrom(normal, d, nid(), { keepLead: false })),
+    paraFrom(center, reply.sign || `${year} .     .     .          보호자 :                (서명)`, nid(), { keepLead: false })].join('');
 }
 
 /* ---------- 채우기 ---------- */
-/* form(readForm 결과, 바꾸지 않음) + roles + letter { title, date(YYYY-MM-DD), body: [줄], reply: null | { title, fields, due } } → { bytes, warn } */
+/* form(readForm 결과, 바꾸지 않음) + roles + letter { title, date(YYYY-MM-DD), body: [줄], reply: null | { title, fields, due } } → { bytes, warn }
+   subTitle: 제목 줄 바로 아래에 같은 모양으로 한 줄 더(번역본의 번역 제목) */
 export async function fillForm(form, roles, letter) {
   const L = form.lines, warn = [], x = letter || {};
   const secXml = form.secs.map(s => s.xml);
@@ -412,7 +416,11 @@ export async function fillForm(form, roles, letter) {
     return borderId;
   };
   const noBorder = () => { if (!warn.includes('no-border')) warn.push('no-border'); };
-  if (tl) add(tl.sec, tl.node.s, tl.node.e, setText(secXml[tl.sec], tl.node, x.title || ''));
+  if (tl) {
+    const xml = secXml[tl.sec], sub = String(x.subTitle || '').trim();
+    add(tl.sec, tl.node.s, tl.node.e, setText(xml, tl.node, x.title || '')
+      + (sub ? paraFrom({ open: openTag(xml, tl.node), charPr: charPrOf(xml, tl.node), lead: '' }, sub, nid(), { keepLead: false }) : ''));
+  }
   if (dl) add(dl.sec, dl.node.s, dl.node.e, swapDateInPara(secXml[dl.sec], dl.node, x.date));
   let protos = null;
   if (b0) {
@@ -489,7 +497,7 @@ export async function fillForm(form, roles, letter) {
     for (const ed of ok.reverse()) out = out.slice(0, ed.s) + ed.text + out.slice(ed.e);
     return out;
   });
-  const prv = [x.title || '', ...(x.body || []), swapDate(dl ? dl.text : '', x.date)].join('\r\n');
+  const prv = [x.title || '', ...(x.subTitle ? [x.subTitle] : []), ...(x.body || []), swapDate(dl ? dl.text : '', x.date)].join('\r\n');
   const files = form.entries.map(e => {
     const si = form.secs.findIndex(s => s.name === e.name);
     if (si >= 0) return { name: e.name, data: outXml[si] };
