@@ -13,8 +13,8 @@ const req = (url, init = {}) => new Request(`https://relay.example${url}`, { ...
 
 test('기한·출처', () => {
   assert.equal(new Date(UNTIL).toISOString(), '2027-03-31T14:59:59.000Z');
-  for (const o of ['https://doguri25.github.io', 'http://tauri.localhost', 'https://tauri.localhost', 'tauri://localhost']) assert.ok(allowedOrigin(o), o);
-  for (const o of ['https://evil.example', 'https://doguri25.github.io.evil.example', '', null]) assert.ok(!allowedOrigin(o), String(o));
+  for (const o of ['https://doguri25.github.io', 'http://tauri.localhost', 'https://tauri.localhost', 'tauri://localhost', 'https://social-ruddy-gamma.vercel.app']) assert.ok(allowedOrigin(o), o);
+  for (const o of ['https://evil.example', 'https://doguri25.github.io.evil.example', 'https://social-ruddy-gamma.vercel.app.evil.example', 'https://social-evil.vercel.app', '', null]) assert.ok(!allowedOrigin(o), String(o));
   assert.equal(corsHeaders(ORIGIN)['access-control-allow-origin'], ORIGIN);
   assert.ok(!corsHeaders('https://evil.example')['access-control-allow-origin']);
 });

@@ -1,10 +1,11 @@
 /* 쌤비서 시험용 업스테이지 중계 — 공통 검사 (Vercel 함수, 키는 환경 변수 UPSTAGE_TEST_KEY에만).
+   마음극장(doguri25/social) 학급 서버의 「이후의 이야기」 AI 채점도 같이 씀 (선생님이 키를 넣지 않았을 때).
    기한: 2027-03-31 23:59:59 한국 시각까지. 하루 횟수: 접속 주소마다(TEST_DAILY_PER_IP, 기본 400)와 전체(TEST_DAILY_TOTAL, 기본 3000).
    횟수는 Upstash Redis(UPSTASH_REDIS_REST_URL·TOKEN)가 있으면 거기서 정확히, 없으면 함수 인스턴스 메모리로 대강.
    요청 글·그림은 저장하지도 기록하지도 않음 */
 export const UNTIL = Date.UTC(2027, 2, 31, 14, 59, 59);
 export const UNTIL_TEXT = '2027-03-31';
-const ORIGINS = ['https://doguri25.github.io', 'http://tauri.localhost', 'https://tauri.localhost', 'tauri://localhost'];
+const ORIGINS = ['https://doguri25.github.io', 'http://tauri.localhost', 'https://tauri.localhost', 'tauri://localhost', 'https://social-ruddy-gamma.vercel.app']; // 끝: 마음극장 학급 서버
 export const allowedOrigin = o => typeof o === 'string' && ORIGINS.includes(o);
 
 export function corsHeaders(origin) {
@@ -39,7 +40,7 @@ const dayOf = now => Math.floor((now + 9 * 3600 * 1000) / 86400000); // 한국 �
 /* 통과하면 { ok: true, key }, 아니면 오류 Response */
 export async function guard(req, { env, now, counter }) {
   const origin = req.headers.get('origin');
-  if (!allowedOrigin(origin)) return json({ ssam: true, error: 'origin', message: '쌤비서에서만 쓸 수 있어요.' }, 403, origin);
+  if (!allowedOrigin(origin)) return json({ ssam: true, error: 'origin', message: '쌤비서·마음극장에서만 쓸 수 있어요.' }, 403, origin);
   const key = String(env.UPSTAGE_TEST_KEY || '').trim();
   if (!key) return json({ ssam: true, error: 'no_key', message: '시험용 업스테이지가 아직 준비되지 않았어요. 설정 › AI에 내 AI 키를 넣어 주세요.' }, 503, origin);
   if (now > UNTIL) return json({ ssam: true, error: 'expired', message: '시험용 업스테이지 사용 기간(2027. 3. 31.)이 끝났어요. 설정 › AI에 내 AI 키를 넣어 주세요.' }, 410, origin);
