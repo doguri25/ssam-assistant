@@ -34,6 +34,8 @@ section[data-menu="evaluate"].ev-new > :not(.unit-box):not(.act-box){display:non
 .un-stu .grow{flex:1}
 .un-thumb{width:44px;height:60px;object-fit:cover;border:1px solid var(--line);border-radius:4px;background:var(--surface2)}
 .un-thumb.none{display:inline-block}
+.un-ask-pg{display:flex;gap:8px;flex-wrap:wrap}
+.un-ask-pg img{max-height:140px;max-width:45%;border:1px solid var(--line);border-radius:6px;background:var(--surface2)}
 .un-stu .field.num{width:64px}
 /* 3단계: 확인 표 */
 .un-grid-wrap{overflow-x:auto;max-width:100%}

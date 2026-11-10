@@ -142,6 +142,48 @@ await run('unit-route', [
     const x = await cur();
     assert(x.key.items.length === 1 && x.students.length === 3, JSON.stringify([x.key.items.length, x.students.length]));
   }],
+  // [버그] 사진 1~2장·글자 없는 PDF 1~2쪽은 쪽 나누기 AI(3쪽부터)가 보지 않아, 학생 문제지여도 답안으로 읽혀 가리지 않은 그림(이름)이 답안 AI로 감
+  ['[답안 넣기]에 이름 없는 사진 1장 → 「답안인가요, 학생 문제지인가요?」 → [학생 문제지예요] → 학생 문제지로 받아 둠(답안 AI 안 부름)', async () => {
+    roleOf = () => 'student';
+    await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} #unNew`);
+    const n0 = asked('[단원평가 정답지]');
+    await page.setInputFiles(`${V} #unKeyFile`, (await photos(1))[0]);
+    await page.waitForSelector('#sheetRoot #unKindAsk');
+    assert((await page.textContent('#sheetRoot #unKindAsk')).includes('이 사진은 답안(정답)인가요, 학생 문제지인가요?'), await page.textContent('#sheetRoot #unKindAsk'));
+    await page.click('#sheetRoot #unKindPapers');
+    await waitText('#unAnsMsg', '학생 문제지 스캔 1장을 받았어요');
+    assert((await text('#unKeyMsg')).includes('학생 문제지로 넣었어요'), await text('#unKeyMsg'));
+    assert(asked('[단원평가 정답지]') === n0, '답안 AI를 부름');
+    assert((await text('.un-sum')).startsWith('0문항'), await text('.un-sum'));
+  }],
+  ['[답안 넣기]에 이름 없는 사진 → [답안이에요] → 답안 AI가 그 사진을 읽음, 받아 둔 학생 문제지를 나눔', async () => {
+    const n0 = keyImages.length;
+    await page.setInputFiles(`${V} #unKeyFile`, { ...(await photos(1))[0], name: 'IMG_0002.png' });
+    await page.waitForSelector('#sheetRoot #unKindAsk');
+    await page.click('#sheetRoot #unKindKey');
+    await waitText('.un-sum', '1문항');
+    assert(JSON.stringify(keyImages.slice(n0)) === '[1]', JSON.stringify(keyImages));
+    await waitText('#unAnsMsg', '학생 1명');
+  }],
+  ['[답안 넣기]에 글자 없는 PDF 2쪽 → 묻고 [학생 문제지예요] → 학생 2명(쪽 나누기·답안 AI 안 부름), 창을 닫으면 아무것도 넣지 않음', async () => {
+    const n0 = prompts.length;
+    await page.setInputFiles(`${V} #unKeyFile`, await scanPdf(2));
+    await page.waitForSelector('#sheetRoot #unKindAsk');
+    assert((await page.textContent('#sheetRoot #unKindAsk')).includes('이 파일은'), await page.textContent('#sheetRoot #unKindAsk'));
+    await page.click('#sheetRoot #unKindPapers');
+    await waitText('#unAnsMsg', '학생 2명');
+    assert(prompts.length === n0, JSON.stringify(prompts.slice(n0)));
+    assert((await cur()).students.length === 2, '학생 수');
+    // 닫기: 답안도 학생 문제지도 그대로
+    await page.setInputFiles(`${V} #unKeyFile`, await scanPdf(1));
+    await page.waitForSelector('#sheetRoot #unKindAsk');
+    await page.click('#sheetRoot #sheetBg', { position: { x: 5, y: 5 } });
+    await page.waitForFunction(() => !document.querySelector('#sheetRoot #unKindAsk'));
+    await page.waitForTimeout(300);
+    assert(prompts.length === n0 && (await cur()).students.length === 2 && (await cur()).key.items.length === 1, '닫았는데 넣음');
+    assert(!(await text('#unKeyMsg')).includes('읽는 중'), await text('#unKeyMsg'));
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();

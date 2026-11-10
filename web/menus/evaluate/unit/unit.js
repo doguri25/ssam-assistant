@@ -14,7 +14,7 @@ import { listTests, getTest, saveTest, removeTest, newTest, makeTitle, graded, m
 import { keyPrompt, normKeyAI } from './unit-ai.js';
 import { sampleTests } from './unit-sample.js';
 import { readBundle, openBundleCard, needsCard, bundleBoxHTML, onBundle } from '../../../core/bundle.js';
-import { isDocFile, keyName, paperFileGoes, keyScanGoes, bundleParts } from './unit-route.js';
+import { isDocFile, keyName, paperFileGoes, keyFileGoes, bundleParts } from './unit-route.js';
 import { linkHTML, openLinkSheet } from '../../../core/eval-link.js';
 import { accuracyText, yearAccuracy, yearText } from '../grade-accuracy.js';
 
@@ -192,9 +192,26 @@ async function readKeyText(file) {
   return readText(file, { columns: true });
 }
 
-/* [답안 넣기]: 정답표 글은 AI 없이, 아니면 AI가 읽음. 이름대로 — 정답표로 읽히지 않는 PDF는 한꺼번에 넣기처럼 쪽을 나눠 보고(keyScanGoes)
-   학생 문제지면 학생 문제지로 옮겨 넣고 알림, 정답 쪽과 학생 쪽이 섞였으면 나눠 넣음. 파일 이름이 정답·교사용이면 그대로 답안.
-   나눠 볼 때는 파일 이름 말고 쪽 글·AI로 봄(「…답안-예시.pdf」의 「예시」를 정답 표시로 읽지 않게) */
+/* [답안 넣기]에 넣은 그림이 답안인지 학생 문제지인지 근거가 없을 때 물음(keyFileGoes 'ask') → 'key' | 'papers' | null(창을 닫음) */
+function askKeyKind(file, pages) {
+  return new Promise(resolve => {
+    let v = null;
+    SS().openSheet(`<div id="unKindAsk"><h3>이 ${isImage(file) ? '사진' : '파일'}은 답안(정답)인가요, 학생 문제지인가요?</h3>
+      <p class="muted" style="margin:0">「${esc(file.name)}」 ${pages.length}쪽이에요. 학생 문제지면 이름 칸을 가린 뒤 채점해요.</p>
+      <div class="un-ask-pg">${pages.slice(0, 2).map(p => `<img src="${esc(p.thumb || p.url)}" alt="">`).join('')}</div>
+      <div class="row" style="justify-content:flex-end"><button class="btn" type="button" id="unKindKey">답안이에요</button><button class="btn primary" type="button" id="unKindPapers">학생 문제지예요</button></div></div>`, sh => {
+      sh.querySelector('#unKindKey').addEventListener('click', () => { v = 'key'; SS().closeSheet(); });
+      sh.querySelector('#unKindPapers').addEventListener('click', () => { v = 'papers'; SS().closeSheet(); });
+    });
+    const root = document.getElementById('sheetRoot');
+    if (!root || !root.querySelector('#unKindAsk')) { resolve(null); return; }
+    const obs = new MutationObserver(() => { if (!root.querySelector('#unKindAsk')) { obs.disconnect(); resolve(v); } });
+    obs.observe(root, { childList: true, subtree: true });
+  });
+}
+/* [답안 넣기]: 정답표 글은 AI 없이, 아니면 AI가 읽음. 이름대로 — 정답표로 읽히지 않는 PDF·사진은 한꺼번에 넣기처럼 쪽을 나눠 보고(keyFileGoes)
+   학생 문제지면 학생 문제지로 옮겨 넣고 알림, 정답 쪽과 학생 쪽이 섞였으면 나눠 넣음, 어느 쪽인지 근거가 없는 그림(사진·PDF 한두 쪽)은 물어봄.
+   파일 이름이 정답·교사용이면 그대로 답안. 나눠 볼 때는 파일 이름 말고 쪽 글·AI로 봄(「…답안-예시.pdf」의 「예시」를 정답 표시로 읽지 않게) */
 async function loadKey(file, t0 = cur()) {
   const id = t0.id;
   setMsg(id, 'key', `「${file.name}」 읽는 중…`);
@@ -204,13 +221,20 @@ async function loadKey(file, t0 = cur()) {
     catch (e) { if (!(e && e.code === 'PDF_NO_TEXT')) { setMsg(id, 'key', fileMessage(e && e.code)); return; } }
     if (text) k = parseKey(text);
   }
-  if (!k && isPdf(file) && !keyName(file.name) && papers && (text || ai.ready())) {
+  if (!k && (isPdf(file) || isImage(file)) && !keyName(file.name) && papers) {
     let b;
-    try { b = await readBundle([new File([file], 'scan.pdf', { type: 'application/pdf' })], { say: m => setMsg(id, 'key', m.replace('scan.pdf', file.name)), mask: maskNow(t0) }); }
+    const scan = isPdf(file) ? 'scan.pdf' : 'scan' + ((/\.[a-z0-9]+$/i.exec(file.name || '') || ['.png'])[0]);
+    try { b = await readBundle([new File([file], scan, { type: file.type || (isPdf(file) ? 'application/pdf' : '') })], { say: m => setMsg(id, 'key', m.replace(scan, file.name)), mask: maskNow(t0) }); }
     catch (e) { setMsg(id, 'key', e && e.message === 'PDFJS' ? PDFJS : '파일을 읽지 못했어요.'); return; }
-    const go = keyScanGoes(b);
+    let go = keyFileGoes({ name: file.name, text, b });
+    const asked = go === 'ask';
+    if (asked) {
+      setMsg(id, 'key', '');
+      go = await askKeyKind(file, b.pages);
+      if (!go) { SS().files.freePages(b.pages); return; }
+    }
     if (go === 'papers') {
-      setMsg(id, 'key', `「${file.name}」 파일은 학생 문제지로 보여서 학생 문제지로 넣었어요`);
+      setMsg(id, 'key', asked ? `「${file.name}」 파일을 학생 문제지로 넣었어요` : `「${file.name}」 파일은 학생 문제지로 보여서 학생 문제지로 넣었어요`);
       papers.note(id, '');
       await papers.putPages(b.pages, t0);
       return;
