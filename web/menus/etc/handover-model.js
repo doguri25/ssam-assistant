@@ -55,13 +55,22 @@ export function nameTokens(v) {
   return [...out];
 }
 
+/* 전화번호 바로 앞(「박하늘(010-…)」「이나래 010-…」「최하은 장학사(02-…)」)·바로 뒤 괄호(「010-… (김가람)」)의 세 글자 이름 — 연락할 사람.
+   전화번호를 먼저 빼면 stripNames가 그 줄을 전화번호 줄로 알아보지 못해 이름이 남았음. 행정실·과학실 같은 곳 이름·직함은 그대로 */
+const TITLE = '(?:장학사|장학관|연구사|연구관|주무관|사무관|실무사|기사님|사장님|대표님|팀장님?|과장님?|실장님?|부장님?|선생님|강사님?|담당자?)';
+const IS_TITLE = new RegExp(`^${TITLE}$`);
+const NAME_PHONE = new RegExp(`(^|[^가-힣])([가-힣]{3})(\\s*(?:${TITLE}\\s*)?[(:：]?\\s*)(?=${PHONE.source})`, 'g');
+const PHONE_NAME = new RegExp(`(${PHONE.source}\\)?\\s*[(（]\\s*)([가-힣]{3})(?=\\s*[)）])`, 'g');
+const contactName = n => staffName(n) && !IS_TITLE.test(n);
 /* 글에서 아는 이름(names)·전화번호·전자 우편을 빼고, 이름처럼 보이는 말은 ○○○로 (core/privacy.js stripNames) */
 export function cleanText(v, names = []) {
   let s = String(v == null ? '' : v);
   if (!s.trim()) return '';
   for (const n of [...names].sort((a, b) => b.length - a.length)) if (n && n.length >= 2) s = s.split(n).join(MASK);
-  // 전화번호·전자 우편은 앞의 「문의」「연락처:」와 함께 빼고, 남은 빈 괄호·쉼표도 정리
-  s = s.replace(PHONE, '\u0000').replace(EMAIL, '\u0000')
+  s = s.replace(NAME_PHONE, (m, pre, n, sp) => (contactName(n) ? pre + MASK + sp : m)).replace(PHONE_NAME, (m, ph, n) => (contactName(n) ? ph + MASK : m));
+  // 전화번호·전자 우편은 앞의 「문의」「연락처:」와 함께 빼고, 남은 빈 괄호·쉼표도 정리.
+  // 「(031-…)」처럼 여는 괄호까지 전화번호로 읽혔으면 괄호는 남김(닫는 괄호만 남아 「교무실)」이 되지 않게)
+  s = s.replace(PHONE, m => (m[0] === '(' && !m.includes(')') ? '(\u0000' : '\u0000')).replace(EMAIL, '\u0000')
     .replace(/(?:문의|연락처|전화|휴대폰|☎|tel|e-?mail|이메일)?\s*[:：]?\s*\u0000/gi, '')
     .replace(/\(\s*[,，·]?\s*\)/g, '').replace(/[,，·]\s*(?=[)\n]|$)/g, '').replace(/\(\s*[,，]\s*/g, '(').replace(/^\s*[,，·]\s*/gm, '');
   s = maskStaff(s).text;
