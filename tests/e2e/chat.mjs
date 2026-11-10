@@ -419,6 +419,21 @@ await run('chat', [
     const h = await hk();
     assert(!h.students.some(s => s.no === 35) && h.students.some(s => s.no === 25), JSON.stringify(h.students.map(s => [s.no, s.memo])));
   }],
+  ['검토 고침 C1(11-10): 목록 밖 이름(김다빈이·최윤슬)·성 없는 이름(지호가)도 메모·기록·AI·메뉴에 가린 글로', async () => {
+    const n = asks().length;
+    await page.click('nav.app-side [data-menu-go="etc"]'); await page.click('#menuTabs [data-tab="letter"]');
+    await page.click(`${LB} [data-lf="new"]`);
+    await sendWait('3번 김다빈이 발표를 끝까지 잘함');
+    await page.waitForFunction(() => ((JSON.parse(localStorage.getItem('ssam:hk')) || { students: [] }).students.find(s => s.no === 3) || {}).memo?.endsWith('○○○이 발표를 끝까지 잘함'));
+    await sendWait('최윤슬 결석계 제출 안내 가정통신문 써 줘');
+    await letterIdle();
+    await sendWait('지호가 아파서 조퇴했는데 어떻게 기록해?');
+    const l = JSON.stringify(await chatLog()), h = JSON.stringify(await hk());
+    for (const name of ['김다빈', '최윤슬', '지호가']) assert(!l.includes(name) && !h.includes(name), `${name}: ${l.slice(-500)}`);
+    assert(l.includes('○○○ 결석계') && l.includes('○○○가 아파서 조퇴했는데 어떻게 기록해?'), l.slice(-500));
+    assert(asks().length > n && !asks().slice(n).some(p => /지호가|김다빈|최윤슬/.test(p)), 'AI에 이름');
+    assert(!of('[가정통신문]').some(p => p.includes('최윤슬')) && of('[가정통신문]').at(-1).includes('○○○ 결석계'), '가정통신문 AI에 이름');
+  }],
   ['파일: 채팅 창에 놓으면 받는 곳 흐름(확인 카드)·창이 열려 있으면 놓기 판은 안 뜸, 📎는 파일 고르기', async () => {
     await openChat();
     const dt = await page.evaluateHandle(() => { const d = new DataTransfer(); d.items.add(new File(['번호,성명\n1,가\n2,나'], '김민수네_명단.csv', { type: 'text/csv' })); return d; });
