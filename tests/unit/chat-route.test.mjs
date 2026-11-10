@@ -1,7 +1,7 @@
-// 「쌤」 채팅 글 → 할 일(스펙 2026-11-06 D·F): 낱말 규칙, 메뉴에 넘길 글, 애매하면 후보, AI에 묻는 글·답 정리, 관찰 메모 번호
+// 「쌤」 채팅 글 → 할 일(스펙 2026-11-06 D·F): 낱말 규칙, 메뉴에 넘길 글, 애매하면 후보, 관찰 메모 번호(AI 도우미는 chat-assist.test.mjs)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { routeText, payloadFor, isSure, aiRoutePrompt, normAiRoute, parseMemo, INTENTS, intentLabel, LANGS } from '../../web/core/chat-route.js';
+import { routeText, payloadFor, isSure, parseMemo, INTENTS, INTENT_IDS, intentLabel, LANGS } from '../../web/core/chat-route.js';
 
 const R = t => routeText(t);
 const sure = (t, intent) => { const r = R(t); assert.ok(isSure(r), `${t}: 분명하지 않음 ${JSON.stringify(r)}`); assert.equal(r.intent, intent, t); return r; };
@@ -71,13 +71,8 @@ test('관찰 메모: 「3번 …」「3·5번 …」「3, 5번」「3번, 7번�
   assert.deepEqual(payloadFor('memo', '4번 독서를 즐김'), { nos: [4], body: '독서를 즐김' });
 });
 
-test('AI에 묻는 글: 할 일 목록(메모 빼고)·JSON 꼴·글 1500자까지, 답은 아는 할 일만', () => {
-  const p = aiRoutePrompt('가'.repeat(3000));
-  assert.ok(p.startsWith('[채팅 할 일 고르기]') && p.includes('- purchase:') && p.includes('- translate:') && !p.includes('- memo:') && p.includes('"intent"'));
-  assert.ok(p.length < 1500 + 1500, String(p.length));
-  assert.deepEqual(normAiRoute({ intent: 'letter', candidates: ['letter', 'message', 'zzz', 'memo', 'report', 'gongmun'], lang: 'xx' }), { intent: 'letter', candidates: ['message', 'report', 'gongmun'], lang: '', none: false });
-  assert.deepEqual(normAiRoute({ intent: 'translate', lang: 'vi' }), { intent: 'translate', candidates: [], lang: 'vi', none: false });
-  assert.deepEqual(normAiRoute({ intent: 'none' }), { intent: null, candidates: [], lang: '', none: true });
-  assert.deepEqual(normAiRoute(null), { intent: null, candidates: [], lang: '', none: false });
-  assert.ok(INTENTS.every(([id]) => intentLabel(id)), '이름');
+test('할 일 목록: 이름·설명이 있고 id는 겹치지 않음', () => {
+  assert.ok(INTENTS.every(([id, label, d]) => intentLabel(id) === label && d), '이름·설명');
+  assert.equal(new Set(INTENT_IDS).size, INTENTS.length);
+  assert.equal(intentLabel('zzz'), '');
 });

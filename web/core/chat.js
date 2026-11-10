@@ -1,16 +1,21 @@
 /* 「쌤」 채팅 창 (스펙 2026-11-06 D·E·F): 오른쪽 아래 「쌤」 버튼을 누르면 열리고(닫기·Esc), Windows 바탕화면 「쌤」 버튼을 눌러도 열림.
-   글 → 할 일(chat-route.js routeText, 모르면 AI notes에 할 일 목록을 주고 고르게) → 분명하면 그 메뉴로 가서 칸을 채우고 바로 시작, 애매하면 후보 버튼.
+   글 → 할 일(chat-route.js routeText) → 분명하면 AI 없이 그 메뉴로 가서 칸을 채우고 바로 시작.
+   분명하지 않거나 묻는 글이면 쌤비서 도우미(chat-assist.js): 선생님 AI(notes)에 쌤비서 안내·최근 대화·앱 상태(모두 이름·전화번호 가림)를 주고
+   답(reply)을 보이고, 해 달라는 일(actions, 2개까지)은 규칙과 같은 손잡이(run)로 함. 답을 쓰는 동안 「…」와 [멈추기].
+   AI가 없거나 답하지 못하면 안내(chat-knowledge.js)에서 찾아 답하고, 애매하면 후보 버튼.
    열면 맨 위 「오늘 할 일」(briefing.js, AI 없이). 「3번 …」은 평가 › 행동특성 그 번호 메모 끝에 한 줄([되돌리기]).
    파일은 버튼·창에 끌어 놓거나 📎로 — 받는 곳(inbox.js) 흐름 그대로. 기록은 최근 30개(ssam:chat, 학년도와 상관없음, 이름·전화번호는 가려서, 파일 이름은 남기지 않음).
-   메뉴에 넘기는 글은 줄바꿈을 살리고 전화번호·전자 우편만 그 자리에서 가림(그 메뉴가 개인정보 규칙으로 다시 거름).
+   메뉴에 넘기는 글은 줄바꿈을 살리고 전화번호·전자 우편·사람 이름만 그 자리에서 가림(handoffText, 그 메뉴가 개인정보 규칙으로 다시 거름).
    메뉴가 돌려준 상태('started'·'no-ai'·'busy'·'empty' …)대로 말함 — 시작하지 않았으면 「쓰고 있어요」라고 하지 않음.
    저장·결재·상신은 언제나 선생님이 직접 */
 import { get, set, remove } from './store.js';
-import { go } from './shell.js';
+import { go, MENUS } from './shell.js';
 import * as ai from './ai.js';
 import { maskContacts } from './privacy.js';
 import { listEvents, addDays, weekday } from './calendar.js';
-import { routeText, payloadFor, isSure, aiRoutePrompt, normAiRoute, intentLabel, LANGS, langLabel, parseMemo, maskMemo, memoLine, appendMemo, nosText, safeText } from './chat-route.js';
+import { routeText, payloadFor, isSure, INTENT_IDS, intentLabel, LANGS, langLabel, parseMemo, maskMemo, memoLine, appendMemo, nosText, safeText, handoffText } from './chat-route.js';
+import { assistPrompt, parseAssist, replyHTML, mentionedNos } from './chat-assist.js';
+import { offlineAnswer } from './chat-knowledge.js';
 import { briefing, EMPTY } from './briefing.js';
 
 const KEY = 'chat', FLAG = 'chat:open', MAX = 30;
@@ -24,8 +29,9 @@ const newId = () => 'c' + Date.now().toString(36) + Math.random().toString(36).s
 
 let deps = { receive: () => {}, pickFiles: () => {} };
 let panel = null, logEl = null, ta = null, brief = null; // brief: 오늘 할 일 줄(처음 세기 전에는 null)
-const mem = new Map(); // 메시지 id → { text(보낸 글, 전화번호만 가림), shown(이 창에만 보일 글), undo(관찰 메모 되돌리기) } — 이 창에만(저장하지 않음)
+const mem = new Map(); // 메시지 id → { text(메뉴에 넘길 글, 전화번호·이름만 가림), shown(이 창에만 보일 글), undo(관찰 메모 되돌리기) } — 이 창에만(저장하지 않음)
 let temp = []; // 저장하지 않는 메시지(기다리는 중·메모 보기)
+let pending = null; // 도우미 답을 기다리는 중 { ctl(AbortController), user(멈추기를 누름) }
 
 /* ---------- 기록 ---------- */
 const norm = m => m && typeof m === 'object' && typeof m.text === 'string' && (m.who === 'me' || m.who === 'bot');
@@ -41,7 +47,13 @@ function push(msg, { keep = true } = {}) {
 }
 const say = (text, extra = {}, opts) => push({ who: 'bot', text, ...extra }, opts);
 function drop(m) { temp = temp.filter(x => x !== m); draw(); }
-export function clearHistory() { set(KEY, []); temp = []; mem.clear(); draw(); }
+export function clearHistory() { stopAssist(); set(KEY, []); temp = []; mem.clear(); draw(); }
+/* 도우미 답 멈추기(user: [멈추기]를 누름 — 「멈췄어요」라고 말함) */
+function stopAssist(user = false) {
+  if (!pending) return;
+  pending.user = user;
+  pending.ctl.abort();
+}
 
 /* ---------- 창 ---------- */
 export const isChatOpen = () => !!(panel && !panel.hidden);
@@ -51,13 +63,13 @@ function mount() {
   panel = Object.assign(document.createElement('section'), { id: 'chatPanel', className: 'chat-panel', hidden: true });
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', '쌤비서 채팅');
-  panel.innerHTML = `<header class="chat-head"><b>쌤비서</b><span class="chat-sub">할 일을 말해 주세요</span>
+  panel.innerHTML = `<header class="chat-head"><b>쌤비서</b><span class="chat-sub">할 일을 말하거나 물어보세요</span>
       <button class="btn text tiny" type="button" data-chat="clear">지우기</button>
       <button class="icon-btn chat-x" type="button" data-chat="close" aria-label="채팅 닫기" title="닫기(Esc)">×</button></header>
     <div class="chat-log" id="chatLog" aria-live="polite"></div>
     <form class="chat-in" id="chatForm" autocomplete="off">
       <button class="icon-btn chat-clip" type="button" data-chat="attach" aria-label="파일 넣기" title="파일 넣기(끌어 놓아도 돼요)">📎</button>
-      <textarea class="field" id="chatText" rows="1" placeholder="할 일을 써 주세요" aria-label="쌤비서에게 할 말"></textarea>
+      <textarea class="field" id="chatText" rows="1" placeholder="할 일이나 궁금한 것을 써 주세요" aria-label="쌤비서에게 할 말"></textarea>
       <button class="btn primary" type="submit" id="chatSend">보내기</button></form>
     <div class="chat-drop" aria-hidden="true">여기에 놓으면 쌤비서가 알아서 해요</div>`;
   document.body.append(panel);
@@ -107,13 +119,18 @@ function briefHTML() {
     ${!brief ? '<p class="muted cb-none"><span class="spin"></span>세는 중…</p>' : brief.length ? `<ul>${brief.map((l, i) => `<li><button type="button" class="cb-line" data-brief="${i}">${l.when ? `<span class="cb-when${l.hot ? ' hot' : ''}">${esc(l.when)}</span>` : ''}<span class="cb-t">${esc(l.text)}</span></button></li>`).join('')}</ul>`
     : `<p class="muted cb-none">${EMPTY}</p>`}</section>`;
 }
-const HELLO = '무엇을 도와드릴까요? 예) 「알코올램프 10개 5,000원 품의」 「3번 토론에서 근거 들어 반론 잘함」 「가정통신문 베트남어로」 「주간학습안내」';
+const HELLO = '무엇을 도와드릴까요? 예) 「알코올램프 10개 5,000원 품의」 「3번 토론에서 근거 들어 반론 잘함」 「가정통신문 베트남어로」 「주간학습안내」 — 「단원평가 결과지 어떻게 뽑아?」처럼 물어봐도 돼요.';
 function msgHTML(m) {
   const extra = mem.get(m.id) || {};
+  // 도우미가 답을 쓰는 중: 「…」와 [멈추기]
+  if (m.typing) return `<div class="chat-msg bot wait typing" data-id="${esc(m.id)}"><div class="chat-bub" role="status"><span class="chat-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="chat-typing-t">${esc(m.text)}</span></div>
+    <div class="chat-acts"><button type="button" class="btn text tiny" data-chat="stop">멈추기</button></div></div>`;
   const chips = (m.chips || []).map((c, i) => `<button type="button" class="chip chat-chip" data-chip="${i}" data-msg="${esc(m.id)}">${esc(c.label)}</button>`).join('');
   const links = (m.links || []).map((l, i) => `<button type="button" class="btn text tiny" data-link="${i}" data-msg="${esc(m.id)}">${esc(l.label)}</button>`).join('');
   const undo = extra.undo ? `<button type="button" class="btn text tiny" data-undo="${esc(m.id)}">되돌리기</button>` : '';
-  return `<div class="chat-msg ${m.who}${m.wait ? ' wait' : ''}" data-id="${esc(m.id)}"><div class="chat-bub">${m.wait ? '<span class="spin"></span>' : ''}${esc(extra.shown || m.text).replace(/\n/g, '<br>')}</div>
+  // 도우미 답(md): 글자를 바꾼 뒤 줄·목록·굵게만 살림(HTML을 넣지 않음)
+  const body = m.md && !extra.shown ? replyHTML(m.text) : esc(extra.shown || m.text).replace(/\n/g, '<br>');
+  return `<div class="chat-msg ${m.who}${m.wait ? ' wait' : ''}" data-id="${esc(m.id)}"><div class="chat-bub${m.md ? ' md' : ''}">${m.wait ? '<span class="spin"></span>' : ''}${body}</div>
     ${chips || links || undo ? `<div class="chat-acts">${chips}${links}${undo}</div>` : ''}</div>`;
 }
 function draw() {
@@ -154,6 +171,7 @@ async function onClick(e) {
   if (b.dataset.chat === 'close') { closeChat(); return; }
   if (b.dataset.chat === 'clear') { clearHistory(); ta.focus(); return; }
   if (b.dataset.chat === 'attach') { deps.pickFiles(); return; }
+  if (b.dataset.chat === 'stop') { stopAssist(true); ta.focus(); return; }
   if (b.dataset.brief != null) { const l = (brief || [])[+b.dataset.brief]; if (l) { await goRoute(l.route); afterGo(); } return; }
   if (b.dataset.chip != null) {
     const m = findMsg(b.dataset.msg), c = m && (m.chips || [])[+b.dataset.chip];
@@ -215,30 +233,88 @@ export async function send(text) {
   const raw = String(text || '').trim();
   if (!raw) return;
   mount();
-  // 메뉴에 넘길 글: 전화번호·전자 우편만 그 자리에서 가림(줄을 통째로 빼면 같은 줄의 내용까지 없어짐), 줄바꿈은 그대로
-  const said = maskContacts(raw);
+  stopAssist(); // 앞 글의 답을 기다리는 중이면 멈추고 새 글에 답함
+  // 메뉴에 넘길 글: 전화번호·전자 우편·사람 이름만 그 자리에서 가림(줄을 통째로 빼면 같은 줄의 내용까지 없어짐), 줄바꿈은 그대로
+  const said = handoffText(raw);
   const r = routeText(said), pm = parseMemo(raw);
   // 기록에는 이름을 가린 글: 「3번 …」(학생 이야기)은 관찰 메모에 저장하는 모양, 그 밖은 AI로 보내는 글과 같게(명단 줄 빼기·전화번호·이름 가리기). 너무 긴 글은 줄여서
   const shown = (pm ? `${nosText(pm.nos)} ${maskMemo(pm.body).text}` : safeText(raw)) || '(이름·전화번호만 있는 글)';
   const me = push({ who: 'me', text: shown.length > 1000 ? shown.slice(0, 1000) + '…' : shown });
   mem.set(me.id, { text: said });
-  if (isSure(r)) { await run(r.intent, r.payload); return; }
-  let cands = r.candidates.slice();
-  // 규칙으로 모르면 AI(notes)에 할 일 목록을 주고 고르게(개인정보 줄은 빼고 이름은 가려서)
-  if (ai.ready()) {
-    const wait = say('무엇을 할지 알아보는 중이에요…', { wait: true }, { keep: false });
-    let v = null;
-    try {
-      // 명단 줄은 빼고(stripPersonal) 전화번호·이름처럼 보이는 말은 가려서(safeText) 보냄
-      v = normAiRoute(await ai.generateJSON(aiRoutePrompt(safeText(raw)), { task: 'notes', valid: o => !!o && typeof o === 'object' && !Array.isArray(o) }));
-    } catch (e) { v = null; }
-    drop(wait);
-    if (v && v.intent) { const p = payloadFor(v.intent, said); if (v.intent === 'translate' && v.lang) p.lang = v.lang; await run(v.intent, p); return; }
-    if (v) cands = [...new Set([...v.candidates, ...cands])];
+  if (isSure(r)) {
+    // 관찰 메모는 이름을 가리기 전 글로 넘김(메모에 넣을 때 가리고 가린 수를 알림 — 전화번호만 먼저 가림)
+    const memo = r.intent === 'memo' && parseMemo(maskContacts(raw));
+    await run(r.intent, memo ? { nos: memo.nos, body: memo.body } : r.payload);
+    return;
   }
-  cands = cands.slice(0, 3);
-  if (cands.length) say('어느 것을 할까요?', { chips: cands.map(c => ({ intent: c, label: intentLabel(c) })), src: me.id });
-  else say(`잘 모르겠어요. 아래에서 골라 주세요.${ai.ready() ? '' : ' AI 키를 넣으면 더 잘 알아들어요.'}`,
+  await assist({ raw, said, r, me });
+}
+
+/* ---------- 쌤비서 도우미 (분명하지 않거나 묻는 글) ---------- */
+const TEXT_INTENTS = ['purchase', 'message', 'letter', 'gongmun', 'report'];
+// 후보 버튼: 아는 할 일만(메모는 번호가 있어야 해서 뺌), 3개까지. nav면 그 메뉴로만(묻는 글을 칸에 넣지 않음)
+const chipList = (ids, nav) => [...new Set(ids)].filter(c => INTENT_IDS.includes(c) && !['memo', 'memoView'].includes(c)).slice(0, 3)
+  .map(c => ({ intent: c, label: intentLabel(c), ...(nav ? { nav: true } : {}) }));
+/* AI가 고른 할 일 → 넘길 것: 선생님 글(가린 글)에 넣을 내용이 있으면 그 글, 없으면(묻는 글·앞 대화를 가리킴) AI가 옮긴 글 */
+function actionPayload(a, { said, question }) {
+  const own = question ? {} : payloadFor(a.intent, said);
+  if (TEXT_INTENTS.includes(a.intent)) return { text: own.text || (a.text ? payloadFor(a.intent, a.text).text : '') || '' };
+  if (a.intent === 'translate') return { lang: a.lang || own.lang || '' };
+  if (a.intent === 'memo') return { nos: a.nos || [], body: a.text || '' };
+  if (a.intent === 'memoView') return { nos: a.nos || [] };
+  return {};
+}
+/* 지금 앱 상태(이름 없이): 보고 있는 화면, 오늘 할 일, AI, 쓰던 가정통신문·품의, 학급 명단 수, 웹판·Windows 앱 */
+async function appState() {
+  await refreshBrief();
+  const nav = get('nav', null), m = nav && MENUS.find(x => x.id === nav.menu), t = m && m.tabs.find(x => x.id === nav.tab);
+  const A = SS().ai, tk = A && typeof A.testKey === 'function' ? A.testKey() : null;
+  const lc = get('letter:cur', null), pc = get('purchase:current', null);
+  const items = pc && pc.form && Array.isArray(pc.form.items) ? pc.form.items.filter(i => i && String(i.name || '').trim()).length : 0;
+  return {
+    place: m ? `${m.label}${t ? ' › ' + t.label : ''}` : '',
+    brief: (brief || []).map(l => ({ text: l.text, when: l.when })),
+    ai: { ready: ai.ready(), name: A && typeof A.engineName === 'function' ? A.engineName() : ai.providerName(), trial: !!(tk && tk.using) },
+    letter: { title: (lc && lc.out && lc.out.title) || '', memo: !!(lc && String(lc.memo || '').trim()) },
+    purchase: { title: (pc && pc.draft && pc.draft.title) || '', items },
+    classCount: Number((get('class', null) || {}).count) || 0,
+    app: window.__TAURI__ ? 'windows' : 'web'
+  };
+}
+const isObj = o => !!o && typeof o === 'object' && !Array.isArray(o);
+async function assist({ raw, said, r, me }) {
+  if (!ai.ready()) { await offline({ raw, r, me }); return; }
+  const job = { ctl: new AbortController(), user: false };
+  pending = job;
+  const wait = say('답을 쓰고 있어요', { wait: true, typing: true }, { keep: false });
+  let out = null, err = null;
+  try {
+    const p = assistPrompt({ text: raw, history: history().filter(m => m.id !== me.id), state: await appState(), hints: r.candidates, today: today() });
+    if (job.ctl.signal.aborted) throw { name: 'AbortError' };
+    out = parseAssist(await ai.generateJSON(p.own, { task: 'notes', shared: { text: p.shared }, signal: job.ctl.signal, valid: isObj }), { nos: mentionedNos(raw) });
+  } catch (e) { err = e; }
+  drop(wait);
+  if (pending === job) pending = null;
+  if (job.ctl.signal.aborted) { if (job.user) say('답을 멈췄어요. 다시 물어보거나 다른 일을 말해 주세요.'); return; }
+  if (!out || (!out.reply && !out.actions.length)) { await offline({ raw, r, me, failed: failText(err) }); return; }
+  // 할 일을 하면 그 결과를 run이 따로 말함 — 후보 버튼은 할 일이 없을 때만
+  if (out.reply) say(handoffText(out.reply), { md: true, chips: out.actions.length ? [] : chipList([...out.choices, ...r.candidates], r.question), src: me.id });
+  for (const a of out.actions) await run(a.intent, actionPayload(a, { said, question: r.question }));
+}
+const failText = e => (e && e.code === 'bad_json' ? '답을 읽지 못했어요' : e && e.code ? ai.errorMessage(e.code, e) : '답이 비었어요').replace(/[.。]\s*$/, '');
+/* AI 없이 답하기: 애매한 명령은 후보 버튼, 할 일·일정은 오늘 할 일, 묻는 글은 안내에서 찾아 답함 */
+const GREET = /^(?:안녕|하이|hi|hello|반가|고마워|고맙|감사|수고)/i;
+const BRIEF_ASK = /할\s*일|일정|급한|챙길|브리핑|마감/;
+async function offline({ raw, r, me, failed = '' }) {
+  const pre = failed ? `AI가 답하지 못했어요(${failed}). ` : '';
+  const tip = ai.ready() ? '' : '\n\nAI를 켜면(설정 › AI, 키가 없으면 시험용 AI) 더 자세히 답해요.';
+  if (!r.question && r.candidates.length) { say(pre + '어느 것을 할까요?', { chips: chipList(r.candidates, false), src: me.id }); return; }
+  if (!failed && GREET.test(raw)) { say(`안녕하세요! ${HELLO}`, { src: me.id }); return; }
+  if (BRIEF_ASK.test(raw)) { if (pre) say(pre.trim()); await run('briefing'); return; }
+  const hit = offlineAnswer(raw);
+  if (hit) { say(`${pre ? pre + '안내에서 찾았어요.\n\n' : ''}${hit.text}${tip}`, { md: true, chips: chipList([...hit.go, ...r.candidates], true), src: me.id }); return; }
+  if (r.candidates.length) { say(pre + '어느 것을 할까요?', { chips: chipList(r.candidates, true), src: me.id }); return; }
+  say(`${pre}잘 모르겠어요. 아래에서 골라 주세요.${ai.ready() ? '' : ' AI 키를 넣거나 시험용 AI를 쓰면 더 잘 알아들어요.'}`,
     { chips: ['briefing', 'purchase', 'message', 'letter'].map(c => ({ intent: c, label: intentLabel(c), nav: true })), src: me.id });
 }
 
