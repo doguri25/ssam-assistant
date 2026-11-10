@@ -331,7 +331,8 @@ export function importSubjects(picked) {
   return ok;
 }
 
-/* 체크하지 않은 날: 처음 체크한 날부터, 오늘 앞 수업일 n일 안에서 진도표 있는 교과 수업이 있는데 기록이 없는 날(오래된 순) */
+/* 체크하지 않은 날: 처음 체크한 날부터, 오늘 앞 수업일 n일 안에서 진도표 있는 교과 수업이 있는데 기록이 없는 날(오래된 순).
+   다음 학기 진도표로 바꾼 교과(since)는 그 앞 날을 세지 않음(체크해도 그 진도표에 세지 않는 날) */
 export function missingDays(ctx, n = 10) {
   const first = Object.keys(ctx.log).sort()[0];
   if (!first) return [];
@@ -342,7 +343,7 @@ export function missingDays(ctx, n = 10) {
     if (!slots.length) continue;
     seen++;
     if (ctx.log[d]) continue;
-    if (slots.some(s => { const f = findSubject(ctx.subjects, s.subject); return f && f.lessons.length; })) out.push(d);
+    if (slots.some(s => { const f = findSubject(ctx.subjects, s.subject); return f && f.lessons.length && !(f.since && d < f.since); })) out.push(d);
   }
   return out.reverse();
 }
