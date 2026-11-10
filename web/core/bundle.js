@@ -1,6 +1,7 @@
 /* 한꺼번에 넣기 (스펙 3장): 문서 안 학생용·교사용 나누기, 스캔 쪽 표시(정답·교사용 / 빈 활동지 / 학생), 확인 카드.
    활동지·단원평가·평가지 채점이 같이 씀. 이 파일의 규칙 함수는 화면 없이도 돌아감(시험) */
 import { nameCell, stripNames, MASK } from './privacy.js';
+import { maskPersons } from './chat-names.js';
 
 export const ROLE_NAME = { teacher: '정답·교사용', blank: '빈 활동지', student: '학생' };
 const ROLES = Object.keys(ROLE_NAME);
@@ -140,6 +141,9 @@ export function maskNameFields(text) {
    머리 줄(번호·이름·메모)은 넣지 않음. 이름 칸은 머리에 「이름」이 있거나, 칸이 둘 이상인 줄의 첫 칸이 대부분 사람 이름 모양일 때만 */
 const NAME_HEAD = /^(이\s?름|성\s?명|학생명|학생\s?이름)$/;
 const nameLike = c => nameCell(c) && !/[함임음됨]$/.test(c);
+/* 띄어 쓴 이름 칸(「1 김민수 발표 잘함」 — PDF·글에서 복사): 낱말 전체가 사람 이름(chat-names 규칙 — 「조용히」「박물관」은 아님)일 때만 */
+const wholeName = w => /^[가-힣]{2,5}$/.test(w) && maskPersons(w, { memo: true }).text === MASK;
+const leadName = s => { const m = /^([가-힣]{2,5})[ 　]+(?=\S)/.exec(s); return m && wholeName(m[1]) ? m[0] : ''; };
 export function memoRows(text) {
   // 줄 앞뒤 빈칸만 뗌(탭은 엑셀 칸 자리라 남김). 끝의 빈 줄(엑셀 복사 끝 줄바꿈)은 버림
   const all = String(text || '').split('\n').map(l => l.replace(/^[ \r\u3000]+|[ \r\u3000]+$/g, ''));
@@ -170,19 +174,30 @@ export function memoRows(text) {
     const two = rows.filter(r => r.cells.filter(Boolean).length >= 2), hit = two.filter(r => nameLike(r.cells[0])).length;
     if (hit && hit >= two.length * 0.6) nameAt = 0;
   }
+  // 탭 없이 띄어 쓴 이름 칸: 낱말이 둘 이상인 한 칸 줄의 대부분(두 줄 이상)이 이름으로 시작할 때만
+  let spaced = false;
+  if (nameAt < 0) {
+    const one = rows.filter(r => r.cells.length === 1 && /\S\s+\S/.test(r.cells[0])), hit = one.filter(r => leadName(r.cells[0])).length;
+    spaced = hit >= 2 && hit >= one.length * 0.6;
+  }
   let names = 0;
   const out = [];
   for (const r of rows) {
     // 칸이 하나뿐인 줄은 그 칸이 이름 모양일 때만 뺌(메모 한 칸은 그대로)
     if (nameAt >= 0 && r.cells.length > nameAt && (r.cells.length >= 2 || nameLike(r.cells[nameAt]))) { if (r.cells[nameAt]) names++; r.cells.splice(nameAt, 1); }
+    else if (spaced && r.cells.length === 1) {
+      const c = r.cells[0], n = leadName(c);
+      if (n) { names++; r.cells = [c.slice(n.length).trim()]; } else if (wholeName(c)) { names++; r.cells = []; }
+    }
     const memo = r.cells.filter(Boolean).join(', ').trim();
     // 메모가 빈 줄도 남김(그 학생 메모는 바꾸지 않고 자리만 셈). 번호도 메모도 없는 줄은 번호 붙인 붙여넣기에서는 버림
     if (memo || r.no != null || !numbered) out.push({ no: r.no, memo });
   }
   return { rows: out, names };
 }
-/* AI로 보내는 행특 메모: 예전에 붙여넣은 「김민수⇥메모」의 앞 이름 칸을 빼고 이름 칸을 가림 */
-export const memoForAI = memo => maskNameFields(String(memo || '').replace(/^\s*([가-힣]{2,4})\t+/, (m, n) => (nameLike(n) ? '' : m))).trim();
+/* AI로 보내는 행특 메모: 예전에 붙여넣은 「김민수⇥메모」「김민수 메모」의 앞 이름 칸을 빼고 이름 칸을 가림 */
+export const memoForAI = memo => maskNameFields(String(memo || '').replace(/^\s*([가-힣]{2,4})\t+/, (m, n) => (nameLike(n) ? '' : m))
+  .replace(/^\s*([가-힣]{2,5})[ 　]+(?=\S)/, (m, n) => (wholeName(n) ? '' : m))).trim();
 
 /* ---------- 파일 읽기 ---------- */
 const DOC = /\.(hwpx?|txt)$/i;
