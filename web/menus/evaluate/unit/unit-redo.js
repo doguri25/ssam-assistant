@@ -30,10 +30,51 @@ export function usedLines(test, st) {
   return n;
 }
 
-export const choicesLine = q => (q && Array.isArray(q.choices) && q.choices.length ? q.choices.map((c, i) => `${CIRC[i] || `(${i + 1})`} ${c}`).join('   ') : '');
+/* 결과지에 쓰는 보기: 고치기 칸(①~④ 네 칸)의 빈 칸은 빼고 차례대로 번호, 두 개가 안 되면 보기 없음(답을 쓰는 문제처럼).
+   → { list(보기 글), map(칸 번호 → 결과지 번호) } */
+export function shownChoices(q) {
+  const list = [], map = {};
+  (q && Array.isArray(q.choices) ? q.choices : []).forEach((c, i) => { const v = String(c == null ? '' : c).trim(); if (v) { map[i] = list.length; list.push(v); } });
+  return list.length >= 2 ? { list, map } : { list: [], map: {} };
+}
+/* 정답 글 → 보기 칸 번호(0~3): 「2」「(2)」「2)」「2.」「2번」「②」(「② 나」도), 보기 글 그대로. 모르면 -1 */
+export function answerSlot(answer, choices = []) {
+  const s = String(answer == null ? '' : answer).trim(), m = /^\(?\s*([1-4])\s*(?:[).]|번)?$/.exec(s);
+  if (m) return +m[1] - 1;
+  if (s && CIRC.includes(s[0])) return CIRC.indexOf(s[0]);
+  return s ? (choices || []).findIndex(c => String(c == null ? '' : c).trim() === s) : -1;
+}
+/* 고쳐 넣는 정답: 보기가 있는 문제면 ①~④로(「2」→②), 못 알아들으면·보기가 없으면 그대로 */
+export function normAnswer(answer, choices = []) {
+  const s = String(answer == null ? '' : answer).trim(), k = answerSlot(s, choices);
+  return k >= 0 && (choices || []).filter(c => String(c == null ? '' : c).trim()).length >= 2 ? CIRC[k] : s;
+}
+/* 결과지에 쓰는 정답: 보기가 있으면 빈 보기를 뺀 새 번호로(정답의 보기가 비었으면 쓰지 않음 — 고치기 칸에 알림) */
+const answerText = q => {
+  const sc = shownChoices(q), k = sc.list.length ? answerSlot(q.answer, q.choices) : -1;
+  if (k >= 0) return sc.map[k] != null ? CIRC[sc.map[k]] : '';
+  return String(q.answer == null ? '' : q.answer).trim();
+};
+/* 고치기 칸 알림(물음이 있는 문제만): 가운데 빈 보기, 보기가 하나뿐, 정답이 ①~④가 아님, 정답의 보기가 빔, 정답이 빔 */
+export function redoIssues(q) {
+  if (!q || !String(q.q || '').trim()) return [];
+  const out = [], ch = (Array.isArray(q.choices) ? q.choices : []).map(c => String(c == null ? '' : c).trim()), filled = ch.filter(Boolean).length;
+  const last = ch.reduce((n, c, i) => (c ? i : n), -1), gaps = ch.map((c, i) => (!c && i < last ? CIRC[i] : '')).filter(Boolean);
+  const ans = String(q.answer == null ? '' : q.answer).trim();
+  if (q.kind === 'choice' && filled === 1) out.push('보기를 두 개 이상 채워 주세요. 지금은 답을 쓰는 문제로 나가요.');
+  if (filled >= 2 && gaps.length) out.push(`${gaps.join('·')} 보기가 비어 있어요. 결과지에는 빈 보기를 빼고 번호를 다시 매겨요.`);
+  if (!ans) out.push('정답이 비어 있어요.');
+  else if (filled >= 2) {
+    const k = answerSlot(ans, ch);
+    if (k < 0) out.push('정답은 ①~④ 중 하나로 써 주세요.');
+    else if (!ch[k]) out.push(`정답 ${CIRC[k]}의 보기가 비어 있어요.`);
+  }
+  return out;
+}
+export const choicesLine = q => shownChoices(q).list.map((c, i) => `${CIRC[i]} ${c}`).join('   ');
 /* 복습 문제 하나의 줄: 물음 줄 + 보기 줄(있으면) + 답 칸 1줄 */
 export const questionCost = (q, i) => textLines(`${i + 1}) ${q.q}`) + (choicesLine(q) ? textLines(choicesLine(q)) : 0) + 1;
-export const answerLine = list => `정답: ${list.map((q, i) => `${i + 1}) ${q.answer}${q.explain ? ` (${q.explain})` : ''}`).join('   ')}`;
+export const answerLine = list => `정답: ${list.map((q, i) => [`${i + 1})`, answerText(q), q.explain ? `(${q.explain})` : ''].filter(Boolean).join(' ')).join('   ')}`;
 /* 남는 줄(budget - used)에 들어가는 앞에서부터의 문제 수. 넣으려면 「다시 풀어 보기」 머리 1줄과 맨 아래 작은 정답 줄도 들어가야 함 */
 export function fitCount(budget, used, qs) {
   let k = 0, cost = 1;
@@ -78,7 +119,7 @@ export function redoFit(test, students, { one = false } = {}) {
   return { put, short };
 }
 
-/* 결과지 문서 블록: 「다시 풀어 보기」 1) 2) 3)(보기·답 칸), 맨 아래 작은 글씨 정답 */
+/* 결과지 문서 블록: 「다시 풀어 보기」 1) 2) 3)(보기·답 칸), 그 학생 칸 끝(문제 바로 아래)에 작은 글씨 정답 — 인쇄·한글·워드·PDF·복사가 모두 이 줄 */
 export function redoBlocks(list) {
   if (!list.length) return [];
   const out = [{ type: 'p', text: '다시 풀어 보기', bold: true }];
@@ -91,8 +132,5 @@ export function redoBlocks(list) {
   out.push({ type: 'small', text: answerLine(list) });
   return out;
 }
-/* 복사 글 줄 */
-export function redoText(list) {
-  if (!list.length) return [];
-  return ['다시 풀어 보기', ...list.flatMap((q, i) => [`${i + 1}) ${q.q}`, ...(choicesLine(q) ? [`    ${choicesLine(q)}`] : [])]), answerLine(list)];
-}
+/* 복사 글 줄: 결과지 문서와 같은 줄(「답: (   )」 줄까지) */
+export const redoText = list => redoBlocks(list).map(b => b.text);

@@ -10,7 +10,7 @@ import { getTest, graded, makeTitle, feedbackOf, feedbackText } from './unit-mod
 import { feedbackDoc } from './unit-docs.js';
 import { feedbackPrompt, normFeedback, redoPrompt, normRedo } from './unit-ai.js';
 import { ITEM_TYPES } from './unit-grade.js';
-import { redoFor, redoWant, redoFit, redoTargets, redoBlocks, redoText, redoKind } from './unit-redo.js';
+import { redoFor, redoWant, redoFit, redoTargets, redoBlocks, redoText, redoKind, normAnswer, redoIssues } from './unit-redo.js';
 import { unitAccuracy, accuracyText } from '../grade-accuracy.js';
 import { esc, AI_KEY, registerStep, inStep, cur, curId, saveOrWarn, refresh, getBox } from './unit.js';
 
@@ -77,8 +77,9 @@ function redoItemHTML(it, q = {}) {
   const ch = kind === 'choice' ? `<div class="un-rq-chs">${[0, 1, 2, 3].map(i => `<label>${CIRC[i]}<input class="field" ${at('c' + i)} value="${esc((q.choices || [])[i] || '')}" aria-label="${it.no}번 복습 문제 보기 ${i + 1}"></label>`).join('')}</div>` : '';
   return `<div class="un-rq-it" data-redo-it="${it.no}"><div><b>${it.no}번 · ${esc(it.content)}</b> <span class="muted">${esc(TYPE_NAME[it.type] || '')} · 정답 ${esc(it.answer)}</span></div>
     <label class="yp-f"><span class="lab">물음</span><textarea class="field" ${at('q')} rows="2" placeholder="비우면 이 문항은 결과지에 넣지 않아요">${esc(q.q || '')}</textarea></label>${ch}
-    <div class="un-rq-row"><label class="yp-f"><span class="lab">${kind === 'essay' ? '예시 답' : '정답'}</span><input class="field" ${at('answer')} value="${esc(q.answer || '')}"></label>
-      <label class="yp-f"><span class="lab">풀이 (40자 안)</span><input class="field" ${at('explain')} maxlength="40" value="${esc(q.explain || '')}"></label></div></div>`;
+    <div class="un-rq-row"><label class="yp-f"><span class="lab">${kind === 'essay' ? '예시 답' : '정답'}</span><input class="field" ${at('answer')} value="${esc(q.answer || '')}"${kind === 'choice' ? ' placeholder="①~④ (2라고 써도 돼요)"' : ''}></label>
+      <label class="yp-f"><span class="lab">풀이 (40자 안)</span><input class="field" ${at('explain')} maxlength="40" value="${esc(q.explain || '')}"></label></div>
+    <p class="muted un-rq-warn" data-redo-warn="${it.no}" role="status">${esc(redoIssues({ kind, ...q }).join(' '))}</p></div>`;
 }
 function redoHTML(t) {
   const targets = redoTargets(t), items = (t.redo && t.redo.items) || {}, run = redoRun === t.id, n = redoCount(t);
@@ -192,7 +193,8 @@ async function makeRedo() {
     toast(e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 해 보세요.' : ai.errorMessage(e && e.code, e), 6000);
   } finally { redoRun = null; refresh(id); }
 }
-/* 복습 문제 칸 고치기: 보기는 네 칸, 처음 쓰는 문제면 결과지에 넣기를 켬 */
+/* 복습 문제 칸 고치기: 보기는 네 칸(빈 칸은 결과지에서 빼고 번호를 다시 매김 — 칸 자리는 그대로 두고 알림), 정답 「2」·보기 글은 ②로,
+   처음 쓰는 문제면 결과지에 넣기를 켬 */
 function editRedo(box, el) {
   const [no, f] = el.dataset.redo.split('-'), t = cur(), it = t && t.key.items.find(i => i.no === Number(no));
   if (!it) return;
@@ -201,8 +203,12 @@ function editRedo(box, el) {
   const q = { kind: redoKind(it.type), q: '', choices: [], answer: '', explain: '', ...(t.redo.items[no] || {}) }, v = el.value.trim();
   if (/^c\d$/.test(f)) { const c = [0, 1, 2, 3].map(i => (q.choices || [])[i] || ''); c[Number(f[1])] = v; q.choices = c.some(Boolean) ? c : []; }
   else q[f] = f === 'explain' ? v.slice(0, 40) : v;
+  if (q.kind === 'choice' && (f === 'answer' || /^c\d$/.test(f))) q.answer = normAnswer(q.answer, q.choices);
   t.redo = { ...t.redo, items: { ...t.redo.items, [no]: q } };
   saveOrWarn(t); syncRedo(box, t);
+  const an = box.querySelector(`[data-redo="${no}-answer"]`), w = box.querySelector(`[data-redo-warn="${no}"]`);
+  if (an && an.value !== q.answer && (an === el || document.activeElement !== an)) an.value = q.answer; // 고친 칸(바꾼 뒤)이거나 치는 중이 아닌 칸만
+  if (w) w.textContent = redoIssues(q).join(' ');
 }
 function chooseRv(key, useRv) {
   const [no, f] = key.split('-'), t = cur(), s = t && t.students.find(x => x.no === Number(no));

@@ -60,7 +60,7 @@ await run('unit-review', [
     await page.waitForFunction(() => document.querySelector('.unit-box [data-redo-on]') && document.querySelector('.unit-box [data-redo-on]').checked);
     assert((await page.textContent(`${V} #unRedoFit`)).includes('결과지에 넣은 학생'), await page.textContent(`${V} #unRedoFit`));
   }],
-  ['한 쪽에 2명: 남는 자리만큼만(4번은 배점 큰 9번 하나), 한마디 아래 「다시 풀어 보기」, 정답은 칸 맨 아래 작은 글씨, 다 맞힌 1번은 없음', async () => {
+  ['한 쪽에 2명: 남는 자리만큼만(4번은 배점 큰 9번 하나), 한마디 아래 「다시 풀어 보기」, 정답은 문제 바로 아래(학생 칸 끝) 작은 글씨 — 한글·워드·PDF와 같게, 다 맞힌 1번은 없음', async () => {
     assert(!(await page.isChecked(`${V} [data-one-page]`)), '한 장씩이 켜져 있음');
     const s4 = await psText(4);
     assert(/한마디: .*다시 풀어 보기 1\) 9번 복습 물음 답: _+ 정답: 1\) 9번 답$/.test(s4.trim()), s4);
@@ -69,11 +69,12 @@ await run('unit-review', [
     assert((await page.textContent(`${V} #unRedoFit`)).includes('번호별로 한 장씩'), '한 장씩 안내');
     await page.emulateMedia({ media: 'print' });
     const m = await page.evaluate(sel => {
-      const sec = document.querySelector(sel), a = sec.querySelector('.un-ans'), p = sec.querySelector('p');
-      return { a: parseFloat(getComputedStyle(a).fontSize), p: parseFloat(getComputedStyle(p).fontSize), last: sec.lastElementChild === a, gap: sec.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom };
+      const sec = document.querySelector(sel), a = sec.querySelector('.un-ans'), p = sec.querySelector('p'), rq = sec.querySelector('.un-rq');
+      return { a: parseFloat(getComputedStyle(a).fontSize), p: parseFloat(getComputedStyle(p).fontSize), last: sec.lastElementChild === a, after: a.getBoundingClientRect().top - rq.getBoundingClientRect().bottom };
     }, ps(4));
     await page.emulateMedia({ media: 'screen' });
-    assert(m.a < m.p && m.last && m.gap < 30, JSON.stringify(m));
+    // 반 쪽 맨 아래로 밀지 않고(한글·워드·PDF는 문제 바로 아래라) 문제 바로 아래에
+    assert(m.a < m.p && m.last && m.after >= 0 && m.after < 16, JSON.stringify(m));
   }],
   ['번호별로 한 장씩: 자리가 넓어 학생마다 최대 3개(배점 큰 순, 같으면 번호순), 끄면 다시 반 쪽', async () => {
     await page.check(`${V} [data-one-page]`);
@@ -109,7 +110,8 @@ await run('unit-review', [
     await page.click(`${V} [data-un="fbCopy"][data-no="2"]`);
     await page.waitForTimeout(150);
     const txt = await page.evaluate(() => navigator.clipboard.readText());
-    assert(txt.includes('\n다시 풀어 보기\n1) 9번 복습 물음\n2) 10번 복습 물음\n3) 3번 복습 물음\n    ① 가   ② 나   ③ 다   ④ 라\n정답: 1) 9번 답   2) 10번 답   3) ② (3번 풀이)'), txt);
+    // 결과지와 같은 줄(「답: (   )」 줄까지)
+    assert(txt.includes('\n다시 풀어 보기\n1) 9번 복습 물음\n    답: ________________________________________\n2) 10번 복습 물음\n    답: ________________________________________\n3) 3번 복습 물음\n    ① 가   ② 나   ③ 다   ④ 라\n    답: (        )\n정답: 1) 9번 답   2) 10번 답   3) ② (3번 풀이)'), txt);
     await page.click(`${V} [data-un="fbCopyAll"]`);
     await page.waitForTimeout(150);
     const all = await page.evaluate(() => navigator.clipboard.readText());
@@ -134,6 +136,28 @@ await run('unit-review', [
     const p = redos().at(-1);
     assert(redos().length === n + 1 && p.includes('- 9 |') && !p.includes('- 10 |'), p.slice(-400));
     assert(await page.locator(`${V} .un-redo-ed[open]`).count() === 1, '고치기 칸이 접힘');
+  }],
+  ['M9 고치기 칸: 가운데 보기를 비우면 결과지에는 빼고 번호를 다시 매기고 알림, 정답 「3」은 ③으로 바꿔 저장·결과지에는 새 번호', async () => {
+    if (!(await page.locator(`${V} .un-redo-ed[open]`).count())) await page.click(`${V} .un-redo-ed > summary`);
+    await page.fill(`${V} input[data-redo="3-c1"]`, '');
+    await page.dispatchEvent(`${V} input[data-redo="3-c1"]`, 'change');
+    let s2 = await psText(2);
+    assert(s2.includes('3) 3번 복습 물음 ① 가 ② 다 ③ 라 답:') && !/② +③|② 답/.test(s2), s2);
+    const warn = await page.textContent(`${V} [data-redo-warn="3"]`);
+    assert(warn.includes('② 보기가 비어 있어요') && warn.includes('정답 ②의 보기가 비어'), warn);
+    await page.fill(`${V} input[data-redo="3-answer"]`, '3');
+    await page.dispatchEvent(`${V} input[data-redo="3-answer"]`, 'change');
+    assert((await T('sample-1')).redo.items[3].answer === '③' && (await page.inputValue(`${V} input[data-redo="3-answer"]`)) === '③', '정답 ③');
+    s2 = await psText(2);
+    assert(s2.includes('3) ② (3번 풀이)'), s2);
+    assert(!(await page.textContent(`${V} [data-redo-warn="3"]`)).includes('정답'), await page.textContent(`${V} [data-redo-warn="3"]`));
+    // 다시 채우고 정답 「2」 → ②, 알림 없음
+    await page.fill(`${V} input[data-redo="3-c1"]`, '나나');
+    await page.dispatchEvent(`${V} input[data-redo="3-c1"]`, 'change');
+    await page.fill(`${V} input[data-redo="3-answer"]`, '2');
+    await page.dispatchEvent(`${V} input[data-redo="3-answer"]`, 'change');
+    assert((await T('sample-1')).redo.items[3].answer === '②' && (await page.textContent(`${V} [data-redo-warn="3"]`)).trim() === '', '되돌림');
+    assert((await psText(2)).includes('3) 3번 복습 물음 ① 가 ② 나나 ③ 다 ④ 라'), await psText(2));
   }],
   ['모두 만들었으면 AI를 다시 부르지 않음', async () => {
     const n = redos().length;

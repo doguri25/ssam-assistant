@@ -125,7 +125,8 @@ test('결과지 문서: 한마디 아래 「다시 풀어 보기」 1) 2) 3), �
   ]);
   assert.ok(!b.slice(i + 9).some(x => x.text === '다시 풀어 보기'), '다 맞힌 학생');
   const txt = feedbackText(t, s, redoText(redoFor(t, s, { one: true })));
-  assert.ok(txt.endsWith('한마디: 힘내요\n다시 풀어 보기\n1) 5.4 + 7.2는?\n2) 물음 하나\n    ① 가   ② 나   ③ 다   ④ 라\n정답: 1) 12.6 (자리를 맞춰 더해요)   2) ② (풀이)'), txt);
+  // 복사 글도 결과지와 같은 줄(「답: (   )」 줄까지, 2026-11-10 M8)
+  assert.ok(txt.endsWith('한마디: 힘내요\n다시 풀어 보기\n1) 5.4 + 7.2는?\n    답: (                              )\n2) 물음 하나\n    ① 가   ② 나   ③ 다   ④ 라\n    답: (        )\n정답: 1) 12.6 (자리를 맞춰 더해요)   2) ② (풀이)'), txt);
   assert.deepEqual(redoBlocks([]), []); assert.deepEqual(redoText([]), []);
   assert.equal(answerLine([{ answer: '②', explain: '' }, { answer: '12.6', explain: '' }]), '정답: 1) ②   2) 12.6');
 });
