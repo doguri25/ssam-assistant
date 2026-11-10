@@ -301,9 +301,12 @@ export function putReportSources({ sources = [], memo = '' } = {}) {
   const x0 = c(), m = String(memo || '').trim();
   if (!x0.r && !R.busy && (String(x0.memo || '').trim() || x0.sources.length || R.photos.length)) {
     const had = String(x0.memo || '').trim();
-    cur = { ...x0, memo: !m || had === m ? x0.memo : had ? `${x0.memo.replace(/\s+$/, '')}\n\n(덧붙인 내용)\n${m}` : m, sources: [...x0.sources, ...add] };
+    // 같은 곳에서 두 번 넘겨도(행사계획 [결과 보고 …]를 다시 누름 등) 이미 넣은 자료·메모는 겹쳐 넣지 않음
+    const fresh = add.filter(s => !x0.sources.some(o => o.name === s.name && o.text === s.text));
+    cur = { ...x0, memo: !m || had.includes(m) ? x0.memo : had ? `${x0.memo.replace(/\s+$/, '')}\n\n(덧붙인 내용)\n${m}` : m, sources: [...x0.sources, ...fresh] };
     save(); render();
-    toast('쓰던 결과 보고가 있어서 바꾸지 않고 덧붙였어요. 확인한 뒤 [결과 보고 쓰기]를 눌러 주세요.', 6000);
+    toast(fresh.length || cur.memo !== x0.memo ? '쓰던 결과 보고가 있어서 바꾸지 않고 덧붙였어요. 확인한 뒤 [결과 보고 쓰기]를 눌러 주세요.'
+      : '이미 넣은 자료예요. 확인한 뒤 [결과 보고 쓰기]를 눌러 주세요.', 6000);
     return 'added';
   }
   leave();
@@ -353,7 +356,8 @@ document.addEventListener('click', e => {
   else if (a === 'formExport' && x.r) formExport(x);
   else if (a === 'export' && x.r) {
     const doc = reportDoc(x.r, R.photos, x.captions);
-    exportDoc(doc, doc.title).then(m => toast(R.photos.length || !x.captions.length ? m : `${m} · 사진은 저장하지 않아 이번 파일에는 없어요(사진을 다시 넣어 주세요)`, 6000));
+    exportDoc(doc, doc.title).then(m => toast(R.photos.length || !x.captions.length ? m : `${m} · 사진은 저장하지 않아 이번 파일에는 없어요(사진을 다시 넣어 주세요)`, 6000))
+      .catch(() => toast('파일을 저장하지 못했어요', 6000));
   }
 });
 document.addEventListener('change', e => {

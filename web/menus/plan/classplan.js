@@ -616,7 +616,8 @@ document.addEventListener('click', e => {
   const ins = e.target.closest('[data-insert]');
   if (ins && plan.guide && plan.draft) {
     const g = plan.guide[+ins.dataset.insert];
-    if (g) { plan.draft = insertSentence(plan.draft, g.section, g.sentence); if (plan.status === 'final') plan.status = 'draft'; persist(); renderMain(); toast('초안에 넣었어요'); }
+    // 넣은 칸의 아직 고르지 않은 검토 의견은 지움(손으로 고친 것과 같음 — [검토 안 쓰기]가 넣은 문장을 덮지 않게)
+    if (g) { plan.draft = insertSentence(plan.draft, g.section, g.sentence); plan.rv = dropOpen(plan.rv, g.section); unfinal(plan); persist(); renderMain(); toast('초안에 넣었어요'); }
     return;
   }
   const ad = e.target.closest('[data-adel]');

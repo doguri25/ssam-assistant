@@ -14,7 +14,7 @@ import { listEvents, setEvents, removeEvents, dayIssues, suggestDates, weekday }
 import { stepsHTML } from '../../core/steps.js';
 import { keepFiles } from '../../core/keep-files.js';
 import { rvBoxHTML, runPlanReview, onRvClick, markDone, dropOpen, hasOpen, clearState } from './plan-review.js';
-import { SECTIONS, TEXT_SECTIONS, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent, normReview, normGuide, normDraft, overlap, guideStatus, insertSentence, planDoc, planText } from './year-model.js';
+import { SECTIONS, TEXT_SECTIONS, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent, normReview, normGuide, normDraft, overlap, guideStatus, insertSentence, planDoc, planText, textForAI, ownerForAI, fitSchedule } from './year-model.js';
 
 const STEPS = ['자료 넣기', '작년 평가', '지침 점검', '초안', '일정'];
 const SRC = [
@@ -75,6 +75,12 @@ function finish(id, kind) {
 }
 const cap = t => String(t).slice(0, MAX_SRC);
 const visible = () => curTab === 'year' && box && box.isConnected && !box.closest('[hidden]');
+/* 확정한 계획을 고치면 다시 「작성 중」, 학사일정에서도 그 계획의 일정을 뺌(옮기거나 뺀 옛 날짜가 남지 않게 — 다시 확정하면 새로 넣음, 행사계획과 같음) */
+function unconfirm(p = plan) {
+  if (p.status !== 'final') return;
+  p.status = 'draft';
+  removeEvents('year:' + p.id);
+}
 
 /* ---------- 그리기 ---------- */
 function render() {
@@ -277,7 +283,7 @@ function setSchedule(i, patch) {
   if (!x) return;
   Object.assign(x, patch);
   if (patch.date !== undefined) x.month = x.date ? +x.date.slice(5, 7) : x.month;
-  if (plan.status === 'final') plan.status = 'draft';
+  unconfirm();
   persist();
 }
 
@@ -315,7 +321,7 @@ async function downloadHwpx() {
 /* ---------- AI: 작년 평가 ---------- */
 function reviewPrompt(p) {
   return `[작년 평가]\n학교 업무 연간계획을 돕는 도우미예요. 아래 작년 운영 결과(설문·실적·반성)를 보고 평가해 주세요.\n`
-    + `업무: ${p.name}\n올해 목표: ${p.goal}\n\n작년 결과:\n"""\n${stripPersonal(p.sources.lastResult).text.slice(0, 20000)}\n"""\n\n`
+    + `업무: ${p.name}\n올해 목표: ${textForAI(p.goal)}\n\n작년 결과:\n"""\n${stripPersonal(p.sources.lastResult).text.slice(0, 20000)}\n"""\n\n`
     + '규칙:\n- good: 잘된 점 2~4개(짧은 문장)\n- bad: 아쉬운 점 1~4개, 각각 ideas에 올해 개선 방향 2~3개(실행할 수 있는 짧은 문장)\n'
     + '- numbers: 결과에 나온 수치 변화(없으면 빈 배열). 결과에 없는 숫자는 지어내지 않음\n\n'
     + '답은 JSON 하나만: {"good":["…"],"bad":[{"text":"…","ideas":["…","…"]}],"numbers":["…"]}';
@@ -362,9 +368,10 @@ function draftPrompt(p) {
   const s = getSchool();
   const picked = p.review ? p.review.picked : [];
   const lines = [
-    `업무: ${p.name}`, `학년도: ${p.year}학년도 (${p.year}-03-01 ~ ${p.year + 1}-02-28)`, `올해 목표: ${p.goal}`,
+    `업무: ${p.name}`, `학년도: ${p.year}학년도 (${p.year}-03-01 ~ ${p.year + 1}-02-28)`, `올해 목표: ${textForAI(p.goal)}`,
     `학교 현황: ${s.name || '(학교명 없음)'}, 학급 ${s.classes || '-'}개, 학생 ${s.students || '-'}명`,
-    p.owner.trim() && `담당자: ${p.owner}`, p.budget.trim() && `예산: ${p.budget}`,
+    // 담당자 칸은 부서만(교직원 이름·전화번호는 AI로 보내지 않음)
+    p.owner.trim() && `담당자: ${ownerForAI(p.owner)}`, p.budget.trim() && `예산: ${textForAI(p.budget)}`,
     p.review && p.review.good.length && `작년에 잘된 점: ${p.review.good.join(' / ')}`,
     p.review && p.review.bad.length && `작년에 아쉬운 점: ${p.review.bad.map(b => b.text).join(' / ')}`,
     picked.length && `올해 반영할 개선 방향: ${picked.join(' / ')}`,
@@ -388,7 +395,14 @@ async function runDraft() {
     // 섹션이 몇 개 빠져도 받음 (빠진 섹션은 빈 글)
     const ok = x => { const d = normDraft(x); return !!d && (TEXT_SECTIONS.some(k => d[k].trim()) || d.schedule.length > 0); };
     const v = await ai.generateJSON(draftPrompt(plan), { task: 'plan', valid: ok });
-    apply(id, p => { p.draft = normDraft(v); p.rv = []; if (p.status === 'final') p.status = 'draft'; });
+    let moved = 0, year = 0;
+    apply(id, p => {
+      // 작년 계획서 날짜를 그대로 옮긴 일정은 이 계획 학년도의 같은 달·날로
+      const d = normDraft(v), f = fitSchedule(d.schedule, p.year);
+      moved = f.moved; year = p.year;
+      p.draft = { ...d, schedule: f.schedule }; p.rv = []; unconfirm(p);
+    });
+    if (moved) toast(`일정 날짜 ${moved}개가 ${year}학년도가 아니어서 ${year}학년도의 같은 날로 옮겼어요. 5단계 「일정」에서 확인해 주세요.`, 7000);
     clearState(id);
     finish(id, 'draft');
     reviewDraft(id);
@@ -466,6 +480,7 @@ async function addFiles(target, files) {
         const prev = p.sources[target].trim();
         p.sources[target] = cap((prev ? prev + '\n\n' : '') + `(파일 「${f.name}」)\n${text}`);
         p.sourceNames[target] = [...p.sourceNames[target], f.name];
+        if (target === 'guide') p.guide = null; // 지침이 늘면 3단계에서 지침 항목을 다시 뽑음(학급운영계획과 같음)
       };
       if (plan.id === id) { add(plan); persist(); } else apply(id, add);
       if (r.cols.length || r.dropped || r.masked) toast(personalMsg(r), 7000);
@@ -486,6 +501,7 @@ document.addEventListener('input', e => {
     if (el.value.length > MAX_SRC) { el.value = cap(el.value); toast('앞 6만 자만 저장해요', 4000); }
     plan.sources[el.dataset.src] = el.value;
     const n = box.querySelector(`[data-cap="${el.dataset.src}"]`); if (n) n.hidden = el.value.length < MAX_SRC;
+    if (el.dataset.src === 'guide') plan.guide = null; // 지침을 고치면 지침 항목을 다시 뽑음
   }
   else if (el.dataset.sec && plan.draft) {
     plan.draft = { ...plan.draft, [el.dataset.sec]: el.value }; refreshOverlap();
@@ -500,7 +516,7 @@ document.addEventListener('input', e => {
     const sum = box.querySelector('#ypBudSum');
     if (sum) sum.textContent = won(plan.draft.budget.reduce((s, x) => s + x.amount, 0));
   } else return;
-  if (plan.status === 'final' && (el.dataset.sec || el.dataset.bud != null)) plan.status = 'draft';
+  if (el.dataset.sec || el.dataset.bud != null) unconfirm();
   persistSoon();
 });
 document.addEventListener('change', e => {
@@ -529,7 +545,7 @@ document.addEventListener('click', e => {
       const r = (plan.rv || []).find(x => x.section === sec && !x.done);
       if (!r || !plan.draft) return;
       plan.draft = { ...plan.draft, [sec]: r.fix }; plan.rv = markDone(plan.rv, sec, 'review');
-      if (plan.status === 'final') plan.status = 'draft';
+      unconfirm();
       persist(); renderMain();
     },
     keep: sec => { plan.rv = markDone(plan.rv, sec, 'main'); persist(); renderMain(); }
@@ -541,7 +557,8 @@ document.addEventListener('click', e => {
   const ins = e.target.closest('[data-insert]');
   if (ins && plan.guide && plan.draft) {
     const g = plan.guide[+ins.dataset.insert];
-    if (g) { plan.draft = insertSentence(plan.draft, g.section, g.sentence); if (plan.status === 'final') plan.status = 'draft'; persist(); renderMain(); toast('초안에 넣었어요'); }
+    // 넣은 칸의 아직 고르지 않은 검토 의견은 지움(손으로 고친 것과 같음 — [검토 안 쓰기]가 넣은 문장을 덮지 않게)
+    if (g) { plan.draft = insertSentence(plan.draft, g.section, g.sentence); plan.rv = dropOpen(plan.rv, g.section); unconfirm(); persist(); renderMain(); toast('초안에 넣었어요'); }
     return;
   }
   const cp = e.target.closest('[data-copy]');
@@ -549,7 +566,7 @@ document.addEventListener('click', e => {
   const sg = e.target.closest('[data-suggest]');
   if (sg) { setSchedule(+sg.dataset.i, { date: sg.dataset.suggest }); renderMain(); return; }
   const sd = e.target.closest('[data-schdel]');
-  if (sd && plan.draft) { plan.draft.schedule.splice(+sd.dataset.schdel, 1); if (plan.status === 'final') plan.status = 'draft'; persist(); renderMain(); return; }
+  if (sd && plan.draft) { plan.draft.schedule.splice(+sd.dataset.schdel, 1); unconfirm(); persist(); renderMain(); return; }
   const pv = e.target.closest('[data-prev]');
   if (pv) {
     const p = getPlan(pv.dataset.prev);
@@ -562,7 +579,7 @@ document.addEventListener('click', e => {
     return;
   }
   const bd = e.target.closest('[data-budel]');
-  if (bd && plan.draft) { plan.draft.budget.splice(+bd.dataset.budel, 1); persist(); renderMain(); return; }
+  if (bd && plan.draft) { plan.draft.budget.splice(+bd.dataset.budel, 1); unconfirm(); persist(); renderMain(); return; }
   const fb = e.target.closest('[data-file]');
   if (fb) { const inp = box.querySelector('#ypFile'); inp.dataset.target = fb.dataset.file; inp.click(); return; }
   const b = e.target.closest('[data-y]');
