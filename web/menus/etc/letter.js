@@ -49,11 +49,13 @@ function resend(force = false, x = c()) {
 const QUOTA = '양식을 저장하지 못했어요(저장 공간이 꽉 찼을 수 있어요).';
 async function loadForms() {
   F.store = await forms();
-  try { F.list = await F.store.list(); } catch (e) { F.list = []; }
+  // 저장소를 잠깐 읽지 못하면(또는 IndexedDB를 못 열어 메모리로 쓰는 중이면) 고른 양식은 그대로 둠 — 진짜로 읽은 목록에 없을 때만 지움
+  let read = F.store.persistent !== false;
+  try { F.list = await F.store.list(); } catch (e) { read = false; }
   // 이번에만 쓰는 양식(저장하지 못한 것)을 고른 채면 그대로 둠
   if (F.form && F.form.temp) return;
   const id = getFormId();
-  if (id && (!F.form || F.form.rec.id !== id)) await selectForm(id, { quiet: true });
+  if (id && (!F.form || F.form.rec.id !== id) && (read || F.list.some(x => x.id === id))) await selectForm(id, { quiet: true });
 }
 let selTok = 0;
 async function selectForm(id, { quiet = false } = {}) {
@@ -61,9 +63,11 @@ async function selectForm(id, { quiet = false } = {}) {
   setFormId(id);
   F.form = null; F.mapOpen = false; F.mapSel = -1;
   if (!id) { live(); return; }
-  let rec = null;
-  try { rec = await F.store.get(id); } catch (e) { rec = null; }
+  let rec = null, failed = F.store.persistent === false;
+  try { rec = await F.store.get(id); } catch (e) { rec = null; failed = true; }
   if (tok !== selTok) return;
+  // 읽지 못한 것(저장소 탈)은 고른 것을 남겨 두고 다음에 다시 읽음, 정말 없는 양식만 기본 양식으로
+  if (!rec && failed) { if (!quiet) toast('양식을 읽지 못했어요. 잠시 뒤 다시 골라 주세요.', 5000); live(); return; }
   if (!rec) { setFormId(''); if (!quiet) toast('양식을 찾지 못했어요. 기본 양식으로 써요.'); live(); return; }
   let parsed = null;
   if (rec.kind === 'hwpx') { try { parsed = await readForm(rec.bytes); } catch (e) { toast('양식 파일을 읽지 못했어요. 다시 넣어 주세요.', 5000); } }
@@ -442,7 +446,24 @@ let drawing = false;
 export function render() {
   if (!box || box.hidden || drawing) return;
   drawing = true;
+  const keys = focusKeys(document.activeElement);
   try { draw(); } finally { drawing = false; }
+  focusBack(keys);
+}
+/* 다시 그려도 키보드 초점은 쓰던 칸·단추(id·data- 속성이 같은 것)에 — <body>로 가지 않게. 없어졌으면 가까운 곳:
+   양식 맞추기 자리 단추 → 그 줄, 맞추기 닫기·저장 → [양식 맞추기], 양식 칸의 단추(지우기 등) → 양식 고르기.
+   글 칸(치는 칸)은 live()가 맡음(칸을 떠나며 change로 다시 그릴 때 초점을 도로 끌어오지 않게) */
+function focusKeys(a) {
+  if (!a || !box.contains(a) || a.matches('input:not([type=checkbox]):not([type=radio]), textarea')) return [];
+  const lf = (a.dataset && a.dataset.lf) || '', role = a.dataset && a.dataset.lfRole != null;
+  const own = a.id ? `#${CSS.escape(a.id)}` : [...a.attributes].filter(x => x.name.startsWith('data-')).map(x => `[${x.name}="${CSS.escape(x.value)}"]`).join('');
+  const ln = role && a.closest('li') && a.closest('li').querySelector('[data-lf-line]');
+  return [own, ln ? `[data-lf-line="${ln.dataset.lfLine}"]` : '', role || /^map(Save|Close)?$/.test(lf) ? '[data-lf="map"]' : '',
+    a.closest('#lfMap') || /^(map|mapSave|mapClose|delForm|pickForm)$/.test(lf) ? '#lfForm' : ''].filter(Boolean);
+}
+function focusBack(keys) {
+  if (!keys.length || box.contains(document.activeElement)) return;
+  for (const k of keys) { const n = box.querySelector(k); if (n && !n.disabled) { n.focus({ preventScroll: true }); return; } }
 }
 function draw() { keepFiles(box, () => { box.innerHTML = pageHTML(); }); } // 파일 고르기 창이 열린 채 다시 그려도 고른 파일이 들어가게
 function pageHTML() {

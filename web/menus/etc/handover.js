@@ -53,9 +53,11 @@ const fitted = () => fitPages(fullDoc(), st.pages);
 const formsSig = () => JSON.stringify([F.list.map(f => [f.id, f.name]), F.form ? [F.form.rec.id, !!F.form.temp] : null]);
 async function loadForms() {
   if (!F.store) F.store = await forms(NS);
-  try { F.list = await F.store.list(); } catch (e) { F.list = []; }
+  // 저장소를 잠깐 읽지 못하면(또는 IndexedDB를 못 열어 메모리로 쓰는 중이면) 고른 양식은 그대로 둠 — 진짜로 읽은 목록에 없을 때만 지움
+  let read = F.store.persistent !== false;
+  try { F.list = await F.store.list(); } catch (e) { read = false; }
   if (F.form && F.form.temp) return; // 이번에만 쓰는 양식(저장하지 못한 것)은 그대로
-  if (st.formId && (!F.form || F.form.rec.id !== st.formId)) await selectForm(st.formId, { quiet: true });
+  if (st.formId && (!F.form || F.form.rec.id !== st.formId)) { if (read || F.list.some(x => x.id === st.formId)) await selectForm(st.formId, { quiet: true }); }
   else if (!st.formId) F.form = null;
 }
 let selTok = 0;
@@ -66,9 +68,11 @@ async function selectForm(id, { quiet = false } = {}) {
   drawForms();
   if (!id) return;
   if (!F.store) F.store = await forms(NS);
-  let rec = null;
-  try { rec = await F.store.get(id); } catch (e) { rec = null; }
+  let rec = null, failed = F.store.persistent === false;
+  try { rec = await F.store.get(id); } catch (e) { rec = null; failed = true; }
   if (tok !== selTok) return;
+  // 읽지 못한 것(저장소 탈)은 고른 것을 남겨 두고 다음에 다시 읽음, 정말 없는 양식만 기본 양식으로
+  if (!rec && failed) { if (!quiet) toast('양식을 읽지 못했어요. 잠시 뒤 다시 골라 주세요.', 5000); drawForms(); return; }
   if (!rec || rec.kind !== 'hwpx') { st.formId = ''; save(); if (!quiet) toast('양식을 찾지 못했어요. 기본 양식으로 만들어요.'); drawForms(); return; }
   let parsed = null;
   try { parsed = await readForm(rec.bytes); } catch (e) { toast('양식 파일을 읽지 못했어요. 다시 넣어 주세요.', 5000); }
@@ -135,11 +139,22 @@ function formsHTML() {
     : '학교 인수인계서 양식(.hwpx)을 한 번 넣어 두면 [한글로 내려받기]가 그 양식에 채워요. 가정통신문 양식과 따로 저장해요.'}</p>
     ${mapHTML()}`;
 }
-/* 양식 칸만 다시(치던 「다음 담당자에게」·고른 것은 그대로, 파일 고르기 창이 열린 채여도 고른 파일이 들어가게) */
+/* 다시 그린 뒤 초점을 돌려 둘 곳: 쓰던 칸(id·줄·단추) → 없어졌으면 가까운 것(자리 단추 → 그 줄, 맞추기 닫기·저장 → [양식 맞추기], 그다음 양식 고르기) */
+function focusKeys(a, el) {
+  if (!a || !el.contains(a)) return [];
+  const ln = a.dataset.hoRole != null && a.closest('li') && a.closest('li').querySelector('[data-ho-line]');
+  return [a.id ? `#${a.id}` : '', a.dataset.hoLine != null ? `[data-ho-line="${a.dataset.hoLine}"]` : '', a.dataset.ho ? `[data-ho="${a.dataset.ho}"]` : '',
+    ln ? `[data-ho-line="${ln.dataset.hoLine}"]` : '', '[data-ho="map"]', '#hoForm'].filter(Boolean);
+}
+/* 양식 칸만 다시(치던 「다음 담당자에게」·고른 것은 그대로, 파일 고르기 창이 열린 채여도 고른 파일이 들어가게, 키보드 초점도 그 칸에 — <body>로 가지 않게) */
 function drawForms() {
   const el = box && box.querySelector('#hoFormBox');
   if (!el) return;
+  const keys = focusKeys(document.activeElement, el);
   keepFiles(box, () => { el.innerHTML = formsHTML(); });
+  if (keys.length && !el.contains(document.activeElement)) {
+    for (const k of keys) { const n = el.querySelector(k); if (n && !n.disabled) { n.focus({ preventScroll: true }); break; } }
+  }
   const hint = box.querySelector('#hoPrevHint');
   if (hint) hint.textContent = prevHint();
 }

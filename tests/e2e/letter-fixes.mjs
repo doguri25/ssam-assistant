@@ -42,6 +42,30 @@ await run('letter-fixes', [
     await page.click(`${P} [data-lf="mapSave"]`);
     await page.waitForFunction(() => (document.querySelector('#toast') || {}).textContent?.includes('양식 자리를 저장했어요'));
   }],
+  ['키보드로 양식을 고르거나 [양식 맞추기] 줄·자리를 눌러도 초점이 그 칸에 남음(<body>로 가지 않음)', async () => {
+    const act = () => page.evaluate(() => { const a = document.activeElement; return a ? (a.id || (a.dataset && (a.dataset.lfLine != null ? 'line' + a.dataset.lfLine : a.dataset.lf)) || a.tagName) : ''; });
+    const fid = await page.inputValue(`${P} #lfForm`);
+    await page.focus(`${P} #lfForm`);
+    await page.selectOption(`${P} #lfForm`, '');
+    await page.waitForFunction(s => !document.querySelector(`${s} [data-lf="delForm"]`), P);
+    assert((await act()) === 'lfForm', '기본 양식을 고른 뒤 초점: ' + await act());
+    await page.selectOption(`${P} #lfForm`, fid);
+    await page.waitForSelector(`${P} [data-lf="map"]`);
+    assert((await act()) === 'lfForm', '양식을 고른 뒤 초점: ' + await act());
+    await page.focus(`${P} [data-lf="map"]`); await page.keyboard.press('Enter');
+    await page.waitForSelector(`${P} #lfMap`);
+    assert((await act()) === 'map', '[양식 맞추기] 초점: ' + await act());
+    const ti = await page.evaluate(s => [...document.querySelectorAll(`${s} .lf-lines li`)].findIndex(l => l.querySelector('.lf-badge').textContent === '제목'), P);
+    await page.focus(`${P} [data-lf-line="${ti}"]`); await page.keyboard.press('Enter');
+    await page.waitForSelector(`${P} [data-lf-role="title"]`);
+    assert((await act()) === `line${ti}`, '줄 초점: ' + await act());
+    await page.focus(`${P} [data-lf-role="title"]`); await page.keyboard.press('Enter'); // 같은 자리(제목) 그대로
+    await page.waitForFunction(s => !document.querySelector(`${s} [data-lf-role]`), P);
+    assert((await act()) === `line${ti}`, '자리를 고른 뒤 초점: ' + await act());
+    await page.focus(`${P} [data-lf="mapClose"]`); await page.keyboard.press('Enter');
+    await page.waitForFunction(s => !document.querySelector(`${s} #lfMap`), P);
+    assert((await act()) === 'map', '닫은 뒤 초점: ' + await act());
+  }],
   ['AI를 기다리는 동안 최근 가정통신문을 열어도 그 글의 손으로 고친 기안은 그대로, 쓴 글은 최근에 들어감', async () => {
     await page.fill(`${P} #lfMemo`, '첫 글');
     await page.click(`${P} [data-lf="write"]`);
@@ -70,6 +94,24 @@ await run('letter-fixes', [
     await page.waitForTimeout(500);
     assert((await sel()).includes('꽉찬양식'), '다시 열면 양식이 바뀜: ' + await sel());
     await page.evaluate(() => { IDBObjectStore.prototype.put = window.__put; });
+  }],
+  ['양식 저장소(IndexedDB)를 잠깐 열지 못해도 고른 양식은 지우지 않음 → 다시 열리면 그 양식', async () => {
+    const fid = () => page.evaluate(async () => (await import('./menus/etc/letter-model.js')).getFormId());
+    const id = await fid();
+    assert(id, '고른 양식 없음');
+    await page.addInitScript(() => {
+      if (!sessionStorage.getItem('t:formsDown')) return;
+      const o = indexedDB.open.bind(indexedDB);
+      indexedDB.open = (n, v) => { if (String(n).startsWith('ssam-forms')) throw new Error('forms down'); return o(n, v); };
+    });
+    await page.evaluate(() => sessionStorage.setItem('t:formsDown', '1'));
+    await page.reload(); await page.waitForTimeout(400);
+    await page.waitForSelector(`${P} #lfForm`);
+    await page.waitForTimeout(400);
+    assert((await fid()) === id, '고른 양식이 지워짐: ' + JSON.stringify(await fid()));
+    await page.evaluate(() => sessionStorage.removeItem('t:formsDown'));
+    await page.reload(); await page.waitForTimeout(400);
+    await page.waitForFunction(([s, v]) => (document.querySelector(`${s} #lfForm`) || {}).value === v, [P, id]);
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

@@ -759,6 +759,8 @@ function askVendors(vs) {
       const parts = splitByVendor(st.form);
       parts.slice(1).forEach((p, i) => pushRecent({ id: newId(), at: Date.now() + i, form: { ...p, project: `${String(p.project || '물품 구입').trim()} (${vs[i + 1]})` }, draft: null }));
       st.form = normForm(parts[0]); save(); render(); // 초안은 남기고 사유는 render에서 다시 맞춤
+      // 초안이 있어 최근 작성에 든 품의면 그것도 남은 품목으로(나눈 품목이 최근 작성·인수인계서 예산에서 두 번 세어지지 않게)
+      if (listRecent().some(r => r.id === st.id)) keepRecent();
       toast(`나머지 ${parts.length - 1}곳은 「최근 작성」에 새 품의로 넣었어요`, 6000);
     });
   });
