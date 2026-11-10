@@ -23,11 +23,14 @@ let dupFor = null; // { no, text }: 이 학생의 첫 평어로 이 글을 돌�
 const DUP2 = '수의 크기를 비교하는 방법을 정확하게 알고 문제를 끝까지 풀어냄.';
 const DUP1 = '수의 크기를 비교하는 방법을 정확하게 알고 문제를 스스로 해결함.';
 let ccN = 0, ccImgs = 0;
-const grades = [];
+const grades = [], gradeImgs = [];
+const hkLong = j => `학급 일에 책임감을 가지고 참여하며 ${j}번째로 친구를 돕는 모습이 돋보임. `.repeat(7).trim();
 await mockClaude(page, ({ prompt, images }) => {
   if (prompt.startsWith('[문장 검토]')) return JSON.stringify({ items: [] });
-  if (prompt.includes('수행평가를 채점하는')) { grades.push(prompt); return JSON.stringify({ score: 80, summary: '바르게 풀었음', evidence: ['풀이가 맞음'], strengths: '꼼꼼함', improve: '검산', unreadable: false }); }
+  if (prompt.includes('수행평가를 채점하는')) { grades.push(prompt); gradeImgs.push(images); return JSON.stringify({ score: 80, summary: '바르게 풀었음', evidence: ['풀이가 맞음'], strengths: '꼼꼼함', improve: '검산', unreadable: false }); }
   if (prompt.includes('채점 결과입니다')) return '[]';
+  if (prompt.startsWith('아래 행동특성 및 종합의견을')) return hkLong(9) + ' 수업 시간에도 꾸준히 노력함.';
+  if (prompt.includes('행동특성 및 종합의견을')) return [hkLong(1), hkLong(2)].join('\n');
   if (images && prompt.includes('창의적 체험활동 특기사항')) { ccImgs++; return JSON.stringify({ note: `학습지 ${ccImgs}: 교실 정리를 다짐함`, text: `교실을 깨끗하게 하려고 ${ccImgs}가지 방법을 스스로 정해 꾸준히 실천함.`, blank: false }); }
   if (prompt.includes('창의적 체험활동 특기사항')) {
     const n = +(prompt.match(/학생 (\d+)명에게/) || [])[1] || 1;
@@ -162,6 +165,7 @@ await run('fix1110-evallegacy', [
     await page.click('[data-ccview="club"]');
     await page.fill('[data-ccf="club"]', '과학탐구반');
     await page.fill('[data-ccf="name"][data-cck="club"]', '물 로켓 만들기');
+    await page.press('[data-ccf="name"][data-cck="club"]', 'Tab');
     await page.click('[data-cc="gen"]');
     await page.waitForFunction(() => document.querySelectorAll('#ccResults [data-cccopy]').length === 2, null, { timeout: 15000 });
     const n0 = await page.evaluate(() => window.__inv.filter(x => x.cmd === 'neis_arm').length);
@@ -277,6 +281,53 @@ await run('fix1110-evallegacy', [
     await page.click('[data-gr="start"]');
     await until(async () => grades.length > g0, 15000);
     assert(!grades[g0].includes('김민수') && grades[g0].includes('석굴암'), '채점 요청에 이름: ' + grades[g0].slice(0, 300));
+  }],
+  // ---------- gr-hist-critimg ----------
+  ['[gr-hist-critimg] 다른 평가의 정답표 그림을 넣어 둔 채 지난 채점 기록을 열면 그 그림은 빠짐, 그 기록으로 새 반을 채점해도 다른 평가 정답 그림을 보내지 않음', async () => {
+    await page.evaluate(() => {
+      for (const k of Object.keys(localStorage)) if (/^ssam:(gr:|grs$|grset$|class$)/.test(k)) localStorage.removeItem(k);
+      localStorage.setItem('ssam:class', JSON.stringify({ count: 1, except: [] }));
+      localStorage.setItem('ssam:grset', JSON.stringify({ maskOn: false, mask: [] }));
+      localStorage.setItem('ssam:gr:y1', JSON.stringify({ kind: 'gr', title: '나눗셈 서술형', createdAt: 7, criteria: '1번 정답 12', critDocs: [], settings: { byNo: false, maskOn: false, mask: [], ratio: { top: 10, high: 30, mid: 40, low: 20 } },
+        students: [{ id: 'y', no: 1, n: 1, skip: 0, score: 80, level: 'high', text: '1번 평어로 나눗셈을 바르게 함.' }] }));
+      localStorage.setItem('ssam:grs', JSON.stringify(['y1']));
+    });
+    await page.goto(url, { timeout: 30000 }); await page.waitForTimeout(500);
+    await goTab('gr');
+    await page.waitForSelector('#grDrop');
+    // 곱셈 평가의 정답표 사진
+    const [fc0] = await Promise.all([page.waitForEvent('filechooser'), page.click('[data-gr="critImg"]')]);
+    await fc0.setFiles([join(FIXTURES, 'photo-1.jpg')]);
+    await page.waitForFunction(() => document.querySelector('#grCritBox').textContent.includes('photo-1.jpg'));
+    await page.click('[data-grhist="y1"]');
+    await page.waitForSelector('[data-gr="copyAll"]');
+    await page.waitForTimeout(300);
+    const box = await page.textContent('#grCritBox');
+    assert(!box.includes('photo-1.jpg'), '다른 평가 정답표 그림이 남음: ' + box);
+    await page.click('[data-gr="back"]').catch(() => {});
+    const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click('#grDrop')]);
+    await fc.setFiles([join(FIXTURES, 'sheet-2.png')]);
+    await page.waitForFunction(() => document.querySelector('#grSetup').textContent.includes('학생 1명'));
+    const g0 = grades.length;
+    await page.click('[data-gr="start"]');
+    await until(async () => grades.length > g0, 15000);
+    assert(gradeImgs[g0] === 1 && grades[g0].includes('1번 정답 12') && !grades[g0].includes('앞의 그림'), `채점 요청 그림 ${gradeImgs[g0]}장`);
+  }],
+  // ---------- hk-adjust-done ----------
+  ['[hk-adjust-done] 복사해 완료로 표시한 행특 후보를 [조금 길게]로 고치면(새 글은 아직 쓰지 않음) 학생도 완료가 아님, [완료한 글 모두 복사]와 맞음', async () => {
+    await hkReset();
+    await page.click('#hkList [data-hkstu="h1"]');
+    await page.fill('#hkMemo', '1인 1역 성실함, 친구를 잘 도와줌'); await page.dispatchEvent('#hkMemo', 'input');
+    await page.click('[data-hk="gen"]');
+    await page.waitForSelector('#hkEditor [data-pick="0"]', { timeout: 15000 });
+    await page.click('#hkEditor [data-pick="0"]');
+    await until(async () => (await page.textContent('#hkList')).includes('완료 1 / 5'), 3000);
+    await page.click('#hkEditor [data-hkr="longer"][data-i="0"]');
+    await until(async () => !(await page.$('#hkEditor .hk-res .spin')) && (await page.textContent('#hkEditor .hk-text')).includes('꾸준히 노력함'), 10000);
+    await page.waitForTimeout(700);
+    const list = await page.textContent('#hkList');
+    const h = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:hk')).students.find(s => s.no === 1));
+    assert(!list.includes('완료 1 / 5') && h.done === 0 && !h.results.some(r => r.d), '완료가 남음: ' + list.replace(/\s+/g, ' ').slice(0, 60) + ' / ' + JSON.stringify({ done: h.done, d: h.results.map(r => r.d) }));
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

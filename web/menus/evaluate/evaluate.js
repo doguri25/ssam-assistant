@@ -3036,7 +3036,8 @@ async function hkAdjust(id, idx, dir) {
   try {
     const out = await hkCall(hkFixPrompt(s, r.t, dir));
     const c = out.split('\n').map(hkClean).filter(Boolean).join(' ');
-    if (c) { r.t = dir === 'longer' ? c : hkTrim(c); r.d = 0; delete r.rv; }
+    // 고친 글은 아직 쓰지 않았으니 사용함을 지우고, 쓴 글이 하나도 남지 않으면 학생도 완료가 아님(지울 때처럼)
+    if (c) { r.t = dir === 'longer' ? c : hkTrim(c); r.d = 0; delete r.rv; if (!s.results.some(x => x.d)) s.done = 0; }
     toast(dir === 'longer' ? '조금 길게 고쳤어요' : '조금 짧게 고쳤어요');
   } catch (e) { toast(errMsg((e && e.code) || 'upstream_error', e), 4500); }
   finally { delete r.busy; HKStore.save(); renderHKEditor(); renderHKList(); }
@@ -4552,6 +4553,8 @@ async function grOpenHistory(id) {
   const b = await GRStore.get(id);
   if (!b) { toast('채점 기록을 불러오지 못했어요'); return; }
   grNew(false);
+  // 정답표 그림은 기록에 없음(저장하지 않음): 지금 넣어 둔 그림은 다른 평가의 것이라 뺌 — 남겨 두면 이 기록으로 새 반을 채점할 때 다른 평가 정답으로 채점함
+  grFreePages(GR.critImgs); GR.critImgs = [];
   GR.id = id; GR.title = b.title || ''; GR.unitId = b.unitId || ''; GR.refs = Array.isArray(b.refs) ? b.refs.filter(x => typeof x === 'string') : []; GR.criteria = b.criteria || ''; GR.critDocs = (b.critDocs || []).map(d => ({ name: String(d.name || ''), text: String(d.text || '') })); GR.createdAt = b.createdAt || 0; GR.calibrated = !!b.calibrated;
   if (b.settings) { const { except, ...rest } = b.settings; Object.assign(GR.settings, rest); GR.settings.ratio = { ...GR.settings.ratio, ...(b.settings.ratio || {}) }; }
   let fixed = 0;
