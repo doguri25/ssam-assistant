@@ -178,7 +178,9 @@ function plainText() {
   const P = weekPeriods(days, w);
   days.forEach((d, i) => {
     out.push('', `[${WD[i]} ${md(d.date)}]`);
-    if (d.off) out.push(d.off);
+    // 수업 없는 날도 선생님이 고쳐 쓴 칸이 있으면 한글 파일처럼 그 칸 글을(고친 칸이 없으면 까닭만)
+    const own = Object.keys(w.cells || {}).some(k => k.startsWith(`${i}-`));
+    if (d.off && !own) out.push(d.off);
     else for (let p = 1; p <= P; p++) { const c = weekCell(days, w, i, p); if (c) out.push(`${p}교시 ${c}`); }
     for (const [k, label] of NOTE_ROWS) if (notes[i][k]) out.push(`${label}: ${notes[i][k]}`);
   });
@@ -199,9 +201,16 @@ function onInput(el) {
   save(monday, w);
 }
 
+/* 처음 열 때, 다른 탭에서 올 때, 날이 바뀐 뒤(다른 메뉴에 갔다 오거나 켜 둔 채)에는 그날의 기본 주(pickedOn: 기본 주를 정한 날) */
+let pickedOn = '';
+const toDefault = () => { pickedOn = today(); monday = defaultWeek(pickedOn); };
+window.addEventListener('focus', () => {
+  if (!visible() || pickedOn === today() || typing()) return;
+  if (monday === defaultWeek(pickedOn)) { toDefault(); render(); } else pickedOn = today(); // 선생님이 고른 다른 주는 그대로
+});
 onEnter('class', (tab, section) => {
   if (!box || !section.contains(box)) { box = document.createElement('div'); box.className = 'cls-weekly'; section.append(box); }
-  if (tab === 'weekly' && curTab !== 'weekly') monday = defaultWeek(today());
+  if (tab === 'weekly' && (curTab !== 'weekly' || pickedOn !== today())) toDefault();
   curTab = tab;
   box.hidden = tab !== 'weekly';
   if (tab === 'weekly') render();

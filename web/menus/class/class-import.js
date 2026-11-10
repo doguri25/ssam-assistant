@@ -91,8 +91,11 @@ export function parseJindo(text, { today, year: dataYear } = {}) {
 }
 
 const DAYS = ['월', '화', '수', '목', '금'];
+/* 교시 칸: 「1」 또는 「1교시」 → 1, 아니면 0 */
+const periodNo = x => { const m = /^(\d{1,2})\s*(?:교시)?$/.exec(String(x || '').trim()); return m ? +m[1] : 0; };
 
-/* 학년별 기초시간표 글에서 우리 반({학년}-{반}) 칸 읽기 → { periods, cells[요일][교시-1] } 또는 null */
+/* 학년별 기초시간표 글에서 우리 반({학년}-{반}) 칸 읽기 → { periods, cells[요일][교시-1] } 또는 null.
+   교시 칸이 숫자(「1」·「1교시」)인 줄까지. 4·5교시 사이 「점심시간」 같은 줄은 바로 다음(2줄 안) 줄이 이어지는 교시면 건너뜀 */
 export function parseTimetable(text, { grade, room } = {}) {
   const label = `${grade}-${room}`;
   const lines = String(text || '').split(/\r?\n/).map(cells);
@@ -101,7 +104,13 @@ export function parseTimetable(text, { grade, room } = {}) {
     const at = c.findIndex((x, j) => x === label && DAYS.every((d, n) => c[j + 1 + n] === d));
     if (at < 0) continue;
     const rows = [];
-    for (let r = i + 1; r < lines.length && /^\d+$/.test(lines[r][at] || '') && rows.length < 7; r++) {
+    for (let r = i + 1; r < lines.length && rows.length < 7; r++) {
+      if (!periodNo(lines[r][at])) {
+        const k = rows.length ? [r + 1, r + 2].find(x => x < lines.length && periodNo(lines[x][at]) === rows.length + 1) : 0;
+        if (!k) break;
+        r = k - 1;
+        continue;
+      }
       rows.push(DAYS.map((d, n) => normName(lines[r][at + 1 + n] || '')));
     }
     let periods = rows.length;
