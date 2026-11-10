@@ -127,3 +127,11 @@ test('[버그] [답안 넣기]에 넣은 사진·글자 없는 PDF 한두 쪽: �
   assert.equal(keyFileGoes({ name: 'a.pdf', b: { pages: [], roles: [] } }), 'key');
   assert.equal(keyFileGoes({ name: 'a.pdf' }), 'key');
 });
+
+test('검토: 빈 「이름:」 칸 뒤 다음 줄·다른 칸 글은 학생 이름이 아님(빈 문제지·답안이 막히지 않게)', async () => {
+  const { filledName } = await import('../../web/core/bundle.js');
+  for (const t of ['3학년 2학기 국어 3단원 평가 이름:\n다음 글을 읽고 물음에 답하시오.\n1. 문제', '이름:\t점수:', '이름:\n번호:', '이름 :\n확인', '이름:   \n학년 반 번'])
+    assert.equal(filledName(t), false, JSON.stringify(t));
+  for (const t of ['이름: 김가람', '이름 : 박서연\n1. 문제', '이름: 이도윤 (3번)']) assert.equal(filledName(t), true, t);
+  assert.equal(paperFileGoes({ name: '국어 3단원.hwp', text: '3학년 국어 3단원 평가 이름:\n다음 글을 읽고 물음에 답하시오.\n1. 첫째 물음\n2. 둘째 물음' }), 'paper');
+});
