@@ -8,7 +8,7 @@ import { newEvent, saveEvent, listEventPlans } from '../../web/menus/plan/event-
 import { pushRecent } from '../../web/menus/purchase/library.js';
 import { putDoc } from '../../web/menus/etc/gongmun-model.js';
 import { pushReport } from '../../web/menus/plan/report-model.js';
-import { GROUPS, MONTHS, cleanText, nameTokens, monthRows, monthEntries, collectHandover, pickData, isOn, buildHandover, handoverText, handoverPrompt, normNote, getSaved, saveHandover, dutyRows, budgetRows, docRows, inSchoolYear } from '../../web/menus/settings/handover-model.js';
+import { GROUPS, MONTHS, cleanText, nameTokens, monthRows, monthEntries, collectHandover, pickData, isOn, buildHandover, handoverText, handoverPrompt, normNote, getSaved, saveHandover, dutyRows, budgetRows, docRows, inSchoolYear } from '../../web/menus/etc/handover-model.js';
 
 function mem() {
   const m = new Map();
@@ -194,13 +194,19 @@ test('AI 글: 1~5만(「다음 담당자에게」는 빼고), 이름·전화번�
   assert.deepEqual(normNote({ text: '모양이 틀림' }), []);
 });
 
-test('저장: 고른 것을 바꾼 것과 「다음 담당자에게」 (학년도 자료 handover), 망가진 값', () => {
+test('저장: 고른 것을 바꾼 것·「다음 담당자에게」·몇 쪽으로·고른 양식 (학년도 자료 handover), 망가진 값', () => {
   store.useStorage(mem());
-  assert.deepEqual(getSaved(), { note: '', picks: {} });
-  assert.ok(saveHandover({ note: '- 메모', picks: { a: false, b: true } }));
-  assert.deepEqual(getSaved(), { note: '- 메모', picks: { a: false, b: true } });
-  store.set('handover', { note: 3, picks: { a: 'x', b: false } });
-  assert.deepEqual(getSaved(), { note: '', picks: { b: false } });
+  assert.deepEqual(getSaved(), { note: '', picks: {}, pages: 0, formId: '' });
+  assert.ok(saveHandover({ note: '- 메모', picks: { a: false, b: true }, pages: 2, formId: 'fm1' }));
+  assert.deepEqual(getSaved(), { note: '- 메모', picks: { a: false, b: true }, pages: 2, formId: 'fm1' });
+  // 예전 판이 저장한 것(쪽 수·양식 없음)은 제한 없음·기본 양식
+  store.set('handover', { note: '- 옛 메모', picks: {} });
+  assert.deepEqual(getSaved(), { note: '- 옛 메모', picks: {}, pages: 0, formId: '' });
+  store.set('handover', { note: 3, picks: { a: 'x', b: false }, pages: 9, formId: 5 });
+  assert.deepEqual(getSaved(), { note: '', picks: { b: false }, pages: 0, formId: '' });
+  for (const p of ['3', 3.5, -1, null, '쪽']) { store.set('handover', { pages: p }); assert.equal(getSaved().pages, p === '3' ? 3 : 0, String(p)); }
+  saveHandover({ pages: 7 });
+  assert.equal(getSaved().pages, 0);
   store.set('handover', '망가짐');
-  assert.deepEqual(getSaved(), { note: '', picks: {} });
+  assert.deepEqual(getSaved(), { note: '', picks: {}, pages: 0, formId: '' });
 });

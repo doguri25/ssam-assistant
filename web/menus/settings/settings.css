@@ -35,27 +35,3 @@ section[data-menu="settings"] .credit{margin-top:8px}
 .yr-pick li{padding:6px 0}
 .yr-pick label{display:flex;flex-wrap:wrap;align-items:center;gap:8px;cursor:pointer}
 .sheet .row > .grow{flex:1}
-/* 업무 인수인계서 (handover.js) */
-.ho-sheet{gap:14px}
-.ho-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
-.ho-group{margin:0;min-width:0;border:1px solid var(--line);border-radius:var(--r-m);padding:6px 12px 10px}
-.ho-group legend{padding:0 4px;font-size:13px}
-.ho-group legend label{display:flex;gap:8px;align-items:center;cursor:pointer}
-.ho-group ul{list-style:none;margin:0;padding:0;max-height:180px;overflow:auto;display:flex;flex-direction:column}
-.ho-group li label{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:8px;padding:4px 0;font-size:13px;line-height:1.45;cursor:pointer}
-.ho-group li .muted{grid-column:2;font-size:12px}
-.ho-group li .muted:empty{display:none}
-.ho-group input{flex:none;margin:0;width:15px;height:15px;accent-color:var(--accent)}
-.ho-group li input{margin-top:2px}
-.ho-note{display:flex;flex-direction:column;gap:6px}
-.ho-note textarea.field{min-height:100px;font-size:13px}
-.ho-hint{font-size:12px}
-.ho-prev-wrap summary{cursor:pointer;font-weight:700;font-size:13px}
-.ho-prev{margin-top:8px;max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:var(--r-s);padding:14px 16px;background:var(--surface);color:var(--ink);font-size:12px;line-height:1.55;word-break:keep-all}
-.ho-prev h1{margin:0 0 10px;font-size:15px;text-align:center}
-.ho-prev h2{margin:12px 0 4px;font-size:13px}
-.ho-prev p{margin:0 0 4px;white-space:pre-wrap}
-.ho-prev table{width:100%;border-collapse:collapse;margin:4px 0 8px}
-.ho-prev th,.ho-prev td{border:1px solid var(--line);padding:3px 6px;vertical-align:top;text-align:left}
-.ho-prev th{background:var(--surface2)}
-.ho-prev .nw{white-space:nowrap}

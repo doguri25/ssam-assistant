@@ -313,11 +313,10 @@ await run('chat', [
     await page.waitForSelector(`${C} .chat-msg.bot:last-child .chat-chip`);
     assert(JSON.stringify(await page.$$eval(`${C} .chat-msg.bot:last-child .chat-chip`, l => l.map(x => x.textContent))) === JSON.stringify(['베트남어', '중국어(간체)', '러시아어', '영어']), '언어');
     await send('인수인계서 만들어 줘');
-    await waitBot('업무 인수인계서를 열었어요');
-    assert(JSON.stringify(await cur()) === JSON.stringify({ menu: 'settings', tab: 'years' }), '학년도');
-    await page.waitForSelector(sheet);
-    assert((await page.textContent(sheet)).includes('인수인계서'), '인수인계서 창');
-    await page.keyboard.press('Escape');
+    await waitBot('기타 › 인수인계서를 열었어요');
+    assert(JSON.stringify(await cur()) === JSON.stringify({ menu: 'etc', tab: 'handover' }), '기타 › 인수인계서');
+    await page.waitForSelector('section[data-menu="etc"] .ho-box #hoPrev h1');
+    assert((await page.textContent('section[data-menu="etc"] .ho-box h2')).includes('업무 인수인계서'), '인수인계서 탭');
   }],
   ['검토 고침 I1: 이름이 든 글도 기록에는 가린 글로(「박지훈 결석계 가정통신문」「김민수 단원평가 다시 채점」「김민수 엄마한테 쪽지」)', async () => {
     for (const text of ['박지훈 결석계 가정통신문', '김민수 단원평가 다시 채점', '김민수 엄마한테 쪽지']) await sendWait(text);
