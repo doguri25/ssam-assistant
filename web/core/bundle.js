@@ -48,11 +48,14 @@ export function teacherOnly(name, text) {
   return !(again || d.student.split('\n').filter(l => l.trim()).length > 8);
 }
 /* 학생 손글씨를 글자 인식한 스캔 묶음인지(복사기 「검색 가능 PDF」): 쪽마다 학생 이름이 적힘(두 쪽 이상), 또는 6쪽 이상에 같은 머리가 되풀이 */
-// 이름 칸과 같은 줄에서만(빈 「이름:」 다음 줄의 「다음 글을…」·옆 칸 「점수:」는 이름이 아님), 양식 낱말은 뺌
-const FILLED_NAME = /이[ \t\u3000]*름[ \t\u3000]*[:：][ \t\u3000]*(?!교사용|학생용|다음|번호|점수|확인|날짜|학년|학번|서명|과목|교과|단원|평가|정답|문제|채점)[가-힣]{2,4}(?![가-힣:：])/;
+const FILLED_NAME = /이\s*름\s*[:：]\s*(?!교사용|학생용)[가-힣]{2,4}(?![가-힣])/;
+// 한글·글 파일(타자로 친 글)용: 이름 칸과 같은 줄에서만(빈 「이름:」 다음 줄의 「다음 글을…」·옆 칸 「점수:」는 이름이 아님), 양식 낱말은 뺌.
+// 글자 인식된 스캔(PDF 글자층)은 「이름:」과 이름이 다른 줄로 나뉘기도 해서 위 FILLED_NAME을 그대로 씀
+const FILLED_LINE = /이[ \t\u3000]*름[ \t\u3000]*[:：][ \t\u3000]*(?!교사용|학생용|다음|번호|점수|확인|날짜|학년|학번|서명|과목|교과|단원|평가|정답|문제|채점)[가-힣]{2,4}(?![가-힣:：])/;
 // 쌍점 없이 「이름 김민수」: 사람 이름 모양(흔한 성 + 두 글자 등)일 때만 (「이름 날짜」 같은 인쇄 머리는 아님)
 const BARE_NAME = /이\s*름\s+([가-힣]{2,4})(?![가-힣])/g;
 export const filledName = t => FILLED_NAME.test(t) || [...String(t).matchAll(BARE_NAME)].some(m => nameCell(m[1]));
+export const filledNameLine = t => FILLED_LINE.test(t) || [...String(t).matchAll(BARE_NAME)].some(m => nameCell(m[1]));
 const headOf = t => String(t || '').trim().split(/\s+/).slice(0, 4).join(' ');
 export function scanLike(pages) {
   const ps = pages || [];

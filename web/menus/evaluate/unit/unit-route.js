@@ -3,7 +3,7 @@
    화면 없이 돌아감(시험) */
 import { keyName } from '../../../core/inbox-classify.js';
 import { parseKey, parsePaper, splitCombined } from './unit-key.js';
-import { filledName } from '../../../core/bundle.js';
+import { filledNameLine } from '../../../core/bundle.js';
 
 /* 한글·글 파일: 학생 문제지 스캔일 수 없음 */
 export const isDocFile = f => /\.(hwpx?|txt)$/i.test((f && f.name) || '') || (!!f && f.type === 'text/plain');
@@ -15,7 +15,7 @@ const questions = text => Object.keys(parsePaper(text).questions).length;
 export { keyName };
 export function paperFileGoes({ name = '', type = '', text = '' } = {}) {
   if (!isDocFile({ name, type })) return keyName(name) ? 'key' : 'scan';
-  if (filledName(text)) return 'named';
+  if (filledNameLine(text)) return 'named';
   if (parseKey(text) || splitCombined(text).key) return 'key';
   return questions(text) >= 2 ? 'paper' : 'key';
 }

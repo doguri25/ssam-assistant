@@ -13,7 +13,7 @@ import { ITEM_TYPES, rescoreItem } from './unit-grade.js';
 import { listTests, getTest, saveTest, removeTest, newTest, makeTitle, graded, maskOf } from './unit-model.js';
 import { keyPrompt, normKeyAI } from './unit-ai.js';
 import { sampleTests } from './unit-sample.js';
-import { readBundle, openBundleCard, needsCard, bundleBoxHTML, onBundle, filledName, maskNameFields } from '../../../core/bundle.js';
+import { readBundle, openBundleCard, needsCard, bundleBoxHTML, onBundle, filledName, filledNameLine, maskNameFields } from '../../../core/bundle.js';
 import { isDocFile, keyName, paperFileGoes, keyFileGoes, bundleParts } from './unit-route.js';
 import { linkHTML, openLinkSheet } from '../../../core/eval-link.js';
 import { accuracyText, yearAccuracy, yearText } from '../grade-accuracy.js';
@@ -226,7 +226,7 @@ async function loadKey(file, t0 = cur()) {
   }
   // 학생 이름이 적힌 글(학생이 푼 문제지)은 답안 AI로 보내지 않음: 글자 인식된 PDF는 학생 문제지로(채점할 때 이름 칸을 가림), 한글·글 파일은 넣지 않음.
   // 정답 파일 이름이면(교사용 예시에 적힌 이름 등) 답안 그대로 — AI에는 이름 칸을 가린 글만(아래 maskNameFields)
-  if (!k && text && filledName(text) && !keyName(file.name)) {
+  if (!k && text && (isPdf(file) ? filledName(text) : filledNameLine(text)) && !keyName(file.name)) {
     if (isPdf(file) && papers) {
       setMsg(id, 'key', `「${file.name}」 파일은 학생 문제지로 보여서 학생 문제지로 넣었어요`);
       papers.note(id, '');
@@ -285,7 +285,7 @@ function useKey(id, t0, k, text, name) {
   fill(t.meta, k.meta, ['subject', 'grade', 'term', 'unitNo', 'round']);
   // 문제지와 정답이 한 파일이면 문제 부분은 빈 문제지로 (정답 앞까지만 — 정답이 채점 AI에 가지 않게, 학생 이름이 적힌 글은 넣지 않음)
   const sp = text ? splitCombined(text) : { paper: '' };
-  const withPaper = !!(sp.paper && !(t.paper && t.paper.text) && !filledName(sp.paper));
+  const withPaper = !!(sp.paper && !(t.paper && t.paper.text) && !filledNameLine(sp.paper));
   if (withPaper) { t.paper = { text: sp.paper.slice(0, 12000) }; fill(t.meta, parsePaper(sp.paper).meta, ['subject', 'grade', 'term', 'unitNo', 'unitName', 'round']); }
   U.msg = { ...U.msg, id, key: `「${name}」에서 ${k.items.length}문항을 읽었어요${withPaper ? '. 문제 부분은 빈 문제지로 넣었어요' : ''}${k.pointsGuessed ? '. 배점이 없어 100점을 문항 수로 나눠 넣었어요(고칠 수 있어요)' : ''}` };
   if (withPaper) { U.msg.paper = `「${name}」 · ${Object.keys(parsePaper(sp.paper).questions).length}문항`; openMore(id); }
@@ -306,7 +306,7 @@ async function loadPaper(file, t0 = cur()) {
 }
 function usePaper(id, t0, text, name) {
   // 학생 이름이 적힌 글(학생이 푼 문제지)은 빈 문제지로 두지 않음: 저장되고 학생마다 채점 AI로 감
-  if (filledName(text)) { openMore(id); setMsg(id, 'paper', `「${name}」 파일은 학생 이름이 적힌 글이라 빈 문제지로 넣지 않았어요`); refresh(id); return; }
+  if (filledNameLine(text)) { openMore(id); setMsg(id, 'paper', `「${name}」 파일은 학생 이름이 적힌 글이라 빈 문제지로 넣지 않았어요`); refresh(id); return; }
   const p = parsePaper(text), t = testOf(id, t0);
   if (!t) return;
   t.paper = { text: text.slice(0, 12000) };
