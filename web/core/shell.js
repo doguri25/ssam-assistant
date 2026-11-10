@@ -145,7 +145,8 @@ function init() {
     if (e.target.closest('#sideYear')) { go('settings', 'years'); return; }
     // ⋮ 메뉴의 평가계획 일(새로 넣기·저장된 계획·대명사 줄이기)은 평가 화면에서 보이게 함
     const a = e.target.closest('#menu [data-act]');
-    if (a && EVAL_ACTS.includes(a.dataset.act) && cur && cur.menu !== 'evaluate') go('evaluate');
+    // 기존 앱이 먼저 바꾼 화면(mode)으로 감 — 마지막 탭(단원평가 등)으로 가면 평가계획 화면이 가려짐
+    if (a && EVAL_ACTS.includes(a.dataset.act) && cur && cur.menu !== 'evaluate') go('evaluate', SSAM().getMode && SSAM().getMode());
   });
   // 기존 앱이 스스로 화면을 바꾸면(새 평가계획 넣기 등) 가로 메뉴도 맞춤
   if (SSAM().onModeChange) SSAM().onModeChange(mode => {

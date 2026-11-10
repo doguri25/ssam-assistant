@@ -153,6 +153,15 @@ await run('shell', [
       assert(await page.isVisible('#importView'), tab + ': 넣기 화면이 안 보임');
     }
   }],
+  ['단원평가를 쓰다 다른 메뉴에서 ⋮ → 새 평가계획 넣기: 마지막 탭(단원평가)이 아니라 교과 평어의 넣기 화면', async () => {
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="unit"]');
+    await page.click('nav.app-side [data-menu-go="plan"]');
+    await page.click('#menuBtn'); await page.click('#menu [data-act="new"]');
+    await page.waitForTimeout(150);
+    assert(await title() === '평가', '제목: ' + await title());
+    assert(await page.getAttribute('#menuTabs [data-tab="pyeongeo"]', 'aria-current') === 'page', '탭: ' + await page.textContent('#menuTabs [aria-current="page"]'));
+    assert(await page.isVisible('#importView'), '넣기 화면이 안 보임');
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();
