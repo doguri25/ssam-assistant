@@ -240,7 +240,7 @@ export function normNote(v, names = [], max = 6) {
 /* ---------- 학교 인수인계서 양식(.hwpx) 자리 (순수) ---------- */
 /* readForm(양식).lines → { title, bodyStart, bodyEnd, date, sign: -1, reply: -1 } (줄 번호, 없으면 -1).
    {제목}·{본문}·{날짜} 표시가 있으면 그 줄. 없으면 제목은 표 밖에서 「인수인계」가 든 첫 줄(없으면 표 밖 첫 줄),
-   본문은 제목 아래 표 밖의 글 줄 처음~끝 — 결재란·인계자/인수자 칸(표)·「인계자: (서명)」 줄·맨 아래 날짜·학교장 줄은 그대로 둠.
+   본문은 제목 아래 표 밖의 이어진 글 줄(여럿이면 맨 아래 묶음) — 결재란·인계자/인수자 칸(표)·「인계자: (서명)」 줄·맨 아래 날짜·학교장 줄은 그대로 둠.
    학교장·회신서는 보지 않음(가정통신문처럼 학교장 줄 아래를 회신서로 알고 지우지 않게). 못 찾으면 -1(양식 맞추기) */
 const SIGN_LINE = /인\s*계\s*자|인\s*수\s*자|작\s*성\s*자|확\s*인\s*자|담당\s*자?\s*[:：]|[(（]\s*(?:서명|인|印)\s*[)）]|서명\s*$|결\s*재/;
 export function formRoles(lines) {
@@ -265,11 +265,15 @@ export function formRoles(lines) {
     if (r.date < 0 && !L[k].inBox && isDateLine(t)) r.date = k;
     end = k;
   }
+  // 본문은 이어진 글 줄 한 묶음(맨 아래 것): 표 칸·서명·날짜 줄이 끼면 끊음 — 채우기는 시작~끝 사이를 모두 바꾸므로
+  // 그 사이에 든 인계자·인수자 표나 서명 줄이 지워지지 않게
+  let run = null;
   for (let k = r.title + 1; k < end; k++) {
     const t = text(k);
-    if (!free(k) || SIGN_LINE.test(t) || isDateLine(t) || isSign(t)) continue;
-    if (r.bodyStart < 0) r.bodyStart = k;
-    r.bodyEnd = k;
+    if (L[k] && L[k].inBox || (filled(k) && (SIGN_LINE.test(t) || isDateLine(t) || isSign(t)))) { run = null; continue; }
+    if (!filled(k)) continue;
+    if (!run) { run = [k, k]; r.bodyStart = k; }
+    run[1] = r.bodyEnd = k;
   }
   return r;
 }

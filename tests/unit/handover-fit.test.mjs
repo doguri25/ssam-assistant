@@ -254,3 +254,23 @@ test('학교 인수인계서 양식(.hwpx): 제목·본문 자리(결재란·인
   assert.ok(!formRolesOk({ title: 0, bodyStart: 4, bodyEnd: 2 }));
   assert.ok(!formRolesOk(null));
 });
+
+test('양식: 본문 줄 사이의 인계자·인수자 표·서명 줄은 지우지 않음(본문은 이어진 글 줄만, 맨 아래 쪽 묶음)', async () => {
+  const f = await readForm(makeHwpx({ title: '새싹초 업무 인수인계서', blocks: [
+    { type: 'p', text: '다음과 같이 업무를 인계·인수합니다.' },
+    { type: 'table', rows: [['인계자', '김가람'], ['인수자', '이솔']] },
+    { type: 'p', text: '1. 맡은 업무' }, { type: 'p', text: '2. 넘길 일' },
+    { type: 'p', text: '2026. 2. 27.' }, { type: 'p', text: '새싹초등학교장' }] }));
+  const r = formRoles(f.lines);
+  assert.ok(formRolesOk(r), JSON.stringify(r));
+  for (let k = r.bodyStart; k <= r.bodyEnd; k++) assert.ok(!f.lines[k].inBox, `본문 자리에 표 칸(${k}: ${f.lines[k].text})`);
+  const { bytes } = await fillForm(f, r, { ...docToLetter(fitPages(doc({ purchases: 3 }), 0).doc), date: '2026-11-10', reply: null });
+  const x = new TextDecoder().decode((await unzip(bytes)).get('Contents/section0.xml'));
+  for (const w of ['인계자', '김가람', '인수자', '이솔', '새싹초등학교장', '맡은 업무 한눈에']) assert.ok(x.includes(w), w);
+  assert.ok(!x.includes('2. 넘길 일'), '옛 본문이 남음');
+  // 본문 사이에 「인계자: (서명)」 줄이 끼어도 그 줄은 남김
+  const g = await readForm(makeHwpx({ title: '업무 인수인계서', blocks: [
+    { type: 'p', text: '가. 머리말' }, { type: 'p', text: '인계자: 교사 (서명)' }, { type: 'p', text: '1. 맡은 업무' }, { type: 'p', text: '2. 넘길 일' }] }));
+  const rg = formRoles(g.lines);
+  for (let k = rg.bodyStart; k <= rg.bodyEnd; k++) assert.ok(!/인계자/.test(g.lines[k].text), '서명 줄이 본문 자리에');
+});
