@@ -262,6 +262,30 @@ await run('unit-route', [
     assert(!(await stored()).includes('김가람'), '이름이 저장됨');
     assert((await cur()).key.items.length === 10, '답안이 바뀜');
   }],
+  // [버그] 채점한 평가에 학생 수가 다른 스캔을 다시 넣고 「학생 수가 달라요」에서 [취소]하면 학생 문제지 줄에 「… 읽는 중」이 그대로 남음
+  ['채점한 평가에 학생 수가 다른 스캔 → 「학생 수가 달라요」 [취소] → 학생 문제지 줄은 넣기 전 그대로(「읽는 중」이 남지 않음), 채점 결과도 그대로', async () => {
+    const id = await page.evaluate(async () => {
+      const m = await import('./menus/evaluate/unit/unit-model.js');
+      const x = m.newTest({ meta: { subject: '국어', grade: 3, unitNo: 8 }, key: { domains: [], items: [{ no: 1, content: '고르기', domain: '', type: 'choice', answer: '③', points: 100, criteria: '', pages: '' }] } });
+      x.students = [1, 2].map(no => ({ no, skip: false, status: 'done', items: { 1: { read: '③', pts: 100, ai: 100, flag: '', why: '', ok: true, manual: false } }, good: '', cheer: '' }));
+      m.saveTest(x);
+      return x.id;
+    });
+    await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} [data-un-open="${id}"]`);
+    await page.click(`${V} .steps [data-step="2"]`);
+    await page.setInputFiles(`${V} #unAnsFile`, await photos(2));
+    await waitText('#unAnsMsg', '학생 2명');
+    const before = await text('#unAnsMsg');
+    await page.setInputFiles(`${V} #unAnsFile`, await photos(3));
+    await page.waitForSelector('#sheetRoot #unRedoOk');
+    await page.click('#sheetRoot [data-close]');
+    await page.waitForTimeout(200);
+    assert(!(await text('#unAnsMsg')).includes('읽는 중'), await text('#unAnsMsg'));
+    assert((await text('#unAnsMsg')) === before, `${await text('#unAnsMsg')} ≠ ${before}`);
+    const x = await page.evaluate(id => JSON.parse(localStorage.getItem('ssam:unit:t:' + id)), id);
+    assert(x.students.length === 2 && x.students.every(s => s.status === 'done'), JSON.stringify(x.students.map(s => s.status)));
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();

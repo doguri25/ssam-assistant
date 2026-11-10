@@ -101,6 +101,32 @@ await run('student-no', [
     await page.click(`${V} .steps [data-step="2"]`);
     assert(!(await page.textContent(V)).includes('번호를 다시 읽기 전'), '읽은 뒤에도 안내가 남음');
   }],
+  // [버그] 「적힌 번호로 학생 맞추기」가 모든 평가에 하나라서, 다른 평가에서 끄면 번호로 맞춘 평가에 다시 올린 스캔(걷은 차례)을
+  // 번호를 읽지 않고 자리대로 붙여 다른 학생의 답안으로 채점함
+  ['다른 평가에서 「적힌 번호로 학생 맞추기」를 꺼도, 번호로 맞춘 평가에 다시 올린 스캔은 번호를 먼저 읽음(다른 학생 답안으로 채점하지 않음)', async () => {
+    await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} [data-un-open="${B}"]`);
+    await page.uncheck(`${V} #unByNo`);
+    await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} [data-un-open="${A}"]`);
+    await page.click(`${V} .steps [data-step="2"]`);
+    assert(await page.isChecked(`${V} #unByNo`), '번호로 맞춘 평가의 「적힌 번호로 학생 맞추기」가 꺼짐');
+    await page.setInputFiles(`${V} #unAnsFile`, files);
+    await page.waitForFunction(() => /3쪽/.test((document.querySelector('.unit-box #unAnsMsg') || {}).textContent || ''));
+    assert((await page.textContent(V)).includes('번호를 다시 읽기 전'), '다시 읽기 전 안내가 없음');
+    const n0 = grades().length;
+    await page.click(`${V} [data-un="toGrade"]`);
+    await page.click(`${V} [data-un="grade"]`);
+    await page.waitForSelector('#sheetRoot #noOk');
+    assert(grades().length === n0, '번호를 읽기 전에 채점함');
+    await page.click('#sheetRoot [data-close]');
+    // 끈 평가(B)는 꺼진 대로 — 다음 시험을 위해 다시 켬
+    await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} [data-un-open="${B}"]`);
+    assert(!(await page.isChecked(`${V} #unByNo`)), '끈 평가의 스위치가 켜짐');
+    await page.check(`${V} #unByNo`);
+    await page.click(`${V} [data-un="back"]`);
+  }],
   ['번호 칸을 정하지 않고 채점하면 번호 칸 정하기부터, 겹치거나 못 읽은 번호는 노란 줄이고 고쳐야 채점', async () => {
     reads = [1, 1, null];
     const n0 = grades().length;
