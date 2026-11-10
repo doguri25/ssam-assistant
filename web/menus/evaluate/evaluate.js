@@ -2847,8 +2847,32 @@ function hkStatus(s) {
 
 /* ---------- 메모의 이름 칸 (core/bundle.js가 window.SSAM.memoNames로 줌) ---------- */
 const MEMO_NAMES = () => (window.SSAM && window.SSAM.memoNames) || null;
+/* 엑셀에서 복사한 글: 칸 안 줄바꿈(Alt+Enter)·따옴표가 든 칸은 「"…"」로 감싸 옴(안의 「"」는 「""」).
+   감싼 칸은 한 칸으로 풀어 줄을 이어 붙임 — 줄마다 학생 한 명이라, 그대로 두면 칸의 둘째 줄이 다음 학생 메모가 됨 */
+function excelFlat(text) {
+  const s = String(text || '');
+  if (!s.includes('"')) return s;
+  let out = '', i = 0;
+  while (i < s.length) {
+    if (s[i] === '"' && (i === 0 || s[i - 1] === '\t' || s[i - 1] === '\n')) {
+      let j = i + 1, cell = '', closed = false;
+      while (j < s.length) {
+        if (s[j] === '"') { if (s[j + 1] === '"') { cell += '"'; j += 2; continue; } closed = true; j++; break; }
+        cell += s[j++];
+      }
+      // 닫는 따옴표 바로 뒤가 칸 끝(탭·줄 끝)일 때만 감싼 칸(손으로 친 「"성실함" 친구를 도움」은 그대로)
+      if (closed && (j >= s.length || /[\t\r\n]/.test(s[j]))) {
+        out += cell.split(/\r?\n/).map(l => l.trim()).filter(Boolean).reduce((a, l) => (a ? a + (/[.,!?。]$/.test(a) ? ' ' : ', ') + l : l), '');
+        i = j; continue;
+      }
+    }
+    out += s[i++];
+  }
+  return out;
+}
 // 한꺼번에 넣기 → { rows: [{ no, memo }], names: 뺀 이름 칸 수 }
 function hkMemoRows(text) {
+  text = excelFlat(text);
   if (MEMO_NAMES()) return MEMO_NAMES().rows(text);
   // 번호만 있는 줄(「4⇥」)은 빈 메모(번호 숫자를 메모로 넣지 않음)
   const rows = String(text || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => {
@@ -4083,12 +4107,17 @@ async function grWrite(only) {
         }
       }
     }));
-    // 겹치는 평어는 하나씩 다시 씀
-    const seen = new Map();
+    // 겹치는 평어는 하나씩 다시 씀: 이번에 쓴 학생 글만(사용함으로 표시한 글·이번에 쓰지 않은 학생 글은 나이스에 이미 넣었을 수 있어 그대로)
+    const seen = new Map(), head = x => normKey(x.text).slice(0, 18);
     for (const s of grActive().filter(x => x.text)) {
-      const k = normKey(s.text).slice(0, 18);
-      if (seen.has(k) && !ctl.signal.aborted) { const avoid = grActive().filter(x => x.level === s.level && x.text && x !== s).map(x => x.text); await grWriteChunk(s.level, [s], avoid, ctl.signal); }
-      seen.set(normKey(s.text).slice(0, 18), s.id);
+      const o = seen.get(head(s));
+      const re = o && !ctl.signal.aborted ? [s, o].find(x => grWrote.has(x) && !x.d) : null;
+      if (re) {
+        const avoid = grActive().filter(x => x.level === re.level && x.text && x !== re).map(x => x.text);
+        await grWriteChunk(re.level, [re], avoid, ctl.signal);
+        if (re === o) seen.set(head(o), o);
+      }
+      seen.set(head(s), s);
     }
     // 검토 AI: 이번에 쓴 평어만 10개씩 (사용함 표시한 학생은 빼고). 평가지 채점 평어는 채점 AI의 검토로. 검토하는 동안 창을 닫아도 평어는 남게 먼저 저장
     const wrote = [...grWrote].filter(x => x.text && !x.d);
@@ -4650,11 +4679,14 @@ document.addEventListener('change', e => {
   }
   else if (id === 'grExcept') {
     GR.settings.except = grParseNos(el.value);
-    if (!GR.settings.byNo) grRenumber(); // 적힌 번호로 맞추면 읽은 번호를 그대로 둠(예외 번호는 명단 점검에만 씀)
+    // 지난 채점 기록(스캔 없음)의 번호는 그때 정한 번호라 스캔 차례로 다시 매기지 않음(예외 번호 학생은 나이스에 넣을 때만 뺌)
+    const rec = GR.students.length > 0 && GR.students.every(s => !s.pages.length);
+    if (rec) { /* 기록의 번호 그대로 */ }
+    else if (!GR.settings.byNo) grRenumber(); // 적힌 번호로 맞추면 읽은 번호를 그대로 둠(예외 번호는 명단 점검에만 씀)
     else if (GR.noSig && GR.noSig === grNoSig()) { grFillNos(GR.settings.except); GR.noSig = grNoSig(); } // 결석 자리만 다시 맞춤
     grSaveSettings(); renderGR();
     setClass(CLASS.count, GR.settings.except, 'gr'); // 학급 명단과 같이 씀
-    toast(GR.settings.byNo ? '예외 번호를 바꿨어요. 읽은 번호는 그대로예요' : GR.settings.except.length ? `${GR.settings.except.join(', ')}번을 건너뛰고 번호를 매겼어요` : '예외 번호를 지웠어요');
+    toast(rec ? '예외 번호를 바꿨어요. 기록의 번호는 그대로예요' : GR.settings.byNo ? '예외 번호를 바꿨어요. 읽은 번호는 그대로예요' : GR.settings.except.length ? `${GR.settings.except.join(', ')}번을 건너뛰고 번호를 매겼어요` : '예외 번호를 지웠어요');
   }
   else if (id === 'grMaskOn') { GR.settings.maskOn = el.checked; grSaveSettings(); renderGR(); }
   else if (id === 'grByNo') { GR.settings.byNo = el.checked; grSaveSettings(); renderGR(); }
@@ -4676,8 +4708,9 @@ function neisOpts(k = NEIS.src && NEIS.src.key) {
 }
 function neisSaveOpts(o, k = NEIS.src && NEIS.src.key) { Store.lsSet(neisOptKey(k), o); }
 const grNeisText = s => (s && s.text && !s.skip ? s.text : '');
-// 번호를 모르는 쪽(적힌 번호로 맞출 때 채점에서 뺀 쪽, 0번)은 나이스 칸을 차지하지 않음
-function grNeisList() { return GR.students.filter(s => s.no > 0).sort((a, b) => a.no - b.no); }
+// 번호를 모르는 쪽(적힌 번호로 맞출 때 채점에서 뺀 쪽, 0번)은 나이스 칸을 차지하지 않음.
+// 예외 번호(전출 등)도 나이스에 칸이 없음 — 지난 채점 기록을 연 뒤 예외 번호를 넣으면 그 학생 글을 넣지 않아야 뒤 학생 칸이 밀리지 않음
+function grNeisList() { const ex = new Set(GR.settings.except || []); return GR.students.filter(s => s.no > 0 && !ex.has(s.no)).sort((a, b) => a.no - b.no); }
 // 붙여넣을 글의 출처: { key, what, text(id), no(id), mark(id), saved() }
 const GR_NEIS_SRC = {
   key: 'gr', what: '평어',
@@ -4743,7 +4776,7 @@ async function neisArm(from) {
     return;
   }
   if (err) { NEIS.state = 'error'; NEIS.msg = err; NEIS.job = null; }
-  else { NEIS.state = 'armed'; NEIS.job = { gen: r && r.gen, ids, from: start, src }; NEIS.until = Date.now() + ((r && +r.secs) || 300) * 1000; }
+  else { NEIS.state = 'armed'; NEIS.job = { gen: r && r.gen, ids, from: start, src, texts }; NEIS.until = Date.now() + ((r && +r.secs) || 300) * 1000; }
   renderNeis();
 }
 // 에듀파인 차례로 붙여넣기를 준비하면 이 창은 닫음(붙여넣는 중이 아니면 — 그때는 앱이 차례로 붙여넣기를 막음)
@@ -4763,8 +4796,9 @@ function neisClose() {
   NEIS.open = false; NEIS.state = 'idle';
   renderNeis();
 }
+// 넣은 학생을 「사용함」으로: 준비한 뒤 글이 바뀐 학생(다시 쓰기·고친 문장 쓰기)은 나이스에 예전 글이 들어갔으니 표시하지 않음
 function neisMark(job, done) {
-  for (let i = 0; i < done; i++) job.src.mark(job.ids[job.from + i]);
+  for (let i = 0; i < done; i++) { const id = job.ids[job.from + i]; if (!job.texts || job.src.text(id) === job.texts[i]) job.src.mark(id); }
 }
 function neisOnEvent(p) {
   const job = NEIS.job;
@@ -5151,6 +5185,8 @@ function ccEnqueue(k, mode) {
     n += left.length;
   }
   CHE.err = '';
+  // 나이스에 붙여넣으려고 준비해 둔 창체 글이 바뀌므로 준비를 풂(평가지 채점 평어를 다시 쓸 때처럼)
+  if (n && NEIS.src && NEIS.src.key === 'cc' && (NEIS.state === 'armed' || NEIS.state === 'arming')) neisClose();
   ccPump();
   return n;
 }
