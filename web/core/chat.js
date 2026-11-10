@@ -41,7 +41,8 @@ let lastAt = 0;
 const stamp = () => (lastAt = Math.max(Date.now(), lastAt + 1, ...[...history(), ...temp].map(m => (Number(m.at) || 0) + 1)));
 function push(msg, { keep = true } = {}) {
   const m = { id: newId(), at: stamp(), ...msg };
-  if (keep) set(KEY, [...history(), m].slice(-MAX)); else temp.push(m);
+  // 저장하지 못하면(저장 공간이 꽉 참·저장소가 막힘) 이 창에만 둠 — 보낸 글과 답이 사라지지 않게
+  if (!(keep && set(KEY, [...history(), m].slice(-MAX)))) { temp.push(m); if (temp.length > MAX) temp = temp.slice(-MAX); }
   draw();
   return m;
 }
@@ -236,7 +237,8 @@ export async function send(text) {
   stopAssist(); // 앞 글의 답을 기다리는 중이면 멈추고 새 글에 답함
   // 메뉴에 넘길 글: 전화번호·전자 우편·사람 이름만 그 자리에서 가림(줄을 통째로 빼면 같은 줄의 내용까지 없어짐), 줄바꿈은 그대로
   const said = handoffText(raw);
-  const r = routeText(said), pm = parseMemo(raw);
+  // 기록에 남길 「3번 …」 글도 전자 우편·주민등록번호·전화번호를 먼저 그 자리만 가림(maskMemo는 이름만 가림)
+  const r = routeText(said), pm = parseMemo(maskContacts(raw));
   // 기록에는 이름을 가린 글: 「3번 …」(학생 이야기)은 관찰 메모에 저장하는 모양, 그 밖은 AI로 보내는 글과 같게(명단 줄 빼기·전화번호·이름 가리기). 너무 긴 글은 줄여서
   const shown = (pm ? `${nosText(pm.nos)} ${maskMemo(pm.body).text}` : safeText(raw)) || '(이름·전화번호만 있는 글)';
   const me = push({ who: 'me', text: shown.length > 1000 ? shown.slice(0, 1000) + '…' : shown });
