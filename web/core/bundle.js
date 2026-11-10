@@ -144,9 +144,31 @@ const nameLike = c => nameCell(c) && !/[함임음됨]$/.test(c);
 /* 띄어 쓴 이름 칸(「1 김민수 발표 잘함」 — PDF·글에서 복사): 낱말 전체가 사람 이름(chat-names 규칙 — 「조용히」「박물관」은 아님)일 때만 */
 const wholeName = w => /^[가-힣]{2,5}$/.test(w) && maskPersons(w, { memo: true }).text === MASK;
 const leadName = s => { const m = /^([가-힣]{2,5})[ 　]+(?=\S)/.exec(s); return m && wholeName(m[1]) ? m[0] : ''; };
+/* 엑셀에서 복사한 글: 칸 안 줄바꿈(Alt+Enter)·따옴표가 든 칸은 「"…"」로 감싸 옴(안의 「"」는 「""」). 감싼 칸은 한 칸으로 풀어 줄을 이어 붙임
+   (줄마다 학생 한 명이라 그대로 두면 칸의 둘째 줄이 다음 학생 메모가 됨). 닫는 따옴표 바로 뒤가 칸 끝일 때만 — 손으로 친 「"성실함" 친구를 도움」은 그대로 */
+export function excelFlat(text) {
+  const s = String(text || '');
+  if (!s.includes('"')) return s;
+  let out = '', i = 0;
+  while (i < s.length) {
+    if (s[i] === '"' && (i === 0 || s[i - 1] === '\t' || s[i - 1] === '\n')) {
+      let j = i + 1, cell = '', closed = false;
+      while (j < s.length) {
+        if (s[j] === '"') { if (s[j + 1] === '"') { cell += '"'; j += 2; continue; } closed = true; j++; break; }
+        cell += s[j++];
+      }
+      if (closed && (j >= s.length || /[\t\r\n]/.test(s[j]))) {
+        out += cell.split(/\r?\n/).map(l => l.trim()).filter(Boolean).reduce((a, l) => (a ? a + (/[.,!?。]$/.test(a) ? ' ' : ', ') + l : l), '');
+        i = j; continue;
+      }
+    }
+    out += s[i++];
+  }
+  return out;
+}
 export function memoRows(text) {
-  // 줄 앞뒤 빈칸만 뗌(탭은 엑셀 칸 자리라 남김). 끝의 빈 줄(엑셀 복사 끝 줄바꿈)은 버림
-  const all = String(text || '').split('\n').map(l => l.replace(/^[ \r\u3000]+|[ \r\u3000]+$/g, ''));
+  // 엑셀 칸 안 줄바꿈을 먼저 풂. 줄 앞뒤 빈칸만 뗌(탭은 엑셀 칸 자리라 남김). 끝의 빈 줄(엑셀 복사 끝 줄바꿈)은 버림
+  const all = excelFlat(text).split('\n').map(l => l.replace(/^[ \r\u3000]+|[ \r\u3000]+$/g, ''));
   while (all.length && !all[all.length - 1].trim()) all.pop();
   const numbered = all.some(l => /^\d{1,2}\s*번?(?:[\s.)\-:]|$)/.test(l));
   let lines = numbered ? all.filter(l => l.trim()) : all;

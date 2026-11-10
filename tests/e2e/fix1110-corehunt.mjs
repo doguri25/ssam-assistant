@@ -29,7 +29,8 @@ const hk = () => page.evaluate(() => localStorage.getItem('ssam:hk') || '');
 const t2 = await open();
 await t2.page.addInitScript(() => {
   const orig = Storage.prototype.setItem;
-  Storage.prototype.setItem = function (k, v) { if (k === 'ssam:chat') throw new DOMException('꽉 참', 'QuotaExceededError'); return orig.call(this, k, v); };
+  const FULL = ['ssam:chat', 'ssam:inbox', 'ssam:ai-roles'];
+  Storage.prototype.setItem = function (k, v) { if (FULL.includes(k)) throw new DOMException('꽉 참', 'QuotaExceededError'); return orig.call(this, k, v); };
 });
 await t2.page.goto(t2.url);
 await t2.page.waitForTimeout(400);
@@ -66,6 +67,18 @@ await run('fix1110-corehunt', [
     await h2.send('3번 발표를 잘함');
     await h2.waitBot('행동특성 메모에 넣었어요');
     assert((await h2.mine()).length === 2, JSON.stringify(await h2.mine()));
+  }],
+  ['[core-save-result] 저장 공간이 꽉 차면 떠 있는 버튼 설정은 false를 돌려주고, 업무별 AI 창은 「저장했어요」 대신 알림(창은 그대로)', async () => {
+    const p = t2.page;
+    const r = await p.evaluate(async () => { const m = await import('./core/inbox.js'); return [m.setInboxSettings({ mode: 'direct' }), m.getInboxSettings().mode]; });
+    assert(r[0] === false && r[1] === 'confirm', JSON.stringify(r));
+    await p.evaluate(async () => (await import('./core/ai-roles.js')).openRoleSheet('grade'));
+    await p.waitForSelector('#aiRoleSheet');
+    await p.click('#arSave');
+    await p.waitForFunction(() => (document.getElementById('arNote') || {}).textContent.includes('저장 공간이 모자라'));
+    assert(await p.locator('#aiRoleSheet').count() === 1, '창이 닫힘');
+    assert(!(await p.textContent('#toast')).includes('AI를 저장했어요'), await p.textContent('#toast'));
+    await p.click('#sheetRoot [data-close]');
   }],
   ['[core-chat-blocked] 저장소가 막혀도 채팅이 답함', async () => {
     await h3.send('오늘 할 일');

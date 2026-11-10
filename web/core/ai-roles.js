@@ -22,20 +22,21 @@ export function getRoles() {
   }
   return { review: normAI(v.review), tasks };
 }
-const save = r => store.set(KEY, r);
+// 저장하면 true, 저장하지 못하면(저장 공간이 꽉 참 등) false — 부르는 쪽이 「저장했어요」를 띄울지 정함
+const save = r => store.set(KEY, r) === true;
 
 export function setTaskRole(task, patch) {
-  if (!TASK_IDS.includes(task)) return;
+  if (!TASK_IDS.includes(task)) return false;
   const r = getRoles();
   const cur = r.tasks[task];
   if ('main' in patch) cur.main = normAI(patch.main);
   if ('reviewOn' in patch) cur.reviewOn = !!patch.reviewOn && hasReview(task);
   if ('review' in patch) cur.review = normAI(patch.review);
-  save(r);
+  return save(r);
 }
-export function setDefaultReview(ai) { const r = getRoles(); r.review = normAI(ai); save(r); }
+export function setDefaultReview(ai) { const r = getRoles(); r.review = normAI(ai); return save(r); }
 export function resetRoles() {
-  save({ review: null, tasks: Object.fromEntries(TASK_IDS.map(t => [t, blank()])) });
+  return save({ review: null, tasks: Object.fromEntries(TASK_IDS.map(t => [t, blank()])) });
 }
 
 /* 지금 넣은 키·모델 목록 (평가 메뉴의 SSAM.ai에서). 키 값은 가져오지 않고 있는지만 */
@@ -166,7 +167,8 @@ export function openRoleSheet(task) {
     ['arMain', 'arReviewOn', 'arReview'].forEach(id => q(id).addEventListener('change', note));
     note();
     q('arSave').addEventListener('click', () => {
-      setTaskRole(task, { main: fromVal(q('arMain').value), reviewOn: q('arReviewOn').checked, review: fromVal(q('arReview').value) });
+      // 저장하지 못했으면 창을 닫지 않고 알림(「저장했어요」라고 하지 않음)
+      if (!setTaskRole(task, { main: fromVal(q('arMain').value), reviewOn: q('arReviewOn').checked, review: fromVal(q('arReview').value) })) { q('arNote').textContent = store.FULL_MSG; return; }
       S.closeSheet && S.closeSheet();
       fillRows();
       S.toast && S.toast(`${TASK_NAME[task]} AI를 저장했어요`);
