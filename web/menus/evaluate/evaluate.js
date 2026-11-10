@@ -2223,6 +2223,9 @@ function workBusy() {
     if (S.running.size || (S.queue.length && !S.paused)) return true;
     if (typeof HK !== 'undefined' && (HK.running.size || HK.queue.length)) return true;
     if (typeof GR !== 'undefined' && (GR.running.size || ['grading', 'ranking', 'writing'].includes(GR.phase))) return true;
+    // 창체 쓰기·검토, 대명사 줄이기도 AI가 쓰는 중(학년도 옮기기·업데이트로 다시 열면 그 글을 잃음)
+    if (typeof CHE !== 'undefined' && (CHE.running.size || CHE.queue.length || CHE.reviewing)) return true;
+    if (typeof PRON !== 'undefined' && PRON.busy) return true;
   } catch (e) {}
   return false;
 }
@@ -2847,8 +2850,32 @@ function hkStatus(s) {
 
 /* ---------- 메모의 이름 칸 (core/bundle.js가 window.SSAM.memoNames로 줌) ---------- */
 const MEMO_NAMES = () => (window.SSAM && window.SSAM.memoNames) || null;
+/* 엑셀에서 복사한 글: 칸 안 줄바꿈(Alt+Enter)·따옴표가 든 칸은 「"…"」로 감싸 옴(안의 「"」는 「""」).
+   감싼 칸은 한 칸으로 풀어 줄을 이어 붙임 — 줄마다 학생 한 명이라, 그대로 두면 칸의 둘째 줄이 다음 학생 메모가 됨 */
+function excelFlat(text) {
+  const s = String(text || '');
+  if (!s.includes('"')) return s;
+  let out = '', i = 0;
+  while (i < s.length) {
+    if (s[i] === '"' && (i === 0 || s[i - 1] === '\t' || s[i - 1] === '\n')) {
+      let j = i + 1, cell = '', closed = false;
+      while (j < s.length) {
+        if (s[j] === '"') { if (s[j + 1] === '"') { cell += '"'; j += 2; continue; } closed = true; j++; break; }
+        cell += s[j++];
+      }
+      // 닫는 따옴표 바로 뒤가 칸 끝(탭·줄 끝)일 때만 감싼 칸(손으로 친 「"성실함" 친구를 도움」은 그대로)
+      if (closed && (j >= s.length || /[\t\r\n]/.test(s[j]))) {
+        out += cell.split(/\r?\n/).map(l => l.trim()).filter(Boolean).reduce((a, l) => (a ? a + (/[.,!?。]$/.test(a) ? ' ' : ', ') + l : l), '');
+        i = j; continue;
+      }
+    }
+    out += s[i++];
+  }
+  return out;
+}
 // 한꺼번에 넣기 → { rows: [{ no, memo }], names: 뺀 이름 칸 수 }
 function hkMemoRows(text) {
+  text = excelFlat(text);
   if (MEMO_NAMES()) return MEMO_NAMES().rows(text);
   // 번호만 있는 줄(「4⇥」)은 빈 메모(번호 숫자를 메모로 넣지 않음)
   const rows = String(text || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => {
@@ -3012,7 +3039,8 @@ async function hkAdjust(id, idx, dir) {
   try {
     const out = await hkCall(hkFixPrompt(s, r.t, dir));
     const c = out.split('\n').map(hkClean).filter(Boolean).join(' ');
-    if (c) { r.t = dir === 'longer' ? c : hkTrim(c); r.d = 0; delete r.rv; }
+    // 고친 글은 아직 쓰지 않았으니 사용함을 지우고, 쓴 글이 하나도 남지 않으면 학생도 완료가 아님(지울 때처럼)
+    if (c) { r.t = dir === 'longer' ? c : hkTrim(c); r.d = 0; delete r.rv; if (!s.results.some(x => x.d)) s.done = 0; }
     toast(dir === 'longer' ? '조금 길게 고쳤어요' : '조금 짧게 고쳤어요');
   } catch (e) { toast(errMsg((e && e.code) || 'upstream_error', e), 4500); }
   finally { delete r.busy; HKStore.save(); renderHKEditor(); renderHKList(); }
@@ -3513,7 +3541,9 @@ async function grAddCrit(files) {
     GR.loading = `정답표 「${f.name}」 읽는 중`; renderGRBusy();
     try {
       if (isHwp(f)) {
-        const text = (await readCritDoc(f)).trim();
+        // 모범 답안 등에 적힌 학생 이름 칸은 가림(정답 글은 학생마다 채점 요청에 실려 AI로 가고 기록에도 저장됨 — 한꺼번에 넣기와 같게)
+        const mask = (window.SSAM && window.SSAM.maskNames) || (x => x);
+        const text = mask((await readCritDoc(f)).trim());
         if (text.replace(/\s/g, '').length < 2) { bad.push(`「${f.name}」에서 글자를 찾지 못했어요. 그림으로 된 정답표라면 PDF나 사진으로 넣어 주세요.`); continue; }
         GR.critDocs.push({ name: f.name, text: text.slice(0, CRIT_DOC_MAX) }); added++;
         if (text.length > CRIT_DOC_MAX) bad.push(`「${f.name}」이 길어서 앞부분 ${CRIT_DOC_MAX.toLocaleString()}자만 써요.`);
@@ -4083,12 +4113,17 @@ async function grWrite(only) {
         }
       }
     }));
-    // 겹치는 평어는 하나씩 다시 씀
-    const seen = new Map();
+    // 겹치는 평어는 하나씩 다시 씀: 이번에 쓴 학생 글만(사용함으로 표시한 글·이번에 쓰지 않은 학생 글은 나이스에 이미 넣었을 수 있어 그대로)
+    const seen = new Map(), head = x => normKey(x.text).slice(0, 18);
     for (const s of grActive().filter(x => x.text)) {
-      const k = normKey(s.text).slice(0, 18);
-      if (seen.has(k) && !ctl.signal.aborted) { const avoid = grActive().filter(x => x.level === s.level && x.text && x !== s).map(x => x.text); await grWriteChunk(s.level, [s], avoid, ctl.signal); }
-      seen.set(normKey(s.text).slice(0, 18), s.id);
+      const o = seen.get(head(s));
+      const re = o && !ctl.signal.aborted ? [s, o].find(x => grWrote.has(x) && !x.d) : null;
+      if (re) {
+        const avoid = grActive().filter(x => x.level === re.level && x.text && x !== re).map(x => x.text);
+        await grWriteChunk(re.level, [re], avoid, ctl.signal);
+        if (re === o) seen.set(head(o), o);
+      }
+      seen.set(head(s), s);
     }
     // 검토 AI: 이번에 쓴 평어만 10개씩 (사용함 표시한 학생은 빼고). 평가지 채점 평어는 채점 AI의 검토로. 검토하는 동안 창을 닫아도 평어는 남게 먼저 저장
     const wrote = [...grWrote].filter(x => x.text && !x.d);
@@ -4521,6 +4556,8 @@ async function grOpenHistory(id) {
   const b = await GRStore.get(id);
   if (!b) { toast('채점 기록을 불러오지 못했어요'); return; }
   grNew(false);
+  // 정답표 그림은 기록에 없음(저장하지 않음): 지금 넣어 둔 그림은 다른 평가의 것이라 뺌 — 남겨 두면 이 기록으로 새 반을 채점할 때 다른 평가 정답으로 채점함
+  grFreePages(GR.critImgs); GR.critImgs = [];
   GR.id = id; GR.title = b.title || ''; GR.unitId = b.unitId || ''; GR.refs = Array.isArray(b.refs) ? b.refs.filter(x => typeof x === 'string') : []; GR.criteria = b.criteria || ''; GR.critDocs = (b.critDocs || []).map(d => ({ name: String(d.name || ''), text: String(d.text || '') })); GR.createdAt = b.createdAt || 0; GR.calibrated = !!b.calibrated;
   if (b.settings) { const { except, ...rest } = b.settings; Object.assign(GR.settings, rest); GR.settings.ratio = { ...GR.settings.ratio, ...(b.settings.ratio || {}) }; }
   let fixed = 0;
@@ -4650,11 +4687,14 @@ document.addEventListener('change', e => {
   }
   else if (id === 'grExcept') {
     GR.settings.except = grParseNos(el.value);
-    if (!GR.settings.byNo) grRenumber(); // 적힌 번호로 맞추면 읽은 번호를 그대로 둠(예외 번호는 명단 점검에만 씀)
+    // 지난 채점 기록(스캔 없음)의 번호는 그때 정한 번호라 스캔 차례로 다시 매기지 않음(예외 번호 학생은 나이스에 넣을 때만 뺌)
+    const rec = GR.students.length > 0 && GR.students.every(s => !s.pages.length);
+    if (rec) { /* 기록의 번호 그대로 */ }
+    else if (!GR.settings.byNo) grRenumber(); // 적힌 번호로 맞추면 읽은 번호를 그대로 둠(예외 번호는 명단 점검에만 씀)
     else if (GR.noSig && GR.noSig === grNoSig()) { grFillNos(GR.settings.except); GR.noSig = grNoSig(); } // 결석 자리만 다시 맞춤
     grSaveSettings(); renderGR();
     setClass(CLASS.count, GR.settings.except, 'gr'); // 학급 명단과 같이 씀
-    toast(GR.settings.byNo ? '예외 번호를 바꿨어요. 읽은 번호는 그대로예요' : GR.settings.except.length ? `${GR.settings.except.join(', ')}번을 건너뛰고 번호를 매겼어요` : '예외 번호를 지웠어요');
+    toast(rec ? '예외 번호를 바꿨어요. 기록의 번호는 그대로예요' : GR.settings.byNo ? '예외 번호를 바꿨어요. 읽은 번호는 그대로예요' : GR.settings.except.length ? `${GR.settings.except.join(', ')}번을 건너뛰고 번호를 매겼어요` : '예외 번호를 지웠어요');
   }
   else if (id === 'grMaskOn') { GR.settings.maskOn = el.checked; grSaveSettings(); renderGR(); }
   else if (id === 'grByNo') { GR.settings.byNo = el.checked; grSaveSettings(); renderGR(); }
@@ -4676,8 +4716,9 @@ function neisOpts(k = NEIS.src && NEIS.src.key) {
 }
 function neisSaveOpts(o, k = NEIS.src && NEIS.src.key) { Store.lsSet(neisOptKey(k), o); }
 const grNeisText = s => (s && s.text && !s.skip ? s.text : '');
-// 번호를 모르는 쪽(적힌 번호로 맞출 때 채점에서 뺀 쪽, 0번)은 나이스 칸을 차지하지 않음
-function grNeisList() { return GR.students.filter(s => s.no > 0).sort((a, b) => a.no - b.no); }
+// 번호를 모르는 쪽(적힌 번호로 맞출 때 채점에서 뺀 쪽, 0번)은 나이스 칸을 차지하지 않음.
+// 예외 번호(전출 등)도 나이스에 칸이 없음 — 지난 채점 기록을 연 뒤 예외 번호를 넣으면 그 학생 글을 넣지 않아야 뒤 학생 칸이 밀리지 않음
+function grNeisList() { const ex = new Set(GR.settings.except || []); return GR.students.filter(s => s.no > 0 && !ex.has(s.no)).sort((a, b) => a.no - b.no); }
 // 붙여넣을 글의 출처: { key, what, text(id), no(id), mark(id), saved() }
 const GR_NEIS_SRC = {
   key: 'gr', what: '평어',
@@ -4743,7 +4784,7 @@ async function neisArm(from) {
     return;
   }
   if (err) { NEIS.state = 'error'; NEIS.msg = err; NEIS.job = null; }
-  else { NEIS.state = 'armed'; NEIS.job = { gen: r && r.gen, ids, from: start, src }; NEIS.until = Date.now() + ((r && +r.secs) || 300) * 1000; }
+  else { NEIS.state = 'armed'; NEIS.job = { gen: r && r.gen, ids, from: start, src, texts }; NEIS.until = Date.now() + ((r && +r.secs) || 300) * 1000; }
   renderNeis();
 }
 // 에듀파인 차례로 붙여넣기를 준비하면 이 창은 닫음(붙여넣는 중이 아니면 — 그때는 앱이 차례로 붙여넣기를 막음)
@@ -4763,8 +4804,9 @@ function neisClose() {
   NEIS.open = false; NEIS.state = 'idle';
   renderNeis();
 }
+// 넣은 학생을 「사용함」으로: 준비한 뒤 글이 바뀐 학생(다시 쓰기·고친 문장 쓰기)은 나이스에 예전 글이 들어갔으니 표시하지 않음
 function neisMark(job, done) {
-  for (let i = 0; i < done; i++) job.src.mark(job.ids[job.from + i]);
+  for (let i = 0; i < done; i++) { const id = job.ids[job.from + i]; if (!job.texts || job.src.text(id) === job.texts[i]) job.src.mark(id); }
 }
 function neisOnEvent(p) {
   const job = NEIS.job;
@@ -5151,6 +5193,8 @@ function ccEnqueue(k, mode) {
     n += left.length;
   }
   CHE.err = '';
+  // 나이스에 붙여넣으려고 준비해 둔 창체 글이 바뀌므로 준비를 풂(평가지 채점 평어를 다시 쓸 때처럼)
+  if (n && NEIS.src && NEIS.src.key === 'cc' && (NEIS.state === 'armed' || NEIS.state === 'arming')) neisClose();
   ccPump();
   return n;
 }
@@ -5497,6 +5541,23 @@ function openCCMask(k, actId) {
     }
   });
 }
+/* 학습지 스캔을 이름 칸을 가리지 않고 AI로 보내게 되면 먼저 물음(평가지 채점·단원평가·활동지처럼).
+   「가리지 않고 쓰기」는 그 학습지에서 한 번만 물음(다른 파일로 바꾸면 다시). nos: 그 학생 학습지만 볼 때 */
+function ccNoMaskActs(ks, nos) {
+  return ks.flatMap(k => ccActs(k).map(a => ({ k, a })))
+    .filter(({ a }) => CHE.sheets[a.id] && !CHE.sheets[a.id].noMaskOk && !ccMask(a).length && (!nos || nos.some(no => ccSheetPages(a.id, no).length)));
+}
+function ccAskMask(ks, go, nos) {
+  const list = ccNoMaskActs(ks, nos);
+  if (!list.length) { go(); return; }
+  const names = list.map(({ a }) => `「${esc((a.name || '').trim() || '활동')}」`).join(', ');
+  openSheet(`<h3>이름 칸을 아직 정하지 않았어요</h3><p class="muted" style="margin:0">${names} 학습지 스캔에서 가릴 이름 칸을 정하지 않았어요. 정하지 않으면 학생 이름이 그대로 AI 회사로 보내져요. [이름 칸 정하기]로 이름이 적힌 곳을 상자로 표시해 주세요.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn" type="button" id="ccNoMaskOk">가리지 않고 쓰기</button><button class="btn primary" type="button" id="ccMaskGo">이름 칸 정하기</button></div>`,
+  sh => {
+    sh.querySelector('#ccNoMaskOk').addEventListener('click', () => { list.forEach(({ a }) => { if (CHE.sheets[a.id]) CHE.sheets[a.id].noMaskOk = true; }); closeSheet(); go(); });
+    sh.querySelector('#ccMaskGo').addEventListener('click', () => { closeSheet(); openCCMask(list[0].k, list[0].a.id); });
+  });
+}
 function openCCSheetView(k, no) {
   const acts = ccActs(k).filter(a => ccSheetPages(a.id, no).length || ccObs(k, no, a.id));
   if (!acts.length) return;
@@ -5604,8 +5665,8 @@ document.addEventListener('click', e => {
   const re = t.closest('[data-ccre]');
   if (re) {
     if (!engineReady()) { openSettings(); return; }
-    const no = +re.dataset.ccre; const it = ccItem(CHE.view, no); it.d = 0;
-    ccEnqueue(CHE.view, [no]); return;
+    const k = CHE.view, no = +re.dataset.ccre;
+    ccAskMask([k], () => { ccItem(k, no).d = 0; ccEnqueue(k, [no]); }, [no]); return;
   }
   const b = t.closest('[data-cc]'); if (!b || b.disabled) return;
   const a = b.dataset.cc;
@@ -5616,18 +5677,21 @@ document.addEventListener('click', e => {
   };
   if (a === 'genAll') {
     if (needSetup()) return;
-    const n = CC_AREAS.reduce((s, x) => s + ccEnqueue(x.k, 'fill'), 0);
-    if (!n) { toast(CC_AREAS.some(x => ccActs(x.k).length) ? '새로 쓸 학생이 없어요. 모두 썼거나 사용함으로 표시했어요.' : '공통 활동을 먼저 넣어 주세요'); return; }
-    CHE.showRes = true; $('#ccView').classList.add('show-pane');
+    ccAskMask(CC_AREAS.map(x => x.k), () => {
+      const n = CC_AREAS.reduce((s, x) => s + ccEnqueue(x.k, 'fill'), 0);
+      if (!n) { toast(CC_AREAS.some(x => ccActs(x.k).length) ? '새로 쓸 학생이 없어요. 모두 썼거나 사용함으로 표시했어요.' : '공통 활동을 먼저 넣어 주세요'); return; }
+      CHE.showRes = true; $('#ccView').classList.add('show-pane');
+    });
   } else if (a === 'gen') {
     if (needSetup()) return;
-    if (!ccEnqueue(CHE.view, 'fill')) toast('새로 쓸 학생이 없어요');
+    const k = CHE.view;
+    ccAskMask([k], () => { if (!ccEnqueue(k, 'fill')) toast('새로 쓸 학생이 없어요'); });
   } else if (a === 'fresh') {
     const k = CHE.view, n = classNos().filter(no => !(ccArea(k).items[no] && ccArea(k).items[no].d)).length;
     openSheet(`<h3>${ccInfo(k).name}을 모두 다시 쓸까요?</h3>
       <p class="muted" style="margin:0">쓰지 않은 학생 ${n}명의 글을 새로 써요. 사용함으로 표시한 학생은 그대로 둬요.</p>
       <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="ccFreshGo">다시 쓰기</button></div>`, sh => {
-      sh.querySelector('#ccFreshGo').addEventListener('click', () => { closeSheet(); if (!needSetup()) ccEnqueue(k, 'fresh'); });
+      sh.querySelector('#ccFreshGo').addEventListener('click', () => { closeSheet(); if (!needSetup()) ccAskMask([k], () => ccEnqueue(k, 'fresh')); });
     });
   } else if (a === 'stop') { ccStop(); toast('멈췄어요. 쓴 문장은 그대로 있어요.'); }
   else if (a === 'copyTable') {

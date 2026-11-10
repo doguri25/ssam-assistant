@@ -10,6 +10,8 @@ SS().bundleBoxHTML = bundleBoxHTML;
 SS().keepFiles = keepFiles;
 // 행특 메모 한꺼번에 넣기·AI로 보내는 메모의 이름 칸 빼기(evaluate.js가 씀)
 SS().memoNames = { rows: memoRows, forAI: memoForAI };
+// [정답표 파일]로 넣은 한글 정답표 글도 한꺼번에 넣기처럼 이름 칸(「이름: 김민수」)만 가림(evaluate.js가 씀)
+SS().maskNames = maskNameFields;
 onBundle('gr', async files => {
   if (!SS().gr) return;
   bundleMsg('gr', '읽는 중…');

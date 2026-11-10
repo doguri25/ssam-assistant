@@ -40,6 +40,7 @@ await run('evaluate', [
     await fc.setFiles([1, 2, 3].map(i => join(FIXTURES, `sheet-${i}.png`)));
     await page.waitForSelector('[data-ccsheetinfo]');
     await page.click('[data-cc="genAll"]');
+    await page.click('#sheetRoot #ccNoMaskOk'); // 이름 칸을 정하지 않은 학습지: 가리지 않고 쓰기
     await page.waitForFunction(() => document.querySelectorAll('#ccResults .gr-sum').length === 3, null, { timeout: 15000 });
     const notes = await page.locator('#ccResults .gr-sum').allInnerTexts();
     assert(notes.every(n => n.startsWith('학습지:')), '학습지 줄이 아님: ' + notes.join(' / '));

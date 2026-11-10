@@ -101,6 +101,7 @@ await run('review-writing', [
     await page.waitForSelector('[data-ccsheetinfo]');
     const n = reviews().length;
     await page.click('[data-cc="genAll"]');
+    await page.click('#sheetRoot #ccNoMaskOk'); // 이름 칸을 정하지 않은 학습지: 가리지 않고 쓰기
     await until(async () => reviews().length > n && await page.locator('#ccResults .rv-op').count() >= 1);
     assert(reviews().at(-1).prompt.includes('교실 환경 지킴이'), '활동 정보');
     await page.click('#ccResults [data-rv-use]');
