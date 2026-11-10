@@ -1,5 +1,5 @@
 /* 「쌤」 채팅의 글 → 할 일 (스펙 2026-11-06 D·F). 화면 없이 돌아감(시험).
-   먼저 앱 규칙(낱말)으로 고르고(routeText), 모르면 AI(notes)에 할 일 목록을 주고 하나 고르게 함(aiRoutePrompt·normAiRoute).
+   먼저 앱 규칙(낱말)으로 고르고(routeText), 분명하지 않거나 묻는 글(isQuestion)이면 쌤비서 도우미(chat-assist.js)가 AI로 답하고 할 일을 고름.
    「3번 …」은 행동특성 관찰 메모(parseMemo·maskMemo·memoLine) */
 import { stripNames, maskContacts } from './privacy.js';
 import { stripPersonal } from './survey.js';
@@ -31,7 +31,7 @@ export const INTENTS = [
   ['handover', '인수인계서', '업무 인수인계서 만들기'],
   ['aikey', 'AI 키', '설정 › AI 키 넣기·바꾸기']
 ];
-const IDS = INTENTS.map(i => i[0]);
+export const INTENT_IDS = INTENTS.map(i => i[0]);
 export const intentLabel = id => (INTENTS.find(i => i[0] === id) || [])[1] || '';
 export const LANGS = [['vi', '베트남어'], ['zh', '중국어(간체)'], ['ru', '러시아어'], ['en', '영어']];
 export const langLabel = id => (LANGS.find(l => l[0] === id) || [])[1] || '';
@@ -135,8 +135,9 @@ export function nosText(nos) {
    낱말은 한 줄로 이어 보고, 넘길 글(payload)은 받은 글 그대로(줄바꿈 살림) */
 export function routeText(text) {
   const raw = String(text == null ? '' : text), t = raw.replace(/\s+/g, ' ').trim();
-  const none = { intent: null, payload: {}, confidence: 0, candidates: [] };
+  const none = { intent: null, payload: {}, confidence: 0, candidates: [], question: false };
   if (!t) return none;
+  const ask = isQuestion(raw);
   const scores = {};
   for (const [id, re, w] of RULES) if (re.test(t)) scores[id] = Math.max(scores[id] || 0, w);
   // 번역: 언어 낱말 + 번역을 바라는 말(「번역」「베트남어로」「영문으로」「러시아어 가정통신문」)이면 번역(가정통신문보다 앞섬)
@@ -145,40 +146,40 @@ export function routeText(text) {
   // 관찰 메모: 글 앞이 「n번」
   const memo = parseMemo(t);
   if (memo && !NOT_MEMO.test(memo.body)) {
-    if (VIEW.test(memo.body)) return { intent: 'memoView', payload: { nos: memo.nos }, confidence: 1, candidates: [] };
-    if (meat(memo.body).length >= 2) {
+    if (VIEW.test(memo.body)) return { intent: 'memoView', payload: { nos: memo.nos }, confidence: 1, candidates: [], question: false };
+    // 묻는 글(「3번 학생 상담 어떻게 하면 좋을까?」)은 메모로 넣지 않음(메모 끝말이면 메모)
+    if (meat(memo.body).length >= 2 && (!ask || MEMO_END.test(memo.body))) {
       const other = Object.entries(scores).filter(([id]) => !['briefing'].includes(id)).sort((a, b) => b[1] - a[1]);
       // 번호 뒤 글에 다른 할 일 낱말이 크게 있으면(「3번 단원평가 채점」) 애매함
-      if (!other.length || other[0][1] < SURE || MEMO_END.test(memo.body)) return { intent: 'memo', payload: { nos: memo.nos, body: memo.body }, confidence: 0.9, candidates: [] };
-      return { intent: null, payload: {}, confidence: 0.4, candidates: ['memo', ...other.slice(0, 2).map(o => o[0])] };
+      if (!other.length || other[0][1] < SURE || MEMO_END.test(memo.body)) return { intent: 'memo', payload: { nos: memo.nos, body: memo.body }, confidence: 0.9, candidates: [], question: false };
+      return { intent: null, payload: {}, confidence: 0.4, candidates: ['memo', ...other.slice(0, 2).map(o => o[0])], question: ask };
     }
   }
   const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1]);
-  if (!ranked.length) return none;
+  if (!ranked.length) return { ...none, question: ask };
   const [top, s1] = ranked[0], s2 = ranked[1] ? ranked[1][1] : 0;
-  if (s1 >= SURE && s1 - s2 >= GAP) return { intent: top, payload: payloadFor(top, raw), confidence: Math.min(1, 0.6 + (s1 - s2) / 10 + s1 / 20), candidates: [] };
-  return { intent: null, payload: {}, confidence: Math.min(0.5, s1 / 8), candidates: ranked.slice(0, 3).map(r => r[0]) };
+  // 묻는 글(「단원평가 결과지 어떻게 뽑아?」「AI 키 없이 써도 돼?」)은 그 메뉴 낱말이 있어도 바로 하지 않음(쌤비서 도우미가 답함) — 오늘 할 일은 답이 곧 브리핑
+  if (ask && !ASK_OK.includes(top)) return { intent: null, payload: {}, confidence: Math.min(0.5, s1 / 8), candidates: ranked.slice(0, 3).map(r => r[0]), question: true };
+  if (s1 >= SURE && s1 - s2 >= GAP) return { intent: top, payload: payloadFor(top, raw), confidence: Math.min(1, 0.6 + (s1 - s2) / 10 + s1 / 20), candidates: [], question: ask };
+  return { intent: null, payload: {}, confidence: Math.min(0.5, s1 / 8), candidates: ranked.slice(0, 3).map(r => r[0]), question: ask };
 }
 export const isSure = r => !!(r && r.intent && r.confidence >= 0.6);
 
-/* ---------- AI에 묻기 (규칙으로 모를 때) ---------- */
-const AI_IDS = IDS.filter(id => !['memo', 'memoView'].includes(id)); // 번호 메모는 규칙으로만
-export function aiRoutePrompt(text) {
-  return ['[채팅 할 일 고르기]',
-    '학교 선생님이 업무 도우미 앱의 채팅 칸에 쓴 글입니다. 아래 할 일 중 선생님이 바라는 것을 고르세요.',
-    ...INTENTS.filter(([id]) => AI_IDS.includes(id)).map(([id, , d]) => `- ${id}: ${d}`),
-    '분명하면 intent에 하나, 애매하면 intent는 ""로 두고 candidates에 가까운 차례로 2~3개, 맞는 것이 없으면 intent "none".',
-    'translate면 lang에 vi(베트남어)·zh(중국어 간체)·ru(러시아어)·en(영어) 중 하나(모르면 "").',
-    'JSON 하나로만 답하세요. {"intent":"purchase","candidates":[],"lang":""}',
-    '[글]', String(text || '').slice(0, 1500)].join('\n');
-}
-export function normAiRoute(v) {
-  const o = v && typeof v === 'object' && !Array.isArray(v) ? v : {};
-  const ok = id => AI_IDS.includes(id);
-  const intent = ok(o.intent) ? o.intent : null;
-  const candidates = [...new Set((Array.isArray(o.candidates) ? o.candidates : []).filter(ok))].filter(c => c !== intent).slice(0, 3);
-  const lang = LANGS.some(l => l[0] === o.lang) ? o.lang : '';
-  return { intent, candidates, lang, none: o.intent === 'none' };
+/* ---------- 묻는 글 ---------- */
+// 어떻게·왜·뭐·방법·「~하는 법」·차이: 묻는 말(명령 꼬리가 있어도)
+const HOW = /어떻게|어떡|무엇|뭐(?:야|예요|에요|지|가|를|부터|해야|하면|라고|\s*(?:있|써|해|하|넣|골라|고르))|뭔가요|뭔지|무슨|왜(?=\s|[?？요죠지냐]|$)|언제|어디|누가|누구|몇\s*(?:번째|개|명|시|일|분|쪽|자|번)|방법|요령|노하우|(?:하|쓰|만들|작성하|넣|고치|바꾸|뽑|올리|내려받|채점하|정하|읽|보|고르)는\s*(?:법|방법|순서|요령)|차이(?:가|는|점|를)?|뜻이|의미가|설명해/;
+// 되나요·돼?·가능해?·있어?·맞아?·괜찮아?: 예·아니오로 묻는 말(명령 꼬리가 없을 때)
+const YESNO = /(?:해|써|넣어|봐|돼|되어|보내|올려|바꿔|안\s*써|안\s*해|없이\s*써)도\s*(?:돼|되|될|괜찮)|(?:돼요?|있어요?|없어요?|맞아요?)\s*[?？]|(?:되나요?|될까요?|되니|되죠|가능(?:해|한가|할까|하나|한지|해요)|있나요?|있을까요?|없나요?|맞나요?|괜찮(?:아|나|을까|은가)요?|인가요?|일까요?|나요)\s*[?？]*$/;
+// 해 달라는 꼬리(「써 줄래?」「해 줄 수 있어?」는 묻는 말이 아니라 부탁)
+const REQUEST = /(?:줘|주세요|줄래요?|주실래요?|주시겠어요|주라|줄\s*수\s*있(?:어|어요|나요|을까요?)|할래요?|볼래요?|넣을래요?|하자|가자)\s*[?？!.~]*$/;
+const ASK_OK = ['briefing', 'memoView']; // 묻는 꼴이어도 규칙대로(답이 곧 그 일)
+/* 글이 묻는 말인지(줄이 여럿이거나 아주 길면 넣을 내용으로 봄) */
+export function isQuestion(text) {
+  const t = String(text == null ? '' : text).trim();
+  if (!t || t.length > 150 || /\n/.test(t)) return false;
+  if (HOW.test(t)) return true;
+  if (REQUEST.test(t)) return false;
+  return YESNO.test(t) || /[?？]\s*$/.test(t);
 }
 
 /* ---------- 관찰 메모·기록·넘길 글의 이름 가리기 ---------- */
@@ -189,7 +190,7 @@ export function maskMemo(text) {
   const p = maskPersons(r.text);
   return { text: p.text.replace(/\s+/g, ' ').trim(), masked: r.masked + p.masked, dropped: r.dropped };
 }
-/* 채팅 기록·AI 분류에 쓰는 글: 전화번호·전자 우편은 그 자리만 가리고(줄을 통째로 빼면 같은 줄 내용까지 없어짐),
+/* 채팅 기록·AI로 보내는 글: 전화번호·전자 우편은 그 자리만 가리고(줄을 통째로 빼면 같은 줄 내용까지 없어짐),
    명단·개인정보 열·줄은 빼고(stripPersonal), 줄마다 이름처럼 보이는 말은 가림(maskMemo) */
 export function safeText(text) {
   const s = stripPersonal(maskContacts(text)).text;
