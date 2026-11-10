@@ -3,6 +3,7 @@
 // 글은 모두 지어낸 것
 import { join } from 'node:path';
 import { open, run, assert, mockClaude, FIXTURES } from './helpers.mjs';
+import { zipStore } from '../../web/core/zip.js';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -22,8 +23,11 @@ let dupFor = null; // { no, text }: 이 학생의 첫 평어로 이 글을 돌�
 const DUP2 = '수의 크기를 비교하는 방법을 정확하게 알고 문제를 끝까지 풀어냄.';
 const DUP1 = '수의 크기를 비교하는 방법을 정확하게 알고 문제를 스스로 해결함.';
 let ccN = 0, ccImgs = 0;
+const grades = [];
 await mockClaude(page, ({ prompt, images }) => {
   if (prompt.startsWith('[문장 검토]')) return JSON.stringify({ items: [] });
+  if (prompt.includes('수행평가를 채점하는')) { grades.push(prompt); return JSON.stringify({ score: 80, summary: '바르게 풀었음', evidence: ['풀이가 맞음'], strengths: '꼼꼼함', improve: '검산', unreadable: false }); }
+  if (prompt.includes('채점 결과입니다')) return '[]';
   if (images && prompt.includes('창의적 체험활동 특기사항')) { ccImgs++; return JSON.stringify({ note: `학습지 ${ccImgs}: 교실 정리를 다짐함`, text: `교실을 깨끗하게 하려고 ${ccImgs}가지 방법을 스스로 정해 꾸준히 실천함.`, blank: false }); }
   if (prompt.includes('창의적 체험활동 특기사항')) {
     const n = +(prompt.match(/학생 (\d+)명에게/) || [])[1] || 1;
@@ -60,6 +64,9 @@ const seedGR = async (id, students, cls = { count: 4, except: [] }) => {
   await page.waitForSelector('[data-gr="copyAll"]');
 };
 const stu = (no, level, text, d = 0) => ({ id: 's' + no, no, n: 1, skip: 0, score: 90 - no, level, text, d });
+// 한글(.hwpx) 정답표: 문단마다 한 줄
+const NSP = 'http://www.hancom.co.kr/hwpml/2011/paragraph', NSS = 'http://www.hancom.co.kr/hwpml/2011/section';
+const hwpx = (name, lines) => ({ name, mimeType: 'application/octet-stream', buffer: Buffer.from(zipStore([{ name: 'mimetype', data: 'application/hwp+zip' }, { name: 'Contents/section0.xml', data: `<?xml version="1.0" encoding="UTF-8"?><hs:sec xmlns:hs="${NSS}" xmlns:hp="${NSP}">${lines.map(l => `<hp:p><hp:run><hp:t>${l}</hp:t></hp:run></hp:p>`).join('')}</hs:sec>` }])) });
 // 행특: 5명 학생 칸(메모 없음)으로 다시 열고 행동특성 탭
 const hkReset = async () => {
   await page.goto(url, { timeout: 30000 }); await page.waitForTimeout(600);
@@ -243,6 +250,33 @@ await run('fix1110-evallegacy', [
     await page.waitForTimeout(300);
     assert(!(await page.$('#sheetRoot #ccNoMaskOk')), '한 번 고른 뒤 또 물음');
     await until(async () => ccImgs > i1 && !(await page.$('#ccView .spin')), 15000);
+  }],
+  // ---------- gr-critdoc-name ----------
+  ['[gr-critdoc-name] [정답표 파일]로 넣은 한글 정답표(모범 답안)의 「이름: 김민수」는 가려서 저장하고 채점 요청에도 보내지 않음(정답 낱말은 그대로)', async () => {
+    await page.evaluate(() => {
+      for (const k of Object.keys(localStorage)) if (/^ssam:(gr:|grs$|grset$|class$)/.test(k)) localStorage.removeItem(k);
+      localStorage.setItem('ssam:class', JSON.stringify({ count: 1, except: [] }));
+      localStorage.setItem('ssam:grset', JSON.stringify({ maskOn: false, mask: [] }));
+    });
+    await page.goto(url, { timeout: 30000 }); await page.waitForTimeout(500);
+    await goTab('gr');
+    await page.waitForSelector('#grDrop');
+    const [fc0] = await Promise.all([page.waitForEvent('filechooser'), page.click('[data-gr="critImg"]')]);
+    await fc0.setFiles([hwpx('모범답안.hwpx', ['사회 수행평가 모범 답안', '3학년 2반 5번 이름: 김민수', '1. 문화유산 이름: 석굴암', '2. 안중근'])]);
+    await page.waitForSelector('#grCritBox [data-grcritview="0"]');
+    await page.click('#grCritBox [data-grcritview="0"]');
+    await page.waitForSelector('#sheetRoot #critDocText');
+    const v = await page.inputValue('#sheetRoot #critDocText');
+    await page.click('#sheetRoot [data-close]');
+    assert(!v.includes('김민수') && v.includes('이름: ○○○') && v.includes('석굴암') && v.includes('안중근'), v);
+    const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click('#grDrop')]);
+    await fc.setFiles([join(FIXTURES, 'sheet-1.png')]);
+    await page.waitForFunction(() => document.querySelector('#grSetup').textContent.includes('학생 1명'));
+    await page.fill('#grTitle', '문화유산'); await page.dispatchEvent('#grTitle', 'input');
+    const g0 = grades.length;
+    await page.click('[data-gr="start"]');
+    await until(async () => grades.length > g0, 15000);
+    assert(!grades[g0].includes('김민수') && grades[g0].includes('석굴암'), '채점 요청에 이름: ' + grades[g0].slice(0, 300));
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

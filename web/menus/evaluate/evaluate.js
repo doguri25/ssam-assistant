@@ -3537,7 +3537,9 @@ async function grAddCrit(files) {
     GR.loading = `정답표 「${f.name}」 읽는 중`; renderGRBusy();
     try {
       if (isHwp(f)) {
-        const text = (await readCritDoc(f)).trim();
+        // 모범 답안 등에 적힌 학생 이름 칸은 가림(정답 글은 학생마다 채점 요청에 실려 AI로 가고 기록에도 저장됨 — 한꺼번에 넣기와 같게)
+        const mask = (window.SSAM && window.SSAM.maskNames) || (x => x);
+        const text = mask((await readCritDoc(f)).trim());
         if (text.replace(/\s/g, '').length < 2) { bad.push(`「${f.name}」에서 글자를 찾지 못했어요. 그림으로 된 정답표라면 PDF나 사진으로 넣어 주세요.`); continue; }
         GR.critDocs.push({ name: f.name, text: text.slice(0, CRIT_DOC_MAX) }); added++;
         if (text.length > CRIT_DOC_MAX) bad.push(`「${f.name}」이 길어서 앞부분 ${CRIT_DOC_MAX.toLocaleString()}자만 써요.`);
