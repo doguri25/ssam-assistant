@@ -109,7 +109,7 @@ export function actionPayload(a, { said = '', question = false } = {}) {
   const own = question ? {} : payloadFor(a.intent, said);
   if (TEXT_INTENTS.includes(a.intent)) return { text: own.text || (a.text ? payloadFor(a.intent, a.text).text : '') || '' };
   if (a.intent === 'translate') return { lang: a.lang || own.lang || '' };
-  if (a.intent === 'memo') return { nos: a.nos || [], body: a.text || '' };
+  // 메모는 여기서 만들지 않음(AI가 쓴 글을 넣지 않게 — planActions가 선생님 글로만)
   if (a.intent === 'memoView') return { nos: a.nos || [] };
   return {};
 }
