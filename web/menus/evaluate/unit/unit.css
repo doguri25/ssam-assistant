@@ -71,6 +71,8 @@ section[data-menu="evaluate"].ev-new > :not(.unit-box):not(.act-box){display:non
 .un-rq-chs label{display:flex;align-items:center;gap:4px;min-width:0}
 .un-rq-chs .field,.un-rq-row .field{width:100%;box-sizing:border-box;min-width:0}
 .un-rq-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:6px 10px}
+.un-rq-warn{margin:0;color:var(--warn,#b45309)}
+.un-rq-warn:empty{display:none}
 .un-print{display:none}
 @media print{
   body *{visibility:hidden !important}
@@ -86,10 +88,9 @@ section[data-menu="evaluate"].ev-new > :not(.unit-box):not(.act-box){display:non
   .un-ps p{margin:4px 0;font-size:12.5px}
   .un-ps .un-fb-t{font-size:11.5px}
   .un-ps .un-fb-t th,.un-ps .un-fb-t td{border:1px solid #999;padding:3px 4px;color:#000}
-  /* 복습 문제: 한마디 아래, 정답은 학생 칸 맨 아래 작은 글씨 */
-  .un-ps{display:flex;flex-direction:column}
+  /* 복습 문제: 한마디 아래, 정답은 문제 바로 아래(학생 칸 끝) 작은 글씨 — 한글·워드·PDF와 같은 자리(반 쪽 맨 아래로 밀지 않음) */
   .un-ps .un-rq p{margin:2px 0;white-space:pre-wrap}
-  .un-ps .un-ans{margin:auto 0 0;padding-top:4px;font-size:9.5px}
+  .un-ps .un-ans{margin:0;padding-top:4px;font-size:9.5px}
 }
 /* 결과 모아 보기 */
 .un-results{display:flex;flex-direction:column;gap:12px}

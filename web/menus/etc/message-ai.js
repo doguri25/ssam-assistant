@@ -90,8 +90,81 @@ export function normMessage(v, { year, today = '' } = {}) {
   };
 }
 
-/* 받침 있으면 「을」, 없으면 「를」 */
-const eul = w => { const c = String(w || '').trim().slice(-1).charCodeAt(0) - 0xac00; return c >= 0 && c < 11172 ? (c % 28 ? '을' : '를') : '을(를)'; };
+/* ---------- 첫 문장 (선생님 요청 2026-11-10): 「안녕하세요 선생님.」 뒤에 제목을 넣은 한 문장 ---------- */
+/* 조사를 고를 글자: 끝 문장 부호는 빼고, 끝 괄호(「연수(1차)」「연수 [필수]」)는 덧붙인 말이라 그 앞, 따옴표(「“행복 교실”」)는 그 안 */
+const OPEN = '([{（【〔<', CLOSE = ')]}）】〕>';
+function anchorOf(w) {
+  let s = String(w == null ? '' : w).trim();
+  for (let k = 0; k < 8 && s; k++) {
+    s = s.replace(/[\s.,!?~…·:;\-–—]+$/, '');
+    const ci = CLOSE.indexOf(s.slice(-1));
+    if (ci >= 0) {
+      const oi = s.lastIndexOf(OPEN[ci]);
+      if (oi < 0) { s = s.slice(0, -1); continue; }
+      s = oi > 0 && s.slice(0, oi).trim() ? s.slice(0, oi) : s.slice(oi + 1, -1); // 통째로 괄호면 그 안
+      continue;
+    }
+    if (/["'“”‘’」』〉》]$/.test(s)) { s = s.slice(0, -1); continue; }
+    break;
+  }
+  return s.trim();
+}
+// 숫자 읽는 소리의 받침: 영·일·삼·육·칠·팔은 있고 이·사·오·구는 없음, 끝이 0이면 자리(십·백·천·만·억은 있고 조는 없음, 경은 있음)
+const DIGIT_B = [true, true, false, true, false, false, true, true, true, false];
+function numB(s) {
+  const [int, dec] = s.replace(/,/g, '').split('.');
+  if (dec) return DIGIT_B[+dec.slice(-1)];
+  if (/^0+$/.test(int)) return true;
+  const z = /0*$/.exec(int)[0].length;
+  if (z >= 4) return [true, true, false, true][(Math.floor(z / 4) - 1) % 4];
+  return z ? true : DIGIT_B[+int.slice(-1)];
+}
+// 영어: 대문자 줄임말(4자까지)·모음 없는 글자는 한 글자씩 읽고(에이아이·피비엘 — 엘·엠·엔·알만 받침), 낱말은 끝 글자로 짐작
+const LATIN = { steam: true, stem: true, zoom: true, neis: false, check: false, hub: false, kahoot: true };
+function latinB(w) {
+  const low = w.toLowerCase(), known = Object.keys(LATIN).find(k => low.endsWith(k)); // GitHub → hub(허브)
+  if (known) return LATIN[known];
+  const caps = /[a-z]([A-Z]{2,})$/.exec(w); // ChatGPT → GPT
+  if (caps || (w === w.toUpperCase() && w.length <= 4) || !/[aeiouy]/.test(low)) return 'LMNR'.includes((caps ? caps[1] : w).slice(-1).toUpperCase());
+  if (/(?:ng|[mnl]e?)$/.test(low)) return true; // meeting·zoom·python·school·game·online·google
+  if (/[aeiou][pbc]$/.test(low)) return true; // workshop·app·lab·club·music (camp·help는 캠프·헬프)
+  if (/(?:oo|(?:^|[^aeiou])[aeiou]c?)k$/.test(low)) return true; // book·click·track (week·talk·link는 없음)
+  if (/(?:(?:^|[^aeiou])[aeiou]|ou)t$/.test(low)) return true; // chat·padlet·robot·layout (test·sheet는 없음)
+  return false; // canva·center·teams·word·day·code…
+}
+const ROMAN_B = [true, false, true, false, false, true, true, true, false, true, false, true]; // Ⅰ일 Ⅱ이 Ⅲ삼 Ⅳ사 Ⅴ오 Ⅵ육 Ⅶ칠 Ⅷ팔 Ⅸ구 Ⅹ십 Ⅺ십일 Ⅻ십이
+/* 끝 글자의 받침: true·false, 정할 수 없으면(한자·빈 글) null */
+export function batchim(word) {
+  const s = anchorOf(word);
+  if (!s) return null;
+  const ch = s.slice(-1), code = ch.charCodeAt(0);
+  if (code >= 0xac00 && code <= 0xd7a3) return (code - 0xac00) % 28 !== 0;
+  if (/\d$/.test(s)) return numB(/\d[\d,]*(?:\.\d+)?$/.exec(s)[0]);
+  if (/[A-Za-z]$/.test(s)) return latinB(/[A-Za-z]+$/.exec(s)[0]);
+  if (code >= 0x2160 && code <= 0x216b) return ROMAN_B[code - 0x2160];
+  if (code >= 0x2460 && code <= 0x2473) return numB(String(code - 0x2460 + 1)); // ①~⑳
+  if (/[%℃°+]/.test(ch)) return false; // 퍼센트·도·플러스
+  return null;
+}
+/* 받침 있으면 a(을·과), 없으면 b(를·와), 정할 수 없으면 null */
+export const josa = (word, a, b) => { const h = batchim(word); return h == null ? null : h ? a : b; };
+/* 첫 문장에 넣을 제목: 앞 꼬리표(「[교무]」)와 끝 「안내」「알림」「에 대한 안내」「(안내)」는 뺌(뒤에 「안내드립니다」가 오니) */
+export function leadTitle(title) {
+  let s = String(title == null ? '' : title).trim().replace(/^[[【][^\]】]{1,10}[\]】]\s*/, '').replace(/[\s.!?~…]+$/, '');
+  s = s.replace(/\s*[([]\s*(?:안내|알림)\s*[)\]]$/, '')
+    .replace(/\s*(?:안내|알림)(\s*[([][^()[\]]*[)\]])$/, '$1')
+    .replace(/\s*(?:(?:에|과|와)\s*(?:대한|관한)\s*)?(?:안내|알림)(?:\s*(?:말씀|사항|공문))?$/, '');
+  return s.replace(/[\s.,·:;\-–—]+$/, '').trim();
+}
+/* 인사 뒤 첫 문장: 연수·행사·그 밖은 「○○를 아래와 같이 안내드립니다.」, 회의는 「○○와 관련하여 …」, 제출은 「○○에 대하여 …」.
+   짧게는 「아래와 같이」 없이, 다시 안내는 「다시 한번 안내드립니다.」. 조사를 정할 수 없으면 「에 대하여」, 제목이 없으면 예전 말(짧게는 '') */
+export function leadSentence(title, kind, { len = 'base', again = false } = {}) {
+  const t = leadTitle(title), tail = again ? '다시 한번 안내드립니다.' : len === 'short' ? '안내드립니다.' : '아래와 같이 안내드립니다.';
+  if (!t) return again || len !== 'short' ? tail : '';
+  const h = batchim(t);
+  const con = kind === 'submit' || h == null ? '에 대하여' : kind === 'meeting' ? `${h ? '과' : '와'} 관련하여` : h ? '을' : '를';
+  return `${t}${con} ${tail}`;
+}
 /* 올해(thisYear) 날짜는 연도 없이 「11. 12.(목)」 */
 const fmtIn = (iso, y) => fmtDay(iso, { noYear: !!iso && iso.slice(0, 4) === String(y) });
 /* 끝 날짜는 시작보다 늦을 때만(시작이 없거나 거꾸로면 시작만) */
@@ -106,8 +179,8 @@ export function composeMessage(m, { len = 'base', attach = [], sender = '', agai
   const x = m || {}, title = String(x.title || '').trim(), short = len === 'short';
   const head = again ? '[다시 안내]' : `[${KINDS[x.kind] || KINDS.etc}]`;
   const full = title ? `${head} ${title}` : head;
-  // 제목은 첫 줄에 있으니 다시 말하지 않고, 인사와 안내를 한 줄로(짧게는 인사만)
-  const lead = again ? '다시 한번 안내드립니다.' : short ? '' : '아래와 같이 안내드립니다.';
+  // 인사와 첫 문장을 한 줄로: 첫 문장에 제목(「○○를 아래와 같이 안내드립니다.」, 짧게는 「○○를 안내드립니다.」)
+  const lead = leadSentence(title, x.kind, { len, again });
   const lines = [full, '', lead ? `${GREETING} ${lead}` : GREETING];
   const row = (label, v) => { if (String(v || '').trim()) lines.push(`□ ${label}: ${String(v).trim()}`); };
   const ws = (x.when || []).map(w => whenText(w, thisYear)).filter(Boolean);

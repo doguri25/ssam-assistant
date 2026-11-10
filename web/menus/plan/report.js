@@ -13,6 +13,7 @@ import { readText, fileMessage } from '../../core/files.js';
 import { aiRowHTML } from '../../core/ai-roles.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
 import { canQueue, openQueue } from '../../core/queue-paste.js';
+import { keepFiles } from '../../core/keep-files.js';
 import { cleanSheet } from '../evaluate/activity/activity-read.js';
 import { SOURCE_KINDS, kindLabel, guessSourceKind, reportPrompt, normReport, composeReportLetter, reportDoc, reportTitle, letterQueueItems } from './report-ai.js';
 import { getCurrent, saveCurrent, clearCurrent, listReports, pushReport, newReportId } from './report-model.js';
@@ -172,8 +173,9 @@ function reportCardHTML(x) {
       <textarea class="field" data-rs-l="${i}" rows="${Math.min(10, Math.max(3, s.lines.length + 1))}" aria-label="${esc(s.h)} 내용(한 줄에 하나)">${esc(s.lines.join('\n'))}</textarea>
       <button class="btn text tiny" type="button" data-rs-del="${i}">이 소제목 빼기</button></div>`).join('')}
       <button class="btn text" type="button" data-rp="addSec">+ 소제목 더하기</button></div>
-    <div class="row rp-out">${formSelHTML()}${R.formId ? '<button class="btn primary" type="button" data-rp="formExport">학교 양식으로 한글 내려받기</button>' : exportButton('data-rp="export"', { cls: 'primary' })}</div>`;
+    <div class="row rp-out">${rpOutHTML()}</div>`;
 }
+const rpOutHTML = () => `${formSelHTML()}${R.formId ? '<button class="btn primary" type="button" data-rp="formExport">학교 양식으로 한글 내려받기</button>' : exportButton('data-rp="export"', { cls: 'primary' })}`;
 /* 학교 양식(기타 › 가정통신문에서 넣은 .hwpx 양식, 같은 저장소) */
 const FORM_KEY = 'report:form';
 function formSelHTML() {
@@ -189,7 +191,9 @@ async function loadReportForms() {
   R.formsLoading = false;
   const id = String(get(FORM_KEY, '') || '');
   R.formId = R.forms.some(f => f.id === id) ? id : '';
-  live(); // 다 쓴 뒤 처음 그릴 때 읽기 시작함 — 그사이 치는 칸은 그대로
+  // 양식 고르기 줄만 다시(탭을 연 바로 그때 읽기 시작함 — 화면을 통째로 다시 그리면 그사이 고른 사진·치는 칸이 떨어져 나감)
+  const row = box && !box.hidden && box.querySelector('.rp-out');
+  if (row) row.innerHTML = rpOutHTML();
 }
 async function formExport(x) {
   let rec = null;
@@ -214,7 +218,7 @@ const recentHTML = () => {
 };
 export function render() {
   if (!box || box.hidden) return;
-  box.innerHTML = pageHTML();
+  keepFiles(box, () => { box.innerHTML = pageHTML(); }); // 파일 고르기 창이 열린 채 다시 그려도 고른 사진이 들어가게
 }
 function pageHTML() {
   const x = c(), l = x.letter;
@@ -262,7 +266,7 @@ function live() {
   const tmp = document.createElement('div');
   tmp.innerHTML = pageHTML();
   const na = tmp.querySelector(k);
-  if (na && na.value === a.value && keepAround(a, na, tmp)) return;
+  if (na && na.value === a.value && keepFiles(box, () => keepAround(a, na, tmp))) return;
   render();
   const b = box.querySelector(k);
   if (b) { b.focus(); try { b.setSelectionRange(b.value.length, b.value.length); } catch (e) {} }
