@@ -55,7 +55,7 @@ const answerText = q => {
   if (k >= 0) return sc.map[k] != null ? CIRC[sc.map[k]] : '';
   return String(q.answer == null ? '' : q.answer).trim();
 };
-/* 고치기 칸 알림(물음이 있는 문제만): 가운데 빈 보기, 보기가 하나뿐, 정답이 ①~④가 아님, 정답의 보기가 빔, 정답이 빔 */
+/* 고치기 칸 알림(물음이 있는 문제만): 가운데 빈 보기, 보기가 하나뿐, 정답이 ①~④가 아님, 정답의 보기가 빔, 정답이 빔, 정답 숫자가 보기 글이기도 함 */
 export function redoIssues(q) {
   if (!q || !String(q.q || '').trim()) return [];
   const out = [], ch = (Array.isArray(q.choices) ? q.choices : []).map(c => String(c == null ? '' : c).trim()), filled = ch.filter(Boolean).length;
@@ -68,6 +68,9 @@ export function redoIssues(q) {
     const k = answerSlot(ans, ch);
     if (k < 0) out.push('정답은 ①~④ 중 하나로 써 주세요.');
     else if (!ch[k]) out.push(`정답 ${CIRC[k]}의 보기가 비어 있어요.`);
+    // 「4」처럼 한 자리 숫자인데 다른 칸의 보기 글도 「4」(보기 2·4·6·8): 보기 번호(④)로 읽지만 헷갈리니 알림(검토 M5)
+    const t = ch.indexOf(ans);
+    if (k >= 0 && /^[1-4]$/.test(ans) && t >= 0 && t !== k) out.push(`정답 「${ans}」가 보기 번호 ${CIRC[k]}인지 보기 글 「${CIRC[t]} ${ch[t]}」인지 헷갈려요. 지금은 보기 번호 ${CIRC[k]}로 봐요. ${CIRC[k]}·${CIRC[t]}처럼 동그라미 번호로 써 주세요.`);
   }
   return out;
 }

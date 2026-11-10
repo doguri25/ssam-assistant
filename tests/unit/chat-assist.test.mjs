@@ -83,7 +83,8 @@ test('AI 답 정리: 모르는 할 일 버림, 2개까지, 같은 할 일 한 �
 
 test('선생님 글의 번호: 「3번」「3·5번」「3~5번」', () => {
   assert.deepEqual(mentionedNos('3번 발표 잘함'), [3]);
-  assert.deepEqual(mentionedNos('3·5번이랑 12번'), [3, 5, 12]);
+  assert.deepEqual(mentionedNos('3·5번, 12번 발표'), [3, 5, 12]);
+  assert.deepEqual(mentionedNos('붙임 1번 계획서, 2번 신청서'), [], '글 맨 앞 「N번 …」 메모 꼴만(검토 I2)');
   assert.deepEqual(mentionedNos('3~5번 줄 서기'), [3, 4, 5]);
   assert.deepEqual(mentionedNos('99번, 단원평가'), []);
 });

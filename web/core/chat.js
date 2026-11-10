@@ -14,7 +14,7 @@ import * as ai from './ai.js';
 import { maskContacts } from './privacy.js';
 import { listEvents, addDays, weekday } from './calendar.js';
 import { routeText, payloadFor, isSure, INTENT_IDS, intentLabel, LANGS, langLabel, parseMemo, maskMemo, memoLine, appendMemo, nosText, safeText, handoffText } from './chat-route.js';
-import { assistPrompt, parseAssist, replyHTML, mentionedNos } from './chat-assist.js';
+import { assistPrompt, parseAssist, replyHTML, mentionedNos, planActions, offlineWay } from './chat-assist.js';
 import { offlineAnswer } from './chat-knowledge.js';
 import { briefing, EMPTY } from './briefing.js';
 
@@ -251,19 +251,9 @@ export async function send(text) {
 }
 
 /* ---------- 쌤비서 도우미 (분명하지 않거나 묻는 글) ---------- */
-const TEXT_INTENTS = ['purchase', 'message', 'letter', 'gongmun', 'report'];
 // 후보 버튼: 아는 할 일만(메모는 번호가 있어야 해서 뺌), 3개까지. nav면 그 메뉴로만(묻는 글을 칸에 넣지 않음)
 const chipList = (ids, nav) => [...new Set(ids)].filter(c => INTENT_IDS.includes(c) && !['memo', 'memoView'].includes(c)).slice(0, 3)
   .map(c => ({ intent: c, label: intentLabel(c), ...(nav ? { nav: true } : {}) }));
-/* AI가 고른 할 일 → 넘길 것: 선생님 글(가린 글)에 넣을 내용이 있으면 그 글, 없으면(묻는 글·앞 대화를 가리킴) AI가 옮긴 글 */
-function actionPayload(a, { said, question }) {
-  const own = question ? {} : payloadFor(a.intent, said);
-  if (TEXT_INTENTS.includes(a.intent)) return { text: own.text || (a.text ? payloadFor(a.intent, a.text).text : '') || '' };
-  if (a.intent === 'translate') return { lang: a.lang || own.lang || '' };
-  if (a.intent === 'memo') return { nos: a.nos || [], body: a.text || '' };
-  if (a.intent === 'memoView') return { nos: a.nos || [] };
-  return {};
-}
 /* 지금 앱 상태(이름 없이): 보고 있는 화면, 오늘 할 일, AI, 쓰던 가정통신문·품의, 학급 명단 수, 웹판·Windows 앱 */
 async function appState() {
   await refreshBrief();
@@ -291,26 +281,30 @@ async function assist({ raw, said, r, me }) {
   try {
     const p = assistPrompt({ text: raw, history: history().filter(m => m.id !== me.id), state: await appState(), hints: r.candidates, today: today() });
     if (job.ctl.signal.aborted) throw { name: 'AbortError' };
-    out = parseAssist(await ai.generateJSON(p.own, { task: 'notes', shared: { text: p.shared }, signal: job.ctl.signal, valid: isObj }), { nos: mentionedNos(raw) });
+    // 채팅은 메뉴 일이 아니어서 세로 메뉴에 「AI가 일하는 중」 점을 띄우지 않음(검토 M4)
+    out = parseAssist(await ai.generateJSON(p.own, { task: 'notes', work: 'none', shared: { text: p.shared }, signal: job.ctl.signal, valid: isObj }), { nos: mentionedNos(raw) });
   } catch (e) { err = e; }
   drop(wait);
   if (pending === job) pending = null;
   if (job.ctl.signal.aborted) { if (job.user) say('답을 멈췄어요. 다시 물어보거나 다른 일을 말해 주세요.'); return; }
   if (!out || (!out.reply && !out.actions.length)) { await offline({ raw, r, me, failed: failText(err) }); return; }
+  // 묻기만 한 글이면 AI가 고른 일도 저절로 하지 않고 그 화면으로만 가는 후보 버튼(메모는 버림), 메모는 선생님 글이 「3번 …」일 때만 선생님 말로(검토 I2)
+  const plan = planActions(out.actions, { raw, said, question: r.question });
   // 할 일을 하면 그 결과를 run이 따로 말함 — 후보 버튼은 할 일이 없을 때만
-  if (out.reply) say(handoffText(out.reply), { md: true, chips: out.actions.length ? [] : chipList([...out.choices, ...r.candidates], r.question), src: me.id });
-  for (const a of out.actions) await run(a.intent, actionPayload(a, { said, question: r.question }));
+  const chips = plan.run.length ? [] : chipList([...plan.nav, ...out.choices, ...r.candidates], r.question || plan.nav.length > 0);
+  if (out.reply) say(handoffText(out.reply), { md: true, chips, src: me.id });
+  else if (!plan.run.length) say('아래 화면에서 할 수 있어요. 누르면 그 화면으로 가요(저절로 시작하지 않아요).', { chips, src: me.id });
+  for (const a of plan.run) await run(a.intent, a.payload);
 }
 const failText = e => (e && e.code === 'bad_json' ? '답을 읽지 못했어요' : e && e.code ? ai.errorMessage(e.code, e) : '답이 비었어요').replace(/[.。]\s*$/, '');
-/* AI 없이 답하기: 애매한 명령은 후보 버튼, 할 일·일정은 오늘 할 일, 묻는 글은 안내에서 찾아 답함 */
-const GREET = /^(?:안녕|하이|hi|hello|반가|고마워|고맙|감사|수고)/i;
-const BRIEF_ASK = /할\s*일|일정|급한|챙길|브리핑|마감/;
+/* AI 없이 답하기(offlineWay): 애매한 명령은 후보 버튼, 할 일·일정을 물으면 오늘 할 일, 묻는 글(하는 법)은 안내에서 찾아 답함 */
 async function offline({ raw, r, me, failed = '' }) {
   const pre = failed ? `AI가 답하지 못했어요(${failed}). ` : '';
   const tip = ai.ready() ? '' : '\n\nAI를 켜면(설정 › AI, 키가 없으면 시험용 AI) 더 자세히 답해요.';
-  if (!r.question && r.candidates.length) { say(pre + '어느 것을 할까요?', { chips: chipList(r.candidates, false), src: me.id }); return; }
-  if (!failed && GREET.test(raw)) { say(`안녕하세요! ${HELLO}`, { src: me.id }); return; }
-  if (BRIEF_ASK.test(raw)) { if (pre) say(pre.trim()); await run('briefing'); return; }
+  const how = offlineWay(raw, { question: r.question, candidates: r.candidates, failed: !!failed });
+  if (how === 'pick') { say(pre + '어느 것을 할까요?', { chips: chipList(r.candidates, false), src: me.id }); return; }
+  if (how === 'greet') { say(`안녕하세요! ${HELLO}`, { src: me.id }); return; }
+  if (how === 'briefing') { if (pre) say(pre.trim()); await run('briefing'); return; }
   const hit = offlineAnswer(raw);
   if (hit) { say(`${pre ? pre + '안내에서 찾았어요.\n\n' : ''}${hit.text}${tip}`, { md: true, chips: chipList([...hit.go, ...r.candidates], true), src: me.id }); return; }
   if (r.candidates.length) { say(pre + '어느 것을 할까요?', { chips: chipList(r.candidates, true), src: me.id }); return; }
@@ -392,7 +386,11 @@ async function run(intent, p = {}) {
   if (intent === 'report') {
     if (!p.text) { go('plan', 'report'); say('계획 › 결과 보고로 왔어요. 계획서·공문이나 한 일을 넣어 주세요.'); afterGo(); return; }
     const m = await import('../menus/plan/report.js');
-    m.putReportSources({ memo: p.text });
+    // 아직 쓰지 않은 결과 보고(한 일 메모·자료·사진)가 있으면 바꾸지 않고 끝에 덧붙임 — 두 내용이 섞여 써지지 않게 바로 쓰지 않음(가정통신문과 같음)
+    if (m.putReportSources({ memo: p.text }) === 'added') {
+      say('쓰던 결과 보고(한 일 메모·자료)가 있어서 바꾸지 않고 한 일 메모 끝에 덧붙였어요. 두 내용이 섞이지 않게 확인한 뒤 [결과 보고 쓰기]를 눌러 주세요.');
+      afterGo(); return;
+    }
     let st;
     try { st = m.write(); } catch (e) { st = 'error'; }
     tell(st, { started: '결과 보고에 넣고 보고서를 쓰고 있어요. 다 되면 확인해 주세요.', 'no-ai': `결과 보고 한 일 메모에 넣었어요. ${NO_AI}`,

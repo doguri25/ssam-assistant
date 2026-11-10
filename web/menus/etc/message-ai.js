@@ -148,21 +148,41 @@ export function batchim(word) {
 }
 /* 받침 있으면 a(을·과), 없으면 b(를·와), 정할 수 없으면 null */
 export const josa = (word, a, b) => { const h = batchim(word); return h == null ? null : h ? a : b; };
-/* 첫 문장에 넣을 제목: 앞 꼬리표(「[교무]」)와 끝 「안내」「알림」「에 대한 안내」「(안내)」는 뺌(뒤에 「안내드립니다」가 오니) */
-export function leadTitle(title) {
-  let s = String(title == null ? '' : title).trim().replace(/^[[【][^\]】]{1,10}[\]】]\s*/, '').replace(/[\s.!?~…]+$/, '');
-  s = s.replace(/\s*[([]\s*(?:안내|알림)\s*[)\]]$/, '')
-    .replace(/\s*(?:안내|알림)(\s*[([][^()[\]]*[)\]])$/, '$1')
-    .replace(/\s*(?:(?:에|과|와)\s*(?:대한|관한)\s*)?(?:안내|알림)(?:\s*(?:말씀|사항|공문))?$/, '');
-  return s.replace(/[\s.,·:;\-–—]+$/, '').trim();
+/* 첫 문장에 넣을 제목 → { t(제목), rel(끝 「관련」을 뺌), adn(꾸미는 말로 끝남: 「~를 위한」「~에 따른」「~하는」) }.
+   앞 꼬리표(「[교무]」「(교무)」「〔교무〕」「<교무>」 — 뒤에 글이 있을 때만)와 끝 「안내」「안내문」「알림」「공지」「공고」「에 대한 안내」「(안내)」는 뺌
+   (뒤에 「안내드립니다」가 오니), 끝 「관련(하여)·관련 사항」도 빼고 첫 문장에서 「○○과/와 관련하여」로 한 번만(검토 I3) */
+const TAG = /^[[【〔〈<(（［]\s*[^\]】〕〉>)）［］「」]{1,10}?\s*[\]】〕〉>)）］]\s*/;
+const NOTICE = '(?:안내문|안내|알림|공지|공고)';
+const PAREN = /(\s*[([（][^()[\]（）]*[)\]）])$/;
+// 꾸미는 말(관형형)로 끝나는 끝 낱말: 위한·따른·향한·통한·관한·대한 …, 「~하는·~던·~된」 — 「기한·권한」 같은 이름말은 아님
+const ADN = /(?:위한|대한|관한|통한|향한|의한|인한|따른|비롯한|대비한|활용한|연계한|포함한|반영한|고려한|감안한|맞춘|담은|앞둔|[는던된])$/;
+function leadParts(title) {
+  let s = String(title == null ? '' : title).trim(), m;
+  while ((m = TAG.exec(s)) && s.slice(m[0].length).trim()) s = s.slice(m[0].length);
+  s = s.replace(/[\s.!?~…]+$/, '');
+  s = s.replace(new RegExp(`\\s*[([（]\\s*${NOTICE}\\s*[)\\]）]$`), '')
+    .replace(new RegExp(`\\s*${NOTICE}(\\s*[([（][^()[\\]（）]*[)\\]）])$`), '$1')
+    .replace(new RegExp(`\\s*(?:(?:에|과|와)\\s*(?:대한|관한)\\s*)?${NOTICE}(?:\\s*(?:말씀|사항|공문))?$`), '');
+  s = s.replace(/[\s.,·:;\-–—]+$/, '').trim();
+  let rel = false;
+  const r = s.replace(/\s*관련(?:하여|해서)?(?:\s*사항)?(\s*[([（][^()[\]（）]*[)\]）])?$/, (x, p) => { rel = true; return p || ''; }).trim();
+  if (rel && r && !/^[([（]/.test(r)) s = r; else rel = false;
+  const core = s.replace(PAREN, '').trim();
+  return { t: s, rel, adn: !rel && ADN.test(core.split(/\s+/).pop() || '') };
 }
+export const leadTitle = title => leadParts(title).t;
 /* 인사 뒤 첫 문장: 연수·행사·그 밖은 「○○를 아래와 같이 안내드립니다.」, 회의는 「○○와 관련하여 …」, 제출은 「○○에 대하여 …」.
-   짧게는 「아래와 같이」 없이, 다시 안내는 「다시 한번 안내드립니다.」. 조사를 정할 수 없으면 「에 대하여」, 제목이 없으면 예전 말(짧게는 '') */
+   제목 끝이 「관련」이면 종류와 상관없이 「○○와 관련하여 …」(한 번만), 꾸미는 말로 끝나면(「신규 교사를 위한」) 「○○ 안내 사항을 아래와 같이 알려 드립니다.」.
+   짧게는 「아래와 같이」 없이, 다시 안내는 「다시 한번 …」. 조사를 정할 수 없으면 「에 대하여」, 제목이 없으면 예전 말(짧게는 '') */
 export function leadSentence(title, kind, { len = 'base', again = false } = {}) {
-  const t = leadTitle(title), tail = again ? '다시 한번 안내드립니다.' : len === 'short' ? '안내드립니다.' : '아래와 같이 안내드립니다.';
+  const { t, rel, adn } = leadParts(title), tail = again ? '다시 한번 안내드립니다.' : len === 'short' ? '안내드립니다.' : '아래와 같이 안내드립니다.';
   if (!t) return again || len !== 'short' ? tail : '';
+  if (adn) {
+    const p = PAREN.exec(t), base = p ? t.slice(0, p.index).trim() : t;
+    return `${base} 안내 사항${p ? p[1].trim() : ''}을 ${again ? '다시 한번 알려 드립니다.' : len === 'short' ? '알려 드립니다.' : '아래와 같이 알려 드립니다.'}`;
+  }
   const h = batchim(t);
-  const con = kind === 'submit' || h == null ? '에 대하여' : kind === 'meeting' ? `${h ? '과' : '와'} 관련하여` : h ? '을' : '를';
+  const con = h == null ? '에 대하여' : rel || kind === 'meeting' ? `${h ? '과' : '와'} 관련하여` : kind === 'submit' ? '에 대하여' : h ? '을' : '를';
   return `${t}${con} ${tail}`;
 }
 /* 올해(thisYear) 날짜는 연도 없이 「11. 12.(목)」 */

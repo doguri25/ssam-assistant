@@ -14,6 +14,9 @@ await page.addInitScript(() => {
 const prompts = [];
 await mockClaude(page, async ({ prompt }) => {
   prompts.push(prompt);
+  // 검토 I3: 흔한 제목 끝(「(교무) … 관련 안내」「~를 위한 안내」)
+  if (prompt.startsWith('[쪽지 안내]') && prompt.includes('협의회 관련')) return JSON.stringify({ kind: 'meeting', title: '(교무) 학년 협의회 관련 안내', when: [{ date: '2026-11-19', time: '15:00' }], place: '회의실', target: '학년 교사' });
+  if (prompt.startsWith('[쪽지 안내]') && prompt.includes('신규 교사를 위한')) return JSON.stringify({ kind: 'training', title: '신규 교사를 위한 안내', when: [{ date: '2026-11-20', time: '15:00' }], place: '교무실', target: '신규 교사' });
   if (prompt.startsWith('[쪽지 안내]')) return JSON.stringify({ kind: 'training', title: 'AI 활용 수업 연수', when: [{ date: '2026-11-12', time: '15:00~16:30' }], place: '시청각실', target: '전 교직원',
     apply: { due: '2026-11-06', how: '이음 쪽지로 회신' }, bring: '개인 노트북', notes: '', points: ['생성형 AI 소개', '수업 사례'] });
   return '{}';
@@ -183,6 +186,15 @@ await run('message', [
     await page.click(`${P} [data-msg="new"]`);
     await page.click(`${P} #msgRecent [data-msg-open]`);
     await page.waitForFunction(s => document.querySelector(`${s} #msgBody`).value.includes('덧붙인 한 줄'), P);
+  }],
+  ['검토 고침 I3(11-10): 「(교무) … 관련 안내」「~를 위한 안내」 제목도 첫 문장이 자연스러움(「관련과 관련하여」「위한을」 없음)', async () => {
+    const lead = () => page.evaluate(s => document.querySelector(`${s} #msgBody`).value.split('\n')[2], P);
+    await page.evaluate(async () => { const m = await import('./menus/etc/message.js'); await m.putMessageFiles([], { text: '11월 19일 3시 회의실 학년 협의회 관련 안내' }); });
+    await page.waitForFunction(s => ((document.querySelector(`${s} #msgBody`) || {}).value || '').startsWith('[회의 안내] (교무) 학년 협의회 관련 안내\n'), P);
+    assert(await lead() === '안녕하세요 선생님. 학년 협의회와 관련하여 아래와 같이 안내드립니다.', await lead());
+    await page.evaluate(async () => { const m = await import('./menus/etc/message.js'); await m.putMessageFiles([], { text: '11월 20일 3시 교무실 신규 교사를 위한 안내' }); });
+    await page.waitForFunction(s => ((document.querySelector(`${s} #msgBody`) || {}).value || '').startsWith('[연수 안내] 신규 교사를 위한 안내\n'), P);
+    assert(await lead() === '안녕하세요 선생님. 신규 교사를 위한 안내 사항을 아래와 같이 알려 드립니다.', await lead());
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

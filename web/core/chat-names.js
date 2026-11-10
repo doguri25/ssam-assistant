@@ -2,7 +2,7 @@
    흔한 성 + 흔한 이름(두 글자) 목록으로 봄: 「김민수가」「박지훈 결석계」「이서연이」「김민수네」, 성 없이 「민준이가」(받침 있는 이름 + 이 + 조사).
    이름 목록에 없어도 앞뒤에 「학생·어머니·선생님·님·결석·상담」이나 「담임·회장·이름:」이 붙으면 이름 글자로만 된 낱말은 가림.
    「구구단을」「모둠원과」「마무리를」「한국사를」「고무줄을」「조각품을」처럼 흔한 성 글자로 시작하는 낱말은 그대로 */
-import { SURNAME, MASK } from './privacy.js';
+import { SURNAME, MASK, nameCell } from './privacy.js';
 
 /* 흔한 이름(성을 뺀 두 글자): 요즘 학생 이름과 선생님·보호자 나이대 이름. 흔한 낱말과 겹치는 것(정한·해진·어진·하진·대한·성원·정원·연수·진주·나라)은 뺌 */
 const NAMES = (
@@ -25,14 +25,22 @@ const NAMES = (
   + '정연 정애 주영 지숙 지애 지희 현숙 현미 혜경 혜련 희경 희숙 희진 수영 연주 혜성 은하 '
   + '다온 라온 가온 서온 이레 소담 단비 은별 별하 하랑 도담 다올 누리 우주 민주 새롬 하엘').split(/\s+/).filter(Boolean);
 export const GIVEN = new Set(NAMES);
-// 이름에 쓰이는 글자(앞뒤에 사람을 가리키는 말이 붙을 때만 목록 밖 이름도 봄)
-const SYL = new Set(NAMES.join(''));
+// 이름에 쓰이는 글자(목록 밖 이름을 볼 때 두 글자 모두 이 글자여야 함) + 요즘 이름에 흔한 글자(서이든·김윤설·이하휘)
+const SYL = new Set(NAMES.join('') + '든설휘');
+/* 낱말과 같은 이름: 성 없이 쓰면(「하나가」「미소를」「지원이 필요」「정수를 더함」) 낱말일 수 있어 성 없는 이름 규칙에서는 뺌.
+   (「김하나가」처럼 성이 붙거나 「하나는이」가 아니라 「하나 어머니」처럼 가족 말이 붙으면 이름) */
+export const WORDLIKE = new Set(('하나 미소 우주 누리 슬기 보람 사랑 하늘 나래 이레 단비 은하 지혜 은혜 유리 연주 현지 현미 영아 정수 상수 진수 인수 지수 준수 선호 수호 경호 '
+  + '성기 동수 민주 지나 가람 초롱 한결 한별 아름 태양 시원 지원 수정 수영 진영 혜성 지연 재원 동원 시연 지인 주연 수경 미정 미숙 정숙 미진 재현 지성 시안 로운 성현').split(' '));
+// 동사와 같은 이름 + 는(「지우는 습관」「재우는」「태우는」)
+const VERB_NAME = new Set(['지우', '재우', '태우']);
 // 외자 이름(「김솔 학생」「이름: 박준」): 앞뒤에 사람을 가리키는 말이 있을 때만
 const ONE = new Set('솔율별결준윤혁훈현민진찬산한빈린람겸건휘웅철호'.split(''));
 // 흔한 성 글자 + 흔한 이름과 겹치는 낱말(이름이 아님)
 const EXCEPT = new Set(('현미경 정지선 고시원 진지한 편하진 심하진 강하진 이야기 구성원 임원진 인원수 연수원 유치원 공무원 지원서 주소지 소재지 이순신 안중근 유관순 장영실 '
   + '김유신 정약용 강감찬 윤봉길 안창호 방정환 주시경 김정호 최무선 문익점 허난설 신사임 이육사 한용운 김소월 윤동주 홍길동 심청이 이몽룡 성춘향 '
-  + '이민자 이번주 지난주 다음주 이번달 이로운 남은지 소인수 정해진 주어진 길어진 강해진 편해진 심해진').split(' '));
+  + '이민자 이번주 지난주 다음주 이번달 이로운 남은지 소인수 정해진 주어진 길어진 강해진 편해진 심해진 '
+  // 흔한 성 글자 + 이름에 쓰는 두 글자인 낱말(「도우미가」「마무리를」「유리창이」「민주주의」)
+  + '도우미 마무리 최우수 옥수수 은하수 원주민 이주민 민주주 유리창 우주선 손수건 조리원 지도원 모둠원 정원사 조리사').split(' '));
 // 두 글자(성 + 외자)인데 흔한 낱말
 const EXCEPT2 = new Set('이민 고민 주민 국민 도민 정진 전진 공현 차진 안진 오진 강진 노현 지진 추진 홍진 남산 한산 기한 우산 유산 원산 진산 반찬 기혁 신혁 구현 표현 모현 노한 공한 방한 반한 원한 유한 기호 신호 구호 보호 선호 주호 장호 전호'.split(' '));
 const DOUBLE = /^(?:남궁|황보|제갈|선우|독고)/;
@@ -54,25 +62,46 @@ const HONOR = /^(?:학생|학부모|어머니|어머님|아버지|아버님|부�
 const PREV_CUE = /^(?:담임|부담임|회장|부회장|반장|부반장|이름|성명|학생명|담당|담당자|강사)$/;
 // 받침(「민준」의 준)
 const batchim = ch => { const c = ch.charCodeAt(0) - 0xac00; return c >= 0 && c < 11172 && c % 28 !== 0; };
-// 목록 밖 이름을 볼 때 이름으로 보지 않는 끝 글자(조사·낱말 끝: 「오늘은」「정하기」「지도안」「신청서」)
-const LOOSE_END = /[은는이가을를도의에로와과만기함임음됨짐줌씀큼냄림침힘히게서말글길날일들적력감화회권별제법실부생표단방작비장품물집책판증점식터반란락문약료금소당번처넷스님안관교과업계육습정한할된될던운른간친쓴쓸본볼둔줄갈낸낼인라며고니다요지데면까야여]$/;
+// 목록 밖 이름을 볼 때 이름으로 보지 않는 끝 글자(조사·낱말 끝: 「오늘은」「정하기」「지도안」「신청서」, 「한국사·조리사」「유창성·진정성」「우수상」)
+const LOOSE_END = /[은는이가을를도의에로와과만기함임음됨짐줌씀큼냄림침힘히게서말글길날일들적력감화회권별제법실부생표단방작비장품물집책판증점식터반란락문약료금소당번처넷스님안관교과업계육습정한할된될던운른간친쓴쓸본볼둔줄갈낸낼인라며고니다요지데면까야여사성상랑께]$/;
+// 사람에게 붙는 조사(목록 밖 이름도 이것이 붙으면 이름으로 봄 — 을·를·과·와는 「구구단을」「모둠원과」처럼 낱말에 흔해서 행특 메모에서만)
+const PERSON = /^(?:이|가|은|는|랑|이랑|한테|에게|하고|의|께서|이가|이는|이한테|이에게|이하고|이의|한테서|에게서)$/;
+// 「~하는·~리는·~지는」(정리하는·기다리는·정해지는): 동사 + 는이라 이름으로 보지 않음
+const VERB_NEUN = /[하리지시주우이오가보서]$/;
+// 홀로 쓴 목록 밖 이름 뒤의 메모 말(「김다빈 발표 잘함」「최윤슬 오늘 지각」)
+const MEMO_NEXT = /^(?:발표|칭찬|잘함|잘했|잘하|열심히|성실|집중|참여|노력|수업|숙제|과제|청소|도움|도와|다툼|다퉜|싸움|싸웠|울음|울었|아파|아프|아픔|다쳤|보건실|오늘|어제|모둠|독서|태도)/;
+// 성 없는 이름 + 이것(「지호가」「준서는」「서아를」「예나랑」「현우한테」 — 받침 없는 이름)
+const GIVEN_V = /^(?:가|는|를|랑|한테|에게|하고)$/;
+// 성 없는 이름을 홀로 쓰고 뒤에 오는 말(「시우 학생」「민수 결석」 — 낱말 같은 이름은 뺌)
+const GIVEN_NEXT = /^(?:학생|군|양|결석|지각|조퇴|병결|상담)/;
+// 행특 메모(memo)에서 목록 밖 이름에 넓게 보는 조사(을·를·과·와·도·만 …) — 이름 글자가 아닌 글자가 있으면 사람 조사만, 예전 규칙(nameCell)으로
+const OLD_END = /[이가는을를의에도만와과로한할된던운간친른막움님기상왕년자함임음됨옴짐줌봄둠씀큼냄킴림침힘히게서말글길날일들적력감개심]$/;
 
-/* 낱말 하나(tok)를 보고 가릴 길이(앞에서부터)를 돌려줌(없으면 0). prev·next: 앞뒤 한글 낱말 */
-function hit(tok, prev, next) {
+/* 낱말 하나(tok)를 보고 가릴 길이(앞에서부터)를 돌려줌(없으면 0). prev·next: 앞뒤 한글 낱말.
+   memo: 행특 메모(잘못 가려도 덜 아까움 — 을·를·과도, 홀로 쓴 이름도), first: 줄의 첫 낱말 */
+function hit(tok, prev, next, { memo = false, first = false } = {}) {
   const cue = NEXT_CUE.test(next || '') || PREV_CUE.test(prev || '');
   // 두 글자 성(남궁·황보·제갈·선우·독고) + 두 글자 이름
   if (DOUBLE.test(tok) && tok.length >= 4) {
     const g = tok.slice(2, 4), s = tok.slice(4);
     if (SUFFIX.test(s) && (GIVEN.has(g) || ((cue || GLUED.test(s)) && SYL.has(g[0]) && SYL.has(g[1])))) return 4;
   }
-  // 성 + 두 글자 이름: 목록의 이름이면 조사가 붙든 홀로 쓰든, 목록 밖이면 앞뒤에 사람을 가리키는 말이 있을 때만
+  // 성 + 두 글자 이름: 목록의 이름이면 조사가 붙든 홀로 쓰든. 목록 밖이면 두 글자 모두 이름 글자이고, 낱말 끝이 아니고,
+  // 앞뒤에 사람을 가리키는 말이 있거나 사람 조사가 붙거나 홀로 쓰고 뒤에 메모 말이 올 때(행특 메모는 조사가 무엇이든·홀로 써도)
   if (tok.length >= 3 && SURNAME.has(tok[0])) {
     const n = tok.slice(0, 3), g = n.slice(1), s = tok.slice(3);
     if (!EXCEPT.has(n) && SUFFIX.test(s)) {
       // 「설정은」「인정은」「여성은」처럼 받침 있는 두 글자 낱말 + 은은 이름(정은·성은·영은·경은)과 같아 보여서, 홀로 쓰면 앞뒤를 봄
       const topic = g[1] === '은' && batchim(g[0]) && !s;
-      if (GIVEN.has(g) && (!topic || cue)) return 3;
-      if ((cue || GLUED.test(s)) && SYL.has(g[0]) && SYL.has(g[1]) && !LOOSE_END.test(n)) return 3;
+      // 「지도하는」「이동하는」「공유하는」「구별하는」: 이름(도하·동하·유하·별하) + 는과 같아 보이는 동사로 봄(「지도하는 교사」처럼 뒤에 사람 말이 와도)
+      const verb = s === '는' && g[1] === '하';
+      if (GIVEN.has(g) && (!topic || cue) && !verb) return 3;
+      if (!LOOSE_END.test(n) && !(s === '는' && VERB_NEUN.test(n))) {
+        const syl = SYL.has(g[0]) && SYL.has(g[1]);
+        if (syl && (cue || GLUED.test(s) || PERSON.test(s) || (!s && MEMO_NEXT.test(next || '')) || memo)) return 3;
+        // 행특 메모: 한 글자가 이름 글자가 아니어도 사람 조사가 붙으면(「박찬울이」) — 흔한 낱말(nameCell)·낱말 끝(「지우개가」)은 빼고
+        if (memo && !syl && (SYL.has(g[0]) || SYL.has(g[1])) && PERSON.test(s) && nameCell(n) && !OLD_END.test(n)) return 3;
+      }
     }
   }
   // 성 없는 이름 + 이 + 조사(「민준이가」「서연이는」), + 이 + 가족(「민준이 엄마」) — 「지원이 필요」처럼 조사가 없으면 아님
@@ -82,6 +111,16 @@ function hit(tok, prev, next) {
   }
   // 성 없는 이름 + 가족(「민수 엄마」「지우네」)
   if (GIVEN.has(tok.slice(0, 2)) && (tok.length === 2 ? FAMILY.test(next || '') : /^네(?:가|는|를|도|에|의|랑)?$/.test(tok.slice(2)))) return 2;
+  // 성 없는 이름(낱말 같은 이름은 빼고): 받침 없는 이름 + 가·는·를·랑(「지호가」「준서는」), 받침 있는 이름 + 이(「민준이 오늘 결석」),
+  // 홀로 쓰고 뒤에 「학생·결석·상담」(「시우 학생」). 행특 메모는 조사가 무엇이든(「민준을」), 줄 첫 낱말이면 홀로 써도(「민준 발표 잘함」)
+  const g2 = tok.slice(0, 2);
+  if (GIVEN.has(g2) && !WORDLIKE.has(g2)) {
+    const s = tok.slice(2);
+    if (!batchim(g2[1]) && GIVEN_V.test(s) && !(s === '는' && VERB_NAME.has(g2))) return 2;
+    if (batchim(g2[1]) && s === '이') return 2;
+    if (!s && GIVEN_NEXT.test(next || '')) return 2;
+    if (memo && (s ? SUFFIX.test(s) && !GLUED.test(s) && !(s === '는' && VERB_NAME.has(g2)) : first)) return 2;
+  }
   // 외자 이름(성 + 한 글자): 「김솔 학생」「김솔님」「이름: 박준」「강사 김솔」
   if (tok.length >= 2 && SURNAME.has(tok[0]) && ONE.has(tok[1]) && !EXCEPT2.has(tok.slice(0, 2))) {
     const s = tok.slice(2);
@@ -90,8 +129,8 @@ function hit(tok, prev, next) {
   return 0;
 }
 
-/* 줄 안의 사람 이름을 ○○○로(조사·호칭은 남김) → { text, masked } */
-export function maskPersons(text) {
+/* 줄 안의 사람 이름을 ○○○로(조사·호칭은 남김) → { text, masked }. memo: 행특 메모(더 넓게 가림) */
+export function maskPersons(text, { memo = false } = {}) {
   const s = String(text == null ? '' : text);
   const toks = [...s.matchAll(/[가-힣]+/g)].map(m => ({ w: m[0], i: m.index }));
   const cuts = [];
@@ -104,10 +143,20 @@ export function maskPersons(text) {
     const gapP = k > 0 ? s.slice(toks[k - 1].i + toks[k - 1].w.length, t.i) : '', gapN = k + 1 < toks.length ? s.slice(t.i + t.w.length, toks[k + 1].i) : '';
     const prev = k > 0 && /^[\s:：(（]*$/.test(gapP) ? toks[k - 1].w : '';
     const next = k + 1 < toks.length && /^[\s)）]*$/.test(gapN) ? toks[k + 1].w : '';
-    const len = hit(w, prev, next);
+    const len = hit(w, prev, next, { memo, first: k === 0 });
     if (len) cuts.push([at, len]);
   });
   let out = s;
   for (const [at, len] of cuts.reverse()) out = out.slice(0, at) + MASK + out.slice(at + len);
   return { text: out, masked: cuts.length };
+}
+
+/* 명단 줄인지: 이름(○○○·성 + 이름 글자 두 글자·목록의 이름)만 셋 넘게 늘어선 줄(「김민수 이서연 박지훈」「김다빈, 최윤슬, 조예담」).
+   채팅의 묻는 글(「김다빈 엄마가 상담 요청했는데 어떻게 답하지?」)은 명단이 아니어서 줄을 빼지 않고 이름만 가림 */
+const nameTok = t => t === MASK || (t.length === 4 && DOUBLE.test(t)) || (GIVEN.has(t) && !WORDLIKE.has(t))
+  || (t.length === 3 && SURNAME.has(t[0]) && !EXCEPT.has(t) && (GIVEN.has(t.slice(1)) || (SYL.has(t[1]) && SYL.has(t[2]) && !LOOSE_END.test(t))));
+export function rosterLine(line) {
+  const ws = String(line == null ? '' : line).split(/[\s|,，·、/()（）:：;]+/).map(t => t.replace(/^\d+[.)번]?/, '')).filter(t => /^[가-힣○]+$/.test(t));
+  const n = ws.filter(nameTok).length;
+  return n >= 3 && n / ws.length >= 0.6;
 }

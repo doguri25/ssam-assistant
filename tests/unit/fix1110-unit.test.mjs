@@ -68,3 +68,14 @@ test('M9 고치기 칸 알림: 가운데 빈 보기, 보기가 하나뿐, 정답
   assert.deepEqual(redoIssues(Q({ q: '' , answer: '' })), [], '물음이 없으면(결과지에 안 넣음) 알리지 않음');
   assert.deepEqual(redoIssues({ kind: 'short', q: '물음', choices: [], answer: '12.6' }), []);
 });
+
+test('검토 M5 정답이 한 자리 숫자이고 그 숫자가 다른 칸의 보기 글이기도 하면(보기 2·4·6·8, 정답 「4」) 헷갈린다고 알림 — 읽는 법(보기 번호)은 그대로', () => {
+  const Q = o => ({ kind: 'choice', q: '2 × 2는?', choices: ['2', '4', '6', '8'], answer: '4', explain: '', ...o });
+  assert.equal(answerSlot('4', ['2', '4', '6', '8']), 3, '보기 번호로 읽음(그대로)');
+  const m = redoIssues(Q({}));
+  assert.ok(m.some(x => x.includes('헷갈려') && x.includes('④') && x.includes('② 4')), m.join(' / '));
+  assert.ok(redoIssues(Q({ answer: '2' })).some(x => x.includes('헷갈려') && x.includes('②') && x.includes('① 2')), redoIssues(Q({ answer: '2' })).join(' / '));
+  // 헷갈리지 않음: ②처럼 썼거나, 숫자가 보기 글이 아니거나, 보기 번호와 보기 글이 같은 칸
+  for (const o of [{ answer: '②' }, { answer: '(2)' }, { answer: '2번' }, { choices: ['가', '나', '다', '라'], answer: '4' }, { choices: ['1', '2', '3', '4'], answer: '3' }, { choices: ['6', '8', '10', '12'], answer: '8' }])
+    assert.ok(!redoIssues(Q(o)).some(x => x.includes('헷갈려')), JSON.stringify(o) + ' ' + redoIssues(Q(o)).join(' / '));
+});
