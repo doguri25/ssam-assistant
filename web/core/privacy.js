@@ -127,14 +127,16 @@ export function maskJosaNames(text) {
 
 /* 명단·담임 표처럼 이름이 늘어선 줄과 전화번호 줄은 빼고, 한 줄에 하나씩 적힌 이름(임원·학생 명단 표, 직책 옆 이름, 「이름 김민수」 칸, 번호 명단)은 ○○○로 가림
    → { text, dropped(뺀 줄), masked(가린 이름) } */
-export function stripNames(text) {
+/* keep(line): 이름이 많아 보여도 빼지 않을 줄(채팅의 묻는 글처럼 명단이 아닌 줄 — 이름만 가림). 전화번호 줄은 늘 뺌 */
+export function stripNames(text, { keep = null } = {}) {
   const src = String(text || '');
   if (!src) return { text: '', dropped: 0, masked: 0 };
   let dropped = 0, masked = 0;
   const ls = src.split('\n').filter(line => {
     const words = line.split(/[\s|,·/()]+/).filter(t => /^[가-힣]+$/.test(t)), names = words.filter(nameish).length;
     const cells = line.includes('|') ? line.split('|').map(c => c.trim()).filter(Boolean) : [], cn = cells.filter(cellName).length;
-    if ((names >= 3 && names / words.length >= 0.6) || (cn >= 3 && cn / cells.length >= 0.5) || PHONE.test(line)) { dropped++; return false; }
+    const many = (names >= 3 && names / words.length >= 0.6) || (cn >= 3 && cn / cells.length >= 0.5);
+    if ((many && !(keep && keep(line))) || PHONE.test(line)) { dropped++; return false; }
     return true;
   });
   // 직책 옆 이름 (「회장 김가람」, 「담임: 김준형」, 「회장 | 이나래」)

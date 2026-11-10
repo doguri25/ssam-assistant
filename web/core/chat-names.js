@@ -150,3 +150,13 @@ export function maskPersons(text, { memo = false } = {}) {
   for (const [at, len] of cuts.reverse()) out = out.slice(0, at) + MASK + out.slice(at + len);
   return { text: out, masked: cuts.length };
 }
+
+/* 명단 줄인지: 이름(○○○·성 + 이름 글자 두 글자·목록의 이름)만 셋 넘게 늘어선 줄(「김민수 이서연 박지훈」「김다빈, 최윤슬, 조예담」).
+   채팅의 묻는 글(「김다빈 엄마가 상담 요청했는데 어떻게 답하지?」)은 명단이 아니어서 줄을 빼지 않고 이름만 가림 */
+const nameTok = t => t === MASK || (t.length === 4 && DOUBLE.test(t)) || (GIVEN.has(t) && !WORDLIKE.has(t))
+  || (t.length === 3 && SURNAME.has(t[0]) && !EXCEPT.has(t) && (GIVEN.has(t.slice(1)) || (SYL.has(t[1]) && SYL.has(t[2]) && !LOOSE_END.test(t))));
+export function rosterLine(line) {
+  const ws = String(line == null ? '' : line).split(/[\s|,，·、/()（）:：;]+/).map(t => t.replace(/^\d+[.)번]?/, '')).filter(t => /^[가-힣○]+$/.test(t));
+  const n = ws.filter(nameTok).length;
+  return n >= 3 && n / ws.length >= 0.6;
+}

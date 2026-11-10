@@ -58,11 +58,12 @@ function dropColumns(rows) {
   return { rows: drop.size ? rows.map(r => r.filter((c, j) => !drop.has(j))) : rows, cols };
 }
 const rowsText = rows => rows.map(r => r.join('\t').replace(/\t+$/, '')).join('\n');
-const done = (text, cols) => { const r = stripNames(text); return { text: r.text, cols, dropped: r.dropped, masked: r.masked }; };
+const done = (text, cols, opts) => { const r = stripNames(text, opts); return { text: r.text, cols, dropped: r.dropped, masked: r.masked }; };
 
 /* 넣은 글(작년 설문 결과 등)의 개인정보 빼기: 표(붙여 넣은 표·엑셀을 읽은 글 — 탭으로 나뉜 줄이 두 줄 넘게 이어짐)는 첫 줄을 머리로 보고
-   개인정보 열을 지우고, 그다음 명단·전화번호 줄은 빼고 이름은 가림(stripNames) → { text, cols(뺀 열 머리), dropped(뺀 줄), masked(가린 이름) } */
-export function stripPersonal(text) {
+   개인정보 열을 지우고, 그다음 명단·전화번호 줄은 빼고 이름은 가림(stripNames) → { text, cols(뺀 열 머리), dropped(뺀 줄), masked(가린 이름) }.
+   opts.keep(line): 이름이 많아 보여도 빼지 않을 줄(stripNames) */
+export function stripPersonal(text, opts) {
   const ls = String(text || '').split('\n'), cols = [];
   for (let a = 0; a < ls.length;) {
     let b = a;
@@ -73,7 +74,7 @@ export function stripPersonal(text) {
     }
     a = Math.max(b, a + 1);
   }
-  return done(ls.join('\n'), cols);
+  return done(ls.join('\n'), cols, opts);
 }
 /* CSV·엑셀 표 그대로: 위쪽 제목 줄(칸이 하나뿐) 아래 첫 줄이 머리. 칸 안 줄바꿈은 띄어쓰기로(한 줄 = 한 응답) */
 export function stripTable(rows) {

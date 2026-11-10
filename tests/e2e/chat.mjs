@@ -434,6 +434,12 @@ await run('chat', [
     assert(asks().length > n && !asks().slice(n).some(p => /지호가|김다빈|최윤슬/.test(p)), 'AI에 이름');
     assert(!of('[가정통신문]').some(p => p.includes('최윤슬')) && of('[가정통신문]').at(-1).includes('○○○ 결석계'), '가정통신문 AI에 이름');
   }],
+  ['검토 고침 M3(11-10): 이름이 든 묻는 글은 줄째 빼지 않고 이름만 가려 기록·AI에(빈 글이 되지 않음)', async () => {
+    await sendWait('김다빈 엄마가 상담 요청했는데 어떻게 답하지?');
+    const p = askOf('상담 요청했는데').at(-1) || '';
+    assert(p.includes('[선생님 글]\n○○○ 엄마가 상담 요청했는데 어떻게 답하지?') && !p.includes('김다빈'), p.slice(-300));
+    assert((await chatLog()).some(m => m.who === 'me' && m.text === '○○○ 엄마가 상담 요청했는데 어떻게 답하지?'), JSON.stringify((await chatLog()).slice(-3)));
+  }],
   ['파일: 채팅 창에 놓으면 받는 곳 흐름(확인 카드)·창이 열려 있으면 놓기 판은 안 뜸, 📎는 파일 고르기', async () => {
     await openChat();
     const dt = await page.evaluateHandle(() => { const d = new DataTransfer(); d.items.add(new File(['번호,성명\n1,가\n2,나'], '김민수네_명단.csv', { type: 'text/csv' })); return d; });

@@ -3,7 +3,7 @@
    「3번 …」은 행동특성 관찰 메모(parseMemo·maskMemo·memoLine) */
 import { stripNames, maskContacts } from './privacy.js';
 import { stripPersonal } from './survey.js';
-import { maskPersons } from './chat-names.js';
+import { maskPersons, rosterLine } from './chat-names.js';
 
 /* 할 일: [id, 이름(후보 버튼 글), AI에 주는 설명] */
 export const INTENTS = [
@@ -186,17 +186,19 @@ export function isQuestion(text) {
 /* 줄 하나의 이름 가리기: 개인정보 규칙(stripNames: 직책·이름 칸·「김민수 학생」·전화번호 줄)에 더해
    흔한 성 + 흔한 이름(「김민수가」「박지훈」), 목록 밖 이름 + 사람 조사(「김다빈이」), 성 없는 「민준이가」「지호가」도 ○○○로(chat-names.js).
    memo: 행특 메모(을·를·과도, 홀로 쓴 이름도 — 잘못 가려도 덜 아까움) → { text, masked, dropped } */
+// 채팅(행특 메모가 아님): 명단 줄이 아니면 이름이 많아 보여도 줄을 빼지 않고 이름만 가림(묻는 글이 남게 — 검토 M3)
+const KEEP = line => !rosterLine(line);
 function maskLine(text, memo) {
-  const r = stripNames(String(text || '').replace(/\s*\n\s*/g, ' '));
+  const r = stripNames(String(text || '').replace(/\s*\n\s*/g, ' '), memo ? {} : { keep: KEEP });
   const p = maskPersons(r.text, { memo });
   return { text: p.text.replace(/\s+/g, ' ').trim(), masked: r.masked + p.masked, dropped: r.dropped };
 }
 /* 행특 메모에 저장하기 전 이름처럼 보이는 말 가리기(넓게) */
 export const maskMemo = text => maskLine(text, true);
 /* 채팅 기록·AI로 보내는 글: 전화번호·전자 우편은 그 자리만 가리고(줄을 통째로 빼면 같은 줄 내용까지 없어짐),
-   명단·개인정보 열·줄은 빼고(stripPersonal), 줄마다 이름처럼 보이는 말은 가림 */
+   명단·개인정보 열·명단 줄은 빼고(stripPersonal — 이름이 많아 보여도 명단이 아닌 줄은 남김), 줄마다 이름처럼 보이는 말은 가림 */
 export function safeText(text) {
-  const s = stripPersonal(maskContacts(text)).text;
+  const s = stripPersonal(maskContacts(text), { keep: KEEP }).text;
   return s.split('\n').map(l => maskLine(l, false).text).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 /* 메뉴에 넘기는 글: 줄·띄어쓰기는 그대로 두고 전화번호·전자 우편과 사람 이름만 그 자리에서 ○○○로(「박지훈 결석계 가정통신문」 → 「○○○ 결석계 가정통신문」).
