@@ -8,6 +8,17 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 pub const MAX_BYTES: u64 = 60 * 1024 * 1024;
+/// 버튼 창 크기(논리 px, tauri.conf.json의 bubble 창과 같게).
+/// Windows는 제목 줄 스타일이 붙은 창을 가장 작은 끌기 너비(SM_CXMINTRACK)보다 좁게 만들지 않아, 창을 만들 때(아직 창 설정의
+/// 최소 크기를 쓰기 전) 버튼 창이 가로로 넓어짐 → 창 설정에 작은 최소 크기(minWidth·minHeight)를 두고 보인 뒤·배율이 바뀐 뒤 이 크기로 다시 맞춤
+pub const SIZE: f64 = 72.0;
+
+/// 버튼 창을 SIZE×SIZE로 (넓어진 창의 투명한 빈자리가 눌리거나 원이 작아지지 않게)
+pub fn fit(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("bubble") {
+        let _ = w.set_size(tauri::LogicalSize::new(SIZE, SIZE));
+    }
+}
 type Allowed = Mutex<HashSet<PathBuf>>;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -103,6 +114,9 @@ pub fn bubble_config(app: AppHandle, state: State<Bubble>, enabled: bool, keep_o
     *state.cfg.lock().unwrap() = Cfg { enabled, keep_on_close, autostart };
     if let Some(w) = app.get_webview_window("bubble") {
         let _ = if enabled { w.show() } else { w.hide() };
+    }
+    if enabled {
+        fit(&app);
     }
     // 버튼을 껐는데 쌤비서 창도 숨어 있으면 창이 하나도 없으므로 쌤비서 창을 보임
     if !enabled && main_hidden(&app) {
@@ -204,6 +218,13 @@ fn do_action(app: &AppHandle, action: &str) {
 /// - 쌤비서 창: 버튼이 켜져 있고 「버튼은 남기기」면 창만 숨김, 아니면 앱을 끝냄(숨은 버튼 창이 앱을 붙들지 않게)
 /// - 버튼 창(Alt+F4 등): 메뉴의 「버튼 숨기기」와 같게 (창은 남겨 두어 설정에서 다시 켤 수 있게)
 pub fn on_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
+    // 버튼 창을 배율이 다른 모니터로 옮기면 다시 SIZE로
+    if let tauri::WindowEvent::ScaleFactorChanged { .. } = event {
+        if window.label() == "bubble" {
+            fit(window.app_handle());
+        }
+        return;
+    }
     let tauri::WindowEvent::CloseRequested { api, .. } = event else {
         return;
     };
@@ -272,6 +293,18 @@ mod tests {
         assert_eq!(menu_action("quit"), None);
         assert_eq!(menu_action("other:open"), None);
         assert_eq!(MENU.len(), 4);
+    }
+
+    #[test]
+    fn 버튼_창은_정사각형이고_윈도우_가장_작은_너비에_걸리지_않음() {
+        // Windows는 제목 줄 스타일이 붙은 창을 가장 작은 끌기 너비(SM_CXMINTRACK, 136px 안팎)보다 좁게 두지 않아
+        // 72px 버튼 창이 가로로 넓어지며 원이 반만 보였음: 창 설정에 작은 최소 크기를 주고, 보인 뒤 SIZE로 다시 맞춤
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let w = conf["app"]["windows"].as_array().unwrap().iter().find(|w| w["label"] == "bubble").unwrap();
+        assert_eq!(w["width"].as_f64(), Some(SIZE));
+        assert_eq!(w["height"].as_f64(), Some(SIZE));
+        let (mw, mh) = (w["minWidth"].as_f64().unwrap(), w["minHeight"].as_f64().unwrap());
+        assert!(mw <= SIZE && mh <= SIZE, "최소 크기가 버튼 크기보다 작아야 함");
     }
 
     #[test]

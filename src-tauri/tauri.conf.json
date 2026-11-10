@@ -28,6 +28,8 @@
         "url": "bubble.html",
         "width": 72,
         "height": 72,
+        "minWidth": 40,
+        "minHeight": 40,
         "decorations": false,
         "transparent": true,
         "shadow": false,

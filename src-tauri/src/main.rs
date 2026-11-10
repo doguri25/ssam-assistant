@@ -307,6 +307,8 @@ fn main() {
         .manage(bubble::Bubble::default())
         // 쌤비서 창은 숨긴 채 만들어 두고, 컴퓨터를 켜며 버튼만 띄운 경우(--bubble)가 아니면 보임
         .setup(|app| {
+            // 만들 때 Windows가 넓힌 버튼 창을 버튼 크기로 (보이기 전에도 맞춰 둠)
+            bubble::fit(app.handle());
             if !std::env::args().any(|a| a == "--bubble") {
                 bubble::show_main(app.handle());
             }
