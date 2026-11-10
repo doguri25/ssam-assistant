@@ -97,6 +97,20 @@ test('학생별 누적: 평가 줄, 영역 정답률, 자주 틀린 평가 내�
   assert.deepEqual(h.weak.map(w => [w.content, w.lost]), [['생각 쓰기', 12], ['낱말의 뜻 알기', 8]]);
 });
 
+test('[버그] 평가 내용이 없는 답안(정답을 한 줄로 늘어놓은 정답·해설지): 피드백 AI에 「맞힌 것: 없음」이라 하지 않고, 자주 틀린 평가 내용이 빈 줄 하나로 뭉치지 않음', async () => {
+  const { feedbackPrompt } = await import('../../web/menus/evaluate/unit/unit-ai.js');
+  const items = [1, 2, 3].map(no => ({ no, content: '', domain: '', type: 'choice', answer: '③', points: no === 3 ? 34 : 33, criteria: '', pages: '' }));
+  const cell = pts => ({ read: '', pts });
+  const t = newTest({ meta: { grade: 3, subject: '도덕', unitNo: 5, round: 1, date: '2026-10-20' }, key: { domains: [], items } });
+  t.students = [{ no: 1, skip: false, status: 'done', items: { 1: cell(33), 2: cell(33), 3: cell(34) } }, { no: 2, skip: false, status: 'done', items: { 1: cell(33), 2: cell(0), 3: cell(0) } }];
+  const lines = feedbackPrompt(t, t.students).split('\n').filter(l => /^- \d+번 \|/.test(l));
+  // 고치기 전: 「- 1번 | 점수 100/100 | 맞힌 것: 없음 | 다시 볼 것: 없음」
+  assert.ok(lines[0].includes('맞힌 것: 1번 문항, 2번 문항, 3번 문항') && lines[0].includes('다시 볼 것: 없음'), lines[0]);
+  assert.ok(lines[1].includes('맞힌 것: 1번 문항') && lines[1].includes('다시 볼 것: 2번 문항, 3번 문항'), lines[1]);
+  const h = studentHistory([t], 2);
+  assert.deepEqual(h.weak.map(w => [w.content, w.lost]), [['3학년 도덕 5단원 (1회) 3번', 34], ['3학년 도덕 5단원 (1회) 2번', 33]]);
+});
+
 test('반 약한 부분: 문항 정답률, 많이 쓴 오답, 다시 가르칠 것, 영역', () => {
   const a = T('a');
   const s = itemStats(a);
