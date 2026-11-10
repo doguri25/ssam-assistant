@@ -440,6 +440,21 @@ await run('chat', [
     assert(p.includes('[선생님 글]\n○○○ 엄마가 상담 요청했는데 어떻게 답하지?') && !p.includes('김다빈'), p.slice(-300));
     assert((await chatLog()).some(m => m.who === 'me' && m.text === '○○○ 엄마가 상담 요청했는데 어떻게 답하지?'), JSON.stringify((await chatLog()).slice(-3)));
   }],
+  ['검토 고침 I1(11-10): 「방법·누구나·몇 시」가 든 명령은 묻지 않고 바로 씀(선생님 글 그대로), 진짜 묻는 글은 답만', async () => {
+    const n = asks().length, L = of('[가정통신문]').length, M = of('[쪽지 안내]').length;
+    const a = await sendWait('방과후 신청 방법 안내 가정통신문 만들어 줘');
+    assert(a.includes('쓰고 있어요'), a);
+    await until(() => of('[가정통신문]').length > L, '가정통신문 AI 안 부름');
+    assert(of('[가정통신문]').at(-1).includes('방과후 신청 방법 안내'), of('[가정통신문]').at(-1).slice(-300));
+    await letterIdle();
+    const b = await sendWait('누구나 참여 가능한 독서 행사 안내 쪽지 써 줘');
+    assert(b.includes('쪽지를 쓰고 있어요'), b);
+    await until(() => of('[쪽지 안내]').length > M, '쪽지 AI 안 부름');
+    assert(of('[쪽지 안내]').at(-1).includes('누구나 참여 가능한 독서 행사 안내'), of('[쪽지 안내]').at(-1).slice(-300));
+    assert(asks().length === n, '도우미에 물음(명령인데 묻는 글로 봄)');
+    await sendWait('가정통신문 어떻게 쓰는지 알려줘');
+    assert(asks().length === n + 1 && of('[가정통신문]').length === L + 1, '묻는 글인데 바로 씀');
+  }],
   ['파일: 채팅 창에 놓으면 받는 곳 흐름(확인 카드)·창이 열려 있으면 놓기 판은 안 뜸, 📎는 파일 고르기', async () => {
     await openChat();
     const dt = await page.evaluateHandle(() => { const d = new DataTransfer(); d.items.add(new File(['번호,성명\n1,가\n2,나'], '김민수네_명단.csv', { type: 'text/csv' })); return d; });

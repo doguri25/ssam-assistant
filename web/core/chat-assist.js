@@ -2,7 +2,7 @@
    {"reply","actions","choices"} JSON으로 답을 받음. 화면 없이 돌아감(시험).
    AI로 보내는 글(선생님 글·대화·상태)은 모두 이름·전화번호를 가림(safeText). 답의 할 일은 아는 할 일만, 2개까지.
    답 글은 HTML로 넣지 않고 글자를 바꾼 뒤 줄·목록·굵게만 살림(replyHTML) */
-import { INTENTS, INTENT_IDS, LANGS, safeText, handoffText } from './chat-route.js';
+import { INTENTS, INTENT_IDS, LANGS, safeText, handoffText, payloadFor } from './chat-route.js';
 import { guideText } from './chat-knowledge.js';
 
 export const TAG = '[쌤비서 채팅]';
@@ -99,6 +99,18 @@ export function parseAssist(v, { nos = [] } = {}) {
   }
   const choices = [...new Set((Array.isArray(o.choices) ? o.choices : []).filter(ok))].filter(c => !seen.has(c) && c !== 'memo').slice(0, MAX_CHOICES);
   return { reply, actions, choices };
+}
+
+/* AI가 고른 할 일 → 메뉴에 넘길 것. said: 선생님 글(이름·전화번호를 가린 글).
+   글 넣는 일은 선생님이 내용을 줬으면 늘 선생님 글(AI가 바꿔 쓴 글로 바꾸지 않음 — 검토 I1), 내용이 없을 때만(앞 대화를 가리킴) AI가 옮긴 글 */
+export const TEXT_INTENTS = ['purchase', 'message', 'letter', 'gongmun', 'report'];
+export function actionPayload(a, { said = '', question = false } = {}) {
+  const own = question ? {} : payloadFor(a.intent, said);
+  if (TEXT_INTENTS.includes(a.intent)) return { text: own.text || (a.text ? payloadFor(a.intent, a.text).text : '') || '' };
+  if (a.intent === 'translate') return { lang: a.lang || own.lang || '' };
+  if (a.intent === 'memo') return { nos: a.nos || [], body: a.text || '' };
+  if (a.intent === 'memoView') return { nos: a.nos || [] };
+  return {};
 }
 
 /* 선생님 글의 학생 번호(「3번」「3·5번」「3~5번」) */

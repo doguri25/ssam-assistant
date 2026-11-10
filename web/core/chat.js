@@ -14,7 +14,7 @@ import * as ai from './ai.js';
 import { maskContacts } from './privacy.js';
 import { listEvents, addDays, weekday } from './calendar.js';
 import { routeText, payloadFor, isSure, INTENT_IDS, intentLabel, LANGS, langLabel, parseMemo, maskMemo, memoLine, appendMemo, nosText, safeText, handoffText } from './chat-route.js';
-import { assistPrompt, parseAssist, replyHTML, mentionedNos } from './chat-assist.js';
+import { assistPrompt, parseAssist, replyHTML, mentionedNos, actionPayload } from './chat-assist.js';
 import { offlineAnswer } from './chat-knowledge.js';
 import { briefing, EMPTY } from './briefing.js';
 
@@ -251,19 +251,9 @@ export async function send(text) {
 }
 
 /* ---------- 쌤비서 도우미 (분명하지 않거나 묻는 글) ---------- */
-const TEXT_INTENTS = ['purchase', 'message', 'letter', 'gongmun', 'report'];
 // 후보 버튼: 아는 할 일만(메모는 번호가 있어야 해서 뺌), 3개까지. nav면 그 메뉴로만(묻는 글을 칸에 넣지 않음)
 const chipList = (ids, nav) => [...new Set(ids)].filter(c => INTENT_IDS.includes(c) && !['memo', 'memoView'].includes(c)).slice(0, 3)
   .map(c => ({ intent: c, label: intentLabel(c), ...(nav ? { nav: true } : {}) }));
-/* AI가 고른 할 일 → 넘길 것: 선생님 글(가린 글)에 넣을 내용이 있으면 그 글, 없으면(묻는 글·앞 대화를 가리킴) AI가 옮긴 글 */
-function actionPayload(a, { said, question }) {
-  const own = question ? {} : payloadFor(a.intent, said);
-  if (TEXT_INTENTS.includes(a.intent)) return { text: own.text || (a.text ? payloadFor(a.intent, a.text).text : '') || '' };
-  if (a.intent === 'translate') return { lang: a.lang || own.lang || '' };
-  if (a.intent === 'memo') return { nos: a.nos || [], body: a.text || '' };
-  if (a.intent === 'memoView') return { nos: a.nos || [] };
-  return {};
-}
 /* 지금 앱 상태(이름 없이): 보고 있는 화면, 오늘 할 일, AI, 쓰던 가정통신문·품의, 학급 명단 수, 웹판·Windows 앱 */
 async function appState() {
   await refreshBrief();

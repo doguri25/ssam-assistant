@@ -68,7 +68,9 @@ const RULES = [
 const SURE = 2.5, GAP = 1; // 이만큼 이상이고 둘째보다 GAP 이상 앞서면 분명함
 
 /* 명령 꼬리(「써 줘」「만들어 주세요」「해 줘」…)와 맨 끝 마침표 */
-const TAIL = /(?:^|\s)(?:좀\s*)?(?:써|만들어|작성해|올려|해|부탁해|짜|정리해|보내|열어|보여|처리해|넣어|챙겨|알려)\s*(?:줘|주세요|줄래요?|주라|봐|볼래|요)?\s*[.!?~]*\s*$|(?:^|\s)부탁(?:해요|합니다|드려요)?\s*[.!?~]*\s*$/;
+// 부탁 꼴(「써 줄 수 있어요?」「만들어 주실래요?」「써 주시겠어요?」「해 줄래?」)도 꼬리(검토 M1)
+const PLEASE = '(?:줘요|줘|주세요|줄래요?|주라|주겠니|주실래요?|주시겠어요?|줄\\s*수\\s*있(?:어요|어|나요|을까요?|니)|주실\\s*수\\s*있(?:어요|나요|을까요?))';
+const TAIL = new RegExp(`(?:^|\\s)(?:좀\\s*)?(?:써|만들어|작성해|올려|해|부탁해|짜|정리해|보내|열어|보여|처리해|넣어|챙겨|알려)\\s*(?:${PLEASE}|봐|볼래|요)?\\s*[.!?~]*\\s*$|(?:^|\\s)부탁(?:해요|합니다|드려요)?\\s*[.!?~]*\\s*$`);
 const HEAD = /^(?:좀\s*)?(?:써|만들어|작성해|올려|부탁해)\s*(?:줘|주세요|줄래요?)?\s*[:,.]?\s*/;
 const trimTail = t => { let s = String(t || '').trim(), p; do { p = s; s = s.replace(TAIL, '').trim(); } while (s !== p && s); return s.replace(/[\s,.:;·]+$/, '').replace(/^[\s,.:;·]+/, '').replace(HEAD, ''); };
 /* 할 일 낱말을 뺀 남은 글 (내용이 있는지 보려고) */
@@ -137,7 +139,7 @@ export function routeText(text) {
   const raw = String(text == null ? '' : text), t = raw.replace(/\s+/g, ' ').trim();
   const none = { intent: null, payload: {}, confidence: 0, candidates: [], question: false };
   if (!t) return none;
-  const ask = isQuestion(raw);
+  let ask = isQuestion(raw);
   const scores = {};
   for (const [id, re, w] of RULES) if (re.test(t)) scores[id] = Math.max(scores[id] || 0, w);
   // 번역: 언어 낱말 + 번역을 바라는 말(「번역」「베트남어로」「영문으로」「러시아어 가정통신문」)이면 번역(가정통신문보다 앞섬)
@@ -158,6 +160,8 @@ export function routeText(text) {
   const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1]);
   if (!ranked.length) return { ...none, question: ask };
   const [top, s1] = ranked[0], s2 = ranked[1] ? ranked[1][1] : 0;
+  // 부탁 꼬리(써 줘·만들어 주세요 …)가 있고 글 넣는 일이 분명하면 명령(「방과후 신청 방법 안내 가정통신문 만들어 줘」) — 어떻게·하는 법은 그대로 묻는 글
+  if (ask && REQUEST.test(t) && WRITE_IDS.includes(top) && s1 >= SURE && !HOW.test(t) && !HOWTO.test(t)) ask = false;
   // 묻는 글(「단원평가 결과지 어떻게 뽑아?」「AI 키 없이 써도 돼?」)은 그 메뉴 낱말이 있어도 바로 하지 않음(쌤비서 도우미가 답함) — 오늘 할 일은 답이 곧 브리핑
   if (ask && !ASK_OK.includes(top)) return { intent: null, payload: {}, confidence: Math.min(0.5, s1 / 8), candidates: ranked.slice(0, 3).map(r => r[0]), question: true };
   if (s1 >= SURE && s1 - s2 >= GAP) return { intent: top, payload: payloadFor(top, raw), confidence: Math.min(1, 0.6 + (s1 - s2) / 10 + s1 / 20), candidates: [], question: ask };
@@ -166,18 +170,27 @@ export function routeText(text) {
 export const isSure = r => !!(r && r.intent && r.confidence >= 0.6);
 
 /* ---------- 묻는 글 ---------- */
-// 어떻게·왜·뭐·방법·「~하는 법」·차이: 묻는 말(명령 꼬리가 있어도)
-const HOW = /어떻게|어떡|무엇|뭐(?:야|예요|에요|지|가|를|부터|해야|하면|라고|\s*(?:있|써|해|하|넣|골라|고르))|뭔가요|뭔지|무슨|왜(?=\s|[?？요죠지냐]|$)|언제|어디|누가|누구|몇\s*(?:번째|개|명|시|일|분|쪽|자|번)|방법|요령|노하우|(?:하|쓰|만들|작성하|넣|고치|바꾸|뽑|올리|내려받|채점하|정하|읽|보|고르)는\s*(?:법|방법|순서|요령)|차이(?:가|는|점|를)?|뜻이|의미가|설명해/;
+// 글 넣는 일(분명하면 부탁 꼬리가 있을 때 묻는 낱말이 있어도 명령)
+const WRITE_IDS = ['purchase', 'message', 'letter', 'gongmun', 'report'];
+// 어떻게·왜·뭐·무슨·차이·뜻: 묻는 말(명령 꼬리가 있어도)
+export const HOW = /어떻게|어떡|무엇|뭐(?:야|예요|에요|지|가|를|부터|해야|하면|라고|\s*(?:있|써|해|하|넣|골라|고르))|뭔가요|뭔지|무슨|왜(?=\s|[?？요죠지냐]|$)|차이(?:가|는|점|를)?|뜻이|의미가|설명해/;
+// 「~하는 법·방법·순서·요령」: 묻는 말(「신청하는 방법 안내 가정통신문」처럼 뒤에 「안내」가 오면 넣을 내용)
+export const HOWTO = /(?:하|쓰|만들|작성하|넣|고치|바꾸|뽑|올리|내려받|채점하|정하|읽|보|고르)는\s*(?:법|방법|순서|요령)(?!\s*(?:안내|설명\s*자료))/;
+// 언제·어디·누구·몇 시·방법·요령: 묻는 말일 수도, 넣을 내용일 수도(「누구나 참여 가능한 … 쪽지 써 줘」「방과후 신청 방법 안내 …」) —
+// 글 넣는 일을 해 달라는 말(써 줘·만들어 주세요 …)이 있으면 넣을 내용(검토 I1)
+const WEAK = /언제|어디|누가|누구|몇\s*(?:번째|개|명|시|일|분|쪽|자|번)|방법|요령|노하우/;
+const MAKE = /(?:써|만들어|작성해|올려|정리해|보내|넣어|부탁해|짜)\s*(?:주세요|주실래요?|주시겠어요?|주실\s*수|줄래요?|줄\s*수|주라|줘)|부탁(?:해요|합니다|드려요|드립니다)\s*[.!?~]*$/;
 // 되나요·돼?·가능해?·있어?·맞아?·괜찮아?: 예·아니오로 묻는 말(명령 꼬리가 없을 때)
 const YESNO = /(?:해|써|넣어|봐|돼|되어|보내|올려|바꿔|안\s*써|안\s*해|없이\s*써)도\s*(?:돼|되|될|괜찮)|(?:돼요?|있어요?|없어요?|맞아요?)\s*[?？]|(?:되나요?|될까요?|되니|되죠|가능(?:해|한가|할까|하나|한지|해요)|있나요?|있을까요?|없나요?|맞나요?|괜찮(?:아|나|을까|은가)요?|인가요?|일까요?|나요)\s*[?？]*$/;
 // 해 달라는 꼬리(「써 줄래?」「해 줄 수 있어?」는 묻는 말이 아니라 부탁)
-const REQUEST = /(?:줘|주세요|줄래요?|주실래요?|주시겠어요|주라|줄\s*수\s*있(?:어|어요|나요|을까요?)|할래요?|볼래요?|넣을래요?|하자|가자)\s*[?？!.~]*$/;
+const REQUEST = /(?:줘요?|주세요|줄래요?|주실래요?|주시겠어요?|주겠니|주라|줄\s*수\s*있(?:어|어요|나요|을까요?|니)|주실\s*수\s*있(?:어요|나요|을까요?)|할래요?|볼래요?|넣을래요?|하자|가자)\s*[?？!.~]*$/;
 const ASK_OK = ['briefing', 'memoView']; // 묻는 꼴이어도 규칙대로(답이 곧 그 일)
 /* 글이 묻는 말인지(줄이 여럿이거나 아주 길면 넣을 내용으로 봄) */
 export function isQuestion(text) {
   const t = String(text == null ? '' : text).trim();
   if (!t || t.length > 150 || /\n/.test(t)) return false;
-  if (HOW.test(t)) return true;
+  if (HOW.test(t) || HOWTO.test(t)) return true;
+  if (WEAK.test(t)) return !MAKE.test(t);
   if (REQUEST.test(t)) return false;
   return YESNO.test(t) || /[?？]\s*$/.test(t);
 }
