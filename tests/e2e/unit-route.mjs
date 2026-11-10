@@ -184,6 +184,20 @@ await run('unit-route', [
     await page.waitForTimeout(300);
     assert(prompts.length === n0 && (await cur()).students.length === 2 && (await cur()).key.items.length === 1, '닫았는데 넣음');
     assert(!(await text('#unKeyMsg')).includes('읽는 중'), await text('#unKeyMsg'));
+    // 말없이 빠지지 않게: 넣지 않았다고 알림
+    assert((await text('#unKeyMsg')).includes('넣지 않았어요'), '알림 없음: ' + await text('#unKeyMsg'));
+  }],
+  ['받아 둔 학생 문제지는 저장 안 한 새 평가 몇 개까지만(오래된 것부터 비움) — 버려진 초안의 스캔이 계속 남지 않게', async () => {
+    const held = () => page.evaluate(async () => (await import('/menus/evaluate/unit/unit-grading.js')).heldCount());
+    await page.click(`${V} [data-un="back"]`);
+    for (let i = 0; i < 5; i++) {
+      await page.click(`${V} #unNew`);
+      await page.setInputFiles(`${V} #unAnsFile`, await photos(1));
+      await waitText('#unAnsMsg', '학생 문제지 스캔 1장을 받았어요');
+      await page.click(`${V} [data-un="back"]`);
+    }
+    assert(await held() <= 3, '받아 둔 평가 수: ' + await held());
+    await page.click(`${V} #unNew`);
   }],
   // [버그] 답안 전에 받아 둔 학생 문제지는 한 평가 몫뿐이라, 평가 A의 답안을 읽는 동안 새 평가 B에 학생 문제지를 넣으면 A의 것이 말없이 버려짐
   ['평가 A에 받아 둔 학생 문제지는 A의 답안을 읽는 동안 새 평가 B에 학생 문제지를 넣어도 남음 → A를 열면 A 학생 3명, B는 B대로 2명', async () => {

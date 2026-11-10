@@ -223,7 +223,8 @@ export function memoRows(text) {
 }
 /* AI로 보내는 행특 메모: 예전에 붙여넣은 「김민수⇥메모」「김민수 메모」의 앞 이름 칸을 빼고 이름 칸을 가림 */
 export const memoForAI = memo => maskNameFields(String(memo || '').replace(/^\s*([가-힣]{2,4})\t+/, (m, n) => (nameLike(n) ? '' : m))
-  .replace(/^\s*([가-힣]{2,5})[ 　]+(?=\S)/, (m, n) => (wholeName(n) ? '' : m))).trim();
+  // 띄어 쓴 첫 낱말은 성까지 갖춘 이름(세 글자 이상)일 때만 — 「나은 모습」「지우 개」「다은 모둠」 같은 두 글자 낱말은 이름과 헷갈려 그대로
+  .replace(/^\s*([가-힣]{3,5})[ 　]+(?=\S)/, (m, n) => (wholeName(n) ? '' : m))).trim();
 
 /* ---------- 파일 읽기 ---------- */
 const DOC = /\.(hwpx?|txt)$/i;

@@ -71,13 +71,19 @@ export async function loadAnswerPages(raw, t0 = cur()) {
   if (busyOther(id) || busy(id)) { say('채점하는 중이에요. 끝나거나 멈춘 뒤에 다시 넣어 주세요.'); SS().files.freePages(raw); return false; }
   return place(t0, id, perNow(), { pages: raw, skipped: [] }, say, G.msg);
 }
+const MAX_HOLDS = 3;
+function dropHold(id) { const h = G.holds.get(id); if (h) SS().files.freePages(h.raw); G.holds.delete(id); }
+export const heldCount = () => G.holds.size; // 시험용
 /* 답안을 넣기 전이면 학생 문제지를 이 화면에 받아 두고 답안이 들어오면 나눔(keyArrived). 답안이 있으면 바로 학생별로 나눔.
    받아 둔 것은 평가마다 따로(다른 평가에 넣어도 버리지 않음), 같은 평가에 다시 넣으면 새것으로 바꿈 */
 async function place(t0, id, per, r, say, before) {
   if (hasKey(getTest(id) || t0)) return placeRaw(t0, id, per, r, say, before);
   const old = G.holds.get(id);
   if (old && old.raw !== r.pages) SS().files.freePages(old.raw);
+  G.holds.delete(id); // 맨 뒤(가장 최근)로
   G.holds.set(id, { raw: r.pages, skipped: r.skipped || [] });
+  // 받아 둔 것은 최근 MAX_HOLDS개 평가까지만(버려진 새 평가 초안의 스캔이 앱을 끌 때까지 남지 않게) — 오래된 것부터 비움
+  for (const k of G.holds.keys()) { if (G.holds.size <= MAX_HOLDS) break; if (k !== id) dropHold(k); }
   if (G.testId !== id) G.msg = before; // 다른 평가에 붙은 스캔의 줄 글은 그대로
   refresh(id);
   return true;
@@ -520,6 +526,7 @@ registerStep(2, {
 });
 /* 1단계 [학생 문제지 넣기(스캔한 것)] 줄과 다른 단추·한꺼번에 넣기에서 학생 쪽으로 나눈 것 (unit.js가 씀) */
 registerPapers({
+  drop: dropHold, // 평가를 지우면 받아 둔 학생 문제지도 비움
   html: t => ansRowHTML(t, 1),
   put: (files, t0) => loadAnswers(files, t0),
   putPages: (pages, t0) => loadAnswerPages(pages, t0),

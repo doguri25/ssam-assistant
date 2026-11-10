@@ -244,7 +244,7 @@ async function loadKey(file, t0 = cur()) {
     if (asked) {
       setMsg(id, 'key', '');
       go = await askKeyKind(file, b.pages);
-      if (!go) { SS().files.freePages(b.pages); return; }
+      if (!go) { SS().files.freePages(b.pages); setMsg(id, 'key', `「${file.name}」 파일은 넣지 않았어요. 넣으려면 다시 골라 주세요.`); return; }
     }
     if (go === 'papers') {
       setMsg(id, 'key', asked ? `「${file.name}」 파일을 학생 문제지로 넣었어요` : `「${file.name}」 파일은 학생 문제지로 보여서 학생 문제지로 넣었어요`);
@@ -401,7 +401,7 @@ function askDelete(id) {
   if (!s || !SS().openSheet) return;
   SS().openSheet(`<h3>「${esc(s.title)}」 지우기</h3><p class="muted" style="margin:0">채점 결과와 피드백이 모두 지워져요. 되돌릴 수 없어요.</p>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="unDelOk">지우기</button></div>`,
-  sh => sh.querySelector('#unDelOk').addEventListener('click', () => { removeTest(id); SS().closeSheet(); toast('지웠어요'); render(); }));
+  sh => sh.querySelector('#unDelOk').addEventListener('click', () => { removeTest(id); if (papers && papers.drop) papers.drop(id); SS().closeSheet(); toast('지웠어요'); render(); }));
 }
 function fillSample() {
   let ok = true;

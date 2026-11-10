@@ -40,3 +40,11 @@ test('[core-hk-bulk-space] AI로 보내는 행특 메모: 앞에 띄어 쓴 이�
   for (const s of ['성실함, 차분함, 조용함, 정리정돈 잘함', '조용히 앉아 있음', '박물관 견학 소감을 씀', '한결같이 성실함', '성실함\t꾸준함'])
     assert.equal(memoForAI(s), s, s);
 });
+
+test('검토: AI로 보내는 행특 메모 하나는 띄어 쓴 첫 낱말이 성까지 갖춘 이름(세 글자 이상)일 때만 뺌 — 「나은 모습」「지우 개」「다은 모둠」은 그대로', async () => {
+  const { memoForAI } = await import('../../web/core/bundle.js');
+  for (const t of ['나은 모습을 보이려 노력함', '지우 개를 빌려 줌', '다은 모둠 활동에 적극적', '한결 성실함']) assert.equal(memoForAI(t), t);
+  assert.equal(memoForAI('김민수 발표 잘함'), '발표 잘함');
+  assert.equal(memoForAI('이서연 친구를 도움'), '친구를 도움');
+  assert.equal(memoForAI('김민수\t발표 잘함'), '발표 잘함');
+});
