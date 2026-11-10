@@ -123,13 +123,16 @@ async function runAi() {
     for (let d = 0; d < 5; d++) for (const k of AI_KEYS) {
       if (!w.notes[d][k].trim() && got[d][k].trim()) { w.notes[d][k] = got[d][k].trim(); filled.push([d, k]); }
     }
-    save(mon, w);
-    if (visible() && monday === mon) {
-      for (const [d, k] of filled) { const el = box.querySelector(`textarea[data-wn="${d}-${k}"]`); if (el && document.activeElement !== el) el.value = w.notes[d][k]; }
+    // 저장하지 못하면 「채웠어요」 대신 알리고 칸에도 넣지 않음(다시 그리면 사라질 글)
+    if (filled.length && !saveWeekly(mon, w)) toast(FULL, 6000);
+    else {
+      if (visible() && monday === mon) {
+        for (const [d, k] of filled) { const el = box.querySelector(`textarea[data-wn="${d}-${k}"]`); if (el && document.activeElement !== el) el.value = w.notes[d][k]; }
+      }
+      toast(filled.length ? `빈 칸 ${filled.length}개를 채웠어요` : '채울 빈 칸이 없었어요');
+      wrote = filled.map(([d, k]) => [d, k, w.notes[d][k]]);
+      sent = days;
     }
-    toast(filled.length ? `빈 칸 ${filled.length}개를 채웠어요` : '채울 빈 칸이 없었어요');
-    wrote = filled.map(([d, k]) => [d, k, w.notes[d][k]]);
-    sent = days;
   } catch (err) { toast(ai.errorMessage(err && err.code, err), 6000); }
   delete busy[mon];
   if (visible() && monday === mon) { const b = box.querySelector('[data-w="ai"]'); if (b) { b.disabled = false; b.textContent = 'AI로 알림 쓰기'; } }
@@ -241,7 +244,7 @@ document.addEventListener('click', e => {
   if (!b) return;
   const a = b.dataset.w;
   if (a === 'prev' || a === 'next') { monday = addDays(monday, a === 'prev' ? -7 : 7); render(); }
-  else if (a === 'refill') { const w = getWeekly(monday); w.cells = {}; save(monday, w); render(); toast('학습 칸을 진도표대로 다시 채웠어요'); }
+  else if (a === 'refill') { const w = getWeekly(monday); w.cells = {}; if (!saveWeekly(monday, w)) { toast(FULL, 6000); return; } render(); toast('학습 칸을 진도표대로 다시 채웠어요'); }
   else if (a === 'ai') runAi();
   else if (a === 'hwpx') downloadHwpx();
   else if (a === 'copy') copyText(plainText()).then(ok => toast(ok ? '복사했어요' : '복사하지 못했어요'));

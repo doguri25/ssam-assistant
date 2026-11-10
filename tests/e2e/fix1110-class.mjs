@@ -1,9 +1,9 @@
 // 학급 고침(2026-11-10): 주간학습안내를 켜 둔 채 날이 바뀌면 그날의 기본 주로, [복사]에 수업 없는 날 고친 칸도 들어감,
-// 점심시간 줄이 있는 시간표 CSV
+// 점심시간 줄이 있는 시간표 CSV, 저장 공간이 꽉 차면 AI 알림·[다시 채우기]가 「채웠어요」 대신 알림
 import { writeFileSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { open, run, assert } from './helpers.mjs';
+import { open, run, assert, mockClaude } from './helpers.mjs';
 
 const t = await open();
 const { page, ctx, url, errors } = t;
@@ -13,6 +13,16 @@ const V = 'section[data-menu="class"]';
 const tmp = mkdtempSync(join(tmpdir(), 'fix1110-class-'));
 const tab = async id => { await page.click('nav.app-side [data-menu-go="class"]'); await page.click(`#menuTabs [data-tab="${id}"]`); };
 const week = () => page.textContent(`${V} .cls-week-nav b`);
+await page.addInitScript(() => {
+  if (!localStorage.getItem('ssam:engine')) localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true }));
+});
+await mockClaude(page, async () => JSON.stringify({ days: [0, 1, 2, 3, 4].map(() => ({ prep: '색연필', safety: '복도에서 걷기', homework: '', notice: '' })) }));
+// 고른 키만 저장 실패 (QuotaExceededError)
+const full = re => page.evaluate(re => {
+  const o = window.__set || Storage.prototype.setItem; window.__set = o;
+  Storage.prototype.setItem = function (k, v) { if (new RegExp(re).test(k)) throw new DOMException('꽉 참', 'QuotaExceededError'); return o.call(this, k, v); };
+}, re);
+const notFull = () => page.evaluate(() => { if (window.__set) Storage.prototype.setItem = window.__set; });
 await page.goto(url);
 await page.waitForTimeout(400);
 await tab('progress');
@@ -58,6 +68,24 @@ await run('fix1110-class', [
     await page.waitForFunction(() => JSON.parse(localStorage.getItem('ssam:class:timetable')).cells[0][5] === '음악');
     const tt = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:class:timetable')));
     assert(tt.periods === 6 && tt.cells[2][4] === '영어', JSON.stringify(tt));
+  }],
+  ['[class-weekly-full-4] 저장 공간이 꽉 차면 AI 알림은 「빈 칸을 채웠어요」 대신 저장하지 못했다고, 칸에도 넣지 않음', async () => {
+    await tab('weekly');
+    const mon = (await week()).split(' ~')[0];
+    await full('^ssam:class:weekly:');
+    await page.click(`${V} [data-w="ai"]`);
+    await page.waitForFunction(() => !document.querySelector('section[data-menu="class"] [data-w="ai"]').disabled);
+    await page.waitForTimeout(100);
+    const msg = await page.textContent('#toast');
+    assert(msg.includes('저장 공간이 모자라') && !msg.includes('채웠어요'), msg);
+    assert(await page.inputValue(`${V} textarea[data-wn="0-prep"]`) === '', '저장하지 못한 글이 칸에 보임');
+    // [다시 채우기]도 「다시 채웠어요」 대신 알림
+    await page.click(`${V} [data-w="refill"]`);
+    await page.waitForTimeout(100);
+    const msg2 = await page.textContent('#toast');
+    await notFull();
+    assert(msg2.includes('저장 공간이 모자라') && !msg2.includes('다시 채웠어요'), msg2);
+    assert((await week()).startsWith(mon), '주가 바뀜');
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
