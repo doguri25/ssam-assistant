@@ -49,11 +49,13 @@ function resend(force = false, x = c()) {
 const QUOTA = '양식을 저장하지 못했어요(저장 공간이 꽉 찼을 수 있어요).';
 async function loadForms() {
   F.store = await forms();
-  try { F.list = await F.store.list(); } catch (e) { F.list = []; }
+  // 저장소를 잠깐 읽지 못하면(또는 IndexedDB를 못 열어 메모리로 쓰는 중이면) 고른 양식은 그대로 둠 — 진짜로 읽은 목록에 없을 때만 지움
+  let read = F.store.persistent !== false;
+  try { F.list = await F.store.list(); } catch (e) { read = false; }
   // 이번에만 쓰는 양식(저장하지 못한 것)을 고른 채면 그대로 둠
   if (F.form && F.form.temp) return;
   const id = getFormId();
-  if (id && (!F.form || F.form.rec.id !== id)) await selectForm(id, { quiet: true });
+  if (id && (!F.form || F.form.rec.id !== id) && (read || F.list.some(x => x.id === id))) await selectForm(id, { quiet: true });
 }
 let selTok = 0;
 async function selectForm(id, { quiet = false } = {}) {
@@ -61,9 +63,11 @@ async function selectForm(id, { quiet = false } = {}) {
   setFormId(id);
   F.form = null; F.mapOpen = false; F.mapSel = -1;
   if (!id) { live(); return; }
-  let rec = null;
-  try { rec = await F.store.get(id); } catch (e) { rec = null; }
+  let rec = null, failed = F.store.persistent === false;
+  try { rec = await F.store.get(id); } catch (e) { rec = null; failed = true; }
   if (tok !== selTok) return;
+  // 읽지 못한 것(저장소 탈)은 고른 것을 남겨 두고 다음에 다시 읽음, 정말 없는 양식만 기본 양식으로
+  if (!rec && failed) { if (!quiet) toast('양식을 읽지 못했어요. 잠시 뒤 다시 골라 주세요.', 5000); live(); return; }
   if (!rec) { setFormId(''); if (!quiet) toast('양식을 찾지 못했어요. 기본 양식으로 써요.'); live(); return; }
   let parsed = null;
   if (rec.kind === 'hwpx') { try { parsed = await readForm(rec.bytes); } catch (e) { toast('양식 파일을 읽지 못했어요. 다시 넣어 주세요.', 5000); } }

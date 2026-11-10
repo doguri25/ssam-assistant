@@ -71,6 +71,24 @@ await run('letter-fixes', [
     assert((await sel()).includes('꽉찬양식'), '다시 열면 양식이 바뀜: ' + await sel());
     await page.evaluate(() => { IDBObjectStore.prototype.put = window.__put; });
   }],
+  ['양식 저장소(IndexedDB)를 잠깐 열지 못해도 고른 양식은 지우지 않음 → 다시 열리면 그 양식', async () => {
+    const fid = () => page.evaluate(async () => (await import('./menus/etc/letter-model.js')).getFormId());
+    const id = await fid();
+    assert(id, '고른 양식 없음');
+    await page.addInitScript(() => {
+      if (!sessionStorage.getItem('t:formsDown')) return;
+      const o = indexedDB.open.bind(indexedDB);
+      indexedDB.open = (n, v) => { if (String(n).startsWith('ssam-forms')) throw new Error('forms down'); return o(n, v); };
+    });
+    await page.evaluate(() => sessionStorage.setItem('t:formsDown', '1'));
+    await page.reload(); await page.waitForTimeout(400);
+    await page.waitForSelector(`${P} #lfForm`);
+    await page.waitForTimeout(400);
+    assert((await fid()) === id, '고른 양식이 지워짐: ' + JSON.stringify(await fid()));
+    await page.evaluate(() => sessionStorage.removeItem('t:formsDown'));
+    await page.reload(); await page.waitForTimeout(400);
+    await page.waitForFunction(([s, v]) => (document.querySelector(`${s} #lfForm`) || {}).value === v, [P, id]);
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();

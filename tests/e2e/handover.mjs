@@ -159,6 +159,29 @@ await run('handover', [
     assert((await badge('새싹초 업무 인수인계서')) === '제목' && (await badge('옛 본문: 맡은 업무를 적어요')) === '본문' && (await badge('옛 본문: 넘길 것을 적어요')) === '본문', '제목·본문');
     assert((await badge('2026. 2. 27.')) === '날짜' && (await badge('결재')) === '·' && (await badge('인계자: 교사 (서명)')) === '·' && (await badge('새싹초등학교장')) === '·', '그대로 둘 줄');
     await page.click(`${P} [data-ho="mapClose"]`);
+    // 키보드로 양식을 고르거나 [양식 맞추기]의 줄·자리를 눌러도 초점이 그 칸에 남음(다시 그려도 <body>로 가지 않게)
+    const act = () => page.evaluate(() => { const a = document.activeElement; return a ? (a.id || (a.dataset && (a.dataset.hoLine != null ? 'line' + a.dataset.hoLine : a.dataset.ho)) || a.tagName) : ''; });
+    const fid = await page.inputValue(`${P} #hoForm`);
+    await page.focus(`${P} #hoForm`);
+    await page.selectOption(`${P} #hoForm`, '');
+    await page.waitForFunction(s => !document.querySelector(`${s} [data-ho="delForm"]`), P);
+    assert((await act()) === 'hoForm', '기본 양식을 고른 뒤 초점: ' + await act());
+    await page.selectOption(`${P} #hoForm`, fid);
+    await page.waitForSelector(`${P} [data-ho="delForm"]`);
+    assert((await act()) === 'hoForm', '양식을 고른 뒤 초점: ' + await act());
+    await page.focus(`${P} [data-ho="map"]`); await page.keyboard.press('Enter');
+    await page.waitForSelector(`${P} #hoMap`);
+    assert((await act()) === 'map', '[양식 맞추기] 초점: ' + await act());
+    const ti = await page.evaluate(s => [...document.querySelectorAll(`${s} .lf-lines li`)].findIndex(l => l.querySelector('.lf-badge').textContent === '제목'), P);
+    await page.focus(`${P} [data-ho-line="${ti}"]`); await page.keyboard.press('Enter');
+    await page.waitForSelector(`${P} [data-ho-role="title"]`);
+    assert((await act()) === `line${ti}`, '줄 초점: ' + await act());
+    await page.focus(`${P} [data-ho-role="title"]`); await page.keyboard.press('Enter'); // 같은 자리(제목) 그대로
+    await page.waitForFunction(s => !document.querySelector(`${s} [data-ho-role]`), P);
+    assert((await act()) === `line${ti}`, '자리를 고른 뒤 초점: ' + await act());
+    await page.focus(`${P} [data-ho="mapClose"]`); await page.keyboard.press('Enter');
+    await page.waitForFunction(s => !document.querySelector(`${s} #hoMap`), P);
+    assert((await act()) === 'map', '닫은 뒤 초점: ' + await act());
     // 가정통신문 양식 목록에는 없음
     await page.click('#menuTabs [data-tab="letter"]');
     await page.waitForSelector(`${E} .lf-box #lfForm`);
@@ -193,6 +216,33 @@ await run('handover', [
     await page.waitForSelector(`${P} #hoPrev h1`); // 새로 고쳐도 기타 › 인수인계서
     await page.waitForFunction(([s, v]) => document.querySelector(`${s} #hoForm`).value === v, [P, id]);
     assert((await page.inputValue(`${P} #hoPages`)) === '1' && (await fit()).startsWith('1쪽'), '쪽 수·알림');
+  }],
+  ['양식 저장소(IndexedDB)를 잠깐 열지 못해도 고른 양식은 지우지 않음 → 다시 열리면 그 양식', async () => {
+    const id = (await saved()).formId;
+    assert(id, '고른 양식 없음');
+    await page.addInitScript(() => {
+      if (!sessionStorage.getItem('t:formsDown')) return;
+      const o = indexedDB.open.bind(indexedDB);
+      indexedDB.open = (n, v) => { if (String(n).startsWith('ssam-forms')) throw new Error('forms down'); return o(n, v); };
+    });
+    await page.evaluate(() => sessionStorage.setItem('t:formsDown', '1'));
+    await page.reload(); await page.waitForTimeout(400);
+    await page.waitForSelector(`${P} #hoPrev h1`);
+    await page.waitForTimeout(400);
+    assert((await saved()).formId === id, '고른 양식이 지워짐: ' + JSON.stringify((await saved()).formId));
+    await page.evaluate(() => sessionStorage.removeItem('t:formsDown'));
+    await page.reload(); await page.waitForTimeout(400);
+    await page.waitForSelector(`${P} #hoPrev h1`);
+    await page.waitForFunction(([s, v]) => document.querySelector(`${s} #hoForm`).value === v && document.querySelector(`${s} [data-ho="delForm"]`), [P, id]);
+    // 양식을 고르는 그때 읽기가 실패해도: 「찾지 못했어요」로 지우지 않고 고른 것을 남김
+    await page.evaluate(async () => { const s = await (await import('./core/form-store.js')).forms('handover'); window.__get = s.get; s.get = async () => { throw new Error('busy'); }; });
+    await page.selectOption(`${P} #hoForm`, '');
+    await page.selectOption(`${P} #hoForm`, id);
+    await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('양식을 읽지 못했어요'));
+    assert((await saved()).formId === id, '읽기 실패로 고른 양식이 지워짐');
+    await page.evaluate(async () => { (await (await import('./core/form-store.js')).forms('handover')).get = window.__get; });
+    await page.selectOption(`${P} #hoForm`, id);
+    await page.waitForSelector(`${P} [data-ho="delForm"]`);
   }],
   ['양식 지우기 → 기본 양식으로(저장소에서도 빠짐), 한글은 기본 양식', async () => {
     await page.click(`${P} [data-ho="delForm"]`);
