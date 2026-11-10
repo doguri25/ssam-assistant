@@ -9,7 +9,7 @@ import { nameCell, MASK, maskContacts } from '../../core/privacy.js';
 
 // 세는 말: 없는 말(「체육복 30벌」「간식 420인분」)은 수량 1로 읽혀 합계가 크게 줄었음. 「회·일·단」은 날짜·차례(「제3회」「12일」)와 헷갈려 넣지 않음
 const UNITS = '박스|상자|개|권|자루|세트|장|통|묶음|팩|병|봉|봉지|EA|ea|Ea|명|인분|시간|차시|식|건|매|롤|켤레|벌|쌍|대|부|kg|g|L|ml|m|판|타|다스|캔|포|입|갑|곽|송이|다발|그루|마리|포기|줄|잔';
-const QTY = new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(${UNITS})(?![가-힣A-Za-z])`, 'g');
+const QTY = new RegExp(`(\\d{1,3}(?:,\\d{3})+|\\d+(?:\\.\\d+)?)\\s*(${UNITS})(?![가-힣A-Za-z])`, 'g');
 const blank = v => String(v == null ? '' : v).trim() === '';
 const money = (n, man) => Math.round(Number(String(n).replace(/,/g, '')) * (man ? 10000 : 1));
 /* 전화번호(휴대전화·지역번호)·이메일 모양 — AI 답에 있으면 그 글은 넣지 않음 */
@@ -18,7 +18,7 @@ export const hasContact = v => CONTACT.test(String(v == null ? '' : v));
 
 /* 줄 하나 → { it, stated } 또는 null. stated: 「총 N원」으로 적은 금액(수량으로 나눠 단가를 냄) */
 const WON = /([\d,]*\d(?:\.\d+)?)\s*(?:(만)\s*원|(만)(?![가-힣])|원)/g;
-const MEASURE = /^(g|kg|ml|L|m|매|입)$/; // 규격에 가까운 단위(100매·80g) — 포장 단위가 따로 있으면 수량이 아님
+const MEASURE = /^(g|kg|ml|L|m|매|입|줄)$/; // 규격에 가까운 단위(100매·80g) — 포장 단위가 따로 있으면 수량이 아님
 const SHIP = /^(배송비|택배비|운송비|배달비)$/;
 /* 「알코올램프 10개 5,000원, 다음 주 화요일 과학실 실험」: 쉼표로 이은 조각 중 수량·금액이 없는 조각(일시·장소·목적)은 품명에서 뺌.
    숫자 속 쉼표(5,000)·괄호 속 쉼표(볼펜(검정, 빨강))는 나누지 않음. 일시·장소·목적은 AI가 넣기 글 전체에서 따로 채움 */
@@ -40,9 +40,9 @@ function dropContext(s) {
 }
 /* 「천·백」이 든 한글 금액·「만」 뒤에 붙은 숫자 → 원: 「2만 5천원」「1만2천」→ 25000원·12000원, 「3천 500원」「2천5백원」→ 3500원·2500원,
    「1만 5000원」→ 15000원 (WON은 「2만(원)」만 읽어 「2만 5천원」이 2만 원·품명 「5천원」이 되고 「2천원」은 못 읽었음).
-   「2만(원)」 하나는 그대로(WON이 읽음), 단위 바로 뒤에 한글이 오면(「3천명」「3천피스」) 금액 아님 */
+   「2만(원)」 하나는 그대로(WON이 읽음), 단위 뒤에(띄어 써도) 한글·영문이 오면(「3천명」「1백 명」「1천 장」) 금액 아님 */
 const KO_UNIT = { 만: 10000, 천: 1000, 백: 100 };
-const KO_AMT = /(\d+(?:\.\d+)?\s*[만천백](?:\s*\d+(?:\.\d+)?\s*[천백])*)(?:\s*(\d,\d{3}|\d{1,4})(?=\s*원))?(?:\s*원|(?![가-힣]))/g;
+const KO_AMT = /(\d+(?:\.\d+)?\s*[만천백](?:\s*\d+(?:\.\d+)?\s*[천백])*)(?:\s*(\d,\d{3}|\d{1,4})(?=\s*원))?(?:\s*원|(?!\s*[가-힣A-Za-z]))/g;
 const koWon = s => String(s).replace(KO_AMT, (m, head, tail) => {
   const parts = [...head.matchAll(/(\d+(?:\.\d+)?)\s*([만천백])/g)];
   if (parts.length === 1 && !tail && parts[0][2] === '만') return m;
@@ -75,7 +75,7 @@ function parseLine(raw) {
   const q = (pack.length ? pack : qs).at(-1);
   let qty = 1, unit = '', spec = '';
   if (q) {
-    qty = Number(q[1]); unit = q[2];
+    qty = Number(String(q[1]).replace(/,/g, '')); unit = q[2];
     if (pack.length) spec = qs.filter(m => MEASURE.test(m[2])).map(m => m[0].replace(/\s+/g, '')).join(' ');
     for (const m of [...qs].reverse()) if (m === q || (pack.length && MEASURE.test(m[2]))) s = s.slice(0, m.index) + ' ' + s.slice(m.index + m[0].length);
   }

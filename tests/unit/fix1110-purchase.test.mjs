@@ -78,3 +78,27 @@ test('계획·공문에서 옮긴 줄 머리(「가.」「나)」「(다)」「�
   assert.equal(name('가위 4자루 2,000원'), '가위');
   assert.equal(name('나무 블록 2세트 15,000원'), '나무 블록');
 });
+
+test('검토: 한글 수 단위로 쓴 인원·장 수(「1백 명」「1천 장」「5백 매」)는 금액이 아님 — 앞의 원 금액이 그대로', () => {
+  const one = s => parseLines(s).items.map(it => [it.name, it.unit, Number(it.qty), Number(it.price)]);
+  assert.deepEqual(one('현장체험 버스 3대 각 45만원, 학생 1백 명').map(r => [r[2], r[3]]), [[3, 450000]]);
+  assert.deepEqual(one('간식 300개 각 1,500원, 전교생 3백 명').map(r => [r[2], r[3]]), [[300, 1500]]);
+  assert.equal(one('색종이 2만원 1천 장')[0][3], 20000);
+  assert.equal(one('스티커 8,000원 5백 장')[0][3], 8000);
+  assert.ok(!one('A4 용지 1천 매 5,000원')[0][0].includes('원'), '품명에 「원」이 붙음');
+  // 진짜 한글 금액은 그대로
+  assert.equal(one('색종이 5묶음 2만 5천원')[0][3], 25000);
+});
+
+test('검토: 「(8줄)」「4줄」 같은 공책 규격은 수량이 아님(권이 수량), 「김밥 30줄」은 수량', () => {
+  const one = s => parseLines(s).items.map(it => [it.name, it.unit, Number(it.qty), Number(it.price)])[0];
+  assert.deepEqual([one('공책 10권(8줄) 1,000원')[2], one('공책 10권(8줄) 1,000원')[1]], [10, '권']);
+  assert.equal(one('영어 노트 30권 4줄 900원')[2], 30);
+  assert.equal(one('김밥 30줄 3,000원')[2], 30);
+});
+
+test('검토: 「1,000개」「2,500매」처럼 쉼표 든 수량', () => {
+  const one = s => parseLines(s).items.map(it => [it.name, it.unit, Number(it.qty), Number(it.price)])[0];
+  assert.deepEqual([one('종이컵 1,000개 1만원')[0], one('종이컵 1,000개 1만원')[2]], ['종이컵', 1000]);
+  assert.equal(one('A4 용지 2,500매 5만원')[0], 'A4 용지');
+});
