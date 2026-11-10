@@ -13,11 +13,11 @@ await page.addInitScript(() => {
   if (!localStorage.getItem('ssam:engine')) localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true }));
   if (!localStorage.getItem('ssam:unit:set')) localStorage.setItem('ssam:unit:set', JSON.stringify({ pagesPer: 1, maskOn: false, mask: [], maskAll: false }));
 });
-const prompts = [], keyImages = [];
+const prompts = [], keyImages = [], full = [];
 let roleOf = () => 'student', keyGate = null;
 await mockClaude(page, async ({ prompt, images }) => {
   const head = prompt.split('\n')[0];
-  prompts.push(head);
+  prompts.push(head); full.push(prompt);
   if (head === '[단원평가 정답지]') keyImages.push(images);
   if (head === '[단원평가 정답지]' && keyGate) await keyGate; // 답안을 읽는 동안 다른 평가로 감
   // 한꺼번에 넣기의 쪽 나누기: 본 쪽은 모두 학생(roleOf로 바꿈)
@@ -238,6 +238,29 @@ await run('unit-route', [
     // 빈 문제지를 다시 넣으면 그 바로 뒤엔 펼침
     await page.setInputFiles(`${V} #unPaperFile`, PAPER);
     await page.waitForFunction(() => document.querySelector('.unit-box details.un-more').open);
+  }],
+  // [버그] 학생 이름이 적힌 글: [빈 문제지 넣기]는 빈 문제지로 저장해 학생마다 채점 AI로 보내고, [답안 넣기]는 그 글을 답안 AI로 보냄
+  ['학생 이름이 적힌 글: [빈 문제지 넣기]·[답안 넣기]의 글 파일은 넣지 않고, 글자 인식된 학생 문제지 PDF 1쪽은 학생 문제지로(이름이 저장되거나 AI로 가지 않음)', async () => {
+    const NAMED = '수학 3단원 평가\n이름: 김가람\n1. 다음 중 알맞은 것은? ( 3 )\n2. 계산하세요. 12+5 = 17';
+    const stored = () => page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('ssam:')).map(k => localStorage.getItem(k)).join(''));
+    const f0 = full.length;
+    // 답안이 있는 평가(저장됨)의 [빈 문제지 넣기]
+    await page.setInputFiles(`${V} #unPaperFile`, { name: '3반 학생 문제지.txt', mimeType: 'text/plain', buffer: Buffer.from(NAMED) });
+    await waitText('#unPaperMsg', '학생 이름이 적힌 글이라');
+    assert(!(await stored()).includes('김가람'), '빈 문제지로 이름이 저장됨');
+    // [답안 넣기]의 글 파일
+    await page.setInputFiles(`${V} #unKeyFile`, { name: '수학 평가.txt', mimeType: 'text/plain', buffer: Buffer.from(NAMED) });
+    await waitText('#unKeyMsg', '학생 이름이 적힌 글이라 넣지 않았어요');
+    // [답안 넣기]의 글자 인식된 학생 문제지 PDF 1쪽(복사기 「검색 가능 PDF」)
+    const pg = await t.ctx.newPage();
+    await pg.setContent(`<!doctype html><meta charset="utf-8"><style>body{font:18px sans-serif}</style>${NAMED.split('\n').map(l => `<p>${l}</p>`).join('')}`);
+    const pdf = await pg.pdf({ format: 'A4' }); await pg.close();
+    await page.setInputFiles(`${V} #unKeyFile`, { name: '스캔0001.pdf', mimeType: 'application/pdf', buffer: pdf });
+    await waitText('#unKeyMsg', '학생 문제지로 보여서 학생 문제지로 넣었어요');
+    await waitText('#unAnsMsg', '학생 1명');
+    assert(!full.slice(f0).some(p => p.includes('김가람')), '이름이 AI로 감: ' + full.slice(f0).map(p => p.split('\n')[0]).join(','));
+    assert(!(await stored()).includes('김가람'), '이름이 저장됨');
+    assert((await cur()).key.items.length === 10, '답안이 바뀜');
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
