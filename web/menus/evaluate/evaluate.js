@@ -2223,6 +2223,9 @@ function workBusy() {
     if (S.running.size || (S.queue.length && !S.paused)) return true;
     if (typeof HK !== 'undefined' && (HK.running.size || HK.queue.length)) return true;
     if (typeof GR !== 'undefined' && (GR.running.size || ['grading', 'ranking', 'writing'].includes(GR.phase))) return true;
+    // 창체 쓰기·검토, 대명사 줄이기도 AI가 쓰는 중(학년도 옮기기·업데이트로 다시 열면 그 글을 잃음)
+    if (typeof CHE !== 'undefined' && (CHE.running.size || CHE.queue.length || CHE.reviewing)) return true;
+    if (typeof PRON !== 'undefined' && PRON.busy) return true;
   } catch (e) {}
   return false;
 }

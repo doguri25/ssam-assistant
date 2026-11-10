@@ -24,8 +24,10 @@ const DUP2 = '수의 크기를 비교하는 방법을 정확하게 알고 문제
 const DUP1 = '수의 크기를 비교하는 방법을 정확하게 알고 문제를 스스로 해결함.';
 let ccN = 0, ccImgs = 0;
 const grades = [], gradeImgs = [];
+let hold = null; // 창체 요청을 잠깐 붙잡아 둠(쓰는 중)
+const holdOn = () => { let r; hold = { p: new Promise(x => { r = x; }) }; hold.go = () => { const h = hold; hold = null; r(); return h; }; };
 const hkLong = j => `학급 일에 책임감을 가지고 참여하며 ${j}번째로 친구를 돕는 모습이 돋보임. `.repeat(7).trim();
-await mockClaude(page, ({ prompt, images }) => {
+await mockClaude(page, async ({ prompt, images }) => {
   if (prompt.startsWith('[문장 검토]')) return JSON.stringify({ items: [] });
   if (prompt.includes('수행평가를 채점하는')) { grades.push(prompt); gradeImgs.push(images); return JSON.stringify({ score: 80, summary: '바르게 풀었음', evidence: ['풀이가 맞음'], strengths: '꼼꼼함', improve: '검산', unreadable: false }); }
   if (prompt.includes('채점 결과입니다')) return '[]';
@@ -33,6 +35,7 @@ await mockClaude(page, ({ prompt, images }) => {
   if (prompt.includes('행동특성 및 종합의견을')) return [hkLong(1), hkLong(2)].join('\n');
   if (images && prompt.includes('창의적 체험활동 특기사항')) { ccImgs++; return JSON.stringify({ note: `학습지 ${ccImgs}: 교실 정리를 다짐함`, text: `교실을 깨끗하게 하려고 ${ccImgs}가지 방법을 스스로 정해 꾸준히 실천함.`, blank: false }); }
   if (prompt.includes('창의적 체험활동 특기사항')) {
+    if (hold) await hold.p;
     const n = +(prompt.match(/학생 (\d+)명에게/) || [])[1] || 1;
     ccN++;
     return Array.from({ length: n }, (_, j) => `${ccN}차 공통 활동에 즐겁게 참여하며 ${j + 1}번째로 친구를 돕는 태도를 보임.`).join('\n');
@@ -328,6 +331,26 @@ await run('fix1110-evallegacy', [
     const list = await page.textContent('#hkList');
     const h = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:hk')).students.find(s => s.no === 1));
     assert(!list.includes('완료 1 / 5') && h.done === 0 && !h.results.some(r => r.d), '완료가 남음: ' + list.replace(/\s+/g, ' ').slice(0, 60) + ' / ' + JSON.stringify({ done: h.done, d: h.results.map(r => r.d) }));
+  }],
+  // ---------- cc-busy ----------
+  ['[cc-busy] 창체를 쓰는 중이면 평가 메뉴가 「만드는 중」으로 알려 학년도 옮기기·업데이트가 하던 글을 잃지 않게 함', async () => {
+    await page.evaluate(() => {
+      for (const k of Object.keys(localStorage)) if (/^ssam:(cc|class|neis)/.test(k)) localStorage.removeItem(k);
+      localStorage.setItem('ssam:class', JSON.stringify({ count: 2, except: [] }));
+    });
+    await page.goto(url, { timeout: 30000 }); await page.waitForTimeout(500);
+    await goTab('cc');
+    await page.waitForSelector('[data-ccf="name"][data-cck="auto"]');
+    await page.fill('[data-ccf="name"][data-cck="auto"]', '교실 환경 지킴이');
+    assert(!(await page.evaluate(() => window.SSAM.busy())), '쓰기 전인데 만드는 중');
+    holdOn();
+    await page.click('[data-cc="genAll"]');
+    await page.waitForSelector('#ccResults .chip.run');
+    const busy = await page.evaluate(() => window.SSAM.busy());
+    hold.go();
+    await page.waitForFunction(() => document.querySelectorAll('#ccResults [data-cccopy]').length === 2, null, { timeout: 15000 });
+    assert(busy, '창체를 쓰는 중인데 busy()가 false');
+    await until(async () => !(await page.evaluate(() => window.SSAM.busy())), 5000);
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
