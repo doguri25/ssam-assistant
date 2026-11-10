@@ -20,14 +20,15 @@ import { plainFromText, defaultPlain, plainLetterDoc, letterPrompt, normLetter, 
 import { rosterAllowed } from '../../core/student-no.js';
 import { replyOptions, replyPrompt, normReply, flagRows, tally, missingNos, collectTSV, collectDoc, fitAnswers } from './reply-collect.js';
 import { getCurrent, saveCurrent, clearCurrent, listLetters, pushLetter, newLetterId, getFormId, setFormId } from './letter-model.js';
-import { LANGS, LANG_IDS, langInfo, langOf, planTr, pruneUnits, batches, trPrompt, normAnswers, trPairs, missingCount, bilingualLetter } from './letter-translate.js';
+import { LANGS, LANG_IDS, langInfo, langOf, planTr, pruneUnits, mergeTr, batches, trPrompt, normAnswers, trPairs, missingCount, bilingualLetter } from './letter-translate.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const today = () => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
 const baseName = n => String(n || '').replace(/\.[^.]+$/, '').trim() || '양식';
 const ROLE_NAMES = [['title', '제목'], ['bodyStart', '본문 시작'], ['bodyEnd', '본문 끝'], ['date', '날짜'], ['reply', '회신서 시작']];
-/* 화면에만: list(양식 목록), form(고른 양식 { rec, parsed }), busy, adding, mapOpen, mapSel, trLang(번역본 언어), trBusy(번역 중인 언어) */
-export const F = { list: [], form: null, busy: false, adding: 0, mapOpen: false, mapSel: -1, store: null, trLang: '', trBusy: '' };
+/* 화면에만: list(양식 목록), form(고른 양식 { rec, parsed }), busy, adding, mapOpen, mapSel, trLang(번역본 언어), trBusy(번역 중인 언어),
+   trEdits(번역하는 동안 선생님이 친 번역 칸 { x, lang, keys }) */
+export const F = { list: [], form: null, busy: false, adding: 0, mapOpen: false, mapSel: -1, store: null, trLang: '', trBusy: '', trEdits: null };
 let box = null, cur = null;
 const blank = () => ({ id: newLetterId(), sources: [], memo: '', related: [], target: '', out: null, send: { title: '', body: '' }, sendEdited: false, collect: { mask: [], rows: [] }, tr: {} });
 const SS = () => window.SSAM || {};
@@ -216,7 +217,9 @@ function translate(lang, { all = false } = {}) {
   F.trLang = lang;
   if (!x.tr) x.tr = {};
   const old = x.tr[lang], base = all || !old ? {} : old.units, plan = planTr(x.out, base);
-  const done = r => { x.tr[lang] = { units: pruneUnits({ ...(all ? {} : (x.tr[lang] || {}).units), ...r.units }, x.out), at: Date.now() }; save(x, { push: true }); };
+  // 번역하는 동안 선생님이 친 번역 칸(이 글·이 언어)은 새 번역으로 덮지 않음, 처음부터 다시가 중간에 멈추면(partial) 못 한 줄은 전 번역을 남김
+  const edits = (F.trEdits = { x, lang, keys: new Set() });
+  const done = (r, partial = false) => { x.tr[lang] = { units: pruneUnits(mergeTr((x.tr[lang] || {}).units, r.units, { all, partial, edited: [...edits.keys] }), x.out), at: Date.now() }; save(x, { push: true }); };
   if (!plan.jobs.length) {
     done(plan.finish({})); render();
     toast(old && !all ? `저장해 둔 번역본을 열었어요. ${TR_NOTE}` : TR_NOTE, 5000);
@@ -224,28 +227,29 @@ function translate(lang, { all = false } = {}) {
   }
   if (!ai.ready()) { render(); toast('설정 › AI에서 키를 넣어 주세요', 5000); return 'no-ai'; }
   F.trBusy = lang; render();
-  trJob(lang, plan, done);
+  trJob(lang, plan, done, all);
   return 'started';
 }
-async function trJob(lang, plan, done) {
+async function trJob(lang, plan, done, all = false) {
   const ans = {};
   let err = null;
   for (const b of batches(plan.jobs)) {
     try { Object.assign(ans, normAnswers(await ai.generateJSON(trPrompt(b, lang), { task: 'letter', valid: o => !!o && typeof o === 'object' }), b)); }
     catch (e) { err = e; break; }
   }
-  const r = plan.finish(ans);
-  if (Object.keys(r.units).length || !err) done(r);
-  F.trBusy = '';
-  if (err) toast(`${err.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 눌러 주세요.' : ai.errorMessage(err.code, err)}${Object.keys(r.units).length ? ' 번역한 줄은 남겨 두었어요.' : ''}`, 7000);
-  else toast(r.miss ? `${r.miss}줄은 번역하지 못했어요. [번역본 만들기]를 다시 눌러 주세요.` : `${TR_NOTE}${plan.personal ? ` 개인정보가 있는 ${plan.personal}곳은 AI로 보내지 않았어요.` : ''}`, 6000);
+  const r = plan.finish(ans), got = Object.keys(r.units).length;
+  if (got || !err) done(r, !!err || r.miss > 0);
+  F.trBusy = ''; F.trEdits = null;
+  if (err) toast(`${err.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 눌러 주세요.' : ai.errorMessage(err.code, err)}${all ? ' 다시 번역하지 못한 줄은 전 번역을 남겨 두었어요.' : got ? ' 번역한 줄은 남겨 두었어요.' : ''}`, 7000);
+  else toast(r.miss ? `${r.miss}줄은 ${all ? '다시 번역하지 못했어요(전 번역이 있던 줄은 남겨 두었어요).' : '번역하지 못했어요.'} [번역본 만들기]를 다시 눌러 주세요.` : `${TR_NOTE}${plan.personal ? ` 개인정보가 있는 ${plan.personal}곳은 AI로 보내지 않았어요.` : ''}`, 6000);
   live();
 }
 async function trDownload() {
   const x = c(), lang = trLangOf(x), e = x.tr && x.tr[lang], L = langInfo(lang);
   if (!x.out || !e) return;
   const bi = bilingualLetter(x.out, e.units, lang, { date: x.out.date || today() });
-  await saveLetter(bi, fileBase(`${x.out.title || '가정통신문'} (${L.name})`), bi.missing ? ` · 번역이 없는 ${bi.missing}줄은 한국어만 넣었어요` : '');
+  const more = [bi.missing ? `번역이 없는 ${bi.missing}줄은 한국어만 넣었어요` : '', bi.held ? `개인정보가 있어 번역하지 않은 ${bi.held}줄은 한국어만 넣었어요(필요하면 직접 번역해 주세요)` : ''];
+  await saveLetter(bi, fileBase(`${x.out.title || '가정통신문'} (${L.name})`), more.filter(Boolean).map(m => ` · ${m}`).join(''));
 }
 /* 다른 메뉴(쌤 채팅 등)에서: 가정통신문 탭으로 가서 그 언어(vi·zh·ru·en, '베트남어'도) 번역을 시작. 쓴 글이 없으면 먼저 쓰라고 알림.
    → 'started'(AI 번역 시작) | 'saved'(저장해 둔 번역본을 엶) | 'busy'(번역 중) | 'writing'(글을 쓰는 중) | 'empty'(쓴 글 없음) | 'no-ai' | 'no-lang'(모르는 언어) */
@@ -621,9 +625,10 @@ document.addEventListener('input', e => {
   if (!x.out) return;
   if (el.dataset.ltKo != null) {
     // 번역 고치기: 그 원문 글의 번역(같은 글이 또 있으면 그 칸도), 비우면 번역 없음(다시 번역할 수 있게)
-    const ent = x.tr && x.tr[trLangOf(x)], ko = el.dataset.ltKo;
+    const ent = x.tr && x.tr[trLangOf(x)], ko = el.dataset.ltKo, ed = F.trEdits;
     if (!ent) return;
     if (el.value.trim()) ent.units[ko] = el.value; else delete ent.units[ko];
+    if (ed && ed.x === x && ed.lang === trLangOf(x)) ed.keys.add(ko); // 번역하는 동안 친 칸은 새 번역으로 덮지 않음
     box.querySelectorAll('[data-lt-ko]').forEach(t => { if (t !== el && t.dataset.ltKo === ko) t.value = el.value; });
     save(x, { push: true }); return;
   }

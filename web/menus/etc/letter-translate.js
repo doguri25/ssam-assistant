@@ -139,6 +139,15 @@ export function planTr(out, units = {}) {
     return { units: got, miss };
   } };
 }
+/* 번역을 마칠 때 저장할 번역: now(지금 저장해 둔 것 — 번역하는 동안 선생님이 고친 것 포함)와 got(새 번역).
+   없는 줄만 번역은 now에 got을 더하고, 처음부터 다시(all)는 got으로 바꾸되 중간에 멈췄거나 빠진 줄이 있으면(partial) 다시 번역하지 못한 줄은 now를 남김.
+   번역하는 동안 선생님이 고친 줄(edited)은 now에 있으면 got으로 덮지 않음(고치다 비운 줄은 got) */
+export function mergeTr(now, got, { all = false, partial = false, edited = [] } = {}) {
+  const n = isObj(now) ? now : {}, keep = new Set(edited);
+  const out = !all || partial ? { ...n } : Object.fromEntries(Object.entries(n).filter(([k]) => keep.has(k)));
+  for (const [k, v] of Object.entries(got || {})) if (!(keep.has(k) && own(n, k))) out[k] = v;
+  return out;
+}
 /* 지금 원문에 없는 글의 번역은 버림(원문을 고치면 옛 줄 번역이 쌓이지 않게) */
 export function pruneUnits(units, out) {
   const keep = new Set(trSources(out));
@@ -195,14 +204,18 @@ export function trPairs(out, units = {}) {
     reply: o.replyOn && o.reply ? { title: one(o.reply.title || '회신서'), fields: (o.reply.fields || []).map(one), due: one(o.reply.due) } : null,
     short: one(o.short) };
 }
+const pairsOf = p => [p.title, ...p.body, ...(p.reply ? [p.reply.title, ...p.reply.fields, p.reply.due] : []), p.short];
 /* 번역이 없는 글 수(원문을 고쳤거나 못 한 것, 같은 글은 한 번) */
 export function missingCount(p) {
-  const all = [p.title, ...p.body, ...(p.reply ? [p.reply.title, ...p.reply.fields, p.reply.due] : []), p.short];
-  return new Set(all.filter(x => x.ko.trim() && x.tr == null).map(x => x.ko)).size;
+  return new Set(pairsOf(p).filter(x => x.ko.trim() && x.tr == null).map(x => x.ko)).size;
+}
+/* 번역이 한국어 그대로인 글 수(개인정보가 있어 AI로 보내지 않은 줄 — 문서에는 한국어만 들어감, 같은 글은 한 번) */
+export function heldCount(p) {
+  return new Set(pairsOf(p).filter(x => x.ko.trim() && !x.fixed && x.tr != null && x.tr === x.ko).map(x => x.ko)).size;
 }
 const trOf = x => (x && x.tr != null && x.tr.trim() && x.tr !== x.ko ? x.tr : '');
 /* 원문과 나란히: 제목(한국어 + 번역), 본문 줄마다 한국어 뒤에 번역(같은 줄 머리), 표는 한국어 표 뒤에 번역 표, 회신서 칸은 「한국어\n번역」.
-   → fillForm(학교 양식)·plainLetterDoc(기본 양식)에 넣는 글 { title, subTitle, date, body, reply, missing } */
+   → fillForm(학교 양식)·plainLetterDoc(기본 양식)에 넣는 글 { title, subTitle, date, body, reply, missing(번역 없는 줄), held(개인정보라 한국어만인 줄) } */
 export function bilingualLetter(out, units, lang, { date = '' } = {}) {
   const o = out || {}, L = langInfo(lang) || LANGS[0], p = trPairs(o, units);
   const body = [];
@@ -234,5 +247,5 @@ export function bilingualLetter(out, units, lang, { date = '' } = {}) {
       due: [p.reply.due.ko, oneLine(trOf(p.reply.due))].filter(s => s.trim()),
       sign: `${d.slice(0, 4) || new Date().getFullYear()} .     .     .        보호자(${L.parent}) :              (서명 / ${L.sign})` };
   }
-  return { title: p.title.ko, subTitle: oneLine(trOf(p.title)), date: d, body, reply, missing: missingCount(p) };
+  return { title: p.title.ko, subTitle: oneLine(trOf(p.title)), date: d, body, reply, missing: missingCount(p), held: heldCount(p) };
 }
