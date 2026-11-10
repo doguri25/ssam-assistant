@@ -7,7 +7,8 @@ import { findItems } from '../../core/sheet.js';
 import { readText } from '../../core/files.js';
 import { nameCell, MASK, maskContacts } from '../../core/privacy.js';
 
-const UNITS = '박스|상자|개|권|자루|세트|장|통|묶음|팩|병|봉|EA|ea|Ea|명|시간|식|건|매|롤|켤레|대|부|kg|g|L|ml|m|판|타|다스|캔|포|입';
+// 세는 말: 없는 말(「체육복 30벌」「간식 420인분」)은 수량 1로 읽혀 합계가 크게 줄었음. 「회·일·단」은 날짜·차례(「제3회」「12일」)와 헷갈려 넣지 않음
+const UNITS = '박스|상자|개|권|자루|세트|장|통|묶음|팩|병|봉|봉지|EA|ea|Ea|명|인분|시간|차시|식|건|매|롤|켤레|벌|쌍|대|부|kg|g|L|ml|m|판|타|다스|캔|포|입|갑|곽|송이|다발|그루|마리|포기|줄|잔';
 const QTY = new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(${UNITS})(?![가-힣A-Za-z])`, 'g');
 const blank = v => String(v == null ? '' : v).trim() === '';
 const money = (n, man) => Math.round(Number(String(n).replace(/,/g, '')) * (man ? 10000 : 1));
