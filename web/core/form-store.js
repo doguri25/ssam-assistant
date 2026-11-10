@@ -1,5 +1,6 @@
 /* 학교 양식 저장 (스펙 2026-11-03 가정통신문 3.5): IndexedDB 「ssam-forms」(학년도와 상관없음 — 다음 해에도 씀).
-   양식 = { id, name, kind: 'hwpx'|'plain', bytes(hwpx, 5MB까지), plain, roles, savedAt }. 저장소를 못 쓰면 이 화면에서만(메모리) */
+   양식 = { id, name, kind: 'hwpx'|'plain', bytes(hwpx, 5MB까지), plain, roles, savedAt }. 저장소를 못 쓰면 이 화면에서만(메모리).
+   forms(ns): 다른 문서 양식은 따로 둠(「handover」 → 「ssam-forms-handover」, 기타 › 인수인계서). 이름 없으면 가정통신문·결과 보고가 같이 쓰는 「ssam-forms」 */
 const DB = 'ssam-forms', STORE = 'forms';
 export const MAX_FORM = 5 * 1024 * 1024;
 export const newFormId = () => 'fm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -14,10 +15,11 @@ export function memForms() {
   };
 }
 
-export function openForms() {
+export const dbName = (ns = '') => (ns ? `${DB}-${String(ns).replace(/[^\w-]/g, '')}` : DB);
+export function openForms(name = DB) {
   let dbp = null;
   const db = () => dbp || (dbp = new Promise((ok, no) => {
-    const r = indexedDB.open(DB, 1);
+    const r = indexedDB.open(name, 1);
     r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains(STORE)) r.result.createObjectStore(STORE, { keyPath: 'id' }); };
     r.onsuccess = () => ok(r.result);
     r.onerror = () => { dbp = null; no(r.error); };
@@ -39,11 +41,14 @@ export function openForms() {
   };
 }
 
-/* 저장소를 쓸 수 있으면 IndexedDB, 아니면 메모리(알림은 부르는 쪽에서) */
-let shared = null;
-export async function forms() {
-  if (shared) return shared;
-  try { if (typeof indexedDB === 'undefined') throw new Error('no idb'); const f = openForms(); await f.list(); shared = f; shared.persistent = true; }
-  catch (e) { shared = memForms(); shared.persistent = false; }
-  return shared;
+/* 저장소를 쓸 수 있으면 IndexedDB, 아니면 메모리(알림은 부르는 쪽에서). 이름(ns)마다 하나 */
+const shared = new Map();
+async function make(ns) {
+  try { if (typeof indexedDB === 'undefined') throw new Error('no idb'); const f = openForms(dbName(ns)); await f.list(); f.persistent = true; return f; }
+  catch (e) { const m = memForms(); m.persistent = false; return m; }
+}
+export function forms(ns = '') {
+  const k = dbName(ns);
+  if (!shared.has(k)) shared.set(k, make(ns));
+  return shared.get(k);
 }

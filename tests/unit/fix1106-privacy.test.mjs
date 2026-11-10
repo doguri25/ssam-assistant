@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import * as store from '../../web/core/store.js';
 import { maskContacts, maskStaff, maskJosaNames, stripNames } from '../../web/core/privacy.js';
 import { guard, planTr } from '../../web/menus/etc/letter-translate.js';
-import { cleanText, collectHandover, lecturerNames } from '../../web/menus/settings/handover-model.js';
+import { cleanText, collectHandover, lecturerNames } from '../../web/menus/etc/handover-model.js';
 import { pushRecent } from '../../web/menus/purchase/library.js';
 
 function mem() {

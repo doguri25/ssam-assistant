@@ -399,9 +399,9 @@ async function run(intent, p = {}) {
     afterGo(); return;
   }
   if (intent === 'handover') {
-    const fn = await optional('../menus/settings/handover.js', 'openHandover');
-    if (fn) { Promise.resolve().then(() => fn()).catch(() => {}); say('업무 인수인계서를 열었어요.'); }
-    else { go('settings', 'years'); say('업무 인수인계서는 아직 준비 중이에요. 설정 › 학년도로 왔어요.'); }
+    const fn = await optional('../menus/etc/handover.js', 'openHandover');
+    if (fn) { Promise.resolve().then(() => fn()).catch(() => {}); say('기타 › 인수인계서를 열었어요. 넣을 것과 몇 쪽으로 할지 골라 주세요.'); }
+    else { go('etc', 'handover'); say('기타 › 인수인계서로 왔어요.'); }
     afterGo(); return;
   }
   if (intent === 'briefing') { await refreshBrief(); say(brief && brief.length ? `오늘 할 일 ${brief.length}개를 맨 위에 모았어요. 누르면 그 화면으로 가요.` : EMPTY); if (logEl) logEl.scrollTop = 0; return; }

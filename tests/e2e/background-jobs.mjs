@@ -367,28 +367,26 @@ await run('background-jobs', [
     assert((await page.textContent(`${E} #gmLists`)).includes('참가 학생 조사'), '할 일이 안 보임');
     delay = 0;
   }],
-  ['인수인계서 [AI로 정리]: 창을 닫고 다른 메뉴에 갔다 와서 다시 열어도 「정리하는 중」, 끝나면 정리한 글(고쳐도 남음)', async () => {
-    await goTo('settings', 'years');
-    await page.click('section[data-menu="settings"] [data-set="handover"]');
-    await page.waitForSelector('#sheetRoot .ho-sheet #hoAi');
+  ['인수인계서 [AI로 정리]: 다른 탭·메뉴에 갔다 와서 다시 들어와도 「정리하는 중」, 끝나면 정리한 글(고쳐도 남음)', async () => {
+    const H = 'section[data-menu="etc"] .ho-box';
+    await goTo('etc', 'handover');
+    await page.waitForSelector(`${H} #hoAi`);
     delay = 1500;
-    await page.click('#sheetRoot #hoAi');
+    await page.click(`${H} #hoAi`);
     await until(() => n('handover') >= 1, 4000, '정리 시작');
-    await page.click('#sheetRoot .ho-sheet [data-close]');
     await goTo('etc', 'gongmun');
-    assert(await dots() === 'settings', '세로 메뉴 「설정」에 점이 없음: ' + await dots());
-    await goTo('settings', 'years');
-    await page.click('section[data-menu="settings"] [data-set="handover"]');
-    await page.waitForSelector('#sheetRoot .ho-sheet #hoAi');
-    assert(await page.isDisabled('#sheetRoot #hoAi') && (await page.textContent('#sheetRoot #hoAi')).includes('정리하는 중'), '다시 연 창에 「정리하는 중」이 없음');
+    await goTo('purchase');
+    assert(await dots() === 'etc', '세로 메뉴 「기타」에 점이 없음: ' + await dots());
+    await goTo('etc', 'handover');
+    await page.waitForSelector(`${H} #hoAi`);
+    assert(await page.isDisabled(`${H} #hoAi`) && (await page.textContent(`${H} #hoAi`)).includes('정리하는 중'), '다시 들어온 탭에 「정리하는 중」이 없음');
     await until(() => waiting === 0, 8000, '정리');
-    await page.waitForFunction(() => (document.querySelector('#sheetRoot #hoNote') || {}).value?.includes('과학 교육 계획부터'), null, { timeout: 3000 });
-    assert(!(await page.isDisabled('#sheetRoot #hoAi')), '끝났는데 단추가 막힘');
-    // 다시 연 창에서 고르기를 바꿔도 정리한 글이 옛 글로 덮이지 않음
-    await page.locator('#sheetRoot [data-ho-pick]').first().click();
-    const saved = await page.evaluate(async () => (await import('./menus/settings/handover-model.js')).getSaved().note);
+    await page.waitForFunction(() => (document.querySelector('.ho-box #hoNote') || {}).value?.includes('과학 교육 계획부터'), null, { timeout: 3000 });
+    assert(!(await page.isDisabled(`${H} #hoAi`)), '끝났는데 단추가 막힘');
+    // 다시 들어온 탭에서 고르기를 바꿔도 정리한 글이 옛 글로 덮이지 않음
+    await page.locator(`${H} [data-ho-pick]`).first().click();
+    const saved = await page.evaluate(async () => (await import('./menus/etc/handover-model.js')).getSaved().note);
     assert(saved.includes('과학 교육 계획부터'), '정리한 글이 덮임: ' + saved);
-    await page.click('#sheetRoot .ho-sheet [data-close]');
     delay = 0;
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
