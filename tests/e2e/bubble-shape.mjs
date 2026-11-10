@@ -23,11 +23,14 @@ const inside = (s, what) => {
 };
 
 await run('바탕화면 버튼 창 모양', [
-  ['72×72: 그대로 둥글게', async () => {
-    const s = await shape(72, 72);
-    inside(s, '72×72');
-    assert(s.w >= 56, `알맞은 크기 (${s.w})`);
+  ['116×116(버튼 창, 예전 72의 1.6배): 원 지름 약 93px(예전 58의 1.6배), 배지도 창 안', async () => {
+    const s = await shape(116, 116);
+    inside(s, '116×116');
+    assert(s.w >= 90 && s.w <= 96, `원 크기 (${s.w})`);
+    const b = await page.evaluate(() => { const r = document.querySelector('#bubble .badge').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, r: r.right, t: r.top }; });
+    assert(b.w >= 28 && b.r <= 116 && b.t >= 0, `배지 (${JSON.stringify(b)})`);
   }],
+  ['72×72: 그대로 둥글게', async () => inside(await shape(72, 72), '72×72')],
   ['136×72(Windows가 넓힌 창): 반원으로 잘리지 않음', async () => inside(await shape(136, 72), '136×72')],
   ['108×72·72×41·122×38(배율·제목 줄 높이로 바뀐 창): 잘리지 않음', async () => {
     for (const [w, h] of [[108, 72], [72, 41], [122, 38]]) inside(await shape(w, h), `${w}×${h}`);

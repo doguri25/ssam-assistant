@@ -2,6 +2,7 @@
    누르면 쌤비서 창과 채팅 열기(스펙 2026-11-06 D), 끌면 옮기기(위치는 쌤비서와 같은 저장소의 bubble에), 오른쪽 클릭 메뉴 */
 import { get, set } from './core/store.js';
 import { MARK } from './core/ssam-mark.js';
+import { placeBubble } from './bubble-place.js';
 
 const T = window.__TAURI__;
 const el = document.getElementById('bubble');
@@ -20,15 +21,12 @@ function start() {
   const win = T.window.getCurrentWindow();
   const KEY = 'bubble';
 
-  // 위치: 지난 자리(모니터 안일 때만), 없으면 첫 모니터 오른쪽 아래
+  // 위치: 지난 자리(그 모니터 안으로 당김 — 버튼이 커져도 화면 밖으로 나가지 않게), 없으면 지금 모니터 오른쪽 아래(bubble-place.js)
   (async () => {
-    let pos = get(KEY, null);
     const mons = (await T.window.availableMonitors().catch(() => [])) || [];
-    const inside = p => p && mons.some(m => p.x >= m.position.x && p.y >= m.position.y && p.x < m.position.x + m.size.width - 40 && p.y < m.position.y + m.size.height - 40);
-    if (!inside(pos)) {
-      const m = (await T.window.currentMonitor().catch(() => null)) || mons[0];
-      pos = m ? { x: m.position.x + m.size.width - 140, y: m.position.y + m.size.height - 200 } : null;
-    }
+    const cur = await T.window.currentMonitor().catch(() => null);
+    const size = win.outerSize ? await win.outerSize().catch(() => null) : null;
+    const pos = placeBubble(get(KEY, null), mons, size, cur);
     if (pos) win.setPosition(new T.dpi.PhysicalPosition(pos.x, pos.y)).catch(() => {});
     win.onMoved(({ payload }) => { set(KEY, { x: payload.x, y: payload.y }); }).catch(() => {});
   })();

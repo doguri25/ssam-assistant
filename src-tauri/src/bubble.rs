@@ -12,9 +12,9 @@ pub const MAX_BYTES: u64 = 60 * 1024 * 1024;
 /// Windows는 제목 줄 스타일이 붙은 창을 가장 작은 끌기 너비(SM_CXMINTRACK)보다 좁게 만들지 않아, 창을 만들 때(아직 창 설정의
 /// 최소 크기를 쓰기 전) 버튼 창이 가로로 넓어짐 → 창 설정에 작은 최소 크기(minWidth·minHeight)를 두고 만든 뒤·보인 뒤 이 크기로 다시 맞춤
 /// (배율이 다른 모니터로 옮기면 tao가 논리 크기를 지켜 다시 맞추고, 작은 최소 크기라 넓어지지 않음)
-pub const SIZE: f64 = 72.0;
+pub const SIZE: f64 = 116.0;
 
-/// 버튼 창을 SIZE×SIZE로 (넓어진 창의 투명한 빈자리가 눌리거나 원이 작아지지 않게)
+/// 버튼 창을 SIZE×SIZE로(web/bubble-place.js SIZE와 같게) (넓어진 창의 투명한 빈자리가 눌리거나 원이 작아지지 않게)
 pub fn fit(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("bubble") {
         let _ = w.set_size(tauri::LogicalSize::new(SIZE, SIZE));
@@ -299,6 +299,8 @@ mod tests {
         assert_eq!(w["height"].as_f64(), Some(SIZE));
         let (mw, mh) = (w["minWidth"].as_f64().unwrap(), w["minHeight"].as_f64().unwrap());
         assert!(mw <= SIZE && mh <= SIZE, "최소 크기가 버튼 크기보다 작아야 함");
+        // 처음 자리를 셈하는 화면 쪽(web/bubble-place.js)도 같은 크기
+        assert!(include_str!("../../web/bubble-place.js").contains(&format!("SIZE = {};", SIZE as i64)));
     }
 
     #[test]

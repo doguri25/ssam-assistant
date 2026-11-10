@@ -1,9 +1,9 @@
 /* 바탕화면 위 버튼 창(Windows 앱): 창은 투명, 가운데 손그림 「쌤」(core/ssam-mark.js — 쌤비서 창 안 버튼과 같은 그림, 쌤비서 화면 테마 색)과 「놓기」 배지.
    파일을 끌어 오면 초록으로 커지고 물결 테 */
 html,body{margin:0;width:100%;height:100%;background:transparent !important;overflow:hidden;user-select:none}
-/* 원은 창의 짧은 변에 맞춘 정사각형을 가운데에: Windows가 작은 창을 넓히거나(제목 줄 스타일 창의 가장 작은 너비) 낮춰도
+/* 원은 창의 짧은 변의 80%(116px 창이면 약 93px — 예전 72px 창 58px의 1.6배) 정사각형을 가운데에, 배지·테도 원 크기에 맞춤: Windows가 작은 창을 넓히거나(제목 줄 스타일 창의 가장 작은 너비) 낮춰도
    그림이 창 밖으로 나가 반원으로 잘리지 않게. 그림 칸은 % 높이(버튼 안 grid에서는 안 따라옴) 대신 버튼에 딱 붙임 */
-#bubble{--s:calc(min(100vw,100vh) - 14px);position:absolute;inset:0;margin:auto;width:var(--s);height:var(--s);padding:0;border:0;border-radius:50%;cursor:grab;display:block;background:transparent;
+#bubble{--s:calc(min(100vw,100vh) * .8);position:absolute;inset:0;margin:auto;width:var(--s);height:var(--s);padding:0;border:0;border-radius:50%;cursor:grab;display:block;background:transparent;
   transition:transform .16s cubic-bezier(.2,.8,.3,1.2)}
 #bubble .mark{position:absolute;inset:0;display:block;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}
 .ssam-mark{display:block;width:100%;height:100%;overflow:visible}
@@ -14,10 +14,10 @@ html[data-theme="mono"] .ssam-mark .sm-line{stroke:#9ca3af}
 .ssam-mark .sm-t{fill:var(--on-accent,#fff);stroke:var(--on-accent,#fff);stroke-width:.6;stroke-linejoin:round}
 #bubble:active{cursor:grabbing;transform:scale(.95)}
 #bubble:hover{transform:scale(1.05)}
-#bubble .badge{position:absolute;right:-3px;top:-3px;width:19px;height:19px;border-radius:50%;display:grid;place-items:center;
+#bubble .badge{position:absolute;right:calc(var(--s) * -.05);top:calc(var(--s) * -.05);width:calc(var(--s) * .33);height:calc(var(--s) * .33);border-radius:50%;display:grid;place-items:center;
   background:#fff;color:var(--accent,#4f46e5);box-shadow:0 1px 3px rgba(0,0,0,.35)}
-#bubble .badge svg{width:11px;height:11px;stroke:currentColor;stroke-width:2.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
-#bubble::after{content:"";position:absolute;inset:-5px;border-radius:50%;border:2px solid #22c55e;opacity:0;pointer-events:none}
+#bubble .badge svg{width:58%;height:58%;stroke:currentColor;stroke-width:2.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+#bubble::after{content:"";position:absolute;inset:calc(var(--s) * -.08);border-radius:50%;border:2px solid #22c55e;opacity:0;pointer-events:none}
 #bubble.over{transform:scale(1.08)}
 #bubble.over .sm-fill{fill:#16a34a}
 #bubble.over .sm-line{stroke:#15803d}
