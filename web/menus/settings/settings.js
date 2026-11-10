@@ -6,6 +6,7 @@ import * as ai from '../../core/ai.js';
 import { readTable } from '../../core/sheet.js';
 import { parseRoster } from '../../core/roster.js';
 import { saveFile } from '../../core/ui.js';
+import { keepFiles } from '../../core/keep-files.js';
 import { getYears, snapshot, carryOver, makeBackup, parseBackup, prepYear } from '../../core/years.js';
 import { switchYear, switchError, getArchive, safeLS } from '../../core/year-switch.js';
 import { FULL_MSG, usage, get as sget, set as sset } from '../../core/store.js';
@@ -157,7 +158,7 @@ function render(tab, section) {
   curTab = tab;
   if (entering) loadYears();
   if (!box || !section.contains(box)) { box = document.createElement('div'); box.className = 'set-box'; section.prepend(box); }
-  box.innerHTML = (VIEWS[tab] || VIEWS.roster)();
+  keepFiles(box, () => { box.innerHTML = (VIEWS[tab] || VIEWS.roster)(); }); // 파일 고르기 창이 열린 채 다시 그려도 고른 파일이 들어가게(core/keep-files.js, 명단·백업 파일)
 }
 const again = () => box && render(curTab, box.parentElement);
 

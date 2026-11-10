@@ -1,10 +1,13 @@
 /* 평가지 채점(기존 화면 evaluate.js)의 「한꺼번에 넣기」: 칸 그리기와 나누기·확인 카드를 붙여 줌 (활동지 스펙 3.2) */
 import { readBundle, openBundleCard, needsCard, bundleBoxHTML, onBundle, bundleMsg, maskNameFields, memoRows, memoForAI } from '../../core/bundle.js';
 import { toast } from '../../core/ui.js';
+import { keepFiles } from '../../core/keep-files.js';
 import '../../core/eval-refs.js';
 
 const SS = () => window.SSAM || {};
 SS().bundleBoxHTML = bundleBoxHTML;
+// 설정 칸을 다시 그려도 「한꺼번에 넣기」 파일 칸은 그대로(evaluate.js가 씀)
+SS().keepFiles = keepFiles;
 // 행특 메모 한꺼번에 넣기·AI로 보내는 메모의 이름 칸 빼기(evaluate.js가 씀)
 SS().memoNames = { rows: memoRows, forAI: memoForAI };
 onBundle('gr', async files => {

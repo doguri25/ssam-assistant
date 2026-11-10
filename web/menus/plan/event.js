@@ -11,6 +11,7 @@ import { toast, copyText, saveFile } from '../../core/ui.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
 import { openPurchase } from '../purchase/purchase.js';
 import { stepsHTML } from '../../core/steps.js';
+import { keepFiles } from '../../core/keep-files.js';
 import { rvBoxHTML, runPlanReview, onRvClick, markDone, dropOpen, hasOpen, clearState } from './plan-review.js';
 import { listEvents as listCalendar, setEvents, removeEvents, dayIssues, suggestDates, weekday, isDate } from '../../core/calendar.js';
 import { summarize, formText, stripPersonal, readStripped, personalMsg } from '../../core/survey.js';
@@ -97,7 +98,7 @@ const calCtx = () => ({ breaks: getSchool().breaks, events: listCalendar(), sour
 
 /* ---------- 그리기 ---------- */
 function render() {
-  box.innerHTML = `<div class="m-page yp-page ev-page">
+  const html = `<div class="m-page yp-page ev-page">
     <div class="m-head"><h2>행사계획</h2><p class="muted">행사 정보를 넣으면 구성안 2~3개, 계획서·역할 분담표·안전 점검표·가정통신문, 설문과 결과 보고서까지 만들어요.</p></div>
     <div class="yp-grid">
       <aside class="yp-side" aria-labelledby="evListH">
@@ -109,8 +110,7 @@ function render() {
     <input type="file" id="evFile" accept=".csv,.xlsx,.hwp,.hwpx,.pdf,.txt" hidden>
     <input type="file" id="evRefFile" accept=".hwp,.hwpx,.pdf,.csv,.xlsx,.txt" multiple hidden>
   </div>`;
-  renderList();
-  renderMain();
+  keepFiles(box, () => { box.innerHTML = html; renderList(); renderMain(); }); // 파일 고르기 창이 열린 채 다시 그려도 고른 파일이 들어가게(core/keep-files.js, 4단계 CSV 칸도)
 }
 
 /* 목록이 그대로면 다시 그리지 않음 (저장할 때마다 단추를 바꾸면 누르는 중인 단추가 사라짐) */
@@ -130,12 +130,13 @@ function renderMain() {
   if (!main) return;
   const s = ev.step;
   const body = s === 1 ? step1() : s === 2 ? step2() : s === 3 ? step3() : step4();
-  main.innerHTML = stepsHTML(STEPS, s, ev.maxStep)
+  const html = stepsHTML(STEPS, s, ev.maxStep)
     + (s === 2 || s === 3 ? aiRowHTML('plan') : '')
     + (errs[ev.id] ? `<div class="banner err" role="alert"><span class="grow">${esc(errs[ev.id])}</span></div>` : '')
     + body
     + `<div class="row yp-nav">${s > 1 ? '<button class="btn" type="button" data-e="prev">이전</button>' : ''}<span class="grow"></span>${s < 4 ? '<button class="btn primary" type="button" data-e="next">다음</button>' : ''}</div>`
     + (saved ? `<div class="row yp-del"><button class="btn text yp-danger" type="button" data-e="delete">이 행사 지우기</button></div>` : '');
+  keepFiles(main, () => { main.innerHTML = html; }); // 결과 CSV 칸(evCsv)도 그대로
 }
 
 function dateWarnHTML() {

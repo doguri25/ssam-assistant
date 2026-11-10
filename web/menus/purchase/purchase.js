@@ -4,6 +4,7 @@ import { onEnter, go } from '../../core/shell.js';
 import { get, set } from '../../core/store.js';
 import * as ai from '../../core/ai.js';
 import { copyText, toast } from '../../core/ui.js';
+import { keepFiles } from '../../core/keep-files.js';
 import { getPurchaseLimit, getMeetCap, getPurchaseFlow } from '../../core/settings.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
 import { TYPES, emptyForm, emptyItem, itemAmount, cleanItems, sumItems, checkPurchase, itemsTSV, purchaseQueueItems, composeReason, reasonTail, purchaseDoc, toNumber, findPersonal,
@@ -170,7 +171,7 @@ function render() {
   // 넣기 칸에 쓰던 글, 쓰던 칸의 초점·커서는 다시 그려도 그대로(AI가 초안을 쓰거나 캡처를 읽는 동안 친 글)
   const ta0 = box.querySelector('#pcIntake'), intake = ta0 ? ta0.value : '', typing = focusOf();
   const t = typeOf(st.form.type), ex = t.example;
-  box.innerHTML = `<div class="m-page pc-page">
+  const html = `<div class="m-page pc-page">
     <div class="m-head m-head-row"><div><h2>새 품의</h2><p class="muted">사려는 것·견적서를 넣고 [초안 만들기]를 누르면 에듀파인에 붙여넣을 제목·품의 사유·산출 내역을 써요.</p></div>
       <div class="m-head-act">${aiRowHTML('purchase')}</div></div>
     <div class="pc-type-row"><div class="seg pc-types" role="radiogroup" aria-label="품의 종류">${TYPES.map(x => `<button type="button" role="radio" data-pctype="${x.id}" aria-pressed="${x.id === t.id}" aria-checked="${x.id === t.id}">${x.label}</button>`).join('')}</div>
@@ -213,6 +214,7 @@ function render() {
       <section class="pc-card pc-draft" id="pcDraftCard" aria-labelledby="pcDraftH"></section>
     </div>
   </div>`;
+  keepFiles(box, () => { box.innerHTML = html; }); // 파일 고르기 창이 열린 채 다시 그려도 고른 파일이 들어가게(core/keep-files.js)
   renderDraft();
   syncReason();
   if (tried) markBad(checks());

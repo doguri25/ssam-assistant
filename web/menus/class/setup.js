@@ -4,6 +4,7 @@ import { onEnter, go } from '../../core/shell.js';
 import { registerInbox } from '../../core/inbox.js';
 import { getYears, prepYear, currentYear } from '../../core/years.js';
 import { toast } from '../../core/ui.js';
+import { keepFiles } from '../../core/keep-files.js';
 import * as ai from '../../core/ai.js';
 import { readText, fileMessage } from '../../core/files.js';
 import { getSchool } from '../../core/settings.js';
@@ -65,7 +66,7 @@ function render() {
   if (!box) return;
   stale = false;
   const info = getInfo(), tt = getTimetable(), subs = listSubjects(), ctx = makeCtx();
-  box.innerHTML = `<div class="m-page cls-page cls-setup-page">
+  const html = `<div class="m-page cls-page cls-setup-page">
     <div class="m-head"><h2 class="cls-h2">준비</h2><p class="muted">학급, 시간표, 교과 진도표를 넣어요. 학교에서 받은 한글 파일을 그대로 올려도 돼요.</p></div>
     ${prepNote()}
     <div class="yp-card">
@@ -96,6 +97,7 @@ function render() {
       <input type="file" id="clsJindoFile" accept=".hwp,.hwpx,.pdf,.csv,.xlsx,.txt" hidden>
     </div>
   </div>`;
+  keepFiles(box, () => { box.innerHTML = html; }); // 파일 고르기 창이 열린 채 다시 그려도 고른 파일이 들어가게(core/keep-files.js)
 }
 
 function ttMsgHTML() {
