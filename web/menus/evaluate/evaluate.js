@@ -1146,10 +1146,14 @@ function roleAI(use, task, role) {
 /* 글쓰기 원칙(core/write-style.js — 번역투·AI 단골 표현 빼기): 글을 쓰는 업무는 요청 끝에 원칙을 붙이고, 답의 이중 피동 등은 고침.
    style: 다른 업무의 AI로 글을 쓸 때 원칙을 고르는 업무(평가지 채점 평어는 채점 AI로 쓰고 원칙은 평어 것) */
 async function generate(prompt, opts = {}) {
-  const st = window.SSAM_STYLE, k = opts && (opts.style || opts.task), w = !!(st && k && st.WRITE_TASKS.includes(k));
-  const r = await generateRaw(w ? st.withStyle(prompt, k) : prompt, opts);
-  if (w && r && typeof r.text === 'string') r.text = st.tidyKo(r.text);
-  return r;
+  // 쌤비서 창 틀(core/shell.js): 다른 메뉴로 옮겨도 이 메뉴에서 AI가 일하는 중이면 세로 메뉴 버튼에 점
+  const busy = typeof window.SSAM_WORK === 'function' ? window.SSAM_WORK(opts && opts.task) : null;
+  try {
+    const st = window.SSAM_STYLE, k = opts && (opts.style || opts.task), w = !!(st && k && st.WRITE_TASKS.includes(k));
+    const r = await generateRaw(w ? st.withStyle(prompt, k) : prompt, opts);
+    if (w && r && typeof r.text === 'string') r.text = st.tidyKo(r.text);
+    return r;
+  } finally { if (busy) busy(); }
 }
 async function generateRaw(prompt, { onText, signal, fresh, images, careful, use, task, role, shared, meter } = {}) {
   const pickd = E.engine === 'account' ? null : roleAI(use, task, role);

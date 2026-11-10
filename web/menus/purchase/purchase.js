@@ -184,7 +184,7 @@ function render() {
           <textarea class="field" id="pcIntake" rows="4" placeholder="예) 3학년 과학 실험 알코올램프 10개 5,000원, 다음 주 화요일 과학실&#10;엑셀·견적서 파일, 장바구니 캡처도 붙여넣거나 끌어 놓으면 돼요"></textarea>
           <div class="row"><button class="btn primary" type="button" data-pc="go" ${busy ? 'disabled' : ''}>${busy ? '<span class="spin"></span>쓰는 중…' : '초안 만들기'}</button>
             <button class="btn text" type="button" data-pc="intake">칸에만 넣기</button><button class="btn text" type="button" data-pc="intakeFile">파일 고르기</button>
-            <input type="file" id="pcIntakeFile" accept=".xlsx,.csv,.hwp,.hwpx,.txt,.pdf,.png,.jpg,.jpeg,.webp" hidden><span class="muted" id="pcIntakeMsg" role="status"></span></div>
+            <input type="file" id="pcIntakeFile" accept=".xlsx,.csv,.hwp,.hwpx,.txt,.pdf,.png,.jpg,.jpeg,.webp" hidden><span class="muted" id="pcIntakeMsg" role="status">${intakeBusy ? INTAKE_BUSY : ''}</span></div>
           <p class="muted pc-intake-note">${st.form.type === 'lecturer' ? '강사 수당은 강사 이름이 AI로 가지 않게 앱이 글만 읽어요(캡처·사진은 읽지 않아요).' : '[초안 만들기]를 누르면 넣은 것을 읽어 칸을 채우고 바로 초안을 써요. 목적·일시·장소도 글에 있으면 채워요.'} 이미 쓴 칸은 덮지 않아요.</p>
         </div>
         <details class="pc-more" id="pcMore"${viewFull() ? ' open' : ''}><summary>자세히 고치기 <span class="muted">관련·사업명·목적·일시·대상·장소·예산 과목·품목·붙임</span></summary>
@@ -730,7 +730,9 @@ function quoteError(e) {
   return code ? ai.errorMessage(code, e) : '견적서를 읽지 못했어요. 엑셀·CSV로 저장해 넣거나 직접 입력해 주세요.';
 }
 /* ---------- 아무거나 넣기 (스펙 4.0) ---------- */
+// 읽는 중(견적서·캡처를 AI가 읽을 때 등): 다른 메뉴에 갔다 와서 다시 그려도 「읽는 중」이 보이게 그리기에서도 씀
 let intakeBusy = false;
+const INTAKE_BUSY = '<span class="spin"></span> 읽는 중…';
 const hasItems = () => st.form.items.some(it => String(it.name || '').trim());
 const setIntakeMsg = m => { const el = box && box.querySelector('#pcIntakeMsg'); if (el) el.innerHTML = m; };
 /* 품목이 있으면 더할지 바꿀지 물어봄 → 'add' | 'replace' | null */
@@ -783,7 +785,7 @@ function keepAside(mine, r) {
 /* mine: 넣을 품의(읽는 동안 다른 품의를 열어도 그 품의에 넣음). 다른 품의를 열었으면 -1 */
 async function runIntake(input, mine = st) {
   if (intakeBusy) return 0;
-  intakeBusy = true; setIntakeMsg('<span class="spin"></span> 읽는 중…');
+  intakeBusy = true; setIntakeMsg(INTAKE_BUSY);
   let r;
   // 강사 수당 품의는 넣기 칸 글·그림을 AI로 보내지 않음(앱 규칙으로만)
   try { r = await readIntake({ ...input, noAI: mine.form.type === 'lecturer' }); }
