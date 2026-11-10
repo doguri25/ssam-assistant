@@ -3,17 +3,19 @@
    화면 없이 돌아감(시험) */
 import { keyName } from '../../../core/inbox-classify.js';
 import { parseKey, parsePaper, splitCombined } from './unit-key.js';
+import { filledName } from '../../../core/bundle.js';
 
 /* 한글·글 파일: 학생 문제지 스캔일 수 없음 */
 export const isDocFile = f => /\.(hwpx?|txt)$/i.test((f && f.name) || '') || (!!f && f.type === 'text/plain');
 const questions = text => Object.keys(parsePaper(text).questions).length;
 
-/* [학생 문제지 넣기]에 넣은 파일 하나 → 'scan'(학생 문제지) | 'key'(답안) | 'paper'(빈 문제지).
-   한글·글 파일은 글(text)로: 정답표가 읽히거나 정답이 붙은 문제지면 답안, 문항만 있는 문제지면 빈 문제지, 모르면 답안(AI가 읽음).
+/* [학생 문제지 넣기]에 넣은 파일 하나 → 'scan'(학생 문제지) | 'key'(답안) | 'paper'(빈 문제지) | 'named'(넣지 않음).
+   한글·글 파일은 글(text)로: 학생 이름이 적혀 있으면 'named'(학생이 쓴 글이라 빈 문제지·답안으로 저장하거나 채점 AI로 보내지 않음 — 스캔으로 넣게), 정답표가 읽히거나 정답이 붙은 문제지면 답안, 문항만 있는 문제지면 빈 문제지, 모르면 답안(AI가 읽음).
    PDF·사진은 이름이 정답·해설·교사용·모범 답안 같은 정답 파일 이름일 때만 답안(떠 있는 버튼의 사진·스캔 이름 규칙 keyName) */
 export { keyName };
 export function paperFileGoes({ name = '', type = '', text = '' } = {}) {
   if (!isDocFile({ name, type })) return keyName(name) ? 'key' : 'scan';
+  if (filledName(text)) return 'named';
   if (parseKey(text) || splitCombined(text).key) return 'key';
   return questions(text) >= 2 ? 'paper' : 'key';
 }

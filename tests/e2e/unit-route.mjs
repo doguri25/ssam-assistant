@@ -104,6 +104,19 @@ await run('unit-route', [
     assert(asked('[단원평가 정답지]') === 0, 'AI');
     await page.click(`${V} [data-un="back"]`);
   }],
+  ['[학생 문제지 넣기]에 학생 이름이 적힌 글 파일 → 넣지 않고 알림(빈 문제지·답안으로 저장 안 함)', async () => {
+    const n0 = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:unit:list') || '[]').length);
+    await page.click(`${V} #unNew`);
+    const NAMED = { name: '3반 학생 문제지.txt', mimeType: 'text/plain', buffer: Buffer.from('수학 3단원 평가\n이름: 김가람\n1. 다음 중 알맞은 것은? ( 3 )\n2. 계산하세요. 12+5 = 17') };
+    await page.setInputFiles(`${V} #unAnsFile`, NAMED);
+    await waitText('#unAnsMsg', '학생 이름이 적힌 글이라 넣지 않았어요');
+    assert(!(await text('#unPaperMsg')).trim() && !(await text('#unKeyMsg')).trim(), '빈 문제지·답안 칸에 들어감');
+    assert((await text('.un-sum')).includes('0문항'), '문항이 생김: ' + await text('.un-sum'));
+    await page.click(`${V} [data-un="back"]`);
+    const all = await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('ssam:')).map(k => localStorage.getItem(k)).join(''));
+    assert(!all.includes('김가람'), '이름이 저장됨');
+    assert(await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:unit:list') || '[]').length) === n0, '새 평가가 저장됨');
+  }],
   ['[학생 문제지 넣기]를 답안보다 먼저 해도 받아 두었다가, 답안을 넣으면 그때 학생별로 나눔', async () => {
     await page.click(`${V} #unNew`);
     await page.fill(`${V} #unPagesPer`, '1'); await page.dispatchEvent(`${V} #unPagesPer`, 'change');

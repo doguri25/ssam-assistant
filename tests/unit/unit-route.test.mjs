@@ -96,3 +96,11 @@ test('[버그] 떠 있는 버튼: 「답안」·「모범 답안」 이름의 �
   assert.equal(classify({ name: '3반 답안.pdf', scan: true }).kind, 'unit-scan');
   assert.equal(classify({ name: 'IMG_0001.jpg', scan: true }).kind, 'unit-scan');
 });
+
+test('[학생 문제지 넣기]에 학생 이름이 적힌 한글·글 파일: 빈 문제지·답안으로 넣지 않음(이름이 저장되거나 채점 AI로 가지 않게)', () => {
+  const filled = '수학 3단원 평가\n3학년 2반 이름: 김가람\n1. 다음 중 알맞은 것은? ( 3 )\n2. 계산하세요. 12+5 = 17\n3. 까닭을 쓰세요. 더해서';
+  for (const name of ['3반 학생 문제지.txt', '학생 답안.hwp', '수학 단원평가.hwpx']) assert.equal(paperFileGoes({ name, text: filled }), 'named', name);
+  assert.equal(paperFileGoes({ name: 'a.txt', text: '이름 김민수\n1. 문제 하나\n2. 문제 둘' }), 'named', '쌍점 없는 이름');
+  // 빈 이름 칸(인쇄 머리)은 그대로 빈 문제지
+  assert.equal(paperFileGoes({ name: '빈 문제지.hwp', text: '수학 3단원 평가\n이름: (        )\n1. 다음 중 알맞은 것은?\n2. 계산하세요.' }), 'paper');
+});

@@ -323,6 +323,7 @@ async function putPaperFiles(files) {
     if (isDocFile(f)) { try { text = await readKeyText(f); } catch (e) { text = ''; } }
     const go = paperFileGoes({ name: f.name, type: f.type, text });
     if (go === 'scan') { scans.push(f); continue; }
+    if (go === 'named') { moved.push(`「${f.name}」 파일은 학생 이름이 적힌 글이라 넣지 않았어요. 학생 문제지는 스캔한 PDF·사진으로 넣어 주세요`); papers.note(id, moved.join(' · ')); continue; }
     const where = go === 'key' ? '답안' : '빈 문제지', ro = go === 'key' ? '으로' : '로';
     moved.push(`「${f.name}」 파일은 ${where}${ro} 보여서 ${where}${ro} 넣었어요`);
     papers.note(id, moved.join(' · '));
