@@ -3,6 +3,7 @@
 import { get, set } from '../../core/store.js';
 import { isDate } from '../../core/calendar.js';
 import { personalColumn } from '../../core/survey.js';
+import { safeText } from '../../core/chat-route.js';
 import { normRv } from './plan-rv.js';
 
 const LIST_KEY = 'events', CUR_KEY = 'event:current';
@@ -41,9 +42,9 @@ export function normOptions(v) {
   })).filter(o => o.timetable.length).slice(0, 3);
 }
 
-/* 명단에 없는 이름은 뺌 (명단이 비면 그대로) */
+/* 명단에 없는 이름은 뺌 (명단이 비면 그대로). 명단 이름의 앞뒤 띄어쓰기는 보지 않음(「김교사 」로 쳐도 AI가 쓴 「김교사」는 남게) */
 export function normRoles(v, staff) {
-  const names = new Set((staff || []).map(s => s && s.name).filter(Boolean));
+  const names = new Set((staff || []).map(s => s && str(s.name).trim()).filter(Boolean));
   return (Array.isArray(v) ? v : []).filter(r => isObj(r) && str(r.name).trim())
     .map(r => ({ name: str(r.name).trim(), roles: strs(r.roles) }))
     .filter(r => !names.size || names.has(r.name));
@@ -82,6 +83,14 @@ export function refsBlock(refs, budget = 24000) {
 }
 /* AI가 「참고 자료에서 반영한 것」으로 돌려준 짧은 글들 */
 export const normRefNotes = v => (Array.isArray(v) ? v : []).filter(x => typeof x === 'string' && x.trim()).map(x => x.trim().slice(0, 200)).slice(0, 8);
+
+/* 설문 CSV를 읽은 결과(core/survey.js summarize)의 서술형 답: 답 속 학생·보호자 이름, 전화번호·전자 우편은 ○○○로
+   (이름·연락처 열은 summarize가 이미 뺌). 저장·화면·결과 보고서 AI 모두 이 글을 씀. 이름만 있던 답은 빠지고 개수 count는 그대로 */
+export function maskResult(r) {
+  if (!isObj(r) || !Array.isArray(r.questions)) return r;
+  return { ...r, questions: r.questions.map(q => (isObj(q) && q.type === 'text' && Array.isArray(q.answers)
+    ? { ...q, answers: q.answers.map(a => safeText(String(a == null ? '' : a))).filter(Boolean), count: Number.isInteger(q.count) ? q.count : q.answers.length } : q)) };
+}
 
 /* 저장된 설문 결과: 읽을 수 있는 문항만, 서술형 답은 300개까지 저장(개수 count는 그대로) */
 const MAX_ANSWERS = 300;

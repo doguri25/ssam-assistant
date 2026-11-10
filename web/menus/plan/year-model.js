@@ -1,8 +1,9 @@
 /* 연간계획 자료와 계산 (화면 없음 — Node 시험에서도 씀).
    계획 목록은 ssam:yearplans, 보고 있는 계획은 ssam:yearplan:current. 올린 파일은 저장하지 않고 읽은 글만 저장 */
 import { get, set } from '../../core/store.js';
-import { isDate } from '../../core/calendar.js';
+import { isDate, schoolYearOf, yearOfMonth } from '../../core/calendar.js';
 import { getSchool } from '../../core/settings.js';
+import { maskContacts, maskStaff, staffName, nameCell, MASK } from '../../core/privacy.js';
 import { normRv } from './plan-rv.js';
 
 const LIST_KEY = 'yearplans', CUR_KEY = 'yearplan:current';
@@ -99,6 +100,29 @@ export function normDraft(v) {
   });
   d.budget = (Array.isArray(v.budget) ? v.budget : []).filter(b => isObj(b) && str(b.name).trim()).map(b => ({ name: str(b.name).trim(), amount: num(b.amount), note: str(b.note).trim() }));
   return d;
+}
+
+/* ---------- AI로 보내는 글 ---------- */
+/* 선생님이 친 칸(목표·예산): 전화번호·전자 우편과 직함 앞뒤 교직원 이름(「문의 박하늘」「김솔 선생님」)은 ○○○로 */
+export const textForAI = s => maskStaff(maskContacts(s)).text;
+/* 담당자 칸: 부서·직함은 두고 교직원 이름과 전화번호는 ○○○로 (「독서교육부 박하늘」 → 「독서교육부 ○○○」). 「~부·~실·~과·~팀·~반」 낱말과 직함은 이름이 아님 */
+const NOT_NAME = /^(주무관|기간제|실무사|담당자?)$|[부실과팀반]$/;
+const ownerWord = w => !NOT_NAME.test(w) && (w.length === 4 ? nameCell(w) : /^[가-힣]{2,3}$/.test(w) && staffName(w));
+export const ownerForAI = s => maskContacts(s).split(/([^가-힣]+)/).map(w => (ownerWord(w) ? MASK : w)).join('');
+
+/* AI가 쓴 일정 날짜가 계획 학년도(year-03-01 ~ 다음 해 2월 끝) 밖이면(작년 계획서 날짜를 그대로 옮김 등) 그 학년도의 같은 달·날로
+   (3~12월은 그해, 1·2월은 다음 해, 2월 29일이 없는 해는 28일) → { schedule, moved(옮긴 수) } */
+export function fitSchedule(schedule, year) {
+  let moved = 0;
+  const out = (schedule || []).map(s => {
+    if (!s || !isDate(s.date) || !Number.isInteger(year) || schoolYearOf(s.date) === year) return s;
+    const m = +s.date.slice(5, 7), y = yearOfMonth(m, year);
+    let date = `${y}${s.date.slice(4)}`;
+    if (!isDate(date)) date = `${y}-02-28`;
+    moved++;
+    return { ...s, date, month: m };
+  });
+  return { schedule: out, moved };
 }
 
 /* ---------- 글 계산 ---------- */

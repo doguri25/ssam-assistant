@@ -21,7 +21,7 @@ import { listPlans, planText } from './year-model.js';
 import { putReportSources } from './report.js';
 import { putLetterDraft } from '../etc/letter.js';
 import { letterBodyFromEvent } from '../etc/letter-ai.js';
-import { KINDS, DOCS, REF_KINDS, normRefs, guessKind, refsBlock, normRefNotes, newEvent, listEventPlans, getEvent, saveEvent, deleteEvent, currentEventId, setCurrentEvent, normOptions, normRoles, roleLoad, letterMissing, docDoc, confirmBlockers, normItems } from './event-model.js';
+import { KINDS, DOCS, REF_KINDS, normRefs, guessKind, refsBlock, normRefNotes, newEvent, listEventPlans, getEvent, saveEvent, deleteEvent, currentEventId, setCurrentEvent, normOptions, normRoles, roleLoad, letterMissing, docDoc, confirmBlockers, normItems, maskResult } from './event-model.js';
 
 const STEPS = ['행사 정보', '구성안', '문서', '설문·결과'];
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -423,7 +423,8 @@ function resultPrompt(e, r) {
 async function addCsv(file) {
   const id = ev.id;
   let r;
-  try { r = summarize(await readTable(file.name, new Uint8Array(await file.arrayBuffer()))); }
+  // 서술형 답 속 이름·전화번호는 ○○○로 (저장하지도 AI로 보내지도 않음)
+  try { r = maskResult(summarize(await readTable(file.name, new Uint8Array(await file.arrayBuffer())))); }
   catch (err) { toast('CSV를 읽지 못했어요. 구글 폼 응답의 「CSV 다운로드」 파일인지 확인해 주세요.', 6000); return; }
   if (!r.n || !r.questions.length) { toast('응답을 찾지 못했어요. 첫 줄이 문항 제목인 CSV인지 확인해 주세요.', 6000); return; }
   apply(id, e => { e.survey = { ...blankSurvey(), ...(e.survey || {}), result: r, textSummary: '', report: r.few ? FEW(r.n) : '', nextMemo: '' }; });
@@ -459,7 +460,7 @@ function docsPrompt(e) {
     + `종류: ${kindName(e.kind)}\n행사명: ${e.name}\n목적: ${e.purpose || '(없음)'}\n대상: ${e.grades}\n날짜: ${e.date}\n장소: ${e.place} (${e.outdoor ? '야외' : '실내'})\n예산: ${e.budget || '(정하지 않음)'}\n학교: ${s.name || '(학교명 없음)'}\n`
     + (o ? `\n고른 구성안(${o.label}): ${o.summary}\n시간표:\n${o.timetable.map(t => `- ${t.time} ${t.activity}${t.place ? ' (' + t.place + ')' : ''}`).join('\n')}\n필요 인력: ${o.staffNeed || '-'}\n예산 내역: ${o.budget.map(b => `${b.name} ${b.amount}원`).join(', ') || '-'}\n` : '')
     + refsPart(e)
-    + (e.staff.length ? `\n참여 교직원(이 이름만 쓰세요):\n${e.staff.filter(x => x.name.trim()).map(x => `- ${x.name}${x.duty ? ' (' + x.duty + ')' : ''}`).join('\n')}\n` : '\n참여 교직원 명단이 없어요. 역할 분담표의 name에는 「진행 담당」처럼 역할 이름을 쓰세요.\n')
+    + (e.staff.length ? `\n참여 교직원(이 이름만 쓰세요):\n${e.staff.filter(x => x.name.trim()).map(x => `- ${x.name.trim()}${x.duty.trim() ? ' (' + x.duty.trim() + ')' : ''}`).join('\n')}\n` : '\n참여 교직원 명단이 없어요. 역할 분담표의 name에는 「진행 담당」처럼 역할 이름을 쓰세요.\n')
     + '\n규칙:\n- plan: 학교 계획서 문체(「가.」「1)」 목록), 개요·운영 방침·세부 운영·안전 대책·평가 순\n'
     + '- roles: [{"name":"…","roles":["…"]}] 사람마다 고르게 나눔\n- safety: 「- 」로 시작하는 점검 항목 목록\n'
     + '- letter: 학부모가 읽기 쉬운 말로. 날짜(일시)·준비물·복장·문의처(학교 교무실 전화)를 꼭 넣음\n'
@@ -476,7 +477,7 @@ async function runDocs() {
   try {
     const v = await ai.generateJSON(docsPrompt(ev), { task: 'plan', valid: x => x && !Array.isArray(x) && typeof x === 'object' && (typeof x.letter === 'string' || typeof x.plan === 'string') });
     const t = x => (Array.isArray(x) ? x.filter(y => typeof y === 'string').join('\n') : typeof x === 'string' ? x : '');
-    apply(id, e => { e.docs = { plan: t(v.plan), safety: t(v.safety), letter: t(v.letter), rain: t(v.rain), roles: normRoles(v.roles, e.staff.filter(x => x.name.trim())), done: false }; e.rv = []; e.refNotes = { ...e.refNotes, docs: normRefNotes(v.refNotes), stale: false }; if (e.status === 'final') e.status = 'draft'; });
+    apply(id, e => { e.docs = { plan: t(v.plan), safety: t(v.safety), letter: t(v.letter), rain: t(v.rain), roles: normRoles(v.roles, e.staff.filter(x => x.name.trim())), done: false }; e.rv = []; e.refNotes = { ...e.refNotes, docs: normRefNotes(v.refNotes), stale: false }; if (e.status === 'final') { e.status = 'draft'; removeEvents('event:' + e.id); } });
     clearState(id);
     finish(id, 'docs');
     reviewDocs(id);
@@ -744,10 +745,11 @@ document.addEventListener('click', e => {
   else if (a === 'final') confirmEvent();
   else if (a === 'items') runItems();
   else if (a === 'formCopy') copyText(formText(survey().items)).then(ok => toast(ok ? '문항을 복사했어요. 구글 폼에 붙여넣으세요' : '복사하지 못했어요'));
-  else if (a === 'qrDown') { const u = qrCache[survey().formUrl.trim()]; if (u && u !== 'error') fetch(u).then(r => r.blob()).then(async b => saveFile(`${ev.name || '행사'} 설문 QR.png`, new Uint8Array(await b.arrayBuffer()), 'image/png')).then(() => toast('QR 그림을 저장했어요')); }
+  else if (a === 'qrDown') { const u = qrCache[survey().formUrl.trim()]; if (u && u !== 'error') fetch(u).then(r => r.blob()).then(async b => saveFile(`${ev.name || '행사'} 설문 QR.png`, new Uint8Array(await b.arrayBuffer()), 'image/png')).then(() => toast('QR 그림을 저장했어요'), () => toast('QR 그림을 저장하지 못했어요', 5000)); }
   else if (a === 'qrLetter') {
     const url = survey().formUrl.trim(), line = `설문 참여: ${url} (QR)`;
-    if (url && !ev.docs.letter.includes(line)) { ev.docs.letter = ev.docs.letter.trimEnd() + `\n\n${line}`; ev.docs.done = false; persist(); }
+    // 고른 적 없는 가정통신문 검토 의견은 지움([검토 안 쓰기]가 넣은 링크를 덮지 않게)
+    if (url && !ev.docs.letter.includes(line)) { ev.docs.letter = ev.docs.letter.trimEnd() + `\n\n${line}`; ev.docs.done = false; ev.rv = dropOpen(ev.rv, 'letter'); persist(); }
     toast('가정통신문 끝에 설문 링크 자리를 넣었어요. QR 그림은 내려받아 붙여 주세요', 6000);
   }
   else if (a === 'csv') box.querySelector('#evCsv').click();
