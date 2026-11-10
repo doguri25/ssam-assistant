@@ -261,6 +261,12 @@ await run('unit-route', [
     assert(!full.slice(f0).some(p => p.includes('김가람')), '이름이 AI로 감: ' + full.slice(f0).map(p => p.split('\n')[0]).join(','));
     assert(!(await stored()).includes('김가람'), '이름이 저장됨');
     assert((await cur()).key.items.length === 10, '답안이 바뀜');
+    // 정답 파일 이름이면(교사용 예시에 이름이 적힘) 답안으로 읽되, 답안 AI에는 이름 칸을 가린 글
+    const f1 = full.length;
+    await page.setInputFiles(`${V} #unKeyFile`, { name: '3단원 정답.txt', mimeType: 'text/plain', buffer: Buffer.from('[교사용] 수학 3단원\n이름: 홍길동\n1. 다음 중 알맞은 것은? ( ③ )\n2. 계산하세요. ( 17 )') });
+    await waitText('.un-sum', '1문항');
+    const sentKey = full.slice(f1).find(p => p.startsWith('[단원평가 정답지]')) || '';
+    assert(sentKey.includes('알맞은 것') && !sentKey.includes('홍길동'), sentKey.slice(-120));
   }],
   // [버그] 채점한 평가에 학생 수가 다른 스캔을 다시 넣고 「학생 수가 달라요」에서 [취소]하면 학생 문제지 줄에 「… 읽는 중」이 그대로 남음
   ['채점한 평가에 학생 수가 다른 스캔 → 「학생 수가 달라요」 [취소] → 학생 문제지 줄은 넣기 전 그대로(「읽는 중」이 남지 않음), 채점 결과도 그대로', async () => {

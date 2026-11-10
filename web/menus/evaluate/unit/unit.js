@@ -13,7 +13,7 @@ import { ITEM_TYPES, rescoreItem } from './unit-grade.js';
 import { listTests, getTest, saveTest, removeTest, newTest, makeTitle, graded, maskOf } from './unit-model.js';
 import { keyPrompt, normKeyAI } from './unit-ai.js';
 import { sampleTests } from './unit-sample.js';
-import { readBundle, openBundleCard, needsCard, bundleBoxHTML, onBundle, filledName } from '../../../core/bundle.js';
+import { readBundle, openBundleCard, needsCard, bundleBoxHTML, onBundle, filledName, maskNameFields } from '../../../core/bundle.js';
 import { isDocFile, keyName, paperFileGoes, keyFileGoes, bundleParts } from './unit-route.js';
 import { linkHTML, openLinkSheet } from '../../../core/eval-link.js';
 import { accuracyText, yearAccuracy, yearText } from '../grade-accuracy.js';
@@ -224,8 +224,9 @@ async function loadKey(file, t0 = cur()) {
     catch (e) { if (!(e && e.code === 'PDF_NO_TEXT')) { setMsg(id, 'key', fileMessage(e && e.code)); return; } }
     if (text) k = parseKey(text);
   }
-  // 학생 이름이 적힌 글(학생이 푼 문제지)은 답안 AI로 보내지 않음: 글자 인식된 PDF는 학생 문제지로(채점할 때 이름 칸을 가림), 한글·글 파일은 넣지 않음
-  if (!k && text && filledName(text)) {
+  // 학생 이름이 적힌 글(학생이 푼 문제지)은 답안 AI로 보내지 않음: 글자 인식된 PDF는 학생 문제지로(채점할 때 이름 칸을 가림), 한글·글 파일은 넣지 않음.
+  // 정답 파일 이름이면(교사용 예시에 적힌 이름 등) 답안 그대로 — AI에는 이름 칸을 가린 글만(아래 maskNameFields)
+  if (!k && text && filledName(text) && !keyName(file.name)) {
     if (isPdf(file) && papers) {
       setMsg(id, 'key', `「${file.name}」 파일은 학생 문제지로 보여서 학생 문제지로 넣었어요`);
       papers.note(id, '');
@@ -266,7 +267,7 @@ async function loadKey(file, t0 = cur()) {
     setMsg(id, 'key', 'AI가 답안을 읽는 중…');
     try {
       if (!text && !images) images = await SS().files.toImages(file);
-      k = normKeyAI(await ai.generateJSON(keyPrompt(text), { images: text ? undefined : images, valid: v => !!normKeyAI(v) }));
+      k = normKeyAI(await ai.generateJSON(keyPrompt(maskNameFields(text)), { images: text ? undefined : images, valid: v => !!normKeyAI(v) }));
     } catch (e) {
       setMsg(id, 'key', e && e.code === 'bad_json' ? 'AI가 답안을 읽지 못했어요. 다시 해 보거나 문항을 직접 넣어 주세요.' : ai.errorMessage(e && e.code, e));
       return;
