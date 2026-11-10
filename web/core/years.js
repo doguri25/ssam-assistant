@@ -51,7 +51,7 @@ export function snapshot(ls) {
 }
 
 const parse = t => { try { return JSON.parse(t); } catch (e) { return null; } };
-/* 새 학년도에 가져가는 것: 연간계획·행사계획·학급운영계획, 새 학년도(3월 1일부터) 학사일정, 학교명·학급 수·학생 수,
+/* 새 학년도에 가져가는 것: 연간계획·행사계획·학급운영계획, 새 학년도(3월 1일부터) 학사일정·방학·재량휴업일, 학교명·학급 수·학생 수,
    설정(평어·행특 설정, 채점 설정(예외 번호는 비움), 나이스 입력 설정, 품의 기준 금액). 학생 자료는 비움.
    classSetup: 2월에 새 학년도 준비를 미리 넣었으면 학급 명단·학급 정보·시간표·진도표도 (진도 위치는 처음부터, 체크·주간학습안내는 비움.
    진도표 시작일은 새 학년도 첫 수업일 — 새 학년도 날로 정해 둔 것은 그대로, 차시 날짜는 기간(「3.2~3.6」)을 새 학년도로 다시 읽음) */
@@ -72,7 +72,10 @@ export function carryOver(snap, newYear, { classSetup = false } = {}) {
   if (Array.isArray(cal) || openDocs.length) out.calendar = JSON.stringify([...(Array.isArray(cal) ? cal : []).filter(e => e && typeof e.date === 'string' && e.date >= `${newYear}-03-01` && e.source !== 'gongmun'),
     ...dueEvents(openDocs).map(e => ({ ...e, source: 'gongmun' }))]);
   const sc = parse(snap.school);
-  if (isObj(sc)) out.school = JSON.stringify({ name: String(sc.name || ''), classes: Number(sc.classes) || 0, students: Number(sc.students) || 0, breaks: [] });
+  // 방학·재량휴업일은 새 학년도(3월 1일부터)에 시작하는 것만 (2월에 미리 넣은 새 학년도 일정 — 학사일정과 같게)
+  const inNew = b => isObj(b) && typeof b.from === 'string' && typeof b.to === 'string' && b.from >= `${newYear}-03-01` && b.from < `${newYear + 1}-03-01`;
+  if (isObj(sc)) out.school = JSON.stringify({ name: String(sc.name || ''), classes: Number(sc.classes) || 0, students: Number(sc.students) || 0,
+    breaks: (Array.isArray(sc.breaks) ? sc.breaks : []).filter(inNew).map(b => ({ from: b.from, to: b.to, label: String(b.label || '') })) });
   if (classSetup) {
     for (const k of ['class', 'class:info', 'class:timetable']) if (typeof snap[k] === 'string') out[k] = snap[k];
     const subs = parse(snap['class:subjects']);
@@ -130,13 +133,17 @@ export async function moveTo(target, { ls, archive, freeze = () => {}, unfreeze 
     for (const k of yearKeys(ls)) ls.removeItem(k);
     for (const [k, v] of Object.entries(snap)) if (isYearKey(k) && typeof v === 'string') ls.setItem(PREFIX + k, v);
   };
+  const yv = JSON.stringify({ current: target });
+  let wiped = false; // 학년도 표시를 지웠다 다시 쓰는 중
   try {
     write(next);
-    ls.setItem(PREFIX + 'years', JSON.stringify({ current: target }));
+    // 같은 학년도로 옮기면(백업 파일로 지금 자료를 바꿈) 값이 같아 다른 탭에 storage 알림이 가지 않음 → 지웠다 다시 써서 알림(다른 탭이 다시 열려 지난 자료를 쓰지 않게)
+    if (ls.getItem(PREFIX + 'years') === yv) { ls.removeItem(PREFIX + 'years'); wiped = true; }
+    ls.setItem(PREFIX + 'years', yv);
   } catch (e) {
     // 지금 자료로 되돌림. 그것도 못 하면 지금 자료는 방금 보관함에 넣은 것으로 남아 있음
     let back = true;
-    try { write(now); } catch (e2) { back = false; }
+    try { write(now); if (wiped && ls.getItem(PREFIX + 'years') == null) ls.setItem(PREFIX + 'years', yv); } catch (e2) { back = false; }
     unfreeze();
     return { ok: false, code: back ? 'WRITE_FAILED' : 'RESTORE_FAILED' };
   }

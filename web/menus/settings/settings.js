@@ -249,7 +249,7 @@ async function askNewYear() {
   }
   SSAM().openSheet(`<h3>${next}학년도를 시작할까요?</h3>
     <p class="muted" style="margin:0">${cur}학년도 자료는 보관함에 그대로 남고, 언제든 돌아올 수 있어요. 백업 파일도 만들어 두면 좋아요.</p>
-    <ul class="yr-sum"><li><b>가져가는 것</b> 연간계획·행사계획(내년 계획의 작년 자료로), 학사일정 중 ${next}학년도(3월 1일부터) 날짜, 학교명·학급 수·학생 수, 평어·행특·채점·나이스 입력 설정, 품의 기준 금액</li>
+    <ul class="yr-sum"><li><b>가져가는 것</b> 연간계획·행사계획(내년 계획의 작년 자료로), 학사일정·방학·재량휴업일 중 ${next}학년도(3월 1일부터) 날짜, 학교명·학급 수·학생 수, 평어·행특·채점·나이스 입력 설정, 품의 기준 금액</li>
       <li><b>비우는 것</b> 학급 명단, 평가 자료(평가계획·평어·창체·행특·채점 결과), 학급 메뉴(시간표·진도표·체크·주간학습안내), 작성 중인 품의</li></ul>
     <label class="switch"><input type="checkbox" id="yrClassToo">학급 준비도 가져가기: 학급 명단·학년 반·시간표·진도표 (2월에 ${next}학년도 준비를 미리 넣었을 때. 진도는 처음부터, 체크는 비워요)</label>
     ${keyNote()}${sheetBtns('yrNewOk', `${next}학년도 시작하기`, '<button class="btn" type="button" data-sheet="backup">백업 파일 만들기</button>')}`,
