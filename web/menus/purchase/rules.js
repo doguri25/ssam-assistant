@@ -1,5 +1,6 @@
 /* 품의 계산·점검 규칙 (화면 없음 — Node 시험에서도 씀).
    금액은 원 단위 정수. 품의 사유의 가~라 줄과 산출 내역 숫자는 AI가 아니라 여기서 만든다 */
+import { maskContacts } from '../../core/privacy.js';
 
 const ex = (project, purpose, date, target, place, items) => ({ project, purpose, date, target, place, items: items.map(([name, spec, qty, price]) => ({ name, spec, qty, price })) });
 
@@ -206,13 +207,14 @@ export function purchaseQueueItems(draft, form, mode = 'cells') {
   return out;
 }
 
-/* 초안 AI(와 검토 AI)에 보내는 메모 줄. 강사 수당은 강사 칸 글(이름일 수 있음)을 보내지 않고 사람 수·시간만 */
+/* 초안 AI(와 검토 AI)에 보내는 메모 줄. 강사 수당은 강사 칸 글(이름일 수 있음)을 보내지 않고 사람 수·시간만.
+   칸에 적은 전화번호·이메일(「업체 담당 010-…」)은 ○○○로 가림 */
 export function draftMemo(form) {
   const f = form || {}, type = TYPES.find(t => t.id === f.type) || TYPES[0], its = cleanItems(f.items);
   const items = type.id === 'lecturer'
     ? `강사 ${its.length}명, 모두 ${won(its.reduce((n, it) => n + toNumber(it.qty), 0))}시간`
     : its.map(it => `${it.name}${it.spec ? `(${it.spec})` : ''} ${won(toNumber(it.qty))}${String(it.unit || '').trim() || defaultUnit(type.id)} × ${won(toNumber(it.price))}원`).join(', ');
-  const line = (k, v) => (String(v || '').trim() ? `- ${k}: ${String(v).trim()}\n` : '');
+  const line = (k, v) => (String(v || '').trim() ? `- ${k}: ${maskContacts(String(v).trim())}\n` : '');
   return line('종류', type.label) + line('관련', f.related) + line('사업명', f.project) + line('목적', f.purpose) + line('일시', f.date) + line('대상', f.target) + line('장소', f.place)
     + line('품목', items) + `- 합계: ${won(sumItems(f.items))}원\n` + line('그 밖의 메모', f.memo);
 }

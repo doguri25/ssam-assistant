@@ -5,7 +5,7 @@ import { emptyItem, findPersonal, toNumber, plainItemName, plainOfficial } from 
 import { readQuote } from './quote.js';
 import { findItems } from '../../core/sheet.js';
 import { readText } from '../../core/files.js';
-import { nameCell, MASK } from '../../core/privacy.js';
+import { nameCell, MASK, maskContacts } from '../../core/privacy.js';
 
 const UNITS = '박스|상자|개|권|자루|세트|장|통|묶음|팩|병|봉|EA|ea|Ea|명|시간|식|건|매|롤|켤레|대|부|kg|g|L|ml|m|판|타|다스|캔|포|입';
 const QTY = new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(${UNITS})(?![가-힣A-Za-z])`, 'g');
@@ -37,6 +37,19 @@ function dropContext(s) {
   const keep = parts.filter(hasNumber);
   return keep.length && keep.length < parts.length ? keep.join(', ') : s;
 }
+/* 「천·백」이 든 한글 금액·「만」 뒤에 붙은 숫자 → 원: 「2만 5천원」「1만2천」→ 25000원·12000원, 「3천 500원」「2천5백원」→ 3500원·2500원,
+   「1만 5000원」→ 15000원 (WON은 「2만(원)」만 읽어 「2만 5천원」이 2만 원·품명 「5천원」이 되고 「2천원」은 못 읽었음).
+   「2만(원)」 하나는 그대로(WON이 읽음), 단위 바로 뒤에 한글이 오면(「3천명」「3천피스」) 금액 아님 */
+const KO_UNIT = { 만: 10000, 천: 1000, 백: 100 };
+const KO_AMT = /(\d+(?:\.\d+)?\s*[만천백](?:\s*\d+(?:\.\d+)?\s*[천백])*)(?:\s*(\d,\d{3}|\d{1,4})(?=\s*원))?(?:\s*원|(?![가-힣]))/g;
+const koWon = s => String(s).replace(KO_AMT, (m, head, tail) => {
+  const parts = [...head.matchAll(/(\d+(?:\.\d+)?)\s*([만천백])/g)];
+  if (parts.length === 1 && !tail && parts[0][2] === '만') return m;
+  let n = 0, last = Infinity;
+  for (const [, v, u] of parts) { if (KO_UNIT[u] >= last) return m; last = KO_UNIT[u]; n += v * KO_UNIT[u]; }
+  if (tail) { const t = +tail.replace(',', ''); if (t >= last) return m; n += t; }
+  return `${Math.round(n)}원`;
+});
 function parseLine(raw) {
   let s = dropContext(String(raw).replace(/^\s*(?:[-•·*▪◦]|\d+[).]|\(\d+\))\s*/, '').trim());
   if (!s) return null;
@@ -44,6 +57,8 @@ function parseLine(raw) {
   const tot = /(?:총|합계|전체)\s*(?:금액)?\s*:?\s*([\d,]+(?:\.\d+)?)\s*(만)?\s*원?/.exec(s);
   if (tot) { total = money(tot[1], tot[2]); s = s.replace(tot[0], ' '); }
   let amounts = null;
+  // 총액이 있어도 같이 적은 단가(「개당 1,200원 총 12,000원」)는 품명에서 뺌(단가는 총액 ÷ 수량)
+  if (total != null) for (const m of [...s.matchAll(WON)]) s = s.replace(m[0], ' ');
   if (total == null) {
     const wons = [...s.matchAll(WON)];
     const times = /[×xX*]\s*([\d,]+(?:\.\d+)?)\s*(만)?\s*원?/.exec(s);
@@ -73,7 +88,7 @@ function parseLine(raw) {
     if (Math.abs(lo * qty - hi) <= Math.max(1, hi * 0.001)) price = lo;
   }
   // 「내가 필요한 책」·「A4 용지 사주세요」 같은 1인칭·구어는 품명에서 뺌
-  const name = plainItemName(s.replace(/[=@×*]|\(\s*\)|\[\s*\]/g, ' ').replace(/(^|\s)(?:x|X|각|개당|단가|금액)(?=\s|$)/g, ' ')
+  const name = plainItemName(s.replace(/[=@×*]|\(\s*\)|\[\s*\]/g, ' ').replace(/(^|\s)(?:x|X|각|개당|단가|금액|씩)(?=\s|$)/g, ' ')
     .replace(/(^|\s)[,，;]+(?=\s|$)/g, ' ').replace(/[,:\-–·]+\s*$/, '').replace(/\s+/g, ' ').trim());
   if (!name || price == null || !Number.isFinite(price)) return null;
   if (!unit && SHIP.test(name)) unit = '건';
@@ -85,12 +100,12 @@ const TOTAL_LINE = /^\s*(?:[-•·*]\s*)?(?:합\s*계|총\s*합\s*계|총\s*액|
 export function parseLines(text) {
   const items = [], missed = [];
   let said = null, sum = 0, inexact = false;
-  for (const line of String(text || '').split(/\r?\n/)) {
-    if (!line.trim()) continue;
-    const t = TOTAL_LINE.exec(line);
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    if (!raw.trim()) continue;
+    const line = koWon(raw), t = TOTAL_LINE.exec(line);
     if (t) { said = money(t[1], t[2]); continue; }
     const p = parseLine(line);
-    if (!p || findPersonal(p.it.name)) { missed.push(line.trim()); continue; }
+    if (!p || findPersonal(p.it.name)) { missed.push(raw.trim()); continue; }
     items.push(p.it);
     const q = toNumber(p.it.qty) || 1, amt = Math.round(q * toNumber(p.it.price));
     if (p.stated != null) { sum += p.stated; if (p.stated !== amt) inexact = true; } else sum += amt;
@@ -243,7 +258,8 @@ export async function readIntake({ text, file, noAI = false } = {}) {
   }
   const r = parseLines(safe);
   if (r.missed.length && ai.ready() && !noAI) {
-    try { return { ...(await aiRead('text', { text: maskNames(safe) })), personal }; }
+    // 전화번호·이메일은 그 자리만 가려 보냄(업체 담당·문의 줄의 다른 글은 남김 — 초안 AI와 같게 연락처는 보내지 않음)
+    try { return { ...(await aiRead('text', { text: maskContacts(maskNames(safe)) })), personal }; }
     catch (e) { if (!r.items.length) throw e; }
   }
   return { ...r, by: 'rule', personal };
