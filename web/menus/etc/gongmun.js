@@ -6,6 +6,7 @@ import * as ai from '../../core/ai.js';
 import { toast } from '../../core/ui.js';
 import { readText, fileMessage } from '../../core/files.js';
 import { aiRowHTML } from '../../core/ai-roles.js';
+import { keepFiles } from '../../core/keep-files.js';
 import { schoolYearOf } from '../../core/calendar.js';
 import { registerInbox } from '../../core/inbox.js';
 import { cleanSheet } from '../evaluate/activity/activity-read.js';
@@ -130,7 +131,7 @@ function listHTML() {
 }
 export function render() {
   if (!box || box.hidden) return;
-  box.innerHTML = `<div class="m-page gm-page">
+  const html = `<div class="m-page gm-page">
     <div class="m-head m-head-row"><div><h2>공문 처리</h2><p class="muted">공문을 넣으면 제출 기한과 할 일을 뽑아 기한 차례로 보여 줘요. 쪽지·가정통신문·품의·결과 보고로 바로 이어 써요.</p></div>
       <div class="m-head-act">${aiRowHTML('gongmun')}</div></div>
     <section class="pc-card"><div class="msg-drop" data-gm-drop><p class="muted" style="margin:0">공문 파일(한글·PDF·워드·글)을 여기에 끌어 놓거나 고르세요. 파일마다 하나씩 넣어요.</p>
@@ -138,6 +139,7 @@ export function render() {
       <label class="yp-f"><span class="lab">또는 공문 글 붙여 넣기</span><textarea class="field" id="gmPaste" rows="3" placeholder="공문 본문을 붙여 넣고 [넣기]">${esc(S.paste)}</textarea></label>
       <div class="row"><button class="btn primary" type="button" data-gm="paste">넣기</button></div></section>
     <section class="pc-card" id="gmLists">${listHTML()}</section></div>`;
+  keepFiles(box, () => { box.innerHTML = html; }); // 파일 고르기 창이 열린 채 다시 그려도 고른 파일이 들어가게(core/keep-files.js)
 }
 /* AI 읽기·파일 넣기 앞뒤·칸을 떠날 때: 넣기 칸은 두고 단추와 목록만 고침. 공문의 글 칸(할 일·기한)에 초점이 있으면 그 공문은 두고 다른 공문만 고치고,
    그 칸을 떠날 때 차례를 맞춤(쓰던 글·한글 조합이 끊기지 않게). 단추·체크에 든 초점은 다시 그림([AI로 읽기]를 누르면 읽는 중 표시)

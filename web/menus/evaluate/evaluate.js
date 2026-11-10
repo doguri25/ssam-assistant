@@ -4168,7 +4168,7 @@ function renderGRSetup() {
   const u = grUnit();
   const per = Math.max(1, st.pagesPer | 0), rem = GR.pages.length % per;
   // AI 줄은 하나: 채점과 이 탭의 평어 쓰기·검토 모두 채점 AI로
-  box.innerHTML = `<div class="ai-row" data-ai-row="grade"></div>
+  const html = `<div class="ai-row" data-ai-row="grade"></div>
     <div class="gr-step">
       <div class="gr-h"><span class="sn">1</span><b>무엇을 채점할까요</b></div>
       ${!locked && window.SSAM.bundleBoxHTML ? window.SSAM.bundleBoxHTML('gr', '정답·채점 기준 문서와 학생 평가지 스캔을 한꺼번에 넣으면 알아서 나눠요') : ''}
@@ -4232,6 +4232,8 @@ function renderGRSetup() {
     </div>
     <p class="muted">스캔 이미지는 이 화면에만 있고 저장하지 않아요. 점수·평어만 ${HERE}에 저장돼요.</p>
     <div id="grHistBox" style="display:contents">${grHistHTML()}</div>`;
+  // 파일 고르기 창이 열린 채 다시 그려도 「한꺼번에 넣기」에 고른 파일이 들어가게(core/keep-files.js, gr-bundle.js가 붙여 줌)
+  ((window.SSAM && window.SSAM.keepFiles) || ((b, draw) => draw()))(box, () => { box.innerHTML = html; });
   renderGRBusy();
   if (keep) { const el = document.getElementById(keep); if (el) { el.focus(); if (el.setSelectionRange && el.type !== 'number') try { const n = el.value.length; el.setSelectionRange(sel ? Math.min(sel[0], n) : n, sel ? Math.min(sel[1], n) : n); } catch (e) {} } }
 }

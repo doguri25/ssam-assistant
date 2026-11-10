@@ -12,6 +12,7 @@ import { toast, copyText } from '../../core/ui.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
 import { listEvents, setEvents, removeEvents, dayIssues, suggestDates, weekday } from '../../core/calendar.js';
 import { stepsHTML } from '../../core/steps.js';
+import { keepFiles } from '../../core/keep-files.js';
 import { rvBoxHTML, runPlanReview, onRvClick, markDone, dropOpen, hasOpen, clearState } from './plan-review.js';
 import { SECTIONS, TEXT_SECTIONS, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent, normReview, normGuide, normDraft, overlap, guideStatus, insertSentence, planDoc, planText } from './year-model.js';
 
@@ -78,7 +79,7 @@ const visible = () => curTab === 'year' && box && box.isConnected && !box.closes
 /* ---------- 그리기 ---------- */
 function render() {
   if (!box) return;
-  box.innerHTML = `<div class="m-page yp-page">
+  const html = `<div class="m-page yp-page">
     <div class="m-head"><h2>연간계획</h2><p class="muted">작년 자료와 올해 지침으로 올해 계획서 초안과 월별 일정을 만들어요.</p></div>
     <div class="yp-grid">
       <aside class="yp-side" aria-labelledby="ypListH">
@@ -89,8 +90,7 @@ function render() {
     </div>
     <input type="file" id="ypFile" accept=".hwp,.hwpx,.pdf,.csv,.xlsx,.txt" multiple hidden>
   </div>`;
-  renderList();
-  renderMain();
+  keepFiles(box, () => { box.innerHTML = html; renderList(); renderMain(); }); // 파일 고르기 창이 열린 채 다시 그려도 고른 파일이 들어가게(core/keep-files.js)
 }
 
 /* 목록이 그대로면 다시 그리지 않음 (저장할 때마다 단추를 바꾸면 누르는 중인 단추가 사라짐) */

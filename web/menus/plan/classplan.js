@@ -10,6 +10,7 @@ import { readText, fileMessage } from '../../core/files.js';
 import { toast } from '../../core/ui.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
 import { stepsHTML } from '../../core/steps.js';
+import { keepFiles } from '../../core/keep-files.js';
 import { rvBoxHTML, runPlanReview, onRvClick, markDone, dropOpen, hasOpen, clearState } from './plan-review.js';
 import { stripNames } from '../../core/privacy.js';
 import {
@@ -77,7 +78,7 @@ const unfinal = p => { if (p.status === 'final') p.status = 'draft'; };
 /* ---------- 그리기 ---------- */
 function render() {
   if (!box) return;
-  box.innerHTML = `<div class="m-page yp-page">
+  const html = `<div class="m-page yp-page">
     <div class="m-head"><h2>학급운영계획</h2><p class="muted">작년 학급운영계획을 바탕으로 올해 계획서 초안을 만들어요. 진도표·평가계획을 붙이면 읽어서 표로 넣어요.</p></div>
     <div class="yp-grid">
       <aside class="yp-side" aria-labelledby="cpListH">
@@ -89,8 +90,7 @@ function render() {
     </div>
     <input type="file" id="cpFile" accept=".hwp,.hwpx,.pdf,.csv,.xlsx,.txt" multiple hidden>
   </div>`;
-  renderList();
-  renderMain();
+  keepFiles(box, () => { box.innerHTML = html; renderList(); renderMain(); }); // 파일 고르기 창이 열린 채 다시 그려도 고른 파일이 들어가게(core/keep-files.js)
 }
 const listShown = new WeakMap();
 function renderList() {

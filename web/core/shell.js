@@ -4,6 +4,7 @@ import { icon } from './icons.js';
 import { renderPlaceholder } from '../menus/placeholder.js';
 import { ensureYears } from './years.js';
 import { freeze, onFail, FULL_MSG, flushAll, usage } from './store.js';
+import { TABS_KEY, parseTabs, pickTab } from './nav-tabs.js';
 
 export const MENUS = [
   { id: 'evaluate', label: '평가', tabs: [['pyeongeo', '교과 평어'], ['cc', '창의적 체험활동'], ['hk', '행동특성'], ['gr', '평가지 채점'], ['unit', '단원평가'], ['activity', '활동지']] },
@@ -38,6 +39,13 @@ function readNav() {
   } catch (e) {}
   return null;
 }
+/* 메뉴마다 마지막으로 연 탭 (nav-tabs.js) */
+function readTabs() {
+  try { return parseTabs(localStorage.getItem(TABS_KEY)); } catch (e) { return {}; }
+}
+function keepTab(menu, tab) {
+  try { localStorage.setItem(TABS_KEY, JSON.stringify({ ...readTabs(), [menu]: tab })); } catch (e) {}
+}
 
 /* 다른 메뉴에서 AI가 일하는 중이면 그 메뉴 버튼에 작은 점(지금 보는 메뉴는 화면에 진행이 보여서 뺌). 일은 메뉴를 옮겨도 뒤에서 이어짐.
    AI 부르기(평가 메뉴의 generate — 새 메뉴의 core/ai.js도 그것을 부름)가 부를 때마다 window.SSAM_WORK(업무)로 알리고, 끝나면 돌려받은 함수를 부름.
@@ -69,11 +77,11 @@ export function setActions(html) {
 }
 
 const LEGACY = ['pyeongeo', 'cc', 'hk', 'gr'];
+/* 탭을 정하지 않으면(세로 메뉴를 누름 등) 그 메뉴에서 마지막으로 연 탭. 평가의 기존 앱 화면은 기존 앱의 mode를 따름 */
 export function go(menuId, tabId) {
   const m = find(menuId) || MENUS[0];
   setActions('');
-  let tab = m.tabs.find(x => x.id === tabId) ? tabId : null;
-  if (!tab) tab = m.id === 'evaluate' ? (SSAM().getMode && SSAM().getMode()) || 'pyeongeo' : m.tabs[0].id;
+  const tab = pickTab(m, tabId, readTabs(), m.id === 'evaluate' ? { legacy: LEGACY, mode: SSAM().getMode && SSAM().getMode() } : {});
   cur = { menu: m.id, tab };
   document.querySelectorAll('section[data-menu]').forEach(s => { s.hidden = s.dataset.menu !== m.id; });
   document.querySelectorAll('[data-menu-go]').forEach(b => {
@@ -89,6 +97,7 @@ export function go(menuId, tabId) {
     if (LEGACY.includes(tab) && SSAM().getMode && SSAM().getMode() !== tab) SSAM().setMode(tab);
   }
   try { localStorage.setItem(NAV_KEY, JSON.stringify(cur)); } catch (e) {}
+  keepTab(m.id, tab);
   drawAi();
   document.dispatchEvent(new CustomEvent('menu:go', { detail: { menu: m.id, tab } }));
   const fns = hooks[m.id];
@@ -144,6 +153,7 @@ function init() {
     if (!LEGACY.includes(cur.tab)) { go('evaluate', mode); return; }
     cur.tab = mode; drawTabs(find('evaluate'));
     try { localStorage.setItem(NAV_KEY, JSON.stringify(cur)); } catch (e) {}
+    keepTab('evaluate', mode);
   });
   // 다른 탭에서 학년도를 옮기면 이 탭은 저장을 멈추고 다시 엶 (지난 학년도 자료를 새 학년도에 쓰지 않게)
   window.addEventListener('storage', e => {

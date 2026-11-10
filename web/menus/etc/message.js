@@ -7,6 +7,7 @@ import * as ai from '../../core/ai.js';
 import { toast, copyText } from '../../core/ui.js';
 import { readText } from '../../core/files.js';
 import { aiRowHTML } from '../../core/ai-roles.js';
+import { keepFiles } from '../../core/keep-files.js';
 import { schoolYearOf } from '../../core/calendar.js';
 import { cleanSheet } from '../evaluate/activity/activity-read.js';
 import { KINDS, messagePrompt, normMessage, composeMessage, keepFields, moveStart } from './message-ai.js';
@@ -129,7 +130,7 @@ const recentHTML = () => {
 export function render() {
   if (!box || box.hidden) return;
   const x = cur();
-  box.innerHTML = `<div class="m-page msg-page">
+  const html = `<div class="m-page msg-page">
     <div class="m-head m-head-row"><div><h2>쪽지 작성</h2><p class="muted">공문·연수 계획·행사 계획을 넣으면 선생님들께 보낼 안내 쪽지를 써요. 이음 쪽지 창에 붙여 넣으세요.</p></div>
       <div class="m-head-act">${aiRowHTML('message')}<button class="btn text" type="button" data-msg="new">새 쪽지</button></div></div>
     <div class="msg-grid">
@@ -154,6 +155,7 @@ export function render() {
       </section>
     </div>
     <section class="pc-card"><h3>최근 쪽지</h3>${recentHTML()}</section></div>`;
+  keepFiles(box, () => { box.innerHTML = html; }); // 파일 고르기 창이 열린 채 다시 그려도 고른 파일이 들어가게(core/keep-files.js)
   document.dispatchEvent(new CustomEvent('ssam:message-render', { detail: { box } }));
 }
 /* 본문·제목만 다시 넣기(본문 칸에 초점이 있어도 손으로 고치기 전이면 덮음 — 눌러 두기만 한 칸이 빈 채로 남지 않게) */

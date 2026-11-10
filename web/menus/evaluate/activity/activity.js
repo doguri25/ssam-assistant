@@ -5,6 +5,7 @@ import { registerInbox } from '../../../core/inbox.js';
 import { stepsHTML } from '../../../core/steps.js';
 import * as ai from '../../../core/ai.js';
 import { toast } from '../../../core/ui.js';
+import { keepFiles } from '../../../core/keep-files.js';
 import { getSchool } from '../../../core/settings.js';
 import { aiRowHTML } from '../../../core/ai-roles.js';
 import { readBundle, openBundleCard, needsCard, bundleBoxHTML, onBundle, bundleMsg } from '../../../core/bundle.js';
@@ -132,7 +133,7 @@ export function render() {
     const a = A.view === 'act' ? curAct() : null;
     if (A.view === 'act' && !a) A.view = 'list';
     const inner = A.view === 'act' ? actHTML(a) : A.view !== 'list' && views[A.view] ? views[A.view].html() : listHTML();
-    box.innerHTML = `<div class="m-page act-page">${inner}</div>`;
+    keepFiles(box, () => { box.innerHTML = `<div class="m-page act-page">${inner}</div>`; }); // 파일 고르기 창이 열린 채 다시 그려도 고른 파일이 들어가게(core/keep-files.js, 한꺼번에 넣기 칸)
     if (A.view === 'act' && stepViews[A.step] && stepViews[A.step].bind) stepViews[A.step].bind(box, a);
     if (A.view === 'act' && A.step === 2) autoCriteria(a);
   } finally { rendering = false; }

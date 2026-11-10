@@ -28,7 +28,7 @@ test('학년도 = 3월~다음 해 2월, 학급 메뉴와 같은 답', () => {
 
 test('공통 키와 학년도 키', () => {
   for (const k of ['class:log', 'hk', 'school', 'yearplans', 'events', 'calendar', 'plans', 'sets:x']) assert.ok(isYearKey(k), k);
-  for (const k of ['engine', 'theme', 'nav', 'mode', 'updSkip', 'years', 't', 'mig:fable']) assert.ok(!isYearKey(k), k);
+  for (const k of ['engine', 'theme', 'nav', 'nav:tabs', 'mode', 'updSkip', 'years', 't', 'mig:fable']) assert.ok(!isYearKey(k), k);
 });
 
 test('지금 학년도: 없으면 오늘이 든 학년도', () => {

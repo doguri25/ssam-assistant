@@ -5,9 +5,13 @@
 import { graded, feedbackOf, feedbackRows } from './unit-model.js';
 
 export const REDO_MAX = 3;
-// 한 쪽 줄 수(10pt 보통 글 한 줄, 가장 성긴 워드 기준으로 넉넉히)·한 줄 글자 수(한글)·작은 글(8pt) 한 줄 글자 수와 줄 높이
-export const PAGE_LINES = 36, LINE_CHARS = 44;
-const SMALL_CHARS = 54, SMALL_RATIO = 0.8, HEAD_LINES = 1.5, ROW_PAD = 0.25, TABLE_GAP = 0.5, COLS = 5;
+/* 줄 수는 결과지를 A4로 실제로 그려 잰 값(2026-11-10). 한 줄 = 10pt 보통 글 한 줄.
+   한 쪽: 워드 37줄(첫 쪽은 빈 제목 문단 뒤 35줄, LibreOffice로 잼) · PDF 38.4줄(첫 쪽 37.7) · [인쇄] 틀 43.6줄(여백 10mm, 12.7mm면 42.8) · 한글 41줄(첫 쪽 39.5, 셈)
+   → 가장 빠듯한 워드 첫 쪽 35줄. 제목·표·작은 글마다 워드에서 잰 높이보다 조금 넉넉히 셈(그만큼이 넘치지 않게 남기는 자리, 둘째 쪽부터는 2줄 더 남음):
+   제목 1.75(워드 1.73·PDF 1.75), 표 한 줄은 글 줄 수 + 0.1(워드 0.85n + 0.15, PDF 한 줄 칸 1.1), 표 아래 빈 문단 1(워드), 작은 글(8pt) 0.85(워드 0.83).
+   한 줄 글자: 한글 48자(띄어 쓴 곳에서 줄을 바꿔 44자로), 표 칸(5칸) 한 줄 8자(워드에서 8자 → 9자면 두 줄), 빈칸 0.35자(「중요한 내용 찾기」가 칸 한 줄) */
+export const PAGE_LINES = 35, LINE_CHARS = 44, SMALL_CHARS = 54, SMALL_RATIO = 0.85;
+const HEAD_LINES = 1.75, ROW_PAD = 0.1, TABLE_GAP = 1, COLS = 5, SPACE_W = 0.35;
 /* 한 학생 칸의 줄: 번호별로 한 장씩이면 한 쪽, 아니면 반 쪽(가운데 자르는 줄 1을 뺌) */
 export const budgetOf = one => (one ? PAGE_LINES : (PAGE_LINES - 1) / 2);
 /* 복습 문제 꼴: 고르기·기호·선 잇기는 ①~④ 고르기, 단답, 서술형 */
@@ -15,8 +19,8 @@ export const redoKind = type => (type === 'essay' ? 'essay' : type === 'short' ?
 const CIRC = '①②③④';
 const SPACE = { choice: '(        )', short: `(${' '.repeat(30)})`, essay: '_'.repeat(40) };
 
-/* 글 너비(한글·기호 1, 영문·숫자·빈칸·문장 부호 0.55) → 줄 수(줄바꿈마다 한 줄 이상) */
-const width = s => [...String(s)].reduce((w, ch) => w + (ch.codePointAt(0) < 0x2000 ? 0.55 : 1), 0);
+/* 글 너비(한글·기호 1, 영문·숫자·문장 부호 0.55, 빈칸 0.35) → 줄 수(줄바꿈마다 한 줄 이상) */
+const width = s => [...String(s)].reduce((w, ch) => w + (ch === ' ' ? SPACE_W : ch.codePointAt(0) < 0x2000 ? 0.55 : 1), 0);
 export const textLines = (text, per = LINE_CHARS) => String(text == null ? '' : text).split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(width(l) / per)), 0);
 
 /* 결과지에서 그 학생 칸이 이미 쓴 줄 (unit-docs의 feedbackDoc과 같은 차례) */
