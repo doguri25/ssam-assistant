@@ -24,12 +24,13 @@ export function getInboxSettings() {
   for (const k of Object.keys(CHOICES)) if (CHOICES[k].includes(v[k])) s[k] = v[k];
   return s;
 }
+/* 저장하면 true, 저장하지 못하면(저장 공간이 꽉 참 등) false — 부르는 쪽이 「바꿨어요」를 띄울지 정함 */
 export function setInboxSettings(patch) {
   const s = { ...getInboxSettings(), ...patch };
-  set(KEY, s);
+  const ok = set(KEY, s) === true;
   document.dispatchEvent(new CustomEvent('inbox:settings', { detail: s }));
   syncFab();
-  return s;
+  return ok;
 }
 
 /* ---------- 처리 함수 등록 ---------- */
@@ -256,7 +257,8 @@ function bridge() {
     }
     receive(files);
   }).catch(() => {});
-  T.event.listen('bubble:off', () => { setInboxSettings({ on: false }); toast('떠 있는 버튼을 숨겼어요. 설정 › 화면에서 다시 켤 수 있어요.', 6000); }).catch(() => {});
+  // 저장하지 못했으면 저장소가 「저장 공간이 모자라…」를 알림(그 알림을 덮지 않게)
+  T.event.listen('bubble:off', () => { if (setInboxSettings({ on: false })) toast('떠 있는 버튼을 숨겼어요. 설정 › 화면에서 다시 켤 수 있어요.', 6000); }).catch(() => {});
   T.event.listen('inbox:pick', () => askPick()).catch(() => {});
 }
 bridge();

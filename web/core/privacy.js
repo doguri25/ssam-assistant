@@ -76,8 +76,10 @@ const NUMBERED = /^(\s*\d{1,2}[.)]?\s+)([가-힣]{3})(?=\s|$)/;
 const numName = l => { const m = NUMBERED.exec(l); return !!m && cellName(m[2]); };
 export const MASK = '○○○';
 
-/* ---------- 줄 안의 전화번호·전자 우편 (줄은 남기고 그 자리만) ---------- */
-export const CONTACT = new RegExp(`${PHONE.source}(?!\\d)|[\\w.+-]+@[\\w-]+\\.[\\w.]+`, 'g');
+/* ---------- 줄 안의 전화번호·전자 우편·주민등록번호 (줄은 남기고 그 자리만) ---------- */
+// 주민등록번호·외국인등록번호(6자리-7자리, 뒷자리 첫 수 1~8), 나라 번호를 붙인 전화번호(+82 10-…, +82-2-…)
+const RRN = /(?<!\d)\d{6}\s*-\s*[1-8]\d{6}(?!\d)/, INTL = /\+82[-.\s]?\(?0?\)?\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}(?!\d)/;
+export const CONTACT = new RegExp(`${PHONE.source}(?!\\d)|${RRN.source}|${INTL.source}|[\\w.+-]+@[\\w-]+\\.[\\w.]+`, 'g');
 /* 「문의 031-123-4567」 → 「문의 ○○○」: 전화번호 줄을 통째로 빼면(stripNames) 같은 줄의 내용까지 없어질 때 먼저 */
 export const maskContacts = text => String(text == null ? '' : text).replace(CONTACT, m => (m[0] === '(' && !m.includes(')') ? '(' + MASK : MASK)); // 「(031-…)」의 여는 괄호는 남김
 

@@ -1,5 +1,6 @@
 /* 설문 CSV(구글 폼 응답) 집계: 5점 척도는 평균·분포, 서술형은 답 모음. 구글 폼에 붙일 문항 글 */
 import { looksLikeName, stripNames } from './privacy.js';
+import { maskPersons } from './chat-names.js';
 import { readText } from './files.js';
 import { readTable } from './sheet.js';
 
@@ -58,7 +59,13 @@ function dropColumns(rows) {
   return { rows: drop.size ? rows.map(r => r.filter((c, j) => !drop.has(j))) : rows, cols };
 }
 const rowsText = rows => rows.map(r => r.join('\t').replace(/\t+$/, '')).join('\n');
-const done = (text, cols, opts) => { const r = stripNames(text, opts); return { text: r.text, cols, dropped: r.dropped, masked: r.masked }; };
+/* 명단·전화번호 줄 빼기(stripNames) 뒤, 칸(탭)마다 글 속 사람 이름(「김민수랑 같이」「이서연 엄마예요」 — chat-names)도 ○○○로. 칸 자리는 그대로 */
+const done = (text, cols, opts) => {
+  const r = stripNames(text, opts);
+  let masked = r.masked;
+  const out = r.text.split('\n').map(l => l.split('\t').map(c => { const p = maskPersons(c); masked += p.masked; return p.text; }).join('\t')).join('\n');
+  return { text: out, cols, dropped: r.dropped, masked };
+};
 
 /* 넣은 글(작년 설문 결과 등)의 개인정보 빼기: 표(붙여 넣은 표·엑셀을 읽은 글 — 탭으로 나뉜 줄이 두 줄 넘게 이어짐)는 첫 줄을 머리로 보고
    개인정보 열을 지우고, 그다음 명단·전화번호 줄은 빼고 이름은 가림(stripNames) → { text, cols(뺀 열 머리), dropped(뺀 줄), masked(가린 이름) }.

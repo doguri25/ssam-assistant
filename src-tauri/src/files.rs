@@ -22,20 +22,24 @@ pub fn safe_name(name: &str) -> String {
     }
 }
 
-/// `dir/name`이 이미 있으면 `이름 (2).확장자`, `이름 (3).확장자` …
-pub fn unique_path(dir: &Path, name: &str) -> PathBuf {
-    let first = dir.join(name);
-    if !first.exists() {
-        return first;
+/// `dir/name`, `dir/이름 (2).확장자`, `dir/이름 (3).확장자` … 차례 (n은 1부터)
+fn numbered(dir: &Path, name: &str, n: usize) -> PathBuf {
+    if n <= 1 {
+        return dir.join(name);
     }
     let (stem, ext) = match name.rfind('.') {
         Some(i) if i > 0 => (&name[..i], &name[i..]),
         _ => (name, ""),
     };
-    (2..)
-        .map(|n| dir.join(format!("{stem} ({n}){ext}")))
+    dir.join(format!("{stem} ({n}){ext}"))
+}
+
+/// `dir/name`이 이미 있으면 `이름 (2).확장자`, `이름 (3).확장자` …
+pub fn unique_path(dir: &Path, name: &str) -> PathBuf {
+    (1..)
+        .map(|n| numbered(dir, name, n))
         .find(|p| !p.exists())
-        .unwrap_or(first)
+        .unwrap_or_else(|| dir.join(name))
 }
 
 /// 다운로드 폴더 고르기: Windows가 아는 「다운로드」(Known Folder — 위치를 D:\다운로드로 옮겼거나 폴더 리디렉션이어도 그곳),
@@ -90,20 +94,25 @@ pub fn inside_notes(base: &Path, p: &Path) -> bool {
     p.starts_with(notes_root(base)) && !p.components().any(|c| matches!(c, std::path::Component::ParentDir))
 }
 
-/// 쪽지 붙임을 폴더에 씀. 같은 이름에 같은 내용이면 그 파일을 다시 쓰고(다시 눌러도 늘지 않게), 다르면 「이름 (2)」
+/// 쪽지 붙임을 폴더에 씀. 같은 이름(「이름 (2)」… 포함)에 같은 내용이 있으면 그 파일을 다시 쓰고(다시 눌러도 늘지 않게), 없으면 비켜 씀
 pub fn save_note_files(base: &Path, folder: &str, files: Vec<NoteFile>) -> Result<NoteSaved, String> {
     let dir = note_dir(base, folder);
     std::fs::create_dir_all(&dir).map_err(|e| format!("붙임 폴더를 만들지 못했어요: {e}"))?;
     let mut paths = Vec::new();
     for f in files {
         let name = safe_name(&f.name);
-        let same = dir.join(&name);
-        let path = if std::fs::read(&same).map(|b| b == f.bytes).unwrap_or(false) {
-            same
-        } else {
-            let p = unique_path(&dir, &name);
-            std::fs::write(&p, &f.bytes).map_err(|e| format!("붙임 파일을 저장하지 못했어요: {e}"))?;
-            p
+        // 이름 · 이름 (2) · 이름 (3) … 차례로 보고, 내용이 같은 파일이 있으면 그것, 처음 빈 자리가 나오면 거기에 씀
+        let mut n = 1;
+        let path = loop {
+            let p = numbered(&dir, &name, n);
+            if !p.exists() {
+                std::fs::write(&p, &f.bytes).map_err(|e| format!("붙임 파일을 저장하지 못했어요: {e}"))?;
+                break p;
+            }
+            if std::fs::read(&p).map(|b| b == f.bytes).unwrap_or(false) {
+                break p;
+            }
+            n += 1;
         };
         paths.push(path.to_string_lossy().into_owned());
     }
@@ -209,6 +218,23 @@ mod tests {
         assert_eq!(again.paths[0], saved.paths[0]);
         assert!(again.paths[1].ends_with("계획 (2).hwpx"), "{}", again.paths[1]);
         assert_eq!(again.dir, saved.dir);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn core_같은_이름의_다른_붙임도_다시_누르면_늘지_않음() {
+        let base = std::env::temp_dir().join(format!("ssam-note-again-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let two = || vec![NoteFile { name: "계획.hwpx".into(), bytes: b"a".to_vec() }, NoteFile { name: "계획.hwpx".into(), bytes: b"b".to_vec() }];
+        let first = save_note_files(&base, "2026-11-12 연수", two()).unwrap();
+        // [붙임 파일 복사]를 또 눌러도 「계획 (3)」「계획 (4)」…가 생기지 않고 같은 파일을 씀
+        let again = save_note_files(&base, "2026-11-12 연수", two()).unwrap();
+        let third = save_note_files(&base, "2026-11-12 연수", two()).unwrap();
+        assert_eq!(again.paths, first.paths);
+        assert_eq!(third.paths, first.paths);
+        let n = std::fs::read_dir(note_dir(&base, "2026-11-12 연수")).unwrap().count();
+        assert_eq!(n, 2, "붙임 폴더 파일 수");
+        assert_eq!(std::fs::read(&first.paths[1]).unwrap(), b"b");
         let _ = std::fs::remove_dir_all(&base);
     }
 
