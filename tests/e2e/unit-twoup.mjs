@@ -103,7 +103,7 @@ await run('unit-twoup', [
     assert(nos(plain) === '1,6,2,7,3,8,4,9,5,10', nos(plain));
     twoUpPdf = pdf;
   }],
-  ['단원평가 [평가지 넣기]에 2쪽 모아찍기 PDF: 10문항을 차례대로', async () => {
+  ['단원평가 [빈 문제지 넣기]에 2쪽 모아찍기 PDF: 10문항을 차례대로', async () => {
     const id2 = await page.evaluate(async () => {
       const m = await import('./menus/evaluate/unit/unit-model.js'), s = await import('./menus/evaluate/unit/unit-sample.js');
       const x = m.newTest({ meta: { ...s.SAMPLE_META, round: 2, date: '2026-10-20' }, key: { domains: ['지식', '이해'], items: s.SAMPLE_ITEMS }, paper: { text: '' } });

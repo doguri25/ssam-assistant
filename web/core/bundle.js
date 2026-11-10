@@ -200,7 +200,7 @@ async function smallImage(page, mask) {
   return { mime: 'image/jpeg', blob, b64 };
 }
 
-/* 파일 여러 개 → { doc: { student, teacher, docTeacher, how, names }, pages, roles, skipped }
+/* 파일 여러 개 → { doc: { student, teacher, docTeacher, how, names }, pages, roles, skipped, seen }
    한글·txt는 글(따로 넣은 교사용·정답 파일은 통째로 교사용), PDF·사진은 쪽. 모든 쪽에 글자층이 있는 PDF는 문서로(쪽은 버림) —
    다만 글자 인식된 학생 스캔 묶음(scanLike)이거나 학생 스캔을 받는 곳(expect: 'student')이면 쪽으로 두고 쪽 글로 표시(ocr).
    스캔 사이 글자층 쪽은 정답·교사용 쪽(글은 교사용 글로). 글자층 없는 스캔이 3쪽 이상이고 AI가 되면 앞 2쪽·뒤 2쪽을 한 번 보냄(실패하면 모두 학생) */
@@ -239,7 +239,8 @@ export async function readBundle(files, { say = () => {}, mask = null, expect = 
       aiRoles = Object.fromEntries(idx.map((pi, k) => [pi, rs[k]]));
     } catch (e) { aiRoles = null; }
   }
-  const b = { doc, pages, roles: pickRoles(pages, aiRoles), skipped };
+  // seen: AI가 표시를 본 쪽 번호(나머지 쪽의 「학생」은 근거 없이 둔 표시 — 단원평가 [답안 넣기]가 이름대로 넣을 때 씀)
+  const b = { doc, pages, roles: pickRoles(pages, aiRoles), skipped, seen: aiRoles ? Object.keys(aiRoles).map(Number) : [] };
   b.doc.teacher = teacherOf(b);
   if (b.doc.teacher && !d.teacher) b.doc.how = 'marker';
   return b;

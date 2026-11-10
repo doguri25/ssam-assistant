@@ -1,4 +1,4 @@
-// 단원평가 2·3단계: 답안 올리기(번호·명단 예외·이름 가리기), 문항별 채점, 확인 표(노란 칸·칸 고치기·문항 모아 보기),
+// 단원평가 2·3단계: 학생 문제지 나누기(번호·명단 예외·이름 가리기), 문항별 채점, 확인 표(노란 칸·칸 고치기·문항 모아 보기),
 // 다시 채점해도 고친 칸 그대로, 멈추기, 채점 도중 다른 평가로 가도 결과는 시작한 평가에, 채점 마치기, 업스테이지 안내
 import { open, run, assert, mockClaude } from './helpers.mjs';
 import { SAMPLE_ITEMS } from '../../web/menus/evaluate/unit/unit-sample.js';
@@ -52,9 +52,9 @@ const shot = async (w, h) => ({ name: `답안${w}.png`, mimeType: 'image/png', b
 const files = [await shot(300, 420), await shot(310, 430), await shot(320, 440)];
 
 await run('unit-grade', [
-  ['답안 올리기: 학생 한 명 1쪽, 명단 예외 번호 2를 건너뛰어 1·3·4번', async () => {
+  ['학생 문제지 나누기: 학생 한 명 1쪽, 명단 예외 번호 2를 건너뛰어 1·3·4번', async () => {
     await page.click(`${V} [data-un-open="${A}"]`);
-    assert((await page.textContent(`${V} .steps [aria-current="step"]`)).includes('답안'), '2단계가 아님');
+    assert((await page.textContent(`${V} .steps [aria-current="step"]`)).includes('나누기'), '2단계가 아님');
     await page.fill(`${V} #unPagesPer`, '1'); await page.dispatchEvent(`${V} #unPagesPer`, 'change');
     await page.setInputFiles(`${V} #unAnsFile`, files);
     await page.waitForFunction(() => document.querySelectorAll('.unit-box [data-st]').length === 3);
@@ -309,7 +309,7 @@ await run('unit-grade', [
     await page.click(`${V} [data-un-open="${A}"]`);
     await page.click(`${V} .steps [data-step="3"]`);
     assert((await page.textContent(V)).includes('업스테이지는 이미지를 글자로 바꿔 보내요'), '안내 없음');
-    assert((await page.textContent(V)).includes('스캔을 다시 올려'), '다시 열면 스캔이 없다는 안내');
+    assert((await page.textContent(V)).includes('학생 문제지를 다시 넣어'), '다시 열면 스캔이 없다는 안내');
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

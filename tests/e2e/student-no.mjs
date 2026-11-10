@@ -232,7 +232,7 @@ await run('student-no', [
     reads = [3, 1, 2]; noDelay = 1200;
     await page.setInputFiles('#inboxFile', [...files, { name: '명단.csv', mimeType: 'text/csv', buffer: Buffer.from('번호,성명\n1,가\n2,나\n3,다') }]);
     await page.waitForSelector('#sheetRoot #ibRun:not([disabled])');
-    assert((await page.textContent('#sheetRoot')).includes('학생 답안 스캔'), await page.textContent('#sheetRoot'));
+    assert((await page.textContent('#sheetRoot')).includes('학생 문제지 스캔'), await page.textContent('#sheetRoot'));
     await page.click('#sheetRoot #ibRun');
     await page.waitForFunction(() => /번호를 읽는 중/.test(document.querySelector('#sheetRoot').textContent));
     await page.waitForSelector('#sheetRoot #noOk', { timeout: 8000 });

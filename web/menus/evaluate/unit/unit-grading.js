@@ -1,4 +1,4 @@
-/* 단원평가 2단계(답안 올리기·이름 가리기)·3단계(문항별 채점·확인 표) (스펙 2.2·3.2).
+/* 단원평가 학생 문제지(스캔한 것) 넣기(1단계 줄)·2단계(나누기·이름 가리기)·3단계(문항별 채점·확인 표) (스펙 2.2·3.2).
    스캔 쪽은 이 화면에만 두고 저장하지 않음. 채점은 시작한 평가 id를 붙들고, 결과는 그 평가를 다시 읽어 넣음 */
 import { toast } from '../../../core/ui.js';
 import * as ai from '../../../core/ai.js';
@@ -15,18 +15,19 @@ import { gradeParts, normGrade, validGrade } from './unit-ai.js';
 import { unitAccuracy, accuracyText } from '../grade-accuracy.js';
 import { arrangePages } from './unit-pages.js';
 import { readNos, openNoCheck, openNoWait, rosterAllowed, byNoOrder } from '../../../core/student-no.js';
-import { esc, SS, AI_KEY, registerStep, inStep, cur, curId, commit, saveOrWarn, refresh, later, render, goStep, getBox, openTest, U } from './unit.js';
+import { esc, SS, AI_KEY, registerStep, registerPapers, inStep, cur, curId, commit, saveOrWarn, refresh, later, render, goStep, getBox, openTest } from './unit.js';
 
 const TYPE = Object.fromEntries(ITEM_TYPES);
-/* 세션 상태: 올린 스캔은 한 평가에만 붙음(raw: 올린 장, pages: 모아찍기를 자르고 뒷면을 돌린 쪽). 채점은 한 번에 한 평가만(run: 그 평가의 차례·멈춤) */
+/* 세션 상태: 넣은 스캔은 한 평가에만 붙음(raw: 넣은 장, pages: 모아찍기를 자르고 뒷면을 돌린 쪽). 채점은 한 번에 한 평가만(run: 그 평가의 차례·멈춤) */
 // usedNow: 이 화면을 켠 뒤 채점한 평가(사용량 줄 앞에 「지난 채점」을 붙이지 않음), loading: 스캔을 읽어 나누는 중인 평가(다른 메뉴에 갔다 와도 「읽는 중」이 보이게)
-const G = { testId: null, raw: [], pages: [], idx: [], msg: '', running: new Map(), run: null, usedNow: new Set(), loading: null };
+// hold: 답안을 넣기 전에 받은 학생 문제지 { id, raw, skipped, msg } — 답안이 들어오면 나눔, note: 다른 단추로 넣은 파일을 옮겨 넣었다는 알림 { id, text }
+const G = { testId: null, raw: [], pages: [], idx: [], msg: '', running: new Map(), run: null, usedNow: new Set(), loading: null, hold: null, note: null };
 const pagesOf = (id, i) => (G.testId === id && G.idx[i]) || [];
 const hasPages = id => G.testId === id && G.pages.length > 0;
 const busy = id => !!G.run && G.run.id === id && (G.run.queue.length > 0 || G.running.size > 0);
 const busyOther = id => !!G.run && G.run.id !== id && busy(G.run.id);
 
-/* ---------- 2단계: 답안 올리기 ---------- */
+/* ---------- 학생 문제지 넣기(1단계 줄)·2단계 나누기 ---------- */
 function split(t, pageCount, per) {
   const n = Math.ceil(pageCount / per);
   G.idx = Array.from({ length: n }, (_, i) => Array.from({ length: Math.min(per, pageCount - i * per) }, (_, j) => i * per + j));
@@ -38,33 +39,54 @@ const rosterExcept = () => (store.get('class', null) || {}).except || [];
 const arrange = raw => { const s = getSet(); return arrangePages(raw, { twoUp: !!s.twoUp, flipBack: !!s.flipBack }); };
 const pagesMsg = (raw, pages, n, skipped = 0) => `${raw === pages ? `${pages}쪽` : `스캔 ${raw}장 → ${pages}쪽`} · 학생 ${n}명${skipped ? ` · 읽지 못한 파일 ${skipped}개` : ''}`;
 function freeScans() { SS().files.freePages(G.pages); SS().files.freePages(G.raw); G.pages = []; G.raw = []; }
-async function loadAnswers(fileList) {
-  const t0 = cur(), id = t0.id, per = Math.max(1, getSet().pagesPer | 0);
-  const say = m => { G.msg = m; const el = getBox() && getBox().querySelector('#unAnsMsg'); if (el) el.textContent = m; };
+const hasKey = t => !!(t && t.key && t.key.items.length);
+const perNow = () => Math.max(1, getSet().pagesPer | 0);
+// 학생 문제지 줄(#unAnsMsg) 글: 그 평가를 보고 있을 때만 바로 바꿈
+const sayFor = id => m => { G.msg = m; const el = getBox() && getBox().querySelector('#unAnsMsg'); if (el && curId() === id) el.textContent = m; };
+/* 이 평가의 학생 문제지 줄 글: 답안 전이라 받아 둔 것, 읽는 중·나눈 결과, (1단계만) 다른 단추로 넣은 파일을 옮긴 알림 */
+const ansMsg = (t, note = true) => [G.hold && G.hold.id === t.id ? G.hold.msg : G.testId === t.id || G.loading === t.id ? G.msg : '', note && G.note && G.note.id === t.id ? G.note.text : ''].filter(Boolean).join(' · ');
+async function loadAnswers(fileList, t0 = cur()) {
+  const id = t0.id, per = perNow(), say = sayFor(id), before = G.msg;
   // 채점하는 동안 스캔을 바꾸면 채점 중인 학생에게 다른 쪽이 붙음: 끝나거나 멈춘 뒤에
-  if (busyOther(id)) { say('다른 평가를 채점하는 중이에요. 그 채점이 끝나거나 멈춘 뒤에 올려 주세요.'); return false; }
-  if (busy(id)) { say('채점하는 중이에요. 끝나거나 멈춘 뒤에 다시 올려 주세요.'); return false; }
-  if (G.loading) { toast('답안 스캔을 읽는 중이에요. 다 읽은 뒤에 다시 올려 주세요.', 5000); return false; }
+  if (busyOther(id)) { say('다른 평가를 채점하는 중이에요. 그 채점이 끝나거나 멈춘 뒤에 넣어 주세요.'); return false; }
+  if (busy(id)) { say('채점하는 중이에요. 끝나거나 멈춘 뒤에 다시 넣어 주세요.'); return false; }
+  if (G.loading) { toast('학생 문제지를 읽는 중이에요. 다 읽은 뒤에 다시 넣어 주세요.', 5000); return false; }
   G.loading = id;
   try {
     let r;
     try { r = await SS().files.readPages(fileList, say); }
-    catch (e) { say(e && e.message === 'PDFJS' ? 'PDF를 읽는 도구를 불러오지 못했어요. 인터넷 연결을 확인하거나 사진으로 올려 주세요.' : '파일을 읽지 못했어요.'); return false; }
+    catch (e) { say(e && e.message === 'PDFJS' ? 'PDF를 읽는 도구를 불러오지 못했어요. 인터넷 연결을 확인하거나 사진으로 넣어 주세요.' : '파일을 읽지 못했어요.'); return false; }
     if (!r.pages.length) { say('읽을 수 있는 PDF·사진이 없어요.'); return false; }
-    return await placeRaw(t0, id, per, r, say);
+    return await place(t0, id, per, r, say, before);
   } finally { G.loading = null; }
 }
-/* 한꺼번에 넣기에서 나눈 학생 쪽(이미 읽은 쪽)을 답안으로 */
-export async function loadAnswerPages(raw) {
-  const t0 = cur(), id = t0.id, per = Math.max(1, getSet().pagesPer | 0);
-  const say = m => { G.msg = m; const el = getBox() && getBox().querySelector('#unAnsMsg'); if (el) el.textContent = m; };
-  if (busyOther(id) || busy(id)) { say('채점하는 중이에요. 끝나거나 멈춘 뒤에 다시 올려 주세요.'); SS().files.freePages(raw); return false; }
-  return placeRaw(t0, id, per, { pages: raw, skipped: [] }, say);
+/* 이미 읽은 쪽(한꺼번에 넣기·[답안 넣기]에서 학생 쪽으로 나눈 것)을 학생 문제지로 */
+export async function loadAnswerPages(raw, t0 = cur()) {
+  const id = t0.id, say = sayFor(id);
+  if (busyOther(id) || busy(id)) { say('채점하는 중이에요. 끝나거나 멈춘 뒤에 다시 넣어 주세요.'); SS().files.freePages(raw); return false; }
+  return place(t0, id, perNow(), { pages: raw, skipped: [] }, say, G.msg);
+}
+/* 답안을 넣기 전이면 학생 문제지를 이 화면에 받아 두고 답안이 들어오면 나눔(keyArrived). 답안이 있으면 바로 학생별로 나눔 */
+async function place(t0, id, per, r, say, before) {
+  if (hasKey(getTest(id) || t0)) return placeRaw(t0, id, per, r, say);
+  if (G.hold && G.hold.raw !== r.pages) SS().files.freePages(G.hold.raw);
+  const skip = (r.skipped || []).length;
+  G.hold = { id, raw: r.pages, skipped: r.skipped || [], msg: `학생 문제지 스캔 ${r.pages.length}장을 받았어요. 답안을 넣으면 학생별로 나눠요${skip ? ` · 읽지 못한 파일 ${skip}개` : ''}` };
+  if (G.testId !== id) G.msg = before; // 다른 평가에 붙은 스캔의 줄 글은 그대로
+  refresh(id);
+  return true;
+}
+/* 답안이 들어오면 받아 둔 학생 문제지를 학생별로 나눔(1단계 답안·한꺼번에 넣기, 2단계로 갈 때). 채점하는 중이면 끝난 뒤 2단계로 갈 때 */
+function keyArrived(id) {
+  const h = G.hold, t = getTest(id);
+  if (!h || h.id !== id || !hasKey(t) || busy(id) || busyOther(id)) return;
+  G.hold = null;
+  placeRaw(t, id, perNow(), { pages: h.raw, skipped: h.skipped }, sayFor(id));
 }
 async function placeRaw(t0, id, per, r, say) {
   let pages;
   try { pages = await arrange(r.pages); }
-  catch (e) { SS().files.freePages(r.pages); say('스캔을 나누지 못했어요. 다시 올려 주세요.'); return false; }
+  catch (e) { SS().files.freePages(r.pages); say('스캔을 나누지 못했어요. 다시 넣어 주세요.'); return false; }
   const t = getTest(id) || t0;
   const n = Math.ceil(pages.length / per);
   const apply = () => {
@@ -74,7 +96,7 @@ async function placeRaw(t0, id, per, r, say) {
     G.msg = pagesMsg(r.pages.length, pages.length, t.students.length, r.skipped.length);
     commit(t); refresh(id);
   };
-  if (G.run && busy(G.run.id)) { say('채점하는 중이에요. 끝나거나 멈춘 뒤에 다시 올려 주세요.'); return false; }
+  if (G.run && busy(G.run.id)) { say('채점하는 중이에요. 끝나거나 멈춘 뒤에 다시 넣어 주세요.'); return false; }
   if (t.students.length && t.students.length !== n && t.students.some(s => s.status === 'done')) {
     SS().openSheet(`<h3>학생 수가 달라요</h3><p class="muted" style="margin:0">채점한 학생은 ${t.students.length}명인데 새 스캔은 ${n}명이에요. 새로 나누면 채점한 결과가 지워져요.</p>
       <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="unRedoOk">새로 나누기</button></div>`,
@@ -93,16 +115,21 @@ function stuRow(t, s, i) {
     <span class="muted">${pg.length ? `${pg.length}쪽` : '스캔 없음'}</span>${chip}
     <span class="grow"></span><button class="btn text" type="button" data-un="skip" data-i="${i}">${s.skip ? '채점하기' : '채점 안 함'}</button></li>`;
 }
+/* [학생 문제지 넣기(스캔한 것)] 줄: 1단계(한글·글 파일을 고르면 답안·빈 문제지로 옮겨 넣음)와 2단계(다시 넣기) */
+function ansRowHTML(t, step) {
+  const again = step === 2 && (hasPages(t.id) || t.students.length > 0);
+  return `<div class="row"><button class="btn primary" type="button" data-un="ansFile">${again ? '학생 문제지 다시 넣기' : '학생 문제지 넣기(스캔한 것)'}</button>
+        <label class="cls-inline">학생 한 명 <input class="field num" type="number" id="unPagesPer" min="1" max="8" value="${getSet().pagesPer}"> 쪽</label>
+        <span class="muted" id="unAnsMsg" role="status">${esc(ansMsg(t, step === 1))}</span></div>
+      <input type="file" id="unAnsFile" accept="${step === 1 ? '.pdf,.png,.jpg,.jpeg,.webp,.hwp,.hwpx,.txt' : '.pdf,.png,.jpg,.jpeg,.webp'}" multiple hidden>`;
+}
 function step2HTML(t) {
   const set = getSet(), m = maskOf(t);
-  const note = t.students.length && !hasPages(t.id) ? '<p class="banner warn" style="margin:8px 0 0">스캔 이미지는 저장하지 않아요. 다시 채점하려면 답안 스캔을 다시 올려 주세요.</p>' : '';
+  const note = t.students.length && !hasPages(t.id) ? '<p class="banner warn" style="margin:8px 0 0">스캔 이미지는 저장하지 않아요. 다시 채점하려면 학생 문제지를 다시 넣어 주세요.</p>' : '';
   return `<div class="yp-card">
-      <h3>답안 올리기</h3>
-      <p class="muted cls-note">반 전체 답안을 스캔한 PDF나 사진을 올려요. 학생마다 장 수가 같아야 차례대로 나눠져요. 번호는 학급 명단의 예외 번호와 결석 번호를 건너뛰어 매겨요.</p>
-      <div class="row"><button class="btn primary" type="button" data-un="ansFile">답안 스캔 올리기</button>
-        <label class="cls-inline">학생 한 명 <input class="field num" type="number" id="unPagesPer" min="1" max="8" value="${set.pagesPer}"> 쪽</label>
-        <span class="muted" id="unAnsMsg">${esc(G.testId === t.id || G.loading === t.id ? G.msg : '')}</span></div>
-      <input type="file" id="unAnsFile" accept=".pdf,.png,.jpg,.jpeg,.webp" multiple hidden>
+      <h3>나누기·이름 가리기</h3>
+      <p class="muted cls-note">넣은 학생 문제지 스캔을 학생마다 나눠요. 학생마다 쪽 수가 같아야 차례대로 나눠져요. 번호는 학급 명단의 예외 번호와 결석 번호를 건너뛰어 매겨요.</p>
+      ${ansRowHTML(t, 2)}
       <div class="row"><label class="switch"><input type="checkbox" id="unTwoUp"${set.twoUp ? ' checked' : ''}>모아찍기(한 면에 2쪽)</label>
         <label class="switch"><input type="checkbox" id="unFlipBack"${set.flipBack ? ' checked' : ''}>양면 스캔 뒷면이 거꾸로</label>
         <span class="muted">모아찍기면 가로로 긴 장을 왼쪽·오른쪽 쪽으로 나눠요. 학생 한 명 쪽 수는 나눈 뒤 쪽 수(문제지 쪽 수)로 적어 주세요.</span></div>
@@ -124,7 +151,7 @@ function openMask(t) {
   const set = getSet(), m = maskOf(t) || { mask: set.mask, all: set.maskAll };
   const shots = t.students.map((s, i) => ({ s, pg: pagesOf(t.id, i) })).filter(x => !x.s.skip && x.pg.length).map(x => ({ url: G.pages[x.pg[0]].url, label: `${x.s.no}번 첫 쪽` }));
   if (!shots.length || !SS().openMaskEditor) return;
-  SS().openMaskEditor({ shots, mask: m.mask, all: m.all, what: '평가지', save: (mask, all) => {
+  SS().openMaskEditor({ shots, mask: m.mask, all: m.all, what: '학생 문제지', save: (mask, all) => {
     const t2 = getTest(t.id) || t;
     t2.mask = mask; t2.maskAll = all; commit(t2);
     saveSet({ ...getSet(), mask, maskAll: all });
@@ -138,7 +165,7 @@ function openNoBox(t, then) {
   const set = getSet(), box = t.noBox || set.noBox;
   const shots = t.students.map((s, i) => ({ s, pg: pagesOf(t.id, i) })).filter(x => x.pg.length).map(x => ({ url: G.pages[x.pg[0]].url, label: `${x.s.no}번 첫 쪽` }));
   if (!shots.length || !SS().openMaskEditor) return;
-  SS().openMaskEditor({ kind: 'no', shots, mask: box ? [box] : [], all: false, what: '평가지', save: mask => {
+  SS().openMaskEditor({ kind: 'no', shots, mask: box ? [box] : [], all: false, what: '학생 문제지', save: mask => {
     const t2 = getTest(t.id) || t;
     if (mask.length) { t2.noBox = mask[mask.length - 1]; saveSet({ ...getSet(), noBox: t2.noBox }); } else delete t2.noBox;
     commit(t2); render();
@@ -150,7 +177,7 @@ const noSig = t => G.idx.map((p, i) => `${p[0]}-${t.students[i] ? t.students[i].
 const nosOk = t => !!G.noOk && G.noOk.pages === G.pages && G.noOk.sig === noSig(t);
 // 번호로 맞춘 평가에 다시 올린 스캔은 걷은 차례라, 번호를 다시 읽기 전에는 학생(번호 차례)과 쪽이 맞지 않음
 const noStale = t => !!getSet().byNo && !!t.noOrdered && hasPages(t.id) && !nosOk(t);
-const CHANGED = '번호를 읽는 동안 답안 스캔이 바뀌었어요. 채점 시작을 다시 눌러 주세요.';
+const CHANGED = '번호를 읽는 동안 학생 문제지 스캔이 바뀌었어요. 채점 시작을 다시 눌러 주세요.';
 const freshStudent = no => ({ no, skip: false, status: 'idle', items: {}, good: '', cheer: '' });
 const hasResult = s => s.status === 'done' || Object.keys(s.items || {}).length > 0;
 async function askNos(t, then) {
@@ -238,7 +265,7 @@ async function gradeOne(id, i, meter) {
     if (ctrl.signal.aborted) return;
     if (e && e.code === 'rate_limited' && G.run && G.run.id === id && !G.run.stop) return e.retryAfter > 0 ? { rate: e.retryAfter * 1000 } : 'rate'; // AI가 알려 준 기다릴 시간(초)
     const t = getTest(id), st = t && t.students[i];
-    const why = e && e.code === 'no_scan' ? '스캔이 없어요. 답안 스캔을 다시 올려 주세요' : e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요' : ai.errorMessage(e && e.code, e);
+    const why = e && e.code === 'no_scan' ? '스캔이 없어요. 학생 문제지를 다시 넣어 주세요' : e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요' : ai.errorMessage(e && e.code, e);
     if (st && st.no === no) { st.status = 'error'; st.err = why; saveOrWarn(t); }
     // 키가 틀리거나 한도에 걸리면 남은 학생도 똑같이 실패하므로 멈추고 까닭을 한 번 알림
     if (e && ['auth', 'quota'].includes(e.code) && G.run && G.run.id === id && !G.run.stop) {
@@ -297,7 +324,7 @@ async function runQueue(id, list) {
 function askMask(go) {
   const set = getSet(), m = maskOf(cur());
   if (!set.maskOn || (m && m.mask.length) || G.noMaskFor === curId()) { go(); return; }
-  const last = set.mask.length ? ' 지난 평가에서 정한 곳을 먼저 보여 드려요. 이 평가지에서도 이름이 가려지는지 확인해 주세요.' : '';
+  const last = set.mask.length ? ' 지난 평가에서 정한 곳을 먼저 보여 드려요. 이 학생 문제지에서도 이름이 가려지는지 확인해 주세요.' : '';
   SS().openSheet(`<h3>이 평가의 이름 칸을 아직 정하지 않았어요</h3><p class="muted" style="margin:0">정하지 않으면 학생 이름이 그대로 AI 회사로 보내져요. [이름 칸 정하기]로 이름이 적힌 곳을 상자로 표시해 주세요.${last}</p>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn" type="button" id="unNoMaskOk">가리지 않고 채점</button><button class="btn primary" type="button" id="unMaskGo">이름 칸 정하기</button></div>`,
   sh => {
@@ -312,12 +339,12 @@ function startGrading(only) {
   if (!ai.ready()) { toast(AI_KEY, 5000); return; }
   if (busy(id)) return;
   if (busyOther(id)) { toast('다른 평가를 채점하는 중이에요. 끝나거나 멈춘 뒤에 채점해 주세요.', 5000); return; }
-  if (!hasPages(id)) { toast('답안 스캔을 먼저 올려 주세요(2단계)', 5000); return; }
-  if (G.arranging) { toast('답안 스캔을 다시 나누는 중이에요. 끝난 뒤에 채점해 주세요.', 5000); return; }
+  if (!hasPages(id)) { toast('학생 문제지를 먼저 넣어 주세요(1단계)', 5000); return; }
+  if (G.arranging) { toast('학생 문제지를 다시 나누는 중이에요. 끝난 뒤에 채점해 주세요.', 5000); return; }
   // 번호 칸 그림에도 이름이 들어갈 수 있어서 이름 칸을 먼저 묻고, 번호를 읽어 확인한 뒤 채점
   if (getSet().byNo && !nosOk(t)) { askMask(() => askNos(t, () => startGrading(only))); return; }
   const all = t.students.map((s, i) => ({ s, i })).filter(x => !x.s.skip && pagesOf(id, x.i).length);
-  if (only != null) { const x = all.find(y => y.s.no === only); if (x) askMask(() => runQueue(id, [x.i])); else toast('이 학생의 스캔이 없어요. 번호가 맞는지 확인하거나 답안 스캔을 다시 올려 주세요(2단계).', 5000); return; }
+  if (only != null) { const x = all.find(y => y.s.no === only); if (x) askMask(() => runQueue(id, [x.i])); else toast('이 학생의 스캔이 없어요. 번호가 맞는지 확인하거나 학생 문제지를 다시 넣어 주세요(2단계).', 5000); return; }
   const todo = all.filter(x => x.s.status !== 'done');
   if (todo.length) { askMask(() => runQueue(id, todo.map(x => x.i))); return; }
   SS().openSheet(`<h3>모두 다시 채점할까요?</h3><p class="muted" style="margin:0">학생 ${all.length}명을 다시 채점해요. 선생님이 고친 칸은 그대로 둬요.</p>
@@ -342,8 +369,8 @@ function step3HTML(t) {
   const id = t.id, items = t.key.items, run = busy(id);
   const done = t.students.filter(s => !s.skip && s.status === 'done').length, total = t.students.filter(s => !s.skip).length;
   const up = /업스테이지/.test(ai.providerName()) ? '<p class="muted cls-note">업스테이지는 이미지를 글자로 바꿔 보내요. 손글씨는 Claude·Gemini·GPT가 더 정확해요.</p>' : '';
-  const scanNote = !hasPages(id) ? '<p class="banner warn" style="margin:8px 0 0">스캔 이미지는 저장하지 않아요. 채점하려면 2단계에서 답안 스캔을 다시 올려 주세요.</p>'
-    : noStale(t) ? '<p class="banner warn" style="margin:8px 0 0">번호를 다시 읽기 전이라 학생과 답안 쪽이 맞지 않을 수 있어요. 칸의 답안 그림은 번호를 읽은 뒤에 보여요([채점 시작]이나 칸의 [번호 읽기]).</p>' : '';
+  const scanNote = !hasPages(id) ? '<p class="banner warn" style="margin:8px 0 0">스캔 이미지는 저장하지 않아요. 채점하려면 2단계에서 학생 문제지를 다시 넣어 주세요.</p>'
+    : noStale(t) ? '<p class="banner warn" style="margin:8px 0 0">번호를 다시 읽기 전이라 학생과 문제지 쪽이 맞지 않을 수 있어요. 칸의 문제지 그림은 번호를 읽은 뒤에 보여요([채점 시작]이나 칸의 [번호 읽기]).</p>' : '';
   const head = `<tr><th scope="col">번호</th>${items.map(it => `<th scope="col"><button class="un-ih" type="button" data-item="${it.no}" title="${esc(it.content)}">${it.no}<small>${TYPE[it.type] || ''}</small></button></th>`).join('')}<th scope="col">총점</th></tr>`;
   const rows = t.students.map((s, i) => {
     if (s.skip) return '';
@@ -379,8 +406,8 @@ function openCell(no, itemNo) {
   let pick = c.pts;
   const pg = pagesOf(t.id, si);
   // 다시 올린 스캔의 번호를 읽기 전이면 다른 학생 답안이 보일 수 있어 그림 대신 [번호 읽기](번호만 맞추고 채점은 안 함)
-  const imgs = noStale(t) ? '<div class="row"><span class="muted">다시 올린 스캔은 걷은 차례라 번호를 다시 읽은 뒤에 이 학생 답안을 볼 수 있어요.</span><button class="btn" type="button" id="unCellNos">번호 읽기</button></div>'
-    : pg.length ? `<div class="un-pages">${pg.map(k => `<img src="${G.pages[k].url}" alt="${no}번 평가지">`).join('')}</div>` : '<p class="muted">스캔 이미지는 저장하지 않아서 지금은 볼 수 없어요.</p>';
+  const imgs = noStale(t) ? '<div class="row"><span class="muted">다시 넣은 스캔은 걷은 차례라 번호를 다시 읽은 뒤에 이 학생 문제지를 볼 수 있어요.</span><button class="btn" type="button" id="unCellNos">번호 읽기</button></div>'
+    : pg.length ? `<div class="un-pages">${pg.map(k => `<img src="${G.pages[k].url}" alt="${no}번 학생 문제지">`).join('')}</div>` : '<p class="muted">스캔 이미지는 저장하지 않아서 지금은 볼 수 없어요.</p>';
   const ptsUI = it.type === 'essay'
     ? `<label class="cls-inline">점수 <input class="field num" type="number" id="unCellPts" min="0" max="${full}" value="${c.pts}"> / ${full}점</label>`
     : `<div class="seg" role="group" aria-label="점수"><button type="button" data-pts="${full}" aria-pressed="${c.pts >= full}">맞음 ${full}점</button><button type="button" data-pts="0" aria-pressed="${!c.pts}">틀림 0점</button></div>`;
@@ -476,8 +503,20 @@ function askFinish() {
 
 registerStep(2, {
   html: step2HTML,
-  // 1단계 한꺼번에 넣기에서 넘어온 학생 쪽
-  bind: (box, t) => { if (U.pending && U.pending.id === t.id) { const p = U.pending.pages; U.pending = null; setTimeout(() => loadAnswerPages(p), 0); } }
+  // 1단계에서 받아 두었는데 아직 나누지 못한 학생 문제지(답안을 넣을 때 다른 평가를 채점하던 중 등)
+  bind: (box, t) => { if (G.hold && G.hold.id === t.id) setTimeout(() => keyArrived(t.id), 0); }
+});
+/* 1단계 [학생 문제지 넣기(스캔한 것)] 줄과 다른 단추·한꺼번에 넣기에서 학생 쪽으로 나눈 것 (unit.js가 씀) */
+registerPapers({
+  html: t => ansRowHTML(t, 1),
+  put: (files, t0) => loadAnswers(files, t0),
+  putPages: (pages, t0) => loadAnswerPages(pages, t0),
+  keyArrived,
+  note(id, text) {
+    G.note = text ? { id, text } : G.note && G.note.id === id ? null : G.note;
+    const el = getBox() && getBox().querySelector('#unAnsMsg'), t = curId() === id ? cur() : null;
+    if (el && t) el.textContent = ansMsg(t, inStep(1));
+  }
 });
 registerStep(3, { html: step3HTML });
 
@@ -505,7 +544,8 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('change', e => {
   const box = getBox();
-  if (!box || !box.contains(e.target) || !inStep(2)) return;
+  // 1단계에도 「학생 한 명 n쪽」 칸이 있음([학생 문제지 넣기] 옆)
+  if (!box || !box.contains(e.target) || !(inStep(2) || (inStep(1) && e.target.id === 'unPagesPer'))) return;
   const el = e.target, t = cur();
   // 채점하는 동안 쪽 수·쪽 모양·번호를 바꾸면 보내는 중인 학생의 결과가 버려지거나 이름 칸이 지워져 이름이 AI로 감: 끝나거나 멈춘 뒤에
   const locked = ['unPagesPer', 'unTwoUp', 'unFlipBack', 'unAbsent'].includes(el.id) || el.dataset.stno != null;
@@ -515,7 +555,7 @@ document.addEventListener('change', e => {
     const per = Math.max(1, Math.min(8, Math.round(Number(el.value) || 1)));
     saveSet({ ...getSet(), pagesPer: per });
     if (hasPages(t.id) && !t.students.some(s => s.status === 'done')) { t.students = []; split(t, G.pages.length, per); commit(t); }
-    else if (t.students.some(s => s.status === 'done')) toast('이미 채점한 학생이 있어서 지금 나눈 것은 그대로예요. 답안 스캔을 다시 올리면 새 쪽 수로 나눠요.', 6000);
+    else if (t.students.some(s => s.status === 'done')) toast('이미 채점한 학생이 있어서 지금 나눈 것은 그대로예요. 학생 문제지를 다시 넣으면 새 쪽 수로 나눠요.', 6000);
     render();
   } else if (el.id === 'unTwoUp' || el.id === 'unFlipBack') {
     saveSet({ ...getSet(), [el.id === 'unTwoUp' ? 'twoUp' : 'flipBack']: el.checked });
@@ -548,14 +588,14 @@ document.addEventListener('change', e => {
 /* 모아찍기·뒷면 설정을 바꾸면 올린 스캔을 다시 나눔 (채점한 학생이 있으면 그대로 두고 안내) */
 async function rearrange(t) {
   if (!hasPages(t.id) || busy(t.id)) { render(); return; }
-  if (t.students.some(s => s.status === 'done')) { toast('이미 채점한 학생이 있어서 지금 나눈 것은 그대로예요. 답안 스캔을 다시 올리면 새 설정으로 나눠요.', 6000); render(); return; }
+  if (t.students.some(s => s.status === 'done')) { toast('이미 채점한 학생이 있어서 지금 나눈 것은 그대로예요. 학생 문제지를 다시 넣으면 새 설정으로 나눠요.', 6000); render(); return; }
   const raw = G.raw, seq = G.seq = (G.seq || 0) + 1;
   G.msg = '스캔을 다시 나누는 중…'; G.arranging = true;
   const el = getBox() && getBox().querySelector('#unAnsMsg'); if (el) el.textContent = G.msg;
   let pages;
-  try { pages = await arrange(raw); } catch (e) { if (G.seq === seq) G.arranging = false; toast('스캔을 나누지 못했어요. 다시 올려 주세요.'); return; }
+  try { pages = await arrange(raw); } catch (e) { if (G.seq === seq) G.arranging = false; toast('스캔을 나누지 못했어요. 다시 넣어 주세요.'); return; }
   if (G.seq === seq) G.arranging = false;
-  // 그 사이 새 스캔을 올렸거나 설정을 또 바꿨거나 채점이 시작됨: 이 결과는 버림
+  // 그 사이 새 스캔을 넣었거나 설정을 또 바꿨거나 채점이 시작됨: 이 결과는 버림
   const now = getTest(t.id);
   if (G.raw !== raw || G.seq !== seq || busy(t.id) || (now && now.students.some(s => s.status === 'done'))) {
     SS().files.freePages(pages.filter(p => !raw.includes(p)));
@@ -570,8 +610,8 @@ async function rearrange(t) {
   commit(t2); refresh(t2.id);
 }
 
-/* 떠 있는 버튼: 학생 답안 스캔 → 정답지를 넣은 단원평가(최근 것이 먼저)에 넣고 채점 시작. 그런 평가가 없으면 평가 › 평가지 채점 */
-/* 정답지를 넣은 단원평가(최근 것이 먼저). 예시 평가는 그것만 있을 때만 */
+/* 떠 있는 버튼: 학생 문제지 스캔 → 답안을 넣은 단원평가(최근 것이 먼저)에 넣고 채점 시작. 그런 평가가 없으면 평가 › 평가지 채점 */
+/* 답안을 넣은 단원평가(최근 것이 먼저). 예시 평가는 그것만 있을 때만 */
 const keyed = () => { const l = listTests().filter(s => s.total > 0), real = l.filter(s => !s.sample); return real.length ? real : l; };
 const testLabel = s => [s.title, s.date, s.done ? '채점 마침' : s.n ? `${s.n}명 채점함` : '채점 전'].filter(Boolean).join(' · ');
 async function legacyGrade(files) {
@@ -585,7 +625,7 @@ async function legacyGrade(files) {
 /* 기준을 확정한 활동지(활동지 탭이 SSAM.activityInbox로 알려 줌) → 받는 곳 「활동지 채점 · …」, 값은 'act:' + id */
 const acts = () => { const A = SS().activityInbox; try { return A ? A.list() : []; } catch (e) { return []; } };
 registerInbox('unit-scan', {
-  act: () => { const k = keyed().length, a = acts().length; return k && a ? '고른 평가(단원평가·활동지)에 답안으로 넣기' : k ? '단원평가 답안으로 넣고 채점하기' : a ? '활동지 채점에 학생 활동지로 넣기' : '평가 › 평가지 채점에 넣기 (정답지를 넣은 단원평가가 없어요)'; },
+  act: () => { const k = keyed().length, a = acts().length; return k && a ? '고른 평가(단원평가·활동지)에 학생 것으로 넣기' : k ? '단원평가 학생 문제지로 넣고 채점하기' : a ? '활동지 채점에 학생 활동지로 넣기' : '평가 › 평가지 채점에 넣기 (답안을 넣은 단원평가가 없어요)'; },
   fields: () => {
     const l = keyed(), al = acts();
     const opts = [...l.map(s => [s.id, testLabel(s)]), ...al.map(([id, label]) => ['act:' + id, '활동지 채점 · ' + label])];

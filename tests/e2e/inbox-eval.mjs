@@ -1,4 +1,4 @@
-// 떠 있는 버튼 › 평가: 정답지·합본 → 새 단원평가, 문제지 → 평가지 없는 단원평가, 답안 사진 → 단원평가 골라 채점, 단원평가가 없으면 평가지 채점, 교과 평가계획
+// 떠 있는 버튼 › 평가: 답안·합본 → 새 단원평가, 빈 문제지 → 빈 문제지 없는 단원평가, 학생 문제지 사진 → 단원평가 골라 채점, 단원평가가 없으면 평가지 채점, 교과 평가계획
 import { join } from 'node:path';
 import { open, run, assert, mockClaude, FIXTURES, ROOT } from './helpers.mjs';
 import { readFileSync } from 'node:fs';
@@ -35,7 +35,7 @@ await run('inbox-eval', [
   ['정답·해설지 → 새 단원평가(단원평가 탭이 열리고 문항·배점 안내)', async () => {
     await pick(join(FIXTURES, 'unit-key-inline.txt'));
     await page.waitForSelector(sheet);
-    assert((await page.textContent(sheet)).includes('단원평가 정답지'), await page.textContent(sheet));
+    assert((await page.textContent(sheet)).includes('단원평가 답안(정답·이원 분류표)'), await page.textContent(sheet));
     await runCard();
     await page.waitForFunction(() => (document.querySelector('.unit-box .un-sum') || {}).textContent?.includes('8문항 · 100점'));
     assert(await page.isVisible('#menuTabs [data-tab="unit"][aria-current="page"]'), '단원평가 탭');
@@ -76,14 +76,14 @@ await run('inbox-eval', [
     await pick(join(ROOT, 'samples', '단원평가-답안-예시.pdf'));
     await page.waitForSelector(sheet, { timeout: 15000 });
     const txt = await page.textContent(sheet);
-    assert(txt.includes('학생 답안 스캔') && !txt.includes('문제지로 보여요'), txt);
+    assert(txt.includes('학생 문제지 스캔(으)로 보여요') && !txt.includes('빈 문제지(으)로 보여요'), txt);
     await page.click(`${sheet} [data-close]`);
   }],
   ['답안 사진 2장 → 정답지 넣은 단원평가 고르기(최근 것이 먼저) → 답안 넣고 채점 시작', async () => {
     const n0 = prompts.filter(p => p.startsWith('[단원평가 채점]')).length;
     await pick([await shot(300, 420), await shot(310, 430)]);
     await page.waitForSelector(`${sheet} [data-ib-field="test"]`);
-    assert((await page.textContent(sheet)).includes('학생 답안 스캔'), '종류');
+    assert((await page.textContent(sheet)).includes('학생 문제지 스캔'), '종류');
     assert(await page.inputValue(`${sheet} [data-ib-field="test"]`) === S, '최근 평가가 먼저가 아님');
     await runCard();
     await page.waitForFunction(id => { const t = JSON.parse(localStorage.getItem('ssam:unit:t:' + id) || 'null'); return t && t.students.length === 2 && t.students.every(s => s.status === 'done'); }, S, { timeout: 10000 });
@@ -120,7 +120,7 @@ await run('inbox-eval', [
     await page.waitForSelector('#sheetRoot #unRedoOk');
     await page.waitForTimeout(500);
     assert(prompts.filter(p => p.startsWith('[단원평가 채점]')).length === n0, 'AI를 부름');
-    assert((await page.textContent('.unit-box .steps [aria-current="step"]')).includes('답안'), '채점 단계로 감');
+    assert((await page.textContent('.unit-box .steps [aria-current="step"]')).includes('나누기'), '채점 단계로 감');
     await page.click('#sheetRoot [data-close]');
   }],
   ['교과 평가계획 → 교과 평어에 계획이 바뀜(카드에 바뀐다고 적음)', async () => {
