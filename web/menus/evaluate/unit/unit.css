@@ -84,6 +84,9 @@ section[data-menu="evaluate"].ev-new > :not(.unit-box):not(.act-box){display:non
   /* 한 쪽에 2명: 칸은 반 쪽 이상, 틀린 문항이 많으면 늘어나고 잘리지 않음 */
   .un-ps{box-sizing:border-box;min-height:48vh;overflow:visible;padding:4mm 2mm;border-bottom:1px dashed #999}
   .un-ps:nth-child(2n){border-bottom:0;break-after:page}
+  .un-ps:last-child{break-after:auto} /* 마지막 칸 뒤에 빈 쪽이 붙지 않게 */
+  /* [인쇄]하는 동안: 결과지와 그 바깥 틀만 남기고 숨긴 화면은 자리도 차지하지 않게(숨긴 피드백 칸이 길면 빈 쪽이 붙던 것) */
+  body.un-printing *:not(:has(.un-print)):not(.un-print):not(.un-print *){display:none !important}
   /* 번호별로 한 장씩: 한 명마다 새 쪽, 자르는 선 없음 */
   .un-print.one .un-ps{min-height:0;border-bottom:0;break-after:page}
   .un-print.one .un-ps:last-child{break-after:auto}

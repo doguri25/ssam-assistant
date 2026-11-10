@@ -97,6 +97,19 @@ await run('unit-redo-fit', [
     { const n = await pdfPages(); assert(n === 6, 'PDF 1명/쪽: ' + n); }
     await setOne(false);
   }],
+  ['[인쇄] 틀 쪽 수: 한 쪽에 2명 8명 → 4쪽, 번호별로 한 장씩 → 8쪽 (끝에 빈 쪽 없음)', async () => {
+    await open1('t20');
+    // [인쇄]를 누르면 인쇄하는 동안 body에 un-printing(결과지만 자리를 차지) — 끝나면 뺌
+    const during = await page.evaluate(sel => { const real = window.print; let on = null; window.print = () => { on = document.body.classList.contains('un-printing'); }; document.querySelector(sel).click(); window.print = real; return { on, after: document.body.classList.contains('un-printing') }; }, `${V} [data-un="fbPrint"]`);
+    assert(during.on === true && during.after === false, '인쇄하는 동안만 un-printing: ' + JSON.stringify(during));
+    const printPages = async () => { await page.evaluate(() => document.body.classList.add('un-printing')); const n = pagesOf(await page.pdf({ format: 'A4', margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' } })); await page.evaluate(() => document.body.classList.remove('un-printing')); return n; };
+    await setOne(false);
+    { const n = await printPages(); assert(n === 4, '한 쪽에 2명: ' + n + '쪽'); }
+    await setOne(true);
+    { const n = await printPages(); assert(n === 8, '한 장씩: ' + n + '쪽'); }
+    await setOne(false);
+    await open1('sample-1');
+  }],
   ['넘침을 알아챔(시험 자체 확인): 한 학생 칸에 글을 늘리면 인쇄 틀은 그 쪽이, PDF는 쪽 수가 늘어남', async () => {
     await page.evaluate(sel => { const p = document.createElement('p'); p.textContent = '가'.repeat(2400); document.querySelector(sel).append(p); }, `${V} .un-print .un-ps:nth-child(1)`);
     assert((await printOver(false)).join() === '1·2', '인쇄 틀: ' + await printOver(false));

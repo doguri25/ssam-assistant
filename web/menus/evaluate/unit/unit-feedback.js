@@ -240,7 +240,11 @@ document.addEventListener('click', e => {
   else if (a === 'fbAI') writeFeedback();
   else if (a === 'fbRedo') writeFeedback(Number(b.dataset.no));
   else if (a === 'fbHwpx') saveHwpx(t);
-  else if (a === 'fbPrint') window.print();
+  else if (a === 'fbPrint') {
+    // 인쇄하는 동안만 결과지 말고는 자리를 차지하지 않게(숨긴 화면이 더 길면 끝에 빈 쪽이 붙던 것) — window.print는 끝날 때까지 기다림
+    document.body.classList.add('un-printing');
+    try { window.print(); } finally { document.body.classList.remove('un-printing'); }
+  }
   else if (a === 'redoAI') makeRedo();
   else if (a === 'fbCopy') { const s = t.students.find(x => x.no === Number(b.dataset.no)); if (s) copy(fbText(t, s)); }
   else if (a === 'fbCopyAll') copy(graded(t).map(s => fbText(t, s)).join('\n\n'));
