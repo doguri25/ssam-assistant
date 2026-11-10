@@ -45,6 +45,38 @@ await run('shell', [
     assert(await page.isVisible('#grView'), '#grView 안 보임');
     assert(await current('header.app-top nav.app-tabs') === '평가지 채점', '가로 메뉴 현재');
   }],
+  ['메뉴마다 마지막 탭: 계획 › 행사계획 → 학급 → 계획이면 행사계획, 새로고침해도 그대로', async () => {
+    const side = m => page.click(`nav.app-side [data-menu-go="${m}"]`);
+    await side('plan'); await page.click('#menuTabs [data-tab="event"]');
+    await side('class');
+    assert(await current('header.app-top nav.app-tabs') === '오늘 수업', '학급은 처음이라 첫 탭: ' + await current('header.app-top nav.app-tabs'));
+    await side('plan');
+    assert(await title() === '계획' && await current('header.app-top nav.app-tabs') === '행사계획', '계획으로 돌아오면: ' + await current('header.app-top nav.app-tabs'));
+    assert(await page.isVisible('section[data-menu="plan"]'), '계획 화면이 안 보임');
+    await page.reload(); await page.waitForTimeout(400);
+    assert(await current('header.app-top nav.app-tabs') === '행사계획', '새로고침 뒤: ' + await current('header.app-top nav.app-tabs'));
+    await side('class'); await side('plan');
+    assert(await current('header.app-top nav.app-tabs') === '행사계획', '새로고침 뒤 학급 갔다 오면: ' + await current('header.app-top nav.app-tabs'));
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:nav:tabs')));
+    assert(saved.plan === 'event' && saved.class === 'today', '저장: ' + JSON.stringify(saved));
+  }],
+  ['평가 › 단원평가·행동특성도 다른 메뉴에 갔다 오면 그 탭', async () => {
+    for (const [tab, label] of [['unit', '단원평가'], ['hk', '행동특성']]) {
+      await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click(`#menuTabs [data-tab="${tab}"]`);
+      await page.click('nav.app-side [data-menu-go="purchase"]'); await page.click('nav.app-side [data-menu-go="evaluate"]');
+      assert(await current('header.app-top nav.app-tabs') === label, `${label} → ${await current('header.app-top nav.app-tabs')}`);
+      assert(await page.evaluate(() => document.querySelector('section[data-menu="evaluate"]').classList.contains('ev-new')) === (tab === 'unit'), tab + ': 기존 화면 숨김이 맞지 않음');
+    }
+    assert(await page.evaluate(() => window.SSAM.getMode()) === 'hk', 'mode가 hk가 아님');
+  }],
+  ['이제 없는 탭이 마지막이면 첫 탭, 탭을 정해 부르면(AI 칸) 그 탭', async () => {
+    await page.evaluate(() => localStorage.setItem('ssam:nav:tabs', JSON.stringify({ plan: '없는탭', settings: 'school' })));
+    await page.click('nav.app-side [data-menu-go="plan"]');
+    assert(await current('header.app-top nav.app-tabs') === '연간계획', '없는 탭 → ' + await current('header.app-top nav.app-tabs'));
+    await page.click('#sideAi');
+    assert(await title() === '설정' && await current('header.app-top nav.app-tabs') === 'AI', '정한 탭 → ' + await current('header.app-top nav.app-tabs'));
+    await page.click('nav.app-side [data-menu-go="evaluate"]');
+  }],
   ['망가진 위치 값이면 평가로 열림', async () => {
     for (const bad of ['{"menu":"없음","tab":"x"}', '망가진 값']) {
       await page.evaluate(v => localStorage.setItem('ssam:nav', v), bad);
