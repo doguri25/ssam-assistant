@@ -14,7 +14,7 @@ import * as ai from './ai.js';
 import { maskContacts } from './privacy.js';
 import { listEvents, addDays, weekday } from './calendar.js';
 import { routeText, payloadFor, isSure, INTENT_IDS, intentLabel, LANGS, langLabel, parseMemo, maskMemo, memoLine, appendMemo, nosText, safeText, handoffText } from './chat-route.js';
-import { assistPrompt, parseAssist, replyHTML, mentionedNos, actionPayload } from './chat-assist.js';
+import { assistPrompt, parseAssist, replyHTML, mentionedNos, planActions } from './chat-assist.js';
 import { offlineAnswer } from './chat-knowledge.js';
 import { briefing, EMPTY } from './briefing.js';
 
@@ -287,9 +287,13 @@ async function assist({ raw, said, r, me }) {
   if (pending === job) pending = null;
   if (job.ctl.signal.aborted) { if (job.user) say('답을 멈췄어요. 다시 물어보거나 다른 일을 말해 주세요.'); return; }
   if (!out || (!out.reply && !out.actions.length)) { await offline({ raw, r, me, failed: failText(err) }); return; }
+  // 묻기만 한 글이면 AI가 고른 일도 저절로 하지 않고 그 화면으로만 가는 후보 버튼(메모는 버림), 메모는 선생님 글이 「3번 …」일 때만 선생님 말로(검토 I2)
+  const plan = planActions(out.actions, { raw, said, question: r.question });
   // 할 일을 하면 그 결과를 run이 따로 말함 — 후보 버튼은 할 일이 없을 때만
-  if (out.reply) say(handoffText(out.reply), { md: true, chips: out.actions.length ? [] : chipList([...out.choices, ...r.candidates], r.question), src: me.id });
-  for (const a of out.actions) await run(a.intent, actionPayload(a, { said, question: r.question }));
+  const chips = plan.run.length ? [] : chipList([...plan.nav, ...out.choices, ...r.candidates], r.question || plan.nav.length > 0);
+  if (out.reply) say(handoffText(out.reply), { md: true, chips, src: me.id });
+  else if (!plan.run.length) say('아래 화면에서 할 수 있어요. 누르면 그 화면으로 가요(저절로 시작하지 않아요).', { chips, src: me.id });
+  for (const a of plan.run) await run(a.intent, a.payload);
 }
 const failText = e => (e && e.code === 'bad_json' ? '답을 읽지 못했어요' : e && e.code ? ai.errorMessage(e.code, e) : '답이 비었어요').replace(/[.。]\s*$/, '');
 /* AI 없이 답하기: 애매한 명령은 후보 버튼, 할 일·일정은 오늘 할 일, 묻는 글은 안내에서 찾아 답함 */
@@ -382,7 +386,11 @@ async function run(intent, p = {}) {
   if (intent === 'report') {
     if (!p.text) { go('plan', 'report'); say('계획 › 결과 보고로 왔어요. 계획서·공문이나 한 일을 넣어 주세요.'); afterGo(); return; }
     const m = await import('../menus/plan/report.js');
-    m.putReportSources({ memo: p.text });
+    // 아직 쓰지 않은 결과 보고(한 일 메모·자료·사진)가 있으면 바꾸지 않고 끝에 덧붙임 — 두 내용이 섞여 써지지 않게 바로 쓰지 않음(가정통신문과 같음)
+    if (m.putReportSources({ memo: p.text }) === 'added') {
+      say('쓰던 결과 보고(한 일 메모·자료)가 있어서 바꾸지 않고 한 일 메모 끝에 덧붙였어요. 두 내용이 섞이지 않게 확인한 뒤 [결과 보고 쓰기]를 눌러 주세요.');
+      afterGo(); return;
+    }
     let st;
     try { st = m.write(); } catch (e) { st = 'error'; }
     tell(st, { started: '결과 보고에 넣고 보고서를 쓰고 있어요. 다 되면 확인해 주세요.', 'no-ai': `결과 보고 한 일 메모에 넣었어요. ${NO_AI}`,

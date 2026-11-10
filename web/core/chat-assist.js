@@ -2,7 +2,8 @@
    {"reply","actions","choices"} JSON으로 답을 받음. 화면 없이 돌아감(시험).
    AI로 보내는 글(선생님 글·대화·상태)은 모두 이름·전화번호를 가림(safeText). 답의 할 일은 아는 할 일만, 2개까지.
    답 글은 HTML로 넣지 않고 글자를 바꾼 뒤 줄·목록·굵게만 살림(replyHTML) */
-import { INTENTS, INTENT_IDS, LANGS, safeText, handoffText, payloadFor } from './chat-route.js';
+import { INTENTS, INTENT_IDS, LANGS, safeText, handoffText, payloadFor, memoParts } from './chat-route.js';
+import { maskContacts } from './privacy.js';
 import { guideText } from './chat-knowledge.js';
 
 export const TAG = '[쌤비서 채팅]';
@@ -113,12 +114,30 @@ export function actionPayload(a, { said = '', question = false } = {}) {
   return {};
 }
 
-/* 선생님 글의 학생 번호(「3번」「3·5번」「3~5번」) */
+/* AI가 고른 할 일 → { run: [{ intent, payload }](할 것), nav: [할 일 id](그 화면으로만 가는 후보 버튼) } (검토 I2).
+   - 묻기만 한 글(question): 메모는 버리고, 글 넣는 일·메뉴 일은 후보 버튼으로만(누르면 그 화면으로 가고, 칸을 채우거나 저절로 시작하지 않음).
+     답이 곧 그 일인 오늘 할 일·메모 보기만 함
+   - 메모: 선생님 글이 「3번 …」 메모일 때만, 넣는 글은 선생님 말(전화번호는 가림, 이름은 넣을 때 maskMemo — AI가 쓴 글은 넣지 않음).
+     번호는 선생님이 쓴 것(AI가 그중 몇을 골랐으면 그것) */
+const ASK_RUN = ['briefing', 'memoView'];
+export function planActions(actions, { raw = '', said = '', question = false } = {}) {
+  const run = [], nav = [], pm = memoParts(maskContacts(String(raw || '')));
+  for (const a of Array.isArray(actions) ? actions : []) {
+    if (!a || !INTENT_IDS.includes(a.intent)) continue;
+    if (a.intent === 'memo') {
+      if (question || !pm || !pm.body.trim()) continue;
+      const nos = (a.nos || []).filter(n => pm.nos.includes(n));
+      run.push({ intent: 'memo', payload: { nos: nos.length ? nos : pm.nos, body: pm.body } });
+    } else if (question && !ASK_RUN.includes(a.intent)) nav.push(a.intent);
+    else run.push({ intent: a.intent, payload: actionPayload(a, { said, question }) });
+  }
+  return { run, nav };
+}
+
+/* 선생님 글의 학생 번호: 글 맨 앞 「3번 …」「3·5번 …」「3~5번 …」 메모 꼴만(붙여 넣은 공문의 「붙임 1번」「2번 신청서」, 「1번 문항」은 학생 번호가 아님 — 검토 I2) */
 export function mentionedNos(text) {
-  const out = new Set(), t = String(text || '');
-  for (const m of t.matchAll(/(\d{1,2})\s*[~\-]\s*(\d{1,2})\s*번/g)) { const a = +m[1], b = +m[2]; if (b >= a && b - a < 40) for (let i = a; i <= b; i++) out.add(i); }
-  for (const m of t.matchAll(/((?:\d{1,2}\s*[·,、/]\s*)*\d{1,2})\s*번/g)) for (const n of m[1].split(/[·,、/]/)) out.add(+n.trim());
-  return [...out].filter(n => n >= 1 && n <= 60).sort((a, b) => a - b);
+  const m = memoParts(String(text || ''));
+  return m ? m.nos : [];
 }
 
 /* 답 글 → 안전한 HTML: 글자를 먼저 바꾸고(<·>·&·따옴표) 줄바꿈·「- 」목록·「1. 」목록·**굵게**만 살림 */

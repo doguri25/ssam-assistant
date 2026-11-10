@@ -292,12 +292,24 @@ function refreshLetter() {
   if (rs) rs.innerHTML = x.letterEdited ? '<p class="muted pc-resync">공문을 고쳤어요 <button class="btn text tiny" type="button" data-rp="resync">칸으로 다시 맞추기</button></p>' : '';
 }
 
-/* 행사계획 등에서: 결과 보고로 가서 새 결과 보고로 글을 넣음 */
+/* 행사계획·공문 처리·쌤 채팅에서: 결과 보고로 가서 글을 넣음 → 'new'(새 결과 보고) | 'added'(덧붙임).
+   아직 쓰지 않은 결과 보고(한 일 메모·자료·사진이 있음, 쓰는 중이 아님)가 있으면 바꾸지 않고 자료는 더하고 메모는 끝에 덧붙임
+   (쓰지 않은 결과 보고는 최근 목록에 없어서 새로 시작하면 없어짐 — 'added'면 부르는 쪽이 바로 쓰지 않음). 다 쓴 것·쓰는 중이면 새 결과 보고 */
 export function putReportSources({ sources = [], memo = '' } = {}) {
   go('plan', 'report');
+  const add = sources.filter(s => s && String(s.text || '').trim()).map(s => ({ kind: s.kind || 'plan', name: String(s.name || '글'), text: cleanSheet(s.text).text }));
+  const x0 = c(), m = String(memo || '').trim();
+  if (!x0.r && !R.busy && (String(x0.memo || '').trim() || x0.sources.length || R.photos.length)) {
+    const had = String(x0.memo || '').trim();
+    cur = { ...x0, memo: !m || had === m ? x0.memo : had ? `${x0.memo.replace(/\s+$/, '')}\n\n(덧붙인 내용)\n${m}` : m, sources: [...x0.sources, ...add] };
+    save(); render();
+    toast('쓰던 결과 보고가 있어서 바꾸지 않고 덧붙였어요. 확인한 뒤 [결과 보고 쓰기]를 눌러 주세요.', 6000);
+    return 'added';
+  }
   leave();
-  cur = { ...blank(), memo: String(memo || ''), sources: sources.filter(s => s && String(s.text || '').trim()).map(s => ({ kind: s.kind || 'plan', name: String(s.name || '글'), text: cleanSheet(s.text).text })) };
+  cur = { ...blank(), memo: String(memo || ''), sources: add };
   save(); render();
+  return 'new';
 }
 
 /* ---------- 누르기·입력 ---------- */

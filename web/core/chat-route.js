@@ -120,6 +120,8 @@ const VIEW = /^(?:학생\s*)?(?:행특\s*|관찰\s*|행동\s*특성\s*)?메모\s
 const MEMO_END = /(?:함|임|음|됨|짐|봄|줌|했다|한다|였다|이다|좋다|있다|없다|해요|했어요|어요|아요|이에요|예요|했음|많음)\s*[.!]*$/;
 // 번호 뒤에 와도 메모가 아닌 말(「3번 문항」「3번 단원평가」…)
 const NOT_MEMO = /^(?:문항|문제|단원|차시|교시|째|쪽|페이지)/;
+/* 학생 관찰 메모 꼴(「3번 …」, 「3번 문항·단원평가 …」는 아님)이면 { nos, body }, 아니면 null */
+export const memoParts = text => { const m = parseMemo(text); return m && !NOT_MEMO.test(m.body) ? m : null; };
 
 /* 번호 목록 → 「3번」「3·5번」, 넷 이상 이어지면 「1~25번」 */
 export function nosText(nos) {
