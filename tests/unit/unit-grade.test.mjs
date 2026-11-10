@@ -132,3 +132,32 @@ test('○× 답: ⑴·(1)·1, O·X·⭕·❌ 표기가 달라도 같은 답', ()
   assert.equal(autoJudge(it, '⑴ ○ ⑵ × ⑶ ○'), 10);
   assert.equal(autoJudge(it, '(1) ○ (2) ○ (3) ○'), null);
 });
+
+test('[버그] 채점한 뒤 배점을 올리면: 맞힌 칸이 「앱과 AI의 판단이 달라요」 노란 칸이 되지 않고, AI·선생님 점수는 새 배점에 맞춤', async () => {
+  const { rescoreItem } = await import('../../web/menus/evaluate/unit/unit-grade.js');
+  const key = [it('choice', '③', 4, { no: 1 }), it('essay', '(예) 까닭', 4, { no: 2 }), it('choice', '②', 0, { no: 3 }), it('short', '마을', 4, { no: 4 })];
+  const g = (item, read, points) => ({ ...gradeCell(item, { read, points, sure: true }), ok: true });
+  const st = { no: 1, skip: false, status: 'done', items: { 1: g(key[0], '③', 4), 2: g(key[1], '까닭', 3), 3: g(key[2], '②', 5), 4: g(key[3], '마을', 4) } };
+  // 선생님이 「맞음」으로 고친 칸(AI는 틀렸다고 봄), 서술형을 2/4로 고친 칸
+  const st2 = { no: 2, skip: false, status: 'done', items: { 1: { ...g(key[0], '②', 0), pts: 4, manual: true, ai0: 0 }, 2: { ...g(key[1], '글', 4), pts: 2, manual: true, ai0: 4 } } };
+  const t = { key: { items: key }, students: [st, st2] };
+  // 고치기 전: 배점 4 → 5면 맞힌 칸의 AI 점수(4)가 앱 점수(5)와 달라 노란 칸, 「맞음」으로 고친 칸은 4/5
+  key[0].points = 5; rescoreItem(t, 1, 'points', 4);
+  assert.equal(st.items[1].pts, 5); assert.equal(st.items[1].flag, ''); assert.equal(needsCheck(st.items[1]), false);
+  assert.equal(st2.items[1].pts, 5, '「맞음」으로 고친 칸이 만점이 아님'); assert.equal(st2.items[1].manual, true); assert.equal(st2.items[1].ai0, 0);
+  // 서술형 AI 3/4 → 배점 8이면 6/8, 선생님이 고친 2/4 → 4/8 (AI 처음 값 4/4 → 8)
+  key[1].points = 8; rescoreItem(t, 2, 'points', 4);
+  assert.equal(st.items[2].pts, 6); assert.equal(st2.items[2].pts, 4); assert.equal(st2.items[2].ai0, 8);
+  // 배점이 빈(0점) 문항을 채점한 뒤 배점을 넣음: 맞힌 칸은 맞음, 노란 칸 아님
+  key[2].points = 5; rescoreItem(t, 3, 'points', 0);
+  assert.equal(st.items[3].pts, 5); assert.equal(needsCheck(st.items[3]), false);
+  // 단답: 글자가 같으면 그대로 맞음
+  key[3].points = 6; rescoreItem(t, 4, 'points', 4);
+  assert.equal(st.items[4].pts, 6); assert.equal(needsCheck(st.items[4]), false);
+  // 배점을 내려도 맞힌 칸은 만점, 노란 칸 아님
+  key[0].points = 2; rescoreItem(t, 1, 'points', 5);
+  assert.equal(st.items[1].pts, 2); assert.equal(needsCheck(st.items[1]), false); assert.equal(st2.items[1].pts, 2);
+  // 소수 배점도 넘지 않음
+  key[1].points = 2.5; rescoreItem(t, 2, 'points', 8);
+  assert.ok(st.items[2].pts <= 2.5 && st2.items[2].pts <= 2.5, JSON.stringify([st.items[2].pts, st2.items[2].pts]));
+});

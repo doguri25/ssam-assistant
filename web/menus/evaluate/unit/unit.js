@@ -373,9 +373,10 @@ function editItem(el) {
   const [no, f] = el.dataset.k.split('-'), t = cur();
   const it = t.key.items.find(i => i.no === Number(no));
   if (!it) return;
+  const prev = it[f];
   it[f] = f === 'points' ? Math.max(0, Number(el.value) || 0) : el.value.trim();
-  // 정답·유형·배점·채점 기준을 고치면 채점한 칸을 다시 맞춤 (선생님이 고친 칸은 배점 안으로만)
-  if (['answer', 'type', 'points', 'criteria'].includes(f)) rescoreItem(t, it.no, f);
+  // 정답·유형·배점·채점 기준을 고치면 채점한 칸을 다시 맞춤 (배점은 고치기 전 배점에서 같은 비율로)
+  if (['answer', 'type', 'points', 'criteria'].includes(f)) rescoreItem(t, it.no, f, prev);
   commit(t);
   const sum = box.querySelector('.un-sum'); if (sum) sum.innerHTML = sumHTML(t.key.items);
   later(t.id);
