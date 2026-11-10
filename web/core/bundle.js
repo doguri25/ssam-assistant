@@ -291,9 +291,11 @@ export function openBundleCard(b, { what = '' } = {}) {
 }
 
 /* ---------- 「한꺼번에 넣기」 칸 ---------- */
+// 칸마다 지금 알림(「읽는 중」 등): 읽는 동안 다른 메뉴에 갔다 와서 칸을 다시 그려도 보이게
+const msgs = {};
 export const bundleBoxHTML = (id, note = '') => `<div class="bundle-box" data-bundle-drop="${esc(id)}">
   <div class="bundle-box-h"><b>한꺼번에 넣기</b><span class="muted">${esc(note || '정답지·교사용·학생 스캔을 한꺼번에 넣으면 알아서 나눠요')}</span></div>
-  <div class="row"><button class="btn tonal" type="button" data-bundle-pick="${esc(id)}">파일 고르기</button><span class="muted bundle-msg" data-bundle-msg="${esc(id)}" role="status"></span></div>
+  <div class="row"><button class="btn tonal" type="button" data-bundle-pick="${esc(id)}">파일 고르기</button><span class="muted bundle-msg" data-bundle-msg="${esc(id)}" role="status">${esc(msgs[id] || '')}</span></div>
   <input type="file" id="bundleFile-${esc(id)}" multiple hidden accept=".hwp,.hwpx,.txt,.pdf,.png,.jpg,.jpeg,.webp"></div>`;
 /* 칸에 넣은 파일을 받는 곳: 고르기·끌어 놓기·붙여넣기(한 번만 걸어 둠) */
 const handlers = {};
@@ -309,4 +311,7 @@ export function onBundle(id, fn) {
   document.addEventListener('dragleave', e => { const b = box(e.target); if (b) b.classList.remove('over'); });
   document.addEventListener('drop', e => { const b = box(e.target); if (!b || !handlers[b.dataset.bundleDrop]) return; e.preventDefault(); b.classList.remove('over'); const fs = [...((e.dataTransfer && e.dataTransfer.files) || [])]; if (fs.length) handlers[b.dataset.bundleDrop](fs); });
 }
-export function bundleMsg(id, text) { const el = globalThis.document && document.querySelector(`[data-bundle-msg="${id}"]`); if (el) el.textContent = text; }
+export function bundleMsg(id, text) {
+  if (text) msgs[id] = text; else delete msgs[id];
+  const el = globalThis.document && document.querySelector(`[data-bundle-msg="${id}"]`); if (el) el.textContent = text;
+}

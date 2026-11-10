@@ -19,8 +19,8 @@ import { esc, SS, AI_KEY, registerStep, inStep, cur, curId, commit, saveOrWarn, 
 
 const TYPE = Object.fromEntries(ITEM_TYPES);
 /* 세션 상태: 올린 스캔은 한 평가에만 붙음(raw: 올린 장, pages: 모아찍기를 자르고 뒷면을 돌린 쪽). 채점은 한 번에 한 평가만(run: 그 평가의 차례·멈춤) */
-// usedNow: 이 화면을 켠 뒤 채점한 평가(사용량 줄 앞에 「지난 채점」을 붙이지 않음)
-const G = { testId: null, raw: [], pages: [], idx: [], msg: '', running: new Map(), run: null, usedNow: new Set() };
+// usedNow: 이 화면을 켠 뒤 채점한 평가(사용량 줄 앞에 「지난 채점」을 붙이지 않음), loading: 스캔을 읽어 나누는 중인 평가(다른 메뉴에 갔다 와도 「읽는 중」이 보이게)
+const G = { testId: null, raw: [], pages: [], idx: [], msg: '', running: new Map(), run: null, usedNow: new Set(), loading: null };
 const pagesOf = (id, i) => (G.testId === id && G.idx[i]) || [];
 const hasPages = id => G.testId === id && G.pages.length > 0;
 const busy = id => !!G.run && G.run.id === id && (G.run.queue.length > 0 || G.running.size > 0);
@@ -44,11 +44,15 @@ async function loadAnswers(fileList) {
   // 채점하는 동안 스캔을 바꾸면 채점 중인 학생에게 다른 쪽이 붙음: 끝나거나 멈춘 뒤에
   if (busyOther(id)) { say('다른 평가를 채점하는 중이에요. 그 채점이 끝나거나 멈춘 뒤에 올려 주세요.'); return false; }
   if (busy(id)) { say('채점하는 중이에요. 끝나거나 멈춘 뒤에 다시 올려 주세요.'); return false; }
-  let r;
-  try { r = await SS().files.readPages(fileList, say); }
-  catch (e) { say(e && e.message === 'PDFJS' ? 'PDF를 읽는 도구를 불러오지 못했어요. 인터넷 연결을 확인하거나 사진으로 올려 주세요.' : '파일을 읽지 못했어요.'); return false; }
-  if (!r.pages.length) { say('읽을 수 있는 PDF·사진이 없어요.'); return false; }
-  return placeRaw(t0, id, per, r, say);
+  if (G.loading) { toast('답안 스캔을 읽는 중이에요. 다 읽은 뒤에 다시 올려 주세요.', 5000); return false; }
+  G.loading = id;
+  try {
+    let r;
+    try { r = await SS().files.readPages(fileList, say); }
+    catch (e) { say(e && e.message === 'PDFJS' ? 'PDF를 읽는 도구를 불러오지 못했어요. 인터넷 연결을 확인하거나 사진으로 올려 주세요.' : '파일을 읽지 못했어요.'); return false; }
+    if (!r.pages.length) { say('읽을 수 있는 PDF·사진이 없어요.'); return false; }
+    return await placeRaw(t0, id, per, r, say);
+  } finally { G.loading = null; }
 }
 /* 한꺼번에 넣기에서 나눈 학생 쪽(이미 읽은 쪽)을 답안으로 */
 export async function loadAnswerPages(raw) {
@@ -97,7 +101,7 @@ function step2HTML(t) {
       <p class="muted cls-note">반 전체 답안을 스캔한 PDF나 사진을 올려요. 학생마다 장 수가 같아야 차례대로 나눠져요. 번호는 학급 명단의 예외 번호와 결석 번호를 건너뛰어 매겨요.</p>
       <div class="row"><button class="btn primary" type="button" data-un="ansFile">답안 스캔 올리기</button>
         <label class="cls-inline">학생 한 명 <input class="field num" type="number" id="unPagesPer" min="1" max="8" value="${set.pagesPer}"> 쪽</label>
-        <span class="muted" id="unAnsMsg">${esc(G.testId === t.id ? G.msg : '')}</span></div>
+        <span class="muted" id="unAnsMsg">${esc(G.testId === t.id || G.loading === t.id ? G.msg : '')}</span></div>
       <input type="file" id="unAnsFile" accept=".pdf,.png,.jpg,.jpeg,.webp" multiple hidden>
       <div class="row"><label class="switch"><input type="checkbox" id="unTwoUp"${set.twoUp ? ' checked' : ''}>모아찍기(한 면에 2쪽)</label>
         <label class="switch"><input type="checkbox" id="unFlipBack"${set.flipBack ? ' checked' : ''}>양면 스캔 뒷면이 거꾸로</label>
