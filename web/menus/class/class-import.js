@@ -58,22 +58,25 @@ export function parseJindo(text, { today, year: dataYear } = {}) {
   const src = String(text || '');
   const ym = /(\d{4})\s*학년도/.exec(src);
   const year = ym ? +ym[1] : jindoYear(src.split(/\r?\n/).flatMap(cells).filter(c => PERIOD.test(c)), { today, year: dataYear });
-  const subjects = [];
-  let cur = null, week = null, period = '', unit = '';
+  const subjects = [], secs = new Map(); // 교과 → 표마다 { total, n }
+  let cur = null, sec = null, week = null, period = '', unit = '';
   for (const raw of src.split(/\r?\n/)) {
     const line = raw.trim();
     const head = /^(.+?)\s*교육과정\s*연간지도계획/.exec(line);
     if (head) {
       const source = head[1].trim();
-      const n = normName(source);
-      cur = { name: n === '창의적체험활동' ? '창체' : n, source, total: null, pick: !SUB_AREA.test(n), lessons: [] };
-      subjects.push(cur);
+      const n = normName(source), name = n === '창의적체험활동' ? '창체' : n;
+      // 같은 교과 머리줄이 다시 나오면(1·2학기 표가 한 파일에 따로) 한 교과로 이어 붙임 — 따로 두면 둘 다 넣을 때 뒤 표가 앞 표를 지움
+      cur = subjects.find(s => s.name === name);
+      if (!cur) { cur = { name, source, total: null, pick: !SUB_AREA.test(n), lessons: [] }; subjects.push(cur); secs.set(cur, []); }
+      sec = { total: null, n: 0 };
+      secs.get(cur).push(sec);
       week = null; period = ''; unit = '';
       continue;
     }
     if (!cur) continue;
     const tm = /총\s*시수\s*[:：]\s*(\d+)/.exec(line);
-    if (tm && cur.total == null) { cur.total = +tm[1]; continue; }
+    if (tm && sec.total == null) { sec.total = +tm[1]; continue; }
     const c = cells(raw);
     const k = c.findIndex(x => LESSON_NO.test(x));
     if (k < 1) continue;
@@ -86,6 +89,12 @@ export function parseJindo(text, { today, year: dataYear } = {}) {
       else unit = x;
     }
     cur.lessons.push({ week, period, from: periodStart(period, year), unit, title, no: c[k].replace(/\s+/g, ''), pages: c[k + 1] || '', memo: c[k + 2] || '' });
+    sec.n++;
+  }
+  // 총 시수: 차시가 있는 표마다 적힌 총 시수의 합(한 표라도 없으면 모름)
+  for (const s of subjects) {
+    const t = secs.get(s).filter(x => x.n || x.total != null);
+    s.total = t.length && t.every(x => x.total != null) ? t.reduce((a, x) => a + x.total, 0) : null;
   }
   return { year, subjects: subjects.filter(s => s.lessons.length) };
 }
@@ -95,7 +104,7 @@ const DAYS = ['월', '화', '수', '목', '금'];
 const periodNo = x => { const m = /^(\d{1,2})\s*(?:교시)?$/.exec(String(x || '').trim()); return m ? +m[1] : 0; };
 
 /* 학년별 기초시간표 글에서 우리 반({학년}-{반}) 칸 읽기 → { periods, cells[요일][교시-1] } 또는 null.
-   교시 칸이 숫자(「1」·「1교시」)인 줄까지. 4·5교시 사이 「점심시간」 같은 줄은 바로 다음(2줄 안) 줄이 이어지는 교시면 건너뜀 */
+   교시 칸이 숫자(「1」·「1교시」)인 줄까지. 4·5교시 사이 「점심시간」, 머리 아래 「아침활동」 같은 줄은 2줄 안에 이어지는 교시 줄이 있으면 건너뜀 */
 export function parseTimetable(text, { grade, room } = {}) {
   const label = `${grade}-${room}`;
   const lines = String(text || '').split(/\r?\n/).map(cells);
@@ -106,7 +115,7 @@ export function parseTimetable(text, { grade, room } = {}) {
     const rows = [];
     for (let r = i + 1; r < lines.length && rows.length < 7; r++) {
       if (!periodNo(lines[r][at])) {
-        const k = rows.length ? [r + 1, r + 2].find(x => x < lines.length && periodNo(lines[x][at]) === rows.length + 1) : 0;
+        const k = [r + 1, r + 2].find(x => x < lines.length && periodNo(lines[x][at]) === rows.length + 1);
         if (!k) break;
         r = k - 1;
         continue;
