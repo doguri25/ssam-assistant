@@ -14,7 +14,7 @@ import * as ai from './ai.js';
 import { maskContacts } from './privacy.js';
 import { listEvents, addDays, weekday } from './calendar.js';
 import { routeText, payloadFor, isSure, INTENT_IDS, intentLabel, LANGS, langLabel, parseMemo, maskMemo, memoLine, appendMemo, nosText, safeText, handoffText } from './chat-route.js';
-import { assistPrompt, parseAssist, replyHTML, mentionedNos, planActions } from './chat-assist.js';
+import { assistPrompt, parseAssist, replyHTML, mentionedNos, planActions, offlineWay } from './chat-assist.js';
 import { offlineAnswer } from './chat-knowledge.js';
 import { briefing, EMPTY } from './briefing.js';
 
@@ -296,15 +296,14 @@ async function assist({ raw, said, r, me }) {
   for (const a of plan.run) await run(a.intent, a.payload);
 }
 const failText = e => (e && e.code === 'bad_json' ? '답을 읽지 못했어요' : e && e.code ? ai.errorMessage(e.code, e) : '답이 비었어요').replace(/[.。]\s*$/, '');
-/* AI 없이 답하기: 애매한 명령은 후보 버튼, 할 일·일정은 오늘 할 일, 묻는 글은 안내에서 찾아 답함 */
-const GREET = /^(?:안녕|하이|hi|hello|반가|고마워|고맙|감사|수고)/i;
-const BRIEF_ASK = /할\s*일|일정|급한|챙길|브리핑|마감/;
+/* AI 없이 답하기(offlineWay): 애매한 명령은 후보 버튼, 할 일·일정을 물으면 오늘 할 일, 묻는 글(하는 법)은 안내에서 찾아 답함 */
 async function offline({ raw, r, me, failed = '' }) {
   const pre = failed ? `AI가 답하지 못했어요(${failed}). ` : '';
   const tip = ai.ready() ? '' : '\n\nAI를 켜면(설정 › AI, 키가 없으면 시험용 AI) 더 자세히 답해요.';
-  if (!r.question && r.candidates.length) { say(pre + '어느 것을 할까요?', { chips: chipList(r.candidates, false), src: me.id }); return; }
-  if (!failed && GREET.test(raw)) { say(`안녕하세요! ${HELLO}`, { src: me.id }); return; }
-  if (BRIEF_ASK.test(raw)) { if (pre) say(pre.trim()); await run('briefing'); return; }
+  const how = offlineWay(raw, { question: r.question, candidates: r.candidates, failed: !!failed });
+  if (how === 'pick') { say(pre + '어느 것을 할까요?', { chips: chipList(r.candidates, false), src: me.id }); return; }
+  if (how === 'greet') { say(`안녕하세요! ${HELLO}`, { src: me.id }); return; }
+  if (how === 'briefing') { if (pre) say(pre.trim()); await run('briefing'); return; }
   const hit = offlineAnswer(raw);
   if (hit) { say(`${pre ? pre + '안내에서 찾았어요.\n\n' : ''}${hit.text}${tip}`, { md: true, chips: chipList([...hit.go, ...r.candidates], true), src: me.id }); return; }
   if (r.candidates.length) { say(pre + '어느 것을 할까요?', { chips: chipList(r.candidates, true), src: me.id }); return; }

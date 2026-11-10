@@ -417,6 +417,18 @@ await run('chat', [
     await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true })));
     await page.reload(); await page.waitForTimeout(400);
   }],
+  ['검토 고침 M2(11-10): AI 없이 「학사일정 어떻게 넣어?」는 안내(오늘 할 일을 띄우지 않음), 「감사 자료 어떻게 준비해?」는 인사가 아님', async () => {
+    await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: '' }, remember: true })));
+    await page.reload(); await page.waitForTimeout(400);
+    const a = await sendWait('학사일정 어떻게 넣어?');
+    assert(!a.includes('맨 위에 모았어요') && !a.includes('오늘은 급한 일이 없어요') && a.includes('AI를 켜면'), a);
+    const b = await sendWait('감사 자료 어떻게 준비해?');
+    assert(!b.includes('안녕하세요'), b);
+    assert((await sendWait('감사합니다')).includes('안녕하세요'), '고맙다는 말에는 인사');
+    assert((await sendWait('이번 주 할 일 정리해줘')).includes('맨 위에 모았어요'), '할 일을 물으면 오늘 할 일');
+    await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true })));
+    await page.reload(); await page.waitForTimeout(400);
+  }],
   ['검토 고침 M2: 학급 명단에 없는 번호(35번)는 메모 줄을 만들지 않고 알림', async () => {
     await page.evaluate(() => window.SSAM.setClass(25, []));
     const b = await sendWait('35번 발표 목소리가 커짐');

@@ -2,7 +2,7 @@
    {"reply","actions","choices"} JSON으로 답을 받음. 화면 없이 돌아감(시험).
    AI로 보내는 글(선생님 글·대화·상태)은 모두 이름·전화번호를 가림(safeText). 답의 할 일은 아는 할 일만, 2개까지.
    답 글은 HTML로 넣지 않고 글자를 바꾼 뒤 줄·목록·굵게만 살림(replyHTML) */
-import { INTENTS, INTENT_IDS, LANGS, safeText, handoffText, payloadFor, memoParts } from './chat-route.js';
+import { INTENTS, INTENT_IDS, LANGS, safeText, handoffText, payloadFor, memoParts, HOW, HOWTO } from './chat-route.js';
 import { maskContacts } from './privacy.js';
 import { guideText } from './chat-knowledge.js';
 
@@ -138,6 +138,18 @@ export function planActions(actions, { raw = '', said = '', question = false } =
 export function mentionedNos(text) {
   const m = memoParts(String(text || ''));
   return m ? m.nos : [];
+}
+
+/* AI 없이 답하는 길(chat.js offline): 'pick'(애매한 명령 — 후보 버튼) | 'greet'(인사) | 'briefing'(할 일·일정을 물음 → 오늘 할 일) | 'guide'(안내에서 찾음).
+   「학사일정 어떻게 넣어?」처럼 하는 법을 묻는 글은 「일정·마감·할 일」이 있어도 안내, 「감사 자료 어떻게 …?」(감사 = 점검)는 인사가 아님(검토 M2) */
+const GREET = /^(?:안녕|하이|hi|hello|반가|고마워|고맙|감사(?:합니다|해요|해|드려요|드립니다)|수고)/i;
+const BRIEF_ASK = /할\s*일|일정|급한|챙길|브리핑|마감/;
+export function offlineWay(raw, { question = false, candidates = [], failed = false } = {}) {
+  const t = String(raw || '').trim(), how = HOW.test(t) || HOWTO.test(t) || /(?:하는|넣는|쓰는|고치는|바꾸는)\s*(?:법|방법)|방법/.test(t);
+  if (!question && candidates.length) return 'pick';
+  if (!failed && GREET.test(t) && !how) return 'greet';
+  if (BRIEF_ASK.test(t) && !how) return 'briefing';
+  return 'guide';
 }
 
 /* 답 글 → 안전한 HTML: 글자를 먼저 바꾸고(<·>·&·따옴표) 줄바꿈·「- 」목록·「1. 」목록·**굵게**만 살림 */
