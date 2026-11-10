@@ -15,7 +15,9 @@ const won = n => Number(n || 0).toLocaleString('ko-KR');
 const pad = n => String(n).padStart(2, '0');
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 
-let st = null; // { data, picks, note, busy }
+let st = null; // { data, picks, note } — 창을 열 때마다 새로
+// [AI로 정리] 하는 중: 창을 닫고 다른 메뉴에 갔다 와서 다시 열어도 「정리하는 중」이고, 끝나면 그때 열린 창(다시 연 창)에 넣음
+let aiBusy = false;
 
 /* 설정 › 학년도로 가서 인수인계서 만들기 창을 엶 */
 export function openHandover() {
@@ -43,13 +45,13 @@ function groupHTML([g, label]) {
 
 function openBuilder() {
   const saved = getSaved();
-  st = { data: collectHandover({ year: currentYear(), school: getSchool().name }), picks: saved.picks, note: saved.note, busy: false };
+  st = { data: collectHandover({ year: currentYear(), school: getSchool().name }), picks: saved.picks, note: saved.note };
   const empty = GROUPS.every(([g]) => !(st.data[g] || []).length);
   SSAM().openSheet(`<h3>업무 인수인계서</h3>
     <p class="muted" style="margin:0">${st.data.year}학년도 자료를 모아 다음 담당자에게 넘길 문서를 만들어요. 넣을 것만 골라 주세요. 학생 자료·교직원 이름·전화번호는 넣지 않아요.</p>
     ${empty ? '<p class="banner info" style="margin:0"><span class="grow">아직 모을 자료가 없어요. 연간계획·행사계획·품의·공문 처리·결과 보고에 자료가 있으면 여기에 모여요.</span></p>' : `<div class="ho-groups">${GROUPS.map(groupHTML).join('')}</div>`}
     <label class="ho-note"><span class="lab">6. 다음 담당자에게</span><textarea class="field" id="hoNote" rows="5" placeholder="예) 3월 첫 주에 학부모 총회 자료부터 챙겨요.">${esc(st.note)}</textarea></label>
-    <div class="row"><button class="btn" type="button" data-ho="ai" id="hoAi">AI로 정리</button><span class="muted ho-hint">위에서 고른 내용만 보내요(이름·전화번호 없이). 3~6줄로 써 주고, 고쳐 써도 돼요.</span></div>
+    <div class="row"><button class="btn" type="button" data-ho="ai" id="hoAi"${aiBusy ? ' disabled' : ''}>${aiBusy ? '정리하는 중…' : 'AI로 정리'}</button><span class="muted ho-hint">위에서 고른 내용만 보내요(이름·전화번호 없이). 3~6줄로 써 주고, 고쳐 써도 돼요.</span></div>
     <details class="ho-prev-wrap" open><summary>미리 보기</summary><div class="ho-prev" id="hoPrev"></div></details>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>닫기</button>${exportButton('data-ho="export"', { cls: 'primary' })}</div>`,
   sh => {
@@ -65,7 +67,7 @@ function openBuilder() {
     sh.addEventListener('click', e => {
       const b = e.target.closest('[data-ho]');
       if (!b) return;
-      if (b.dataset.ho === 'ai') runAi(sh);
+      if (b.dataset.ho === 'ai') runAi();
       else if (b.dataset.ho === 'export') download();
     });
     refresh(sh);
@@ -86,29 +88,29 @@ function refresh(sh, { note = false } = {}) {
   if (prev) prev.innerHTML = docHtml(doc());
 }
 
-async function runAi(sh) {
-  if (st.busy) return;
+const openSh = () => document.querySelector('#sheetRoot .ho-sheet');
+function drawAiBtn() {
+  const b = openSh() && openSh().querySelector('#hoAi');
+  if (b) { b.disabled = aiBusy; b.textContent = aiBusy ? '정리하는 중…' : 'AI로 정리'; }
+}
+async function runAi() {
+  if (aiBusy) return;
   if (!ai.ready()) { toast('설정 › AI에서 키를 넣어 주세요', 5000); return; }
-  const mine = st, btn = sh.querySelector('#hoAi');
   // 「다음 담당자에게」는 빼고 1~5만 보냄 (이름·전화번호는 모을 때 이미 뺌)
-  const text = handoverText(doc());
-  mine.busy = true;
-  if (btn) { btn.disabled = true; btn.textContent = '정리하는 중…'; }
+  const text = handoverText(doc()), names = st.data.names;
+  aiBusy = true; drawAiBtn();
   try {
     const v = await ai.generateJSON(handoverPrompt(text), { task: 'plan', valid: o => normNote(o).length > 0 });
-    mine.note = normNote(v, mine.data.names).map(l => `- ${l}`).join('\n');
-    saveHandover({ note: mine.note, picks: mine.picks });
-    if (st === mine && sh.isConnected) {
-      const ta = sh.querySelector('#hoNote');
-      if (ta) ta.value = mine.note;
-      refresh(sh, { note: true });
-      toast('AI가 정리했어요. 고쳐 써도 돼요.');
-    }
+    // 그새 창을 닫았다 다시 열었으면 다시 연 창의 글로(고른 것은 그 창 것 그대로) — 다시 연 창에서 고쳐도 옛 글로 덮이지 않게
+    st.note = normNote(v, names).map(l => `- ${l}`).join('\n');
+    save();
+    const sh = openSh(), ta = sh && sh.querySelector('#hoNote');
+    if (ta) { ta.value = st.note; refresh(sh, { note: true }); }
+    toast(ta ? 'AI가 정리했어요. 고쳐 써도 돼요.' : '인수인계서의 「다음 담당자에게」를 AI가 정리해 두었어요. 설정 › 학년도에서 열어 보세요.', ta ? undefined : 6000);
   } catch (e) {
     toast(e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 눌러 주세요.' : ai.errorMessage(e && e.code, e), 6000);
   }
-  mine.busy = false;
-  if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = 'AI로 정리'; }
+  aiBusy = false; drawAiBtn();
 }
 
 async function download() {
