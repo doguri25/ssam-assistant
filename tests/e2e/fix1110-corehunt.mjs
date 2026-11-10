@@ -70,8 +70,9 @@ await run('fix1110-corehunt', [
   }],
   ['[core-save-result] 저장 공간이 꽉 차면 떠 있는 버튼 설정은 false를 돌려주고, 업무별 AI 창은 「저장했어요」 대신 알림(창은 그대로)', async () => {
     const p = t2.page;
-    const r = await p.evaluate(async () => { const m = await import('./core/inbox.js'); return [m.setInboxSettings({ mode: 'direct' }), m.getInboxSettings().mode]; });
-    assert(r[0] === false && r[1] === 'confirm', JSON.stringify(r));
+    const r = await p.evaluate(async () => { let fired = 0; const on = () => fired++; document.addEventListener('inbox:settings', on); const m = await import('./core/inbox.js'); const out = [m.setInboxSettings({ mode: 'direct' }), m.getInboxSettings().mode]; document.removeEventListener('inbox:settings', on); return [...out, fired]; });
+    // 저장하지 못했으면 바뀐 설정을 퍼뜨리지 않음(Windows 앱이 버튼·자동 시작을 바꾸지 않게)
+    assert(r[0] === false && r[1] === 'confirm' && r[2] === 0, JSON.stringify(r));
     await p.evaluate(async () => (await import('./core/ai-roles.js')).openRoleSheet('grade'));
     await p.waitForSelector('#aiRoleSheet');
     await p.click('#arSave');

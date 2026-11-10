@@ -28,9 +28,11 @@ export function getInboxSettings() {
 export function setInboxSettings(patch) {
   const s = { ...getInboxSettings(), ...patch };
   const ok = set(KEY, s) === true;
+  // 저장하지 못했으면 퍼뜨리지 않음(Windows 앱이 버튼 보이기·컴퓨터를 켜면 시작을 바꾸고 다음에 켤 때 되돌아가지 않게)
+  if (!ok) return false;
   document.dispatchEvent(new CustomEvent('inbox:settings', { detail: s }));
   syncFab();
-  return ok;
+  return true;
 }
 
 /* ---------- 처리 함수 등록 ---------- */

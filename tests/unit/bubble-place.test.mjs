@@ -17,8 +17,8 @@ test('지난 자리가 모니터 안이면 그대로, 커진 창이 오른쪽·�
   assert.deepEqual(placeBubble({ x: 800, y: 500 }, [M1, M2], W, M1), { x: 800, y: 500 });
   // 72px 창일 때 오른쪽 끝에 둔 자리: 커진 창이 밖으로 나가지 않게
   assert.deepEqual(placeBubble({ x: 1900, y: 1000 }, [M1, M2], W, M1), { x: 1920 - 174, y: 1080 - 174 });
-  // 두 번째 모니터의 자리는 그 모니터 안에서
-  assert.deepEqual(placeBubble({ x: 3150, y: 980 }, [M1, M2], W, M1), { x: 1920 + 1280 - 174, y: 1024 - 174 });
+  // 두 번째 모니터의 자리는 그 모니터 안에서(그 모니터 배율 1이라 116px 창)
+  assert.deepEqual(placeBubble({ x: 3150, y: 980 }, [M1, M2], W, M1), { x: 1920 + 1280 - 116, y: 1024 - 116 });
 });
 
 test('모니터 밖(떼어 낸 모니터)이면 지금 모니터 오른쪽 아래, 모니터를 모르면 null', () => {
@@ -26,4 +26,14 @@ test('모니터 밖(떼어 낸 모니터)이면 지금 모니터 오른쪽 아�
   assert.equal(placeBubble(null, [], W, null), null);
   // 창 크기를 모르면 버튼 크기(116)에 배율을 곱해 셈
   assert.deepEqual(placeBubble(null, [M2], null, M2), { x: 1920 + 1280 - 116 - 24, y: 1024 - 116 - 96 });
+});
+
+test('검토: 배율이 다른 모니터 — 지금 모니터에서 잰 창 크기를 다른 모니터에 쓰지 않음(그 모니터 배율로 셈)', () => {
+  const A = { position: { x: 0, y: 0 }, size: { width: 1920, height: 1080 }, scaleFactor: 1 };
+  const B = { position: { x: 1920, y: 0 }, size: { width: 3840, height: 2160 }, scaleFactor: 2 };
+  const measured = { width: 116, height: 116 }; // A(배율 1)에서 잼
+  const p = placeBubble({ x: 1920 + 3840 - 120, y: 2160 - 120 }, [A, B], measured, A);
+  assert.deepEqual(p, { x: 1920 + 3840 - 232, y: 2160 - 232 });
+  // 잰 모니터에서는 잰 크기 그대로
+  assert.deepEqual(placeBubble({ x: 1900, y: 1000 }, [A, B], measured, A), { x: 1920 - 116, y: 1080 - 116 });
 });

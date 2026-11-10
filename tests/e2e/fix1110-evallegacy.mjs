@@ -198,6 +198,13 @@ await run('fix1110-evallegacy', [
     assert(JSON.stringify(m.slice(0, 4)) === JSON.stringify([[1, '1인 1역 성실함, 발표 자신감이 자람'], [2, '친구를 잘 도와줌'], [3, '독서를 즐김'], [4, '']]), JSON.stringify(m));
     assert(!JSON.stringify(m).includes('김민수'), '이름이 들어감');
   }],
+  ['[hk-bulk-cellbreak] 검토: 칸 안 따옴표(「""」)가 칸 끝에 든 메모를 두 번 풀지 않음 — 다음 학생 메모가 앞 학생에게 붙지 않음', async () => {
+    await hkReset();
+    await hkBulk('1\t"""발표를 잘함"\n2\t"칭찬함"""\r\n', false);
+    const m = await hkMemos();
+    assert(m[0][1].includes('발표를 잘함') && !m[0][1].includes('칭찬함'), JSON.stringify(m.slice(0, 3)));
+    assert(m[1][0] === 2 && m[1][1].includes('칭찬함'), JSON.stringify(m.slice(0, 3)));
+  }],
   // ---------- cc-sheet-nomask ----------
   ['[cc-sheet-nomask] 창체 학습지 스캔을 넣고 이름 칸을 정하지 않은 채 [모든 영역 만들기]를 누르면 묻고, 학습지 그림을 AI로 보내지 않음', async () => {
     await page.evaluate(() => {

@@ -5,7 +5,9 @@ export const SIZE = 116; // tauri.conf.json bubble 창(논리 px)과 같게
 const has = (m, p) => p.x >= m.position.x && p.y >= m.position.y && p.x < m.position.x + m.size.width && p.y < m.position.y + m.size.height;
 export function placeBubble(pos, mons, win, cur) {
   const list = (mons || []).filter(m => m && m.position && m.size);
-  const sizeOn = m => (win && win.width ? win : { width: Math.round(SIZE * (m.scaleFactor || 1)), height: Math.round(SIZE * (m.scaleFactor || 1)) });
+  // 잰 창 크기(win)는 잰 모니터(cur)에서만 씀 — 배율이 다른 모니터는 그 모니터 배율로 셈(커진 창이 반쯤 화면 밖으로 나가지 않게)
+  const same = (a, b) => !!a && !!b && a.position.x === b.position.x && a.position.y === b.position.y;
+  const sizeOn = m => (win && win.width && (!cur || same(m, cur)) ? win : { width: Math.round(SIZE * (m.scaleFactor || 1)), height: Math.round(SIZE * (m.scaleFactor || 1)) });
   const clamp = (p, m) => {
     const w = sizeOn(m);
     return {

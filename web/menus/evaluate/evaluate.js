@@ -2875,8 +2875,9 @@ function excelFlat(text) {
 }
 // 한꺼번에 넣기 → { rows: [{ no, memo }], names: 뺀 이름 칸 수 }
 function hkMemoRows(text) {
-  text = excelFlat(text);
+  // core(bundle.js memoRows)가 감싼 칸을 이미 풀므로 여기서는 core가 없을 때만 풂 — 두 번 풀면 칸 끝 「""」 뒤 다음 학생이 앞 학생에 붙음
   if (MEMO_NAMES()) return MEMO_NAMES().rows(text);
+  text = excelFlat(text);
   // 번호만 있는 줄(「4⇥」)은 빈 메모(번호 숫자를 메모로 넣지 않음)
   const rows = String(text || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => {
     const e = l.match(/^(\d{1,2})\s*번?\s*[.)\-:]?$/);

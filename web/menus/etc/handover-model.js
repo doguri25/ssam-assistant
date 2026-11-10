@@ -61,7 +61,9 @@ const TITLE = '(?:장학사|장학관|연구사|연구관|주무관|사무관|�
 const IS_TITLE = new RegExp(`^${TITLE}$`);
 const NAME_PHONE = new RegExp(`(^|[^가-힣])([가-힣]{3})(\\s*(?:${TITLE}\\s*)?[(:：]?\\s*)(?=${PHONE.source})`, 'g');
 const PHONE_NAME = new RegExp(`(${PHONE.source}\\)?\\s*[(（]\\s*)([가-힣]{3})(?=\\s*[)）])`, 'g');
-const contactName = n => staffName(n) && !IS_TITLE.test(n);
+// 「도서실·방송실·유치원·한빛관」처럼 곳·부서 이름 끝말이면 사람이 아님(연락할 곳은 다음 담당자에게 필요)
+const PLACE_END = /[실관청원부과팀반소처단]$/;
+const contactName = n => staffName(n) && !IS_TITLE.test(n) && !PLACE_END.test(n);
 /* 글에서 아는 이름(names)·전화번호·전자 우편을 빼고, 이름처럼 보이는 말은 ○○○로 (core/privacy.js stripNames) */
 export function cleanText(v, names = []) {
   let s = String(v == null ? '' : v);

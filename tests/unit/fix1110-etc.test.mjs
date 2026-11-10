@@ -19,3 +19,11 @@ test('전화번호 바로 앞뒤의 이름(연락할 사람)은 ○○○로', (
   assert.equal(cleanText('행정실 031-123-4567 문의'), '행정실 문의');
   assert.equal(cleanText('과학실 예약 02-123-4567'), '과학실 예약');
 });
+
+test('검토: 전화번호 앞의 곳 이름(도서실·방송실·전산실·진로실·유치원·한빛관)은 사람 이름이 아님 — 그대로', () => {
+  for (const place of ['도서실', '방송실', '전산실', '진로실', '유치원', '한빛관']) {
+    const out = cleanText(`${place} 031-123-4567로 연락`);
+    assert.ok(out.startsWith(place), `${place}: ${out}`);
+  }
+  assert.ok(!cleanText('박하늘 010-1234-5678로 연락').includes('박하늘'), '사람 이름은 여전히 뺌');
+});
