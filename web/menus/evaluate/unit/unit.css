@@ -24,6 +24,9 @@ section[data-menu="evaluate"].ev-new > :not(.unit-box):not(.act-box){display:non
 .un-sum{font-weight:700;margin:0 0 8px}
 .un-warn{color:var(--err);font-weight:500;margin-left:8px;font-size:13.5px}
 .un-next{justify-content:flex-end}
+/* 1단계: 빈 문제지(선택)는 접어 둔 작은 칸 — 학생 문제지와 헷갈리지 않게 */
+.un-more{margin-top:10px;border-top:1px solid var(--line);padding-top:6px}
+.un-more>summary{cursor:pointer;font-weight:600;font-size:14px;color:var(--ink2,inherit);padding:4px 0}
 /* 2단계: 학생 목록 */
 .un-stus{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 .un-stu{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:8px 0;border-top:1px solid var(--line)}

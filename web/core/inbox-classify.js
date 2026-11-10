@@ -5,10 +5,10 @@ import { splitDoc } from './bundle.js';
 
 /* [종류, 이름, 기본 할 일] — 차례가 곧 실행 차례 */
 export const KINDS = [
-  ['unit-key', '단원평가 정답지', '새 단원평가로 넣기'],
-  ['unit-paper', '단원평가 문제지', '단원평가 평가지로 넣기'],
+  ['unit-key', '단원평가 답안(정답·이원 분류표)', '새 단원평가로 넣기'],
+  ['unit-paper', '단원평가 빈 문제지', '단원평가 빈 문제지로 넣기'],
   ['activity', '수업 활동지', '활동지 평가로 넣기'],
-  ['unit-scan', '학생 답안 스캔', '채점하기'],
+  ['unit-scan', '학생 문제지 스캔', '채점하기'],
   ['eval-plan', '교과 평가계획', '교과 평어 평가계획으로 넣기'],
   ['class-plan', '작년 학급운영계획', '올해 학급운영계획 만들기'],
   ['event-plan', '작년 행사 계획', '행사계획 만들기'],
@@ -45,11 +45,14 @@ const ACT_SIGNS = [
    문제 글의 낱말(「수요자와 공급자」「학급 대표자」「상호 존중」)은 아님 — 칸 머리(줄 첫머리·쌍점·표 칸)일 때만 */
 const ADULT_DOC = /견\s*적\s*서|사\s*업\s*자\s*(등\s*록\s*)?번\s*호|^\s*\|?\s*공\s*급\s*(받\s*는\s*)?자\s*(?:[:：|(（]|$)|상\s*호\s*[:：]|대\s*표\s*자\s*(성\s*명\s*)?[:：]|인\s*적\s*사\s*항|생\s*년\s*월\s*일\s*[:：]|주\s*민\s*등\s*록\s*번\s*호|계\s*좌\s*번\s*호|소\s*속\s*[:：]|직\s*[위급]\s*[:：]/m;
 
+/* 사진·스캔 파일 이름이 선생님 답안(정답·해설·교사용·모범 답안)인지. 「…답안-예시」(시연 학생 답안)나 「3반 답안」은 아님 — 단원평가 1단계 단추도 같은 규칙 */
+export const keyName = name => /정답|해설|교사용|(모범|예시)\s*답안/.test(String(name || ''));
+
 /* { name, text, scan } → { kind, why, alts, ask? } — ask: 이름 칸 하나로만 학생 답안이라고 본 글 파일(바로 실행이어도 카드로 물어봄) */
 export function classify({ name = '', text = '', scan = false } = {}) {
   const n = String(name || '');
   if (scan) {
-    if (/정답|해설/.test(n)) return { kind: 'unit-key', why: '파일 이름에 「정답」이 있어요. 사진 정답지는 AI가 읽어요.', alts: ['unit-scan'] };
+    if (keyName(n)) return { kind: 'unit-key', why: '파일 이름에 「정답」·「모범 답안」이 있어요. 사진 답안은 AI가 읽어요.', alts: ['unit-scan'] };
     if (/견적/.test(n)) return { kind: 'quote', why: '파일 이름에 「견적」이 있어요.', alts: ['unit-scan'] };
     return { kind: 'unit-scan', why: '글자가 없는 사진·스캔이에요.', alts: ['unit-key', 'quote'] };
   }
@@ -66,15 +69,18 @@ export function classify({ name = '', text = '', scan = false } = {}) {
   }
   if (/문제지|평가지|단원\s*평가/.test(n)) add('unit-paper', 2, '파일 이름에 「평가지」가 있어요.');
   // 글자 인식이 된 학생 답안 스캔(복사기 PDF 등): 이름에 답안·스캔, 이름 칸이 채워짐, 같은 문제가 여러 번(반 전체를 한 파일로)
-  // — 문제지로 잘못 보면 학생 이름·답이 평가지 글로 저장되고 채점 AI로 감
-  if (/답안|스캔|scan/i.test(n)) add('unit-scan', 12, '파일 이름에 「답안」이 있어요.');
+  // — 문제지로 잘못 보면 학생 이름·답이 평가지 글로 저장되고 채점 AI로 감.
+  // 다만 이름의 「답안」은 선생님 답안(「문항 이원 분류 및 모범 답안」)일 때가 많음: 정답표가 읽히거나 한글·글 파일이면 답안 쪽으로
+  const ansName = /답안/.test(n) && !/스캔|scan/i.test(n), docName = /\.(hwpx?|txt)$/i.test(n);
+  if (ansName && (key || docName)) add('unit-key', 2, '파일 이름에 「답안」이 있어요.');
+  else if (/답안|스캔|scan/i.test(n)) add('unit-scan', 12, '파일 이름에 「답안」·「스캔」이 있어요.');
   // 「이름: 교사용」은 학생 이름이 아님(활동지 교사용 쪽). 「대표자 성명:」「담임 성명:」처럼 어른 이름 칸도 아님(견적서·학급운영계획)
   // 견적서(공급자·상호·사업자등록번호)·강사 인적사항처럼 어른 서류 표시가 있으면 따로 적은 「성 명 : 홍길동」도 학생 이름이 아님
   const named = !ADULT_DOC.test(t) && /(?<!(?:대표자?|담임|담당자?|교사|교장|교감|작성자|공급자|신청자|책임자|보호자|학부모|강사)\s*)(이\s*름|성\s*명)\s*[:：]\s*(?!교사용|학생용)[가-힣]{2,4}(?![가-힣])/.test(t);
-  if (named) add('unit-scan', 12, '이름이 적힌 학생 답안이에요.');
+  if (named) add('unit-scan', 12, '이름이 적힌 학생 문제지예요.');
   const q1 = parsePaper(t).questions[1];
   // 교사용·(예시)·정답 표시로 나뉘는 글이면 같은 문제가 두 번 나와도 학생 답안 묶음이 아님(학생용 + 교사용)
-  if (q1 && q1.length >= 8 && t.split(q1).length > 2 && splitDoc(t).how !== 'marker') add('unit-scan', 12, '같은 문제지가 여러 장 들어 있어요(학생 답안 묶음).');
+  if (q1 && q1.length >= 8 && t.split(q1).length > 2 && splitDoc(t).how !== 'marker') add('unit-scan', 12, '같은 문제지가 여러 장 들어 있어요(학생 문제지 묶음).');
 
   // 수업 활동지: 머리 표시가 둘 이상이고 정답 표(번호-정답 3줄 이상)가 없을 때. 표시 하나에 3점(문제지 7점을 넘으려면 셋)
   const top40 = lines.slice(0, 40).join('\n'), signs = ACT_SIGNS.filter(([, re]) => re.test(top40)).map(([w]) => w);

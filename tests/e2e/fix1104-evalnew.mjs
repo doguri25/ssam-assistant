@@ -237,13 +237,13 @@ await run('fix1104-evalnew', only([
     assert(saved[3].text === '3번은 내가 직접 쓰는 중 계속' && saved[1].text === '1번 AI 초안임.', JSON.stringify(saved));
     assert(await page.inputValue(`${V} textarea[data-py="3"]`) === saved[3].text, '화면과 저장이 다름');
   }],
-  ['[unit-draft-7] 새 단원평가: AI가 정답지를 읽는 동안 [‹ 목록]으로 나가도 읽은 정답지로 단원평가를 만들고 알림', async () => {
+  ['[unit-draft-7] 새 단원평가: AI가 답안을 읽는 동안 [‹ 목록]으로 나가도 읽은 답안으로 단원평가를 만들고 알림', async () => {
     ai = async () => { await sleep(1500); return JSON.stringify({ meta: { subject: '수학', grade: 3, term: 2, unitNo: 2, round: 1 }, domains: ['계산'], items: [{ no: 1, content: '덧셈', domain: '계산', type: 'short', answer: '12', points: 50 }, { no: 2, content: '뺄셈', domain: '계산', type: 'short', answer: '3', points: 50 }] }); };
     await toUnit();
     await page.click(`${V} #unNew`);
     const png = await page.screenshot({ clip: { x: 0, y: 0, width: 300, height: 300 } });
     await page.setInputFiles(`${V} #unKeyFile`, { name: '정답지.png', mimeType: 'image/png', buffer: png });
-    await page.waitForFunction(() => /AI가 정답지를 읽는 중/.test((document.querySelector('.unit-box #unKeyMsg') || {}).textContent || ''));
+    await page.waitForFunction(() => /AI가 답안을 읽는 중/.test((document.querySelector('.unit-box #unKeyMsg') || {}).textContent || ''));
     await page.click(`${V} [data-un="back"]`);
     await until(async () => (await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:unit:list') || '[]'))).length === 1, 8000);
     const list = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:unit:list')));

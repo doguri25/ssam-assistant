@@ -1,4 +1,4 @@
-// 평가 › 단원평가: 탭 끼우기, 평가 목록, 1단계(정답지·평가지 넣기, 정답표 고치기), 사진 정답지는 AI, 예시로 채우기, 다시 열기
+// 평가 › 단원평가: 탭 끼우기, 평가 목록, 1단계(답안·빈 문제지 넣기, 정답표 고치기), 사진 답안은 AI, 예시로 채우기, 다시 열기
 import { join } from 'node:path';
 import { open, run, assert, mockClaude, ROOT, FIXTURES } from './helpers.mjs';
 import { zipStore } from '../../web/core/zip.js';
@@ -50,7 +50,7 @@ await run('unit-key', [
     await go();
     assert(await page.isVisible(B) && !(await page.isVisible('#grView')), '다시 단원평가');
   }],
-  ['정답지 한글 파일: AI 없이 10문항 · 100점, 평가 정보 채움', async () => {
+  ['답안 한글 파일: AI 없이 10문항 · 100점, 평가 정보 채움', async () => {
     await page.click(`${B} #unNew`);
     await page.setInputFiles(`${B} #unKeyFile`, join(ROOT, 'samples', '단원평가-정답지-예시.hwpx'));
     await page.waitForFunction(() => (document.querySelector('.unit-box .un-sum') || {}).textContent?.includes('10문항 · 100점'));
@@ -59,7 +59,7 @@ await run('unit-key', [
     assert(await page.inputValue(`${B} [data-k="6-answer"]`) === '(1) - ② (2) - ①', '6번 정답');
     assert(await page.inputValue(`${B} [data-k="6-type"]`) === 'match', '6번 유형');
   }],
-  ['평가지 한글 파일: 단원 이름', async () => {
+  ['빈 문제지 한글 파일: 단원 이름', async () => {
     await page.setInputFiles(`${B} #unPaperFile`, join(ROOT, 'samples', '단원평가지-예시.hwpx'));
     await page.waitForFunction(() => document.querySelector('.unit-box #unUnitName').value === '중요한 내용을 적어요');
     assert((await page.textContent(`${B} #unPaperMsg`)).includes('10문항'), '평가지 안내');
@@ -81,12 +81,12 @@ await run('unit-key', [
   }],
   ['다음 단계 → 목록에 그 평가 카드', async () => {
     await page.click(`${B} [data-un="next"]`);
-    assert((await page.textContent(`${B} .steps [aria-current="step"]`)).includes('답안'), '2단계가 아님');
+    assert((await page.textContent(`${B} .steps [aria-current="step"]`)).includes('나누기'), '2단계가 아님');
     await page.click(`${B} [data-un="back"]`);
     assert(await cards() === 1, '카드 수');
     assert((await page.textContent(`${B} .un-list`)).includes('3학년 국어 2단원 중요한 내용을 적어요 (1회)'), '제목');
   }],
-  ['사진 정답지 → AI 한 번, 이미지 1장', async () => {
+  ['사진 답안 → AI 한 번, 이미지 1장', async () => {
     await page.click(`${B} #unNew`);
     const png = await page.screenshot({ clip: { x: 0, y: 0, width: 200, height: 120 } });
     await page.setInputFiles(`${B} #unKeyFile`, { name: '정답지.png', mimeType: 'image/png', buffer: png });
@@ -97,7 +97,7 @@ await run('unit-key', [
     await page.click(`${B} [data-un="back"]`);
     assert(await cards() === 2, '카드 수 ' + await cards());
   }],
-  ['검토 고침: 합친 칸이 있는 정답지도 문항마다 바르게', async () => {
+  ['검토 고침: 합친 칸이 있는 답안도 문항마다 바르게', async () => {
     await page.click(`${B} #unNew`);
     await page.setInputFiles(`${B} #unKeyFile`, { name: '합친칸.hwpx', mimeType: 'application/octet-stream', buffer: mergedHwpx });
     await page.waitForFunction(() => (document.querySelector('.unit-box .un-sum') || {}).textContent?.includes('3문항 · 15점'));
@@ -135,13 +135,13 @@ await run('unit-key', [
     assert(await cards() === 3 && !(await page.textContent(`${B} .un-list`)).includes('(예시)'), '카드 ' + await cards());
     assert(await page.locator(`${B} [data-un="sampleDel"]`).count() === 0, '단추가 남음');
   }],
-  ['새 형식: 문제지·정답·이원 목적 분류표가 한 파일이면 정답지 넣기 하나로 둘 다(AI 없이, 평가지엔 정답 앞까지만)', async () => {
+  ['새 형식: 문제지·정답·이원 목적 분류표가 한 파일이면 [답안 넣기] 하나로 둘 다(AI 없이, 빈 문제지엔 정답 앞까지만)', async () => {
     await page.click(`${B} #unNew`);
     const n0 = prompts.length;
     await page.setInputFiles(`${B} #unKeyFile`, join(FIXTURES, 'unit-combined.txt'));
     await page.waitForFunction(() => (document.querySelector('.unit-box .un-sum') || {}).textContent?.includes('6문항 · 100점'));
     assert(prompts.length === n0, 'AI를 부름');
-    assert((await page.textContent(`${B} #unKeyMsg`)).includes('평가지도'), await page.textContent(`${B} #unKeyMsg`));
+    assert((await page.textContent(`${B} #unKeyMsg`)).includes('문제 부분은 빈 문제지로'), await page.textContent(`${B} #unKeyMsg`));
     assert(await page.inputValue(`${B} #unSubject`) === '과학' && await page.inputValue(`${B} #unUnitName`) === '동물의 생활', '평가 정보');
     const paper = await page.evaluate(async () => { const m = await import('./menus/evaluate/unit/unit-model.js'); const s = m.listTests().find(x => x.subject === '과학'), t = s && m.getTest(s.id); return t && t.paper ? t.paper.text : 'paper 없음'; });
     assert(paper.includes('곤충이 아닌 것') && !paper.includes('정답 및 해설'), paper.slice(-60));

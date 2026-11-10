@@ -1,6 +1,7 @@
 /* 평가 › 단원평가 (스펙 2): 평가 목록 · 결과 모아 보기, 평가마다 4단계.
-   이 파일은 탭 진입·목록·단계 틀·1단계(정답지·평가지). 2·3단계는 unit-grading.js, 4단계는 unit-feedback.js,
-   결과 모아 보기는 unit-results.js가 registerStep·registerResults로 붙임 */
+   이 파일은 탭 진입·목록·단계 틀·1단계(학생 문제지·답안). 1단계의 [학생 문제지 넣기(스캔한 것)] 줄과 2·3단계는 unit-grading.js(registerPapers),
+   4단계는 unit-feedback.js, 결과 모아 보기는 unit-results.js가 registerStep·registerResults로 붙임.
+   단추는 이름대로: [답안 넣기]에 학생 문제지 스캔을, [학생 문제지 넣기]에 답안 한글 파일을 넣어도 맞는 곳에 옮겨 넣음(unit-route.js) */
 import { onEnter, go } from '../../../core/shell.js';
 import { registerInbox } from '../../../core/inbox.js';
 import { toast } from '../../../core/ui.js';
@@ -13,13 +14,15 @@ import { listTests, getTest, saveTest, removeTest, newTest, makeTitle, graded, m
 import { keyPrompt, normKeyAI } from './unit-ai.js';
 import { sampleTests } from './unit-sample.js';
 import { readBundle, openBundleCard, needsCard, bundleBoxHTML, onBundle } from '../../../core/bundle.js';
+import { isDocFile, keyName, paperFileGoes, keyScanGoes, bundleParts } from './unit-route.js';
 import { linkHTML, openLinkSheet } from '../../../core/eval-link.js';
 import { accuracyText, yearAccuracy, yearText } from '../grade-accuracy.js';
 
 export const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const SS = () => window.SSAM || {};
 export const AI_KEY = '설정 › AI에서 키를 넣어 주세요';
-const STEPS = ['정답지·평가지', '답안 올리기', '채점·확인', '피드백'];
+const STEPS = ['학생 문제지·답안', '나누기·이름 가리기', '채점·확인', '피드백'];
+const PDFJS = 'PDF를 읽는 도구를 불러오지 못했어요. 인터넷 연결을 확인하거나 사진으로 넣어 주세요.';
 const SUBJECTS = ['국어', '수학', '사회', '과학', '영어', '도덕', '음악', '미술', '체육', '실과'];
 
 /* 화면 상태: view 'list' | 'results' | 'test'. 저장 전의 새 평가는 draft에 둠(정답표가 생기면 저장) */
@@ -28,6 +31,9 @@ const stepViews = {};
 let resultsView = null, box = null, curTab = null;
 export const registerStep = (n, v) => { stepViews[n] = v; };
 export const registerResults = v => { resultsView = v; };
+/* 학생 문제지(스캔) 쪽: { html(t), put(files, t0), putPages(pages, t0), keyArrived(id), note(id, text) } — unit-grading.js가 붙임 */
+let papers = null;
+export const registerPapers = p => { papers = p; };
 export const visible = () => curTab === 'unit' && !!box && box.isConnected && !box.hidden && !box.closest('[hidden]');
 export const inStep = n => visible() && U.view === 'test' && U.step === n;
 export const cur = () => (U.id ? getTest(U.id) : U.draft);
@@ -39,7 +45,7 @@ export function saveOrWarn(t) {
   if (!ok) toast('저장 공간이 모자라 저장하지 못했어요', 6000);
   return ok;
 }
-/* [새 단원평가]로 시작한 저장 전 평가: 정답지를 읽는 동안 목록으로 나가도 읽은 것을 넣어 저장함(저장하면 뺌) */
+/* [새 단원평가]로 시작한 저장 전 평가: 답안을 읽는 동안 목록으로 나가도 읽은 것을 넣어 저장함(저장하면 뺌) */
 const drafts = new WeakSet();
 /* 고친 평가 저장: 정답표가 생기기 전의 새 평가는 저장하지 않고 draft에 둠 */
 export function commit(t) {
@@ -93,7 +99,7 @@ function listHTML() {
     <span class="grow"></span><button class="btn text" type="button" data-un="del" data-id="${esc(s.id)}">지우기</button></li>`).join('');
   return `<div class="row"><button class="btn primary" type="button" id="unNew">새 단원평가</button><button class="btn" type="button" data-un="sample">예시로 채우기</button>${list.some(s => s.sample) ? '<button class="btn text" type="button" data-un="sampleDel">예시 지우기</button>' : ''}</div>
     ${year ? `<p class="un-year" id="unYear">${esc(year)}</p>` : ''}
-    ${list.length ? `<ul class="un-list">${cards}</ul>` : '<div class="yp-card"><p class="muted" style="margin:0">아직 단원평가가 없어요. [새 단원평가]로 정답지부터 넣어 주세요. 바로 보려면 [예시로 채우기].</p></div>'}`;
+    ${list.length ? `<ul class="un-list">${cards}</ul>` : '<div class="yp-card"><p class="muted" style="margin:0">아직 단원평가가 없어요. [새 단원평가]로 학생 문제지(스캔한 것)와 답안을 넣어 주세요. 바로 보려면 [예시로 채우기].</p></div>'}`;
 }
 function metaHTML(m) {
   const f = (id, label, v, attrs = '') => `<label class="yp-f"><span class="lab">${label}</span><input class="field" id="${id}" value="${esc(v == null ? '' : v)}" ${attrs}></label>`;
@@ -116,24 +122,30 @@ function keyTableHTML(t) {
     <td><button class="icon-btn" type="button" data-un="delItem" data-no="${it.no}" aria-label="${it.no}번 빼기">✕</button></td></tr>`).join('');
   return `<div class="yp-card">
     <div class="un-sum">${sumHTML(items)}</div>
-    ${items.length ? `<div class="un-key-wrap"><table class="un-key"><thead><tr><th>번호</th><th>평가 내용</th><th>영역</th><th>유형</th><th>정답</th><th>배점</th><th>채점 기준</th><th>교과서 쪽</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">정답지를 넣으면 문항이 여기에 나와요. 직접 더해도 돼요.</p>'}
+    ${items.length ? `<div class="un-key-wrap"><table class="un-key"><thead><tr><th>번호</th><th>평가 내용</th><th>영역</th><th>유형</th><th>정답</th><th>배점</th><th>채점 기준</th><th>교과서 쪽</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">답안을 넣으면 문항이 여기에 나와요. 직접 더해도 돼요.</p>'}
     <div class="row"><button class="btn" type="button" data-un="addItem">문항 더하기</button></div>
   </div>`;
 }
+/* 1단계: [학생 문제지 넣기(스캔한 것)] → [답안 넣기] 차례, 줄마다 알림. 빈 문제지는 접어 둔 작은 칸(학생 문제지와 헷갈리지 않게) */
+let moreOpen = false; // 「빈 문제지도 있으면」을 펼쳤는지
 function keyHTML(t) {
-  const m = U.msg.id === t.id ? U.msg : { key: '', paper: '' };
+  const m = U.msg.id === t.id ? U.msg : { key: '', paper: '' }, hasPaper = !!(t.paper && t.paper.text);
   return `<div class="yp-card">
-      <h3>정답지·평가지</h3>
-      <p class="muted cls-note">「문항 이원 분류 및 모범 답안」 한글 파일은 AI 없이 바로 읽어요. 사진이나 스캔 PDF는 AI가 읽어요.</p>
-      ${bundleBoxHTML('unit', '정답지·문제지·학생 답안 스캔을 한꺼번에 넣으면 알아서 나눠요(답안은 2단계로)')}
-      <div class="row"><button class="btn primary" type="button" data-un="keyFile">정답지 넣기</button><span class="muted" id="unKeyMsg">${esc(m.key)}</span></div>
-      <div class="row"><button class="btn" type="button" data-un="paperFile">평가지 넣기 (선택)</button><span class="muted" id="unPaperMsg">${esc(m.paper)}</span></div>
+      <h3>학생 문제지·답안</h3>
+      <p class="muted cls-note">학생이 푼 문제지를 반 전체 스캔(PDF·사진)으로 넣고, 선생님 답안(정답·이원 분류표)을 넣어요. 「문항 이원 분류 및 모범 답안」 한글 파일은 AI 없이 바로 읽고, 사진이나 스캔 PDF는 AI가 읽어요.</p>
+      ${papers ? papers.html(t) : ''}
+      <div class="row"><button class="btn primary" type="button" data-un="keyFile">답안 넣기</button><span class="muted" id="unKeyMsg" role="status">${esc(m.key)}</span></div>
       <input type="file" id="unKeyFile" accept=".hwp,.hwpx,.pdf,.txt,.png,.jpg,.jpeg,.webp" hidden>
-      <input type="file" id="unPaperFile" accept=".hwp,.hwpx,.pdf,.txt" hidden>
+      ${bundleBoxHTML('unit', '학생 문제지 스캔·답안·빈 문제지를 한꺼번에 넣으면 알아서 나눠요')}
+      <details class="un-more"${moreOpen || m.paper ? ' open' : ''}><summary>빈 문제지도 있으면 (선택)${hasPaper ? ' · 넣었어요' : ''}</summary>
+        <p class="muted cls-note">학생이 풀기 전의 빈 문제지(한글·PDF)를 넣으면 채점 AI가 문제를 보고 채점해요. 없어도 돼요.</p>
+        <div class="row"><button class="btn" type="button" data-un="paperFile">빈 문제지 넣기</button><span class="muted" id="unPaperMsg" role="status">${esc(m.paper)}</span></div>
+        <input type="file" id="unPaperFile" accept=".hwp,.hwpx,.pdf,.txt" hidden>
+      </details>
     </div>
     <div class="yp-card"><h3>평가 정보</h3>${metaHTML(t.meta)}${linkHTML(t.link || null, t.meta.subject, 'data-un')}</div>
     ${keyTableHTML(t)}
-    <div class="row un-next"><button class="btn primary" type="button" data-un="next"${t.key.items.length ? '' : ' disabled'}>다음: 답안 올리기</button></div>`;
+    <div class="row un-next"><button class="btn primary" type="button" data-un="next"${t.key.items.length ? '' : ' disabled'}>다음: 나누기·이름 가리기</button></div>`;
 }
 function testHTML(t) {
   const body = U.step === 1 ? keyHTML(t) : stepViews[U.step] ? stepViews[U.step].html(t) : '<div class="yp-card"><p class="muted" style="margin:0">준비 중이에요.</p></div>';
@@ -153,7 +165,7 @@ export function render() {
 function draw() {
   const t = U.view === 'test' ? cur() : null;
   if (U.view === 'test' && !t) U.view = 'list';
-  const head = `<div class="m-head"><h2>단원평가</h2><p class="muted">정답지와 학생 답안 스캔을 올리면 문항마다 채점하고, 학생에게 줄 피드백을 만들어요. 결과는 쌓아 두고 모아 봐요.</p></div>`;
+  const head = `<div class="m-head"><h2>단원평가</h2><p class="muted">학생 문제지(스캔한 것)와 답안을 넣으면 문항마다 채점하고, 학생에게 줄 피드백을 만들어요. 결과는 쌓아 두고 모아 봐요.</p></div>`;
   const seg = `<div class="seg un-seg" role="group" aria-label="단원평가 보기"><button type="button" data-unv="list" aria-pressed="${U.view !== 'results'}">평가 목록</button><button type="button" data-unv="results" aria-pressed="${U.view === 'results'}">결과 모아 보기</button></div>`;
   let inner;
   if (U.view === 'test') inner = testHTML(t);
@@ -164,13 +176,15 @@ function draw() {
   if (U.view === 'results' && resultsView && resultsView.bind) resultsView.bind(box);
 }
 
-/* ---------- 1단계: 정답지·평가지 ---------- */
+/* ---------- 1단계: 학생 문제지·답안 ---------- */
 const setMsg = (id, k, text) => { if (U.msg.id !== id) U.msg = { id, key: '', paper: '' }; U.msg[k] = text; const el = box && box.querySelector(k === 'key' ? '#unKeyMsg' : '#unPaperMsg'); if (el && curId() === id) el.textContent = text; };
 /* 파일을 읽는 동안 다른 평가로 가도, 결과는 시작한 평가에 넣음 */
 const testOf = (id, t0) => (curId() === id ? cur() : getTest(id) || null) || (U.draft === t0 || drafts.has(t0) ? t0 : null);
 const fill = (meta, from, keys) => { for (const k of keys) if ((meta[k] == null || meta[k] === '') && from[k] != null && from[k] !== '') meta[k] = from[k]; };
 const isImage = f => /^image\//.test(f.type || '') || /\.(png|jpe?g|webp|bmp|gif)$/i.test(f.name || '');
-/* 정답지 한글 파일은 합친 칸을 풀어 읽음(칸 자리를 지킴). 안 되면 보통 글 읽기(오류 안내도 그쪽에서) */
+const isPdf = f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '');
+const maskNow = t => (maskOf(t) || {}).mask || [];
+/* 답안 한글 파일은 합친 칸을 풀어 읽음(칸 자리를 지킴). 안 되면 보통 글 읽기(오류 안내도 그쪽에서) */
 async function readKeyText(file) {
   if (/\.hwpx?$/i.test(file.name || '') && SS().files && SS().files.readHwpGridText) {
     try { return String(await SS().files.readHwpGridText(new Uint8Array(await file.arrayBuffer()))).replace(/\r\n?/g, '\n').trim(); } catch (e) { /* 아래로 */ }
@@ -178,49 +192,74 @@ async function readKeyText(file) {
   return readText(file, { columns: true });
 }
 
-async function loadKey(file) {
-  const t0 = cur(), id = t0.id;
+/* [답안 넣기]: 정답표 글은 AI 없이, 아니면 AI가 읽음. 이름대로 — 정답표로 읽히지 않는 PDF는 한꺼번에 넣기처럼 쪽을 나눠 보고(keyScanGoes)
+   학생 문제지면 학생 문제지로 옮겨 넣고 알림, 정답 쪽과 학생 쪽이 섞였으면 나눠 넣음. 파일 이름이 정답·교사용이면 그대로 답안.
+   나눠 볼 때는 파일 이름 말고 쪽 글·AI로 봄(「…답안-예시.pdf」의 「예시」를 정답 표시로 읽지 않게) */
+async function loadKey(file, t0 = cur()) {
+  const id = t0.id;
   setMsg(id, 'key', `「${file.name}」 읽는 중…`);
-  let k = null, text = '';
+  let k = null, text = '', images;
   if (!isImage(file)) {
     try { text = await readKeyText(file); }
     catch (e) { if (!(e && e.code === 'PDF_NO_TEXT')) { setMsg(id, 'key', fileMessage(e && e.code)); return; } }
     if (text) k = parseKey(text);
   }
+  if (!k && isPdf(file) && !keyName(file.name) && papers && (text || ai.ready())) {
+    let b;
+    try { b = await readBundle([new File([file], 'scan.pdf', { type: 'application/pdf' })], { say: m => setMsg(id, 'key', m.replace('scan.pdf', file.name)), mask: maskNow(t0) }); }
+    catch (e) { setMsg(id, 'key', e && e.message === 'PDFJS' ? PDFJS : '파일을 읽지 못했어요.'); return; }
+    const go = keyScanGoes(b);
+    if (go === 'papers') {
+      setMsg(id, 'key', `「${file.name}」 파일은 학생 문제지로 보여서 학생 문제지로 넣었어요`);
+      papers.note(id, '');
+      await papers.putPages(b.pages, t0);
+      return;
+    }
+    if (go === 'both') {
+      setMsg(id, 'key', `「${file.name}」에 학생 문제지도 들어 있어 나눠 넣어요`);
+      b.doc.names = [file.name];
+      if (!(await placeBundle(id, t0, b))) setMsg(id, 'key', '');
+      return;
+    }
+    try { if (!text && b.pages.length && ai.ready()) images = await Promise.all(b.pages.map(p => SS().files.pageImage(p, null))); }
+    catch (e) { images = undefined; }
+    finally { SS().files.freePages(b.pages); }
+  }
   if (!k) {
-    if (!ai.ready()) { setMsg(id, 'key', `이 정답지는 AI가 읽어야 해요. ${AI_KEY}`); return; }
-    setMsg(id, 'key', 'AI가 정답지를 읽는 중…');
+    if (!ai.ready()) { setMsg(id, 'key', `이 답안은 AI가 읽어야 해요. ${AI_KEY}`); return; }
+    setMsg(id, 'key', 'AI가 답안을 읽는 중…');
     try {
-      const images = text ? undefined : await SS().files.toImages(file);
-      k = normKeyAI(await ai.generateJSON(keyPrompt(text), { images, valid: v => !!normKeyAI(v) }));
+      if (!text && !images) images = await SS().files.toImages(file);
+      k = normKeyAI(await ai.generateJSON(keyPrompt(text), { images: text ? undefined : images, valid: v => !!normKeyAI(v) }));
     } catch (e) {
-      setMsg(id, 'key', e && e.code === 'bad_json' ? 'AI가 정답지를 읽지 못했어요. 다시 해 보거나 문항을 직접 넣어 주세요.' : ai.errorMessage(e && e.code, e));
+      setMsg(id, 'key', e && e.code === 'bad_json' ? 'AI가 답안을 읽지 못했어요. 다시 해 보거나 문항을 직접 넣어 주세요.' : ai.errorMessage(e && e.code, e));
       return;
     }
   }
   useKey(id, t0, k, text, file.name);
 }
-/* 읽은 정답지를 평가에 넣음(정답지 넣기·한꺼번에 넣기) */
+/* 읽은 답안을 평가에 넣음([답안 넣기]·한꺼번에 넣기). 받아 둔 학생 문제지가 있으면 이제 학생별로 나눔 */
 function useKey(id, t0, k, text, name) {
   const t = testOf(id, t0);
   if (!t) return;
   t.key = { domains: k.domains, items: k.items };
-  // 이미 채점한 평가에 정답지를 다시 넣으면 읽은 답으로 다시 맞춤
+  // 이미 채점한 평가에 답안을 다시 넣으면 읽은 답으로 다시 맞춤
   for (const it of t.key.items) rescoreItem(t, it.no, 'answer');
   fill(t.meta, k.meta, ['subject', 'grade', 'term', 'unitNo', 'round']);
-  // 문제지와 정답이 한 파일이면 평가지도 (정답 앞까지만 — 정답이 채점 AI에 가지 않게)
+  // 문제지와 정답이 한 파일이면 문제 부분은 빈 문제지로 (정답 앞까지만 — 정답이 채점 AI에 가지 않게)
   const sp = text ? splitCombined(text) : { paper: '' };
   const withPaper = !!(sp.paper && !(t.paper && t.paper.text));
   if (withPaper) { t.paper = { text: sp.paper.slice(0, 12000) }; fill(t.meta, parsePaper(sp.paper).meta, ['subject', 'grade', 'term', 'unitNo', 'unitName', 'round']); }
-  U.msg = { ...U.msg, id, key: `「${name}」에서 ${k.items.length}문항을 읽었어요${withPaper ? '. 평가지도 함께 넣었어요' : ''}${k.pointsGuessed ? '. 배점이 없어 100점을 문항 수로 나눠 넣었어요(고칠 수 있어요)' : ''}` };
+  U.msg = { ...U.msg, id, key: `「${name}」에서 ${k.items.length}문항을 읽었어요${withPaper ? '. 문제 부분은 빈 문제지로 넣었어요' : ''}${k.pointsGuessed ? '. 배점이 없어 100점을 문항 수로 나눠 넣었어요(고칠 수 있어요)' : ''}` };
   if (withPaper) U.msg.paper = `「${name}」 · ${Object.keys(parsePaper(sp.paper).questions).length}문항`;
   const made = !getTest(id);
   commit(t);
-  if (made && curId() !== id && getTest(id)) { toast(`「${name}」에서 정답지를 읽어 새 단원평가를 만들었어요`, 6000); if (visible() && U.view === 'list') render(); }
+  if (made && curId() !== id && getTest(id)) { toast(`「${name}」에서 답안을 읽어 새 단원평가를 만들었어요`, 6000); if (visible() && U.view === 'list') render(); }
+  if (papers && getTest(id)) papers.keyArrived(id);
   refresh(id);
 }
-async function loadPaper(file) {
-  const t0 = cur(), id = t0.id;
+async function loadPaper(file, t0 = cur()) {
+  const id = t0.id;
   setMsg(id, 'paper', `「${file.name}」 읽는 중…`);
   let text;
   try { text = await readText(file, { columns: true }); } catch (e) { setMsg(id, 'paper', fileMessage(e && e.code)); return; }
@@ -237,40 +276,60 @@ function usePaper(id, t0, text, name) {
   refresh(id);
 }
 
-/* ---------- 한꺼번에 넣기 (정답지·문제지·답안 스캔) ---------- */
+/* ---------- 한꺼번에 넣기 (학생 문제지 스캔·답안·빈 문제지) ---------- */
 async function putBundle(files) {
   const t0 = cur(), id = t0.id;
   setMsg(id, 'key', '읽는 중…');
   let b;
-  try { b = await readBundle(files, { say: m => setMsg(id, 'key', m), mask: (maskOf(t0) || {}).mask || [] }); }
-  catch (e) { setMsg(id, 'key', e && e.message === 'PDFJS' ? 'PDF를 읽는 도구를 불러오지 못했어요. 인터넷 연결을 확인하거나 사진으로 넣어 주세요.' : '파일을 읽지 못했어요.'); return; }
+  try { b = await readBundle(files, { say: m => setMsg(id, 'key', m), mask: maskNow(t0) }); }
+  catch (e) { setMsg(id, 'key', e && e.message === 'PDFJS' ? PDFJS : '파일을 읽지 못했어요.'); return; }
   setMsg(id, 'key', '');
-  if (needsCard(b)) { const r = await openBundleCard(b, { what: '단원평가' }); if (!r) { SS().files.freePages(b.pages); return; } b = r; }
+  await placeBundle(id, t0, b);
+}
+/* 나눈 것(b)을 넣음(한꺼번에 넣기, [답안 넣기]에 섞여 들어온 PDF): 학생 쪽 → 학생 문제지(답안 전이면 받아 두었다가 답안을 읽으면 나눔),
+   답안 글·정답·교사용 쪽 → 답안, 문제 글 → 빈 문제지. 어디에 넣을지는 bundleParts(빈 문제지 쪽은 답안으로 읽지 않음). 카드에서 취소하면 false */
+async function placeBundle(id, t0, b) {
+  if (needsCard(b)) { const r = await openBundleCard(b, { what: '단원평가' }); if (!r) { SS().files.freePages(b.pages); return false; } b = r; }
   const name = (b.doc.names && b.doc.names[0]) || '한꺼번에 넣은 파일';
-  let keyText = b.doc.teacher, paperText = b.doc.student;
-  if (!keyText && paperText && parseKey(paperText)) { keyText = paperText; paperText = ''; } // 정답지만 넣음
-  const crit = b.pages.filter((p, i) => b.roles[i] !== 'student'), stu = b.pages.filter((p, i) => b.roles[i] === 'student');
-  if (keyText || crit.length) {
+  const { keyText, paperText, keyPages, blankPages, stuPages } = bundleParts(b);
+  if (stuPages.length && papers) { papers.note(id, ''); await papers.putPages(stuPages, t0); }
+  if (keyText || keyPages.length) {
     let k = keyText ? parseKey(keyText) : null;
     if (!k && ai.ready()) {
-      setMsg(id, 'key', 'AI가 정답지를 읽는 중…');
+      setMsg(id, 'key', 'AI가 답안을 읽는 중…');
       try {
-        const images = keyText ? undefined : await Promise.all(crit.slice(0, 4).map(p => SS().files.pageImage(p, null)));
+        const images = keyText ? undefined : await Promise.all(keyPages.slice(0, 4).map(p => SS().files.pageImage(p, null)));
         k = normKeyAI(await ai.generateJSON(keyPrompt(keyText || ''), { images, valid: v => !!normKeyAI(v) }));
       } catch (e) { k = null; }
     }
-    if (k) useKey(id, t0, k, '', name); else setMsg(id, 'key', '정답지를 읽지 못했어요. [정답지 넣기]로 다시 넣거나 문항을 직접 넣어 주세요.');
-  }
-  if (crit.length) SS().files.freePages(crit);
+    if (k) useKey(id, t0, k, '', name); else setMsg(id, 'key', '답안을 읽지 못했어요. [답안 넣기]로 다시 넣거나 문항을 직접 넣어 주세요.');
+  } else if (blankPages.length && !((testOf(id, t0) || t0).key.items.length)) setMsg(id, 'key', '빈 문제지 쪽은 있는데 답안은 없었어요. [답안 넣기]로 답안(정답·이원 분류표)을 넣어 주세요.');
+  SS().files.freePages([...keyPages, ...blankPages]);
   if (paperText) usePaper(id, t0, paperText, name);
-  if (stu.length) {
-    const t = testOf(id, t0);
-    U.pending = { id: t ? t.id : id, pages: stu };
-    if (t && t.key.items.length) { if (curId() === id) goStep(2); }
-    else setMsg(id, 'paper', `답안 ${stu.length}쪽은 정답지를 넣으면 2단계에서 바로 나눠요`);
-  }
+  const t = testOf(id, t0);
+  if (stuPages.length && t && t.key.items.length && curId() === id) goStep(2);
+  return true;
 }
 onBundle('unit', files => { if (visible() && U.view === 'test' && U.step === 1) putBundle(files); });
+
+/* [학생 문제지 넣기(스캔한 것)]: PDF·사진은 학생 문제지로. 한글·글 파일(답안·빈 문제지)과 이름이 정답·교사용인 파일은
+   이름대로 맞는 곳에 옮겨 넣고 학생 문제지 줄에 알림(paperFileGoes) */
+async function putPaperFiles(files) {
+  const t0 = cur(), id = t0.id, scans = [], moved = [];
+  if (!papers) return;
+  papers.note(id, '');
+  for (const f of files) {
+    let text = '';
+    if (isDocFile(f)) { try { text = await readKeyText(f); } catch (e) { text = ''; } }
+    const go = paperFileGoes({ name: f.name, type: f.type, text });
+    if (go === 'scan') { scans.push(f); continue; }
+    const where = go === 'key' ? '답안' : '빈 문제지', ro = go === 'key' ? '으로' : '로';
+    moved.push(`「${f.name}」 파일은 ${where}${ro} 보여서 ${where}${ro} 넣었어요`);
+    papers.note(id, moved.join(' · '));
+    if (go === 'key') await loadKey(f, t0); else { moreOpen = true; await loadPaper(f, t0); }
+  }
+  if (scans.length) await papers.put(scans, t0);
+}
 const META_IDS = { unSubject: ['subject', 's'], unGrade: ['grade', 'n'], unUnitNo: ['unitNo', 'n'], unUnitName: ['unitName', 's'], unRound: ['round', 'n'], unDate: ['date', 's'] };
 function editMeta(el) {
   const [k, kind] = META_IDS[el.id], t = cur();
@@ -324,6 +383,7 @@ document.addEventListener('click', e => {
   if (!inStep(1)) return;
   const t = cur();
   if (a === 'keyFile') box.querySelector('#unKeyFile').click();
+  else if (a === 'ansFile') box.querySelector('#unAnsFile').click();
   else if (a === 'paperFile') box.querySelector('#unPaperFile').click();
   else if (a === 'addItem') {
     const no = Math.max(0, ...t.key.items.map(i => i.no)) + 1;
@@ -342,6 +402,7 @@ document.addEventListener('change', e => {
   if (!inStep(1) || !box.contains(e.target)) return;
   const el = e.target;
   if (el.id === 'unKeyFile' && el.files[0]) { const f = el.files[0]; el.value = ''; loadKey(f); }
+  else if (el.id === 'unAnsFile' && el.files.length) { const fs = [...el.files]; el.value = ''; putPaperFiles(fs); }
   else if (el.id === 'unPaperFile' && el.files[0]) { const f = el.files[0]; el.value = ''; loadPaper(f); }
   else if (el.dataset.un === 'link') {
     const t = cur();
@@ -352,8 +413,8 @@ document.addEventListener('change', e => {
   else if (el.dataset.k) editItem(el);
 });
 
-/* 떠 있는 버튼: 정답지(합본 포함)는 새 단원평가로, 문제지는 정답지는 있고 평가지가 없는 최근 단원평가에(없으면 새로) */
-/* 문제지와 교과(·단원)가 같은 것. 문제지의 교과를 모를 때만 최근 것 — 다른 교과 평가에 붙이지 않음(그 평가지 글이 채점 AI로 감) */
+/* 떠 있는 버튼: 답안(합본 포함)은 새 단원평가로, 빈 문제지는 답안은 있고 빈 문제지가 없는 최근 단원평가에(없으면 새로) */
+/* 문제지와 교과(·단원)가 같은 것. 문제지의 교과를 모를 때만 최근 것 — 다른 교과 평가에 붙이지 않음(그 문제지 글이 채점 AI로 감) */
 function paperless(text) {
   const m = parsePaper(splitCombined(text || '').paper || text || '').meta;
   const list = listTests().map(s => getTest(s.id)).filter(t => t && t.key.items.length && !(t.paper && t.paper.text));
@@ -367,7 +428,7 @@ function openNew() {
   render();
 }
 registerInbox('unit-key', {
-  act: files => (files.length > 1 ? `새 단원평가 ${files.length}개를 만들어 정답지로 넣기` : '새 단원평가를 만들어 정답지로 넣기'),
+  act: files => (files.length > 1 ? `새 단원평가 ${files.length}개를 만들어 답안으로 넣기` : '새 단원평가를 만들어 답안으로 넣기'),
   async run(files) {
     go('evaluate', 'unit');
     for (const f of files) { openNew(); await loadKey(f); }
@@ -376,8 +437,8 @@ registerInbox('unit-key', {
 registerInbox('unit-paper', {
   one: true,
   act: (files, ctx) => {
-    if (files.length > 1) return `평가지 ${files.length}개를 하나씩 교과·단원이 맞는 단원평가(없으면 새 단원평가)에 넣기`;
-    const t = paperless(ctx.texts.get(files[0])); return t ? `「${makeTitle(t.meta)}」의 평가지로 넣기` : '새 단원평가를 만들어 평가지로 넣기';
+    if (files.length > 1) return `빈 문제지 ${files.length}개를 하나씩 교과·단원이 맞는 단원평가(없으면 새 단원평가)에 넣기`;
+    const t = paperless(ctx.texts.get(files[0])); return t ? `「${makeTitle(t.meta)}」의 빈 문제지로 넣기` : '새 단원평가를 만들어 빈 문제지로 넣기';
   },
   async run(files, v, opts) {
     go('evaluate', 'unit');
@@ -394,6 +455,7 @@ const release = () => {
   setTimeout(() => { if (pressAt === at) pressAt = 0; if (pendingRefresh && !editing() && !pressing()) { pendingRefresh = false; if (visible()) render(); } }, 0);
 };
 document.addEventListener('pointerup', release, true);
+document.addEventListener('toggle', e => { if (e.target.matches && e.target.matches('.un-more')) moreOpen = e.target.open; }, true);
 document.addEventListener('pointercancel', release, true);
 
 onEnter('evaluate', (tab, section) => {

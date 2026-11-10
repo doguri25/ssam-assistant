@@ -74,7 +74,7 @@ await run('inbox-activity', [
     const shot = async w => ({ name: `활동지${w}.png`, mimeType: 'image/png', buffer: await page.screenshot({ clip: { x: 0, y: 0, width: w, height: 400 } }) });
     await pick([await shot(300), await shot(310)]);
     await page.waitForSelector(sheet);
-    assert((await page.textContent(sheet)).includes('학생 답안 스캔'), await page.textContent(sheet));
+    assert((await page.textContent(sheet)).includes('학생 문제지 스캔'), await page.textContent(sheet));
     const opts = await page.$$eval(`${sheet} [data-ib-field="test"] option`, os => os.map(o => [o.value, o.textContent]));
     assert(opts.some(([v, l]) => v === 'act:' + id && l.includes('활동지 채점') && l.includes('서로 돕는 마을')), JSON.stringify(opts));
     assert(!opts.some(([v]) => v.startsWith('act:') && v !== 'act:' + id), '기준을 확정하지 않은 활동지도 나옴');
