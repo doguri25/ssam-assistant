@@ -83,6 +83,7 @@ await run('upstage', [
     await fc.setFiles([join(FIXTURES, 'sheet-1.png')]);
     await page.waitForSelector('[data-ccsheetinfo]');
     await page.click('[data-cc="genAll"]');
+    await page.click('#sheetRoot #ccNoMaskOk'); // 이름 칸을 정하지 않은 학습지: 가리지 않고 쓰기
     await page.waitForFunction(() => document.querySelectorAll('#ccResults .gr-sum').length === 1, null, { timeout: 15000 });
     assert(log[0] === 'ocr' && log.includes('chat'), '순서: ' + log.join(','));
     const c = lastChat.body.messages[0].content;
@@ -99,6 +100,7 @@ await run('upstage', [
     ocrStatus = 400;
     await reupload(); // 새로 넣은 그림은 다시 읽음
     await page.click('[data-ccre="1"]');
+    await page.click('#sheetRoot #ccNoMaskOk'); // 새로 넣은 학습지는 다시 물음
     await page.waitForFunction(() => document.querySelector('#ccView').textContent.includes('업스테이지가 이미지를 읽지 못했어요'), null, { timeout: 10000 });
     assert((await page.textContent('#ccView')).includes('이미지 기능은 Claude·Gemini·GPT를 권장해요'), '권장 문구 없음');
     ocrStatus = 200;
@@ -107,6 +109,7 @@ await run('upstage', [
     ocrStatus = 429;
     await reupload();
     await page.click('[data-ccre="1"]');
+    await page.click('#sheetRoot #ccNoMaskOk'); // 새로 넣은 학습지는 다시 물음
     await page.waitForFunction(() => document.querySelector('#ccView').textContent.includes('요청 한도'), null, { timeout: 10000 });
     assert(!(await page.textContent('#ccView')).includes('이미지를 읽지 못했어요'), '429를 읽기 실패로 봄');
     ocrStatus = 200;

@@ -1,7 +1,8 @@
 // 평가 옛 화면(평가지 채점·창체·행특) 고침 (11월 10일)
 // 지난 채점 기록의 예외 번호, 겹친 평어 다시 쓰기가 사용함 글을 바꿈, 창체 나이스 붙여넣기를 준비한 뒤 다시 쓴 글
 // 글은 모두 지어낸 것
-import { open, run, assert, mockClaude } from './helpers.mjs';
+import { join } from 'node:path';
+import { open, run, assert, mockClaude, FIXTURES } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -20,9 +21,10 @@ const write = {};
 let dupFor = null; // { no, text }: 이 학생의 첫 평어로 이 글을 돌려줌
 const DUP2 = '수의 크기를 비교하는 방법을 정확하게 알고 문제를 끝까지 풀어냄.';
 const DUP1 = '수의 크기를 비교하는 방법을 정확하게 알고 문제를 스스로 해결함.';
-let ccN = 0;
-await mockClaude(page, ({ prompt }) => {
+let ccN = 0, ccImgs = 0;
+await mockClaude(page, ({ prompt, images }) => {
   if (prompt.startsWith('[문장 검토]')) return JSON.stringify({ items: [] });
+  if (images && prompt.includes('창의적 체험활동 특기사항')) { ccImgs++; return JSON.stringify({ note: `학습지 ${ccImgs}: 교실 정리를 다짐함`, text: `교실을 깨끗하게 하려고 ${ccImgs}가지 방법을 스스로 정해 꾸준히 실천함.`, blank: false }); }
   if (prompt.includes('창의적 체험활동 특기사항')) {
     const n = +(prompt.match(/학생 (\d+)명에게/) || [])[1] || 1;
     ccN++;
@@ -181,6 +183,66 @@ await run('fix1110-evallegacy', [
     const m = await hkMemos();
     assert(JSON.stringify(m.slice(0, 4)) === JSON.stringify([[1, '1인 1역 성실함, 발표 자신감이 자람'], [2, '친구를 잘 도와줌'], [3, '독서를 즐김'], [4, '']]), JSON.stringify(m));
     assert(!JSON.stringify(m).includes('김민수'), '이름이 들어감');
+  }],
+  // ---------- cc-sheet-nomask ----------
+  ['[cc-sheet-nomask] 창체 학습지 스캔을 넣고 이름 칸을 정하지 않은 채 [모든 영역 만들기]를 누르면 묻고, 학습지 그림을 AI로 보내지 않음', async () => {
+    await page.evaluate(() => {
+      for (const k of Object.keys(localStorage)) if (/^ssam:(cc|class|neis)/.test(k)) localStorage.removeItem(k);
+      localStorage.setItem('ssam:class', JSON.stringify({ count: 3, except: [] }));
+    });
+    await page.goto(url, { timeout: 30000 }); await page.waitForTimeout(500);
+    await goTab('cc');
+    await page.waitForSelector('[data-ccf="name"][data-cck="auto"]');
+    await page.fill('[data-ccf="name"][data-cck="auto"]', '교실 환경 지킴이');
+    await page.click('#ccGrade');
+    const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click('[data-ccsheet][data-cck="auto"]')]);
+    await fc.setFiles([1, 2, 3].map(i => join(FIXTURES, `sheet-${i}.png`)));
+    await page.waitForSelector('[data-ccsheetinfo]');
+    const i0 = ccImgs;
+    await page.click('[data-cc="genAll"]');
+    await page.waitForSelector('#sheetRoot #ccNoMaskOk', { timeout: 3000 });
+    assert((await page.textContent('#sheetRoot')).includes('학생 이름이 그대로 AI 회사로 보내져요'), await page.textContent('#sheetRoot'));
+    await page.click('#sheetRoot [data-close]');
+    await page.waitForTimeout(800);
+    assert(ccImgs === i0, '묻는 동안·취소한 뒤 학습지 그림을 보냄 ' + (ccImgs - i0));
+  }],
+  ['[cc-sheet-nomask] [이름 칸 정하기] → 가릴 곳을 정하면 묻지 않고 만듦, 다른 학습지로 바꾸지 않는 한 [다시 쓰기]도 묻지 않음', async () => {
+    await page.click('[data-cc="genAll"]');
+    await page.waitForSelector('#sheetRoot #ccMaskGo');
+    await page.click('#sheetRoot #ccMaskGo');
+    await page.waitForSelector('#sheetRoot #mkStage');
+    await page.waitForTimeout(200);
+    const b = await page.locator('#sheetRoot #mkStage img').boundingBox();
+    await page.mouse.move(b.x + b.width * 0.02, b.y + b.height * 0.02); await page.mouse.down();
+    await page.mouse.move(b.x + b.width * 0.5, b.y + b.height * 0.15, { steps: 4 }); await page.mouse.up();
+    await page.click('#sheetRoot #mkOk');
+    await page.waitForTimeout(300);
+    const i0 = ccImgs;
+    await page.click('[data-cc="genAll"]');
+    await page.waitForFunction(() => document.querySelectorAll('#ccResults .gr-sum').length === 3, null, { timeout: 15000 });
+    assert(!(await page.$('#sheetRoot #ccNoMaskOk')), '가릴 곳을 정했는데 물음');
+    assert(ccImgs - i0 === 3, '학습지 그림 요청 ' + (ccImgs - i0));
+  }],
+  ['[cc-sheet-nomask] [가리지 않고 쓰기]를 고른 경우에만 가리지 않은 학습지를 보냄(그 학습지에서 한 번만 물음)', async () => {
+    // 다른 활동(가릴 곳 없음)에 학습지를 넣음
+    await page.click('[data-ccadd="auto"]');
+    const id = await page.evaluate(() => document.activeElement.dataset.ccid);
+    assert(id, '새 활동 칸 없음');
+    await page.fill(`[data-ccf="name"][data-ccid="${id}"]`, '학급 회의');
+    await page.click('#ccGrade');
+    const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click(`[data-ccsheet="${id}"]`)]);
+    await fc.setFiles([1, 2, 3].map(i => join(FIXTURES, `sheet-${i}.png`)));
+    await page.waitForTimeout(400);
+    const i0 = ccImgs;
+    await page.click('[data-cc="genAll"]');
+    await page.waitForSelector('#sheetRoot #ccNoMaskOk');
+    await page.click('#sheetRoot #ccNoMaskOk');
+    await until(async () => ccImgs - i0 === 3 && !(await page.$('#ccView .spin')), 15000);
+    const i1 = ccImgs;
+    await page.click('[data-ccre="2"]');
+    await page.waitForTimeout(300);
+    assert(!(await page.$('#sheetRoot #ccNoMaskOk')), '한 번 고른 뒤 또 물음');
+    await until(async () => ccImgs > i1 && !(await page.$('#ccView .spin')), 15000);
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

@@ -5533,6 +5533,23 @@ function openCCMask(k, actId) {
     }
   });
 }
+/* 학습지 스캔을 이름 칸을 가리지 않고 AI로 보내게 되면 먼저 물음(평가지 채점·단원평가·활동지처럼).
+   「가리지 않고 쓰기」는 그 학습지에서 한 번만 물음(다른 파일로 바꾸면 다시). nos: 그 학생 학습지만 볼 때 */
+function ccNoMaskActs(ks, nos) {
+  return ks.flatMap(k => ccActs(k).map(a => ({ k, a })))
+    .filter(({ a }) => CHE.sheets[a.id] && !CHE.sheets[a.id].noMaskOk && !ccMask(a).length && (!nos || nos.some(no => ccSheetPages(a.id, no).length)));
+}
+function ccAskMask(ks, go, nos) {
+  const list = ccNoMaskActs(ks, nos);
+  if (!list.length) { go(); return; }
+  const names = list.map(({ a }) => `「${esc((a.name || '').trim() || '활동')}」`).join(', ');
+  openSheet(`<h3>이름 칸을 아직 정하지 않았어요</h3><p class="muted" style="margin:0">${names} 학습지 스캔에서 가릴 이름 칸을 정하지 않았어요. 정하지 않으면 학생 이름이 그대로 AI 회사로 보내져요. [이름 칸 정하기]로 이름이 적힌 곳을 상자로 표시해 주세요.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn" type="button" id="ccNoMaskOk">가리지 않고 쓰기</button><button class="btn primary" type="button" id="ccMaskGo">이름 칸 정하기</button></div>`,
+  sh => {
+    sh.querySelector('#ccNoMaskOk').addEventListener('click', () => { list.forEach(({ a }) => { if (CHE.sheets[a.id]) CHE.sheets[a.id].noMaskOk = true; }); closeSheet(); go(); });
+    sh.querySelector('#ccMaskGo').addEventListener('click', () => { closeSheet(); openCCMask(list[0].k, list[0].a.id); });
+  });
+}
 function openCCSheetView(k, no) {
   const acts = ccActs(k).filter(a => ccSheetPages(a.id, no).length || ccObs(k, no, a.id));
   if (!acts.length) return;
@@ -5640,8 +5657,8 @@ document.addEventListener('click', e => {
   const re = t.closest('[data-ccre]');
   if (re) {
     if (!engineReady()) { openSettings(); return; }
-    const no = +re.dataset.ccre; const it = ccItem(CHE.view, no); it.d = 0;
-    ccEnqueue(CHE.view, [no]); return;
+    const k = CHE.view, no = +re.dataset.ccre;
+    ccAskMask([k], () => { ccItem(k, no).d = 0; ccEnqueue(k, [no]); }, [no]); return;
   }
   const b = t.closest('[data-cc]'); if (!b || b.disabled) return;
   const a = b.dataset.cc;
@@ -5652,18 +5669,21 @@ document.addEventListener('click', e => {
   };
   if (a === 'genAll') {
     if (needSetup()) return;
-    const n = CC_AREAS.reduce((s, x) => s + ccEnqueue(x.k, 'fill'), 0);
-    if (!n) { toast(CC_AREAS.some(x => ccActs(x.k).length) ? '새로 쓸 학생이 없어요. 모두 썼거나 사용함으로 표시했어요.' : '공통 활동을 먼저 넣어 주세요'); return; }
-    CHE.showRes = true; $('#ccView').classList.add('show-pane');
+    ccAskMask(CC_AREAS.map(x => x.k), () => {
+      const n = CC_AREAS.reduce((s, x) => s + ccEnqueue(x.k, 'fill'), 0);
+      if (!n) { toast(CC_AREAS.some(x => ccActs(x.k).length) ? '새로 쓸 학생이 없어요. 모두 썼거나 사용함으로 표시했어요.' : '공통 활동을 먼저 넣어 주세요'); return; }
+      CHE.showRes = true; $('#ccView').classList.add('show-pane');
+    });
   } else if (a === 'gen') {
     if (needSetup()) return;
-    if (!ccEnqueue(CHE.view, 'fill')) toast('새로 쓸 학생이 없어요');
+    const k = CHE.view;
+    ccAskMask([k], () => { if (!ccEnqueue(k, 'fill')) toast('새로 쓸 학생이 없어요'); });
   } else if (a === 'fresh') {
     const k = CHE.view, n = classNos().filter(no => !(ccArea(k).items[no] && ccArea(k).items[no].d)).length;
     openSheet(`<h3>${ccInfo(k).name}을 모두 다시 쓸까요?</h3>
       <p class="muted" style="margin:0">쓰지 않은 학생 ${n}명의 글을 새로 써요. 사용함으로 표시한 학생은 그대로 둬요.</p>
       <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="ccFreshGo">다시 쓰기</button></div>`, sh => {
-      sh.querySelector('#ccFreshGo').addEventListener('click', () => { closeSheet(); if (!needSetup()) ccEnqueue(k, 'fresh'); });
+      sh.querySelector('#ccFreshGo').addEventListener('click', () => { closeSheet(); if (!needSetup()) ccAskMask([k], () => ccEnqueue(k, 'fresh')); });
     });
   } else if (a === 'stop') { ccStop(); toast('멈췄어요. 쓴 문장은 그대로 있어요.'); }
   else if (a === 'copyTable') {
