@@ -93,7 +93,9 @@ const HEAD = {
   unit: /^(단위)$/,
   qty: /^(수량|개수)$/,
   price: /^(단가|개당가격|가격)$/,
-  amount: /^(금액|공급가액|합계금액)$/
+  amount: /^(금액|공급가액|합계금액)$/,
+  supply: /^(공급가액)$/,
+  tax: /^(세액|부가세|부가가치세)$/
 };
 const SKIP = /합계|소계|총계|부가세|VAT/i;
 const normHead = v => String(v == null ? '' : v).replace(/\s|\(원\)|\(₩\)/g, '');
@@ -112,7 +114,12 @@ export function findItems(rows) {
       if (!name || SKIP.test(name)) continue;
       const q = toNumber(cell('qty'));
       const qty = q > 0 ? q : 1;
-      const price = cell('price') !== '' ? toNumber(cell('price')) : Math.round(toNumber(cell('amount')) / qty);
+      let price = cell('price') !== '' ? toNumber(cell('price')) : Math.round(toNumber(cell('amount')) / qty);
+      // 세액 칸이 따로 있는 견적서: 단가·공급가액은 부가세 빼고 적은 값 → 단가는 (공급가액 + 세액) ÷ 수량(앱의 단가는 부가세 포함)
+      if (cols.tax != null) {
+        const supply = cols.supply != null && cell('supply') !== '' ? toNumber(cell('supply')) : price * qty;
+        price = Math.round((supply + toNumber(cell('tax'))) / qty);
+      }
       out.push({ name, spec: cell('spec'), ...(cols.unit != null ? { unit: cell('unit') } : {}), qty, price });
     }
     return out;
