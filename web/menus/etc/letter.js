@@ -446,7 +446,24 @@ let drawing = false;
 export function render() {
   if (!box || box.hidden || drawing) return;
   drawing = true;
+  const keys = focusKeys(document.activeElement);
   try { draw(); } finally { drawing = false; }
+  focusBack(keys);
+}
+/* 다시 그려도 키보드 초점은 쓰던 칸·단추(id·data- 속성이 같은 것)에 — <body>로 가지 않게. 없어졌으면 가까운 곳:
+   양식 맞추기 자리 단추 → 그 줄, 맞추기 닫기·저장 → [양식 맞추기], 양식 칸의 단추(지우기 등) → 양식 고르기.
+   글 칸(치는 칸)은 live()가 맡음(칸을 떠나며 change로 다시 그릴 때 초점을 도로 끌어오지 않게) */
+function focusKeys(a) {
+  if (!a || !box.contains(a) || a.matches('input:not([type=checkbox]):not([type=radio]), textarea')) return [];
+  const lf = (a.dataset && a.dataset.lf) || '', role = a.dataset && a.dataset.lfRole != null;
+  const own = a.id ? `#${CSS.escape(a.id)}` : [...a.attributes].filter(x => x.name.startsWith('data-')).map(x => `[${x.name}="${CSS.escape(x.value)}"]`).join('');
+  const ln = role && a.closest('li') && a.closest('li').querySelector('[data-lf-line]');
+  return [own, ln ? `[data-lf-line="${ln.dataset.lfLine}"]` : '', role || /^map(Save|Close)?$/.test(lf) ? '[data-lf="map"]' : '',
+    a.closest('#lfMap') || /^(map|mapSave|mapClose|delForm|pickForm)$/.test(lf) ? '#lfForm' : ''].filter(Boolean);
+}
+function focusBack(keys) {
+  if (!keys.length || box.contains(document.activeElement)) return;
+  for (const k of keys) { const n = box.querySelector(k); if (n && !n.disabled) { n.focus({ preventScroll: true }); return; } }
 }
 function draw() { keepFiles(box, () => { box.innerHTML = pageHTML(); }); } // 파일 고르기 창이 열린 채 다시 그려도 고른 파일이 들어가게
 function pageHTML() {

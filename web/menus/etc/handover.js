@@ -139,17 +139,18 @@ function formsHTML() {
     : '학교 인수인계서 양식(.hwpx)을 한 번 넣어 두면 [한글로 내려받기]가 그 양식에 채워요. 가정통신문 양식과 따로 저장해요.'}</p>
     ${mapHTML()}`;
 }
-/* 다시 그린 뒤 초점을 돌려 둘 곳: 쓰던 칸(id·줄·단추) → 없어졌으면 가까운 것(자리 단추 → 그 줄(line), 맞추기 닫기 → [양식 맞추기], 그다음 양식 고르기) */
-function focusKeys(a, el, line) {
+/* 다시 그린 뒤 초점을 돌려 둘 곳: 쓰던 칸(id·줄·단추) → 없어졌으면 가까운 것(자리 단추 → 그 줄, 맞추기 닫기·저장 → [양식 맞추기], 그다음 양식 고르기) */
+function focusKeys(a, el) {
   if (!a || !el.contains(a)) return [];
+  const ln = a.dataset.hoRole != null && a.closest('li') && a.closest('li').querySelector('[data-ho-line]');
   return [a.id ? `#${a.id}` : '', a.dataset.hoLine != null ? `[data-ho-line="${a.dataset.hoLine}"]` : '', a.dataset.ho ? `[data-ho="${a.dataset.ho}"]` : '',
-    line >= 0 ? `[data-ho-line="${line}"]` : '', '[data-ho="map"]', '#hoForm'].filter(Boolean);
+    ln ? `[data-ho-line="${ln.dataset.hoLine}"]` : '', '[data-ho="map"]', '#hoForm'].filter(Boolean);
 }
 /* 양식 칸만 다시(치던 「다음 담당자에게」·고른 것은 그대로, 파일 고르기 창이 열린 채여도 고른 파일이 들어가게, 키보드 초점도 그 칸에 — <body>로 가지 않게) */
-function drawForms(line = -1) {
+function drawForms() {
   const el = box && box.querySelector('#hoFormBox');
   if (!el) return;
-  const keys = focusKeys(document.activeElement, el, line);
+  const keys = focusKeys(document.activeElement, el);
   keepFiles(box, () => { el.innerHTML = formsHTML(); });
   if (keys.length && !el.contains(document.activeElement)) {
     for (const k of keys) { const n = el.querySelector(k); if (n && !n.disabled) { n.focus({ preventScroll: true }); break; } }
@@ -281,14 +282,14 @@ document.addEventListener('click', async e => {
     const r = { ...F.form.rec.roles }, i = F.mapSel, k = ro.dataset.hoRole;
     F.mapSel = -1;
     if (k === 'nodate') r.date = -1;
-    else if (k === 'date' && i >= r.bodyStart && i <= r.bodyEnd && r.bodyStart >= 0) { toast('날짜 줄은 본문 밖에서 골라 주세요.', 4000); drawForms(i); return; }
+    else if (k === 'date' && i >= r.bodyStart && i <= r.bodyEnd && r.bodyStart >= 0) { toast('날짜 줄은 본문 밖에서 골라 주세요.', 4000); drawForms(); return; }
     else {
       r[k] = i;
       if (k === 'bodyStart' && r.bodyEnd < i) r.bodyEnd = i;
       if (k === 'bodyEnd' && (r.bodyStart < 0 || r.bodyStart > i)) r.bodyStart = i;
       if (k !== 'date' && r.date >= 0 && (r.date === r.title || (r.date >= r.bodyStart && r.date <= r.bodyEnd))) r.date = -1; // 제목·본문이 된 줄은 날짜가 아님
     }
-    F.form.rec.roles = r; drawForms(i); return;
+    F.form.rec.roles = r; drawForms(); return;
   }
   const b = e.target.closest('[data-ho]');
   if (!b) return;
