@@ -2,7 +2,7 @@
    글 → 할 일(chat-route.js routeText, 모르면 AI notes에 할 일 목록을 주고 고르게) → 분명하면 그 메뉴로 가서 칸을 채우고 바로 시작, 애매하면 후보 버튼.
    열면 맨 위 「오늘 할 일」(briefing.js, AI 없이). 「3번 …」은 평가 › 행동특성 그 번호 메모 끝에 한 줄([되돌리기]).
    파일은 버튼·창에 끌어 놓거나 📎로 — 받는 곳(inbox.js) 흐름 그대로. 기록은 최근 30개(ssam:chat, 학년도와 상관없음, 이름·전화번호는 가려서, 파일 이름은 남기지 않음).
-   메뉴에 넘기는 글은 줄바꿈을 살리고 전화번호·전자 우편만 그 자리에서 가림(그 메뉴가 개인정보 규칙으로 다시 거름).
+   메뉴에 넘기는 글은 줄바꿈을 살리고 전화번호·전자 우편·사람 이름만 그 자리에서 가림(handoffText, 그 메뉴가 개인정보 규칙으로 다시 거름).
    메뉴가 돌려준 상태('started'·'no-ai'·'busy'·'empty' …)대로 말함 — 시작하지 않았으면 「쓰고 있어요」라고 하지 않음.
    저장·결재·상신은 언제나 선생님이 직접 */
 import { get, set, remove } from './store.js';
@@ -10,7 +10,7 @@ import { go } from './shell.js';
 import * as ai from './ai.js';
 import { maskContacts } from './privacy.js';
 import { listEvents, addDays, weekday } from './calendar.js';
-import { routeText, payloadFor, isSure, aiRoutePrompt, normAiRoute, intentLabel, LANGS, langLabel, parseMemo, maskMemo, memoLine, appendMemo, nosText, safeText } from './chat-route.js';
+import { routeText, payloadFor, isSure, aiRoutePrompt, normAiRoute, intentLabel, LANGS, langLabel, parseMemo, maskMemo, memoLine, appendMemo, nosText, safeText, handoffText } from './chat-route.js';
 import { briefing, EMPTY } from './briefing.js';
 
 const KEY = 'chat', FLAG = 'chat:open', MAX = 30;
@@ -24,7 +24,7 @@ const newId = () => 'c' + Date.now().toString(36) + Math.random().toString(36).s
 
 let deps = { receive: () => {}, pickFiles: () => {} };
 let panel = null, logEl = null, ta = null, brief = null; // brief: 오늘 할 일 줄(처음 세기 전에는 null)
-const mem = new Map(); // 메시지 id → { text(보낸 글, 전화번호만 가림), shown(이 창에만 보일 글), undo(관찰 메모 되돌리기) } — 이 창에만(저장하지 않음)
+const mem = new Map(); // 메시지 id → { text(메뉴에 넘길 글, 전화번호·이름만 가림), shown(이 창에만 보일 글), undo(관찰 메모 되돌리기) } — 이 창에만(저장하지 않음)
 let temp = []; // 저장하지 않는 메시지(기다리는 중·메모 보기)
 
 /* ---------- 기록 ---------- */
@@ -215,14 +215,19 @@ export async function send(text) {
   const raw = String(text || '').trim();
   if (!raw) return;
   mount();
-  // 메뉴에 넘길 글: 전화번호·전자 우편만 그 자리에서 가림(줄을 통째로 빼면 같은 줄의 내용까지 없어짐), 줄바꿈은 그대로
-  const said = maskContacts(raw);
+  // 메뉴에 넘길 글: 전화번호·전자 우편·사람 이름만 그 자리에서 가림(줄을 통째로 빼면 같은 줄의 내용까지 없어짐), 줄바꿈은 그대로
+  const said = handoffText(raw);
   const r = routeText(said), pm = parseMemo(raw);
   // 기록에는 이름을 가린 글: 「3번 …」(학생 이야기)은 관찰 메모에 저장하는 모양, 그 밖은 AI로 보내는 글과 같게(명단 줄 빼기·전화번호·이름 가리기). 너무 긴 글은 줄여서
   const shown = (pm ? `${nosText(pm.nos)} ${maskMemo(pm.body).text}` : safeText(raw)) || '(이름·전화번호만 있는 글)';
   const me = push({ who: 'me', text: shown.length > 1000 ? shown.slice(0, 1000) + '…' : shown });
   mem.set(me.id, { text: said });
-  if (isSure(r)) { await run(r.intent, r.payload); return; }
+  if (isSure(r)) {
+    // 관찰 메모는 이름을 가리기 전 글로 넘김(메모에 넣을 때 가리고 가린 수를 알림 — 전화번호만 먼저 가림)
+    const memo = r.intent === 'memo' && parseMemo(maskContacts(raw));
+    await run(r.intent, memo ? { nos: memo.nos, body: memo.body } : r.payload);
+    return;
+  }
   let cands = r.candidates.slice();
   // 규칙으로 모르면 AI(notes)에 할 일 목록을 주고 고르게(개인정보 줄은 빼고 이름은 가려서)
   if (ai.ready()) {

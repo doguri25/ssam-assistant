@@ -211,6 +211,9 @@ await run('chat', [
     const l = JSON.stringify(await chatLog());
     assert(!l.includes('박지훈') && !l.includes('김민수'), l.slice(-600));
     assert(l.includes('○○○ 결석계 가정통신문') && l.includes('○○○ 단원평가 다시 채점') && l.includes('○○○ 엄마한테 쪽지'), l.slice(-600));
+    // 메뉴에 넘기는 글·그 메뉴의 AI에도 이름이 가지 않음(「○○○ 엄마한테 쪽지」로 쪽지를 씀)
+    await until(() => of('[쪽지 안내]').some(p => p.includes('○○○ 엄마한테')), '쪽지 AI에 가린 글');
+    assert(!prompts.some(p => p.includes('박지훈') || p.includes('김민수')), '어떤 AI에 이름이 감');
     await letterIdle();
   }],
   ['검토 고침 I2: 여러 줄 공문(전화번호 줄 있음) → 줄을 살려 공문 처리에 넣고 번호만 가림', async () => {

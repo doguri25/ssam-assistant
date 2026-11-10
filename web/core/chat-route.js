@@ -1,8 +1,9 @@
 /* 「쌤」 채팅의 글 → 할 일 (스펙 2026-11-06 D·F). 화면 없이 돌아감(시험).
    먼저 앱 규칙(낱말)으로 고르고(routeText), 모르면 AI(notes)에 할 일 목록을 주고 하나 고르게 함(aiRoutePrompt·normAiRoute).
    「3번 …」은 행동특성 관찰 메모(parseMemo·maskMemo·memoLine) */
-import { stripNames, nameCell, maskContacts, MASK } from './privacy.js';
+import { stripNames, maskContacts } from './privacy.js';
 import { stripPersonal } from './survey.js';
+import { maskPersons } from './chat-names.js';
 
 /* 할 일: [id, 이름(후보 버튼 글), AI에 주는 설명] */
 export const INTENTS = [
@@ -180,29 +181,24 @@ export function normAiRoute(v) {
   return { intent, candidates, lang, none: o.intent === 'none' };
 }
 
-/* ---------- 관찰 메모 ---------- */
-const JOSA = /^(?:님|씨)?(?:에게|께서|한테|하고|이랑|까지|부터|처럼|보다|[은는이가을를과와의에도만께랑])?$/;
-// 이름으로 보지 않는 끝 글자(「~함·~임·~음」 같은 메모 끝말, 「~감·~력·~기」 같은 낱말)
-const WORD_END = /[이가는을를의에도만와과로한할된던운간친른막움님기상왕년자함임음됨옴짐줌봄둠씀큼냄킴림침힘히게서말글길날일들적력감]$/;
+/* ---------- 관찰 메모·기록·넘길 글의 이름 가리기 ---------- */
 /* 메모에 저장하기 전 이름처럼 보이는 말 가리기: 개인정보 규칙(stripNames: 직책·이름 칸·「김민수 학생」·전화번호 줄)에 더해
-   흔한 성으로 시작하는 세 글자 낱말(+조사)도 ○○○로 → { text, masked } */
+   흔한 성 + 흔한 이름(「김민수가」「박지훈」), 성 없는 「민준이가」도 ○○○로(chat-names.js) → { text, masked, dropped } */
 export function maskMemo(text) {
   const r = stripNames(String(text || '').replace(/\s*\n\s*/g, ' '));
-  let masked = r.masked;
-  const t = r.text.replace(/[가-힣]{2,8}/g, w => {
-    for (const k of [4, 3]) {
-      const n = w.slice(0, k), j = w.slice(k);
-      if (n.length === k && JOSA.test(j) && nameCell(n) && !WORD_END.test(n)) { masked++; return MASK + j; }
-    }
-    return w;
-  });
-  return { text: t.replace(/\s+/g, ' ').trim(), masked, dropped: r.dropped };
+  const p = maskPersons(r.text);
+  return { text: p.text.replace(/\s+/g, ' ').trim(), masked: r.masked + p.masked, dropped: r.dropped };
 }
 /* 채팅 기록·AI 분류에 쓰는 글: 전화번호·전자 우편은 그 자리만 가리고(줄을 통째로 빼면 같은 줄 내용까지 없어짐),
    명단·개인정보 열·줄은 빼고(stripPersonal), 줄마다 이름처럼 보이는 말은 가림(maskMemo) */
 export function safeText(text) {
   const s = stripPersonal(maskContacts(text)).text;
   return s.split('\n').map(l => maskMemo(l).text).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+/* 메뉴에 넘기는 글: 줄·띄어쓰기는 그대로 두고 전화번호·전자 우편과 사람 이름만 그 자리에서 ○○○로(「박지훈 결석계 가정통신문」 → 「○○○ 결석계 가정통신문」).
+   명단 줄 빼기는 그 메뉴의 개인정보 규칙이 다시 함 */
+export function handoffText(text) {
+  return maskContacts(text).split('\n').map(l => maskPersons(l).text).join('\n');
 }
 /* 행특 메모 끝에 한 줄 더하기(있던 메모 끝의 빈칸·빈 줄은 정리하고 줄을 바꿔서) */
 export const appendMemo = (prev, line) => { const p = String(prev || '').replace(/\s+$/, ''); return p.trim() ? `${p}\n${line}` : String(line || ''); };
