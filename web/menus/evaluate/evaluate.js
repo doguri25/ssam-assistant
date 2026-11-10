@@ -1147,7 +1147,7 @@ function roleAI(use, task, role) {
    style: 다른 업무의 AI로 글을 쓸 때 원칙을 고르는 업무(평가지 채점 평어는 채점 AI로 쓰고 원칙은 평어 것) */
 async function generate(prompt, opts = {}) {
   // 쌤비서 창 틀(core/shell.js): 다른 메뉴로 옮겨도 이 메뉴에서 AI가 일하는 중이면 세로 메뉴 버튼에 점
-  const busy = typeof window.SSAM_WORK === 'function' ? window.SSAM_WORK(opts && opts.task) : null;
+  const busy = typeof window.SSAM_WORK === 'function' ? window.SSAM_WORK(opts && opts.task, opts && opts.work) : null;
   try {
     const st = window.SSAM_STYLE, k = opts && (opts.style || opts.task), w = !!(st && k && st.WRITE_TASKS.includes(k));
     const r = await generateRaw(w ? st.withStyle(prompt, k) : prompt, opts);

@@ -281,7 +281,8 @@ async function assist({ raw, said, r, me }) {
   try {
     const p = assistPrompt({ text: raw, history: history().filter(m => m.id !== me.id), state: await appState(), hints: r.candidates, today: today() });
     if (job.ctl.signal.aborted) throw { name: 'AbortError' };
-    out = parseAssist(await ai.generateJSON(p.own, { task: 'notes', shared: { text: p.shared }, signal: job.ctl.signal, valid: isObj }), { nos: mentionedNos(raw) });
+    // 채팅은 메뉴 일이 아니어서 세로 메뉴에 「AI가 일하는 중」 점을 띄우지 않음(검토 M4)
+    out = parseAssist(await ai.generateJSON(p.own, { task: 'notes', work: 'none', shared: { text: p.shared }, signal: job.ctl.signal, valid: isObj }), { nos: mentionedNos(raw) });
   } catch (e) { err = e; }
   drop(wait);
   if (pending === job) pending = null;

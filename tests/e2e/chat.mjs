@@ -504,6 +504,20 @@ await run('chat', [
     const memo = await page.inputValue(`${RP} #rpMemo`);
     assert(memo.includes('체육대회 한 일 메모') && memo.includes('과학의 날 행사를 4월 21일에 했어요') && memo.indexOf('체육대회') < memo.indexOf('과학의 날'), memo);
   }],
+  ['검토 고침 M4(11-10): 채팅 도우미가 답을 쓰는 동안 다른 메뉴로 가도 세로 메뉴에 「AI가 일하는 중」 점이 뜨지 않음(채팅은 메뉴 일이 아님)', async () => {
+    await page.click('nav.app-side [data-menu-go="purchase"]');
+    assistSlow = 1500;
+    await openChat();
+    await page.fill('#chatText', '품의 잘 쓰는 요령 알려줘 천천히');
+    await page.click('#chatSend');
+    await page.waitForSelector(`${C} .chat-msg.typing`);
+    await page.click('nav.app-side [data-menu-go="class"]');
+    await page.waitForTimeout(300);
+    const dots = await page.$$eval('nav.app-side .side-btn.working', bs => bs.map(b => b.dataset.menuGo).join(','));
+    assert(dots === '', '점: ' + dots);
+    await page.waitForSelector(`${C} .chat-msg.typing`, { state: 'detached', timeout: 6000 });
+    assistSlow = 0;
+  }],
   ['파일: 채팅 창에 놓으면 받는 곳 흐름(확인 카드)·창이 열려 있으면 놓기 판은 안 뜸, 📎는 파일 고르기', async () => {
     await openChat();
     const dt = await page.evaluateHandle(() => { const d = new DataTransfer(); d.items.add(new File(['번호,성명\n1,가\n2,나'], '김민수네_명단.csv', { type: 'text/csv' })); return d; });
