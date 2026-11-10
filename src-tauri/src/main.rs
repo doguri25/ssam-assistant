@@ -286,8 +286,6 @@ fn main() {
         if std::env::args().any(|a| a == updater::UPDATED_FLAG) {
             updater::wait_old_gone(&exe, std::time::Duration::from_secs(15));
         }
-        // 지난 업데이트에서 남은 옛 파일·설치 파일 치우기
-        updater::cleanup_leftovers(&exe, &std::env::temp_dir());
     }
 
     tauri::Builder::default()
@@ -307,6 +305,11 @@ fn main() {
         .manage(bubble::Bubble::default())
         // 쌤비서 창은 숨긴 채 만들어 두고, 컴퓨터를 켜며 버튼만 띄운 경우(--bubble)가 아니면 보임
         .setup(|app| {
+            // 지난 업데이트에서 남은 옛 파일·설치 파일 치우기 — 여기(한 번만 켜기 확인 뒤)서: 업데이트를 받는 중에 또 켠
+            // 두 번째 앱은 이보다 먼저 끝나므로, 받던 파일을 지우지 않음
+            if let Ok(exe) = std::env::current_exe() {
+                updater::cleanup_leftovers(&exe, &std::env::temp_dir());
+            }
             // 만들 때 Windows가 넓힌 버튼 창을 버튼 크기로 (보이기 전에도 맞춰 둠)
             bubble::fit(app.handle());
             if !std::env::args().any(|a| a == "--bubble") {

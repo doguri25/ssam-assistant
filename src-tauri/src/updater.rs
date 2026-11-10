@@ -356,6 +356,17 @@ pub fn wait_old_gone(exe: &Path, timeout: Duration) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn 남은_파일_치우기는_한_번만_켜진_앱에서() {
+        // 업데이트를 받는 중에 쌤비서를 또 켜면(두 번 누름) 그 두 번째 앱은 한 번만 켜기(single-instance)가 setup 전에 끝내는데,
+        // main() 첫머리에서 치우면 그 앞에 받던 *.ssam-download·임시 폴더를 지워 업데이트가 실패했음 → 치우기는 .setup() 안에서
+        let main = include_str!("main.rs");
+        let main = &main[..main.find("#[cfg(test)]").unwrap_or(main.len())];
+        let call = main.find("updater::cleanup_leftovers(").expect("치우기 부름");
+        let setup = main.find(".setup(|app|").expect("setup");
+        assert!(call > setup, "치우기가 setup보다 앞에 있음");
+    }
+
     use super::*;
 
     fn manifest_json(version: &str) -> String {
