@@ -88,6 +88,40 @@ await run('report-fixes', [
     const caps = await page.$$eval(`${P} [data-rp-cap]`, els => els.map(e => e.value));
     assert(JSON.stringify(caps) === JSON.stringify(['']), JSON.stringify(caps));
   }],
+  ['M1 가끔 실패의 까닭: 탭을 열자마자 고른 사진이 학교 양식 목록을 읽은 뒤 다시 그린 화면 때문에 떨어져 나간 파일 칸에 들어가 사라지지 않음', async () => {
+    // 파일 고르기 창(또는 Playwright setInputFiles)은 누를 때의 파일 칸을 붙잡고 있음: 그 칸을 잡아 두고, 양식 목록을 다 읽은 뒤 그 칸에 사진을 넣음
+    await page.reload();
+    await page.waitForTimeout(400);
+    await page.click('nav.app-side [data-menu-go="plan"]');
+    const b64 = readFileSync(join(FIXTURES, 'photo-2.jpg')).toString('base64');
+    await page.evaluate(s => { document.querySelector('#menuTabs [data-tab="report"]').click(); window.__heldFile = document.querySelector(`${s} #rpFile`); }, P);
+    // (waitForFunction은 async 함수의 Promise를 참으로 봐서 page.evaluate로 기다림)
+    for (let k = 0; k < 160 && !(await page.evaluate(async () => { const m = await import('/menus/plan/report.js'); return !!m.R.forms && !m.R.formsLoading; })); k++) await page.waitForTimeout(50);
+    await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+    await page.evaluate(b => {
+      const u8 = Uint8Array.from(atob(b), ch => ch.charCodeAt(0)), dt = new DataTransfer();
+      dt.items.add(new File([u8], '사진2.jpg', { type: 'image/jpeg' }));
+      const el = window.__heldFile; el.files = dt.files;
+      el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
+    }, b64);
+    await page.waitForFunction(s => document.querySelectorAll(`${s} [data-rp-cap]`).length === 1, P, { timeout: 5000 });
+  }],
+  ['AI가 쓰는 동안 파일 고르기 창을 열어 둔 채(그 칸을 잡은 채) 다 써서 화면을 다시 그려도 고른 사진은 들어감', async () => {
+    await page.click(`${P} [data-rp="new"]`);
+    await page.fill(`${P} #rpMemo`, '파일 칸 시험');
+    delay = 600;
+    await page.click(`${P} [data-rp="write"]`);
+    await page.evaluate(s => { window.__heldFile = document.querySelector(`${s} #rpFile`); }, P);
+    await page.waitForSelector(`${P} #rpBody`, { timeout: 8000 });
+    delay = 0;
+    const b64 = readFileSync(join(FIXTURES, 'photo-1.jpg')).toString('base64');
+    await page.evaluate(b => {
+      const u8 = Uint8Array.from(atob(b), ch => ch.charCodeAt(0)), dt = new DataTransfer();
+      dt.items.add(new File([u8], '사진1.jpg', { type: 'image/jpeg' }));
+      const el = window.__heldFile; el.files = dt.files; el.dispatchEvent(new Event('change', { bubbles: true }));
+    }, b64);
+    await page.waitForFunction(s => document.querySelectorAll(`${s} [data-rp-cap]`).length === 1, P, { timeout: 5000 });
+  }],
   ['M8 사진을 읽는 동안 [새 결과 보고]를 누르면 그 사진은 새 결과 보고에 들어가지 않음', async () => {
     await page.click(`${P} [data-rp="new"]`);
     // 사진을 읽는 바로 그때 [새 결과 보고]를 누름

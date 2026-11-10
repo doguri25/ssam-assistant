@@ -12,6 +12,7 @@ import { exportButton, exportDoc } from '../../core/doc-export.js';
 import { getSchool } from '../../core/settings.js';
 import { schoolYearOf } from '../../core/calendar.js';
 import { canQueue, openQueue } from '../../core/queue-paste.js';
+import { keepFiles } from '../../core/keep-files.js';
 import { readForm, findRoles, fillForm, rolesValid, isSign } from '../../core/hwpx-form.js';
 import { forms, newFormId, MAX_FORM } from '../../core/form-store.js';
 import { cleanSheet } from '../evaluate/activity/activity-read.js';
@@ -29,6 +30,7 @@ const ROLE_NAMES = [['title', '제목'], ['bodyStart', '본문 시작'], ['bodyE
 /* 화면에만: list(양식 목록), form(고른 양식 { rec, parsed }), busy, adding, mapOpen, mapSel, trLang(번역본 언어), trBusy(번역 중인 언어),
    trEdits(번역하는 동안 선생님이 친 번역 칸 { x, lang, keys }) */
 export const F = { list: [], form: null, busy: false, adding: 0, mapOpen: false, mapSel: -1, store: null, trLang: '', trBusy: '', trEdits: null };
+const formsSig = () => JSON.stringify([F.list.map(f => [f.id, f.name, f.kind]), F.form ? [F.form.rec.id, F.form.rec.kind, !!F.form.parsed, !!F.form.temp] : null]);
 let box = null, cur = null;
 const blank = () => ({ id: newLetterId(), sources: [], memo: '', related: [], target: '', out: null, send: { title: '', body: '' }, sendEdited: false, collect: { mask: [], rows: [] }, tr: {} });
 const SS = () => window.SSAM || {};
@@ -58,16 +60,16 @@ async function selectForm(id, { quiet = false } = {}) {
   const tok = ++selTok; // 양식을 빨리 바꿔 고르면 마지막 것만
   setFormId(id);
   F.form = null; F.mapOpen = false; F.mapSel = -1;
-  if (!id) { render(); return; }
+  if (!id) { live(); return; }
   let rec = null;
   try { rec = await F.store.get(id); } catch (e) { rec = null; }
   if (tok !== selTok) return;
-  if (!rec) { setFormId(''); if (!quiet) toast('양식을 찾지 못했어요. 기본 양식으로 써요.'); render(); return; }
+  if (!rec) { setFormId(''); if (!quiet) toast('양식을 찾지 못했어요. 기본 양식으로 써요.'); live(); return; }
   let parsed = null;
   if (rec.kind === 'hwpx') { try { parsed = await readForm(rec.bytes); } catch (e) { toast('양식 파일을 읽지 못했어요. 다시 넣어 주세요.', 5000); } }
   if (tok !== selTok) return;
   F.form = { rec, parsed };
-  render();
+  live(); // 탭을 연 바로 그때 읽기도 함 — 그사이 치던 칸은 그대로
 }
 /* 저장하지 못한(크거나 저장소가 꽉 찬) 양식은 이번에만 */
 async function useTemp(rec, msg) {
@@ -442,7 +444,7 @@ export function render() {
   drawing = true;
   try { draw(); } finally { drawing = false; }
 }
-function draw() { box.innerHTML = pageHTML(); }
+function draw() { keepFiles(box, () => { box.innerHTML = pageHTML(); }); } // 파일 고르기 창이 열린 채 다시 그려도 고른 파일이 들어가게
 function pageHTML() {
   const x = c();
   return `<div class="m-page lf-page">
@@ -477,7 +479,7 @@ function live() {
   const tmp = document.createElement('div');
   tmp.innerHTML = pageHTML();
   const na = tmp.querySelector(k);
-  if (na && na.value === a.value && keepAround(a, na, tmp)) return;
+  if (na && na.value === a.value && keepFiles(box, () => keepAround(a, na, tmp))) return;
   render();
   const b = box.querySelector(k);
   if (b) { b.focus(); try { b.setSelectionRange(b.value.length, b.value.length); } catch (e) {} }
@@ -656,5 +658,6 @@ document.addEventListener('drop', e => {
 onEnter('etc', (tab, section) => {
   if (!box || !section.contains(box)) { box = document.createElement('div'); box.className = 'lf-box'; section.append(box); }
   box.hidden = tab !== 'letter';
-  if (!box.hidden) { render(); loadForms().then(render).catch(() => {}); }
+  // 양식 목록은 들어올 때마다 다시 읽음: 바뀐 것이 있을 때만, 치던 칸·고른 파일은 그대로 두고 다시 그림
+  if (!box.hidden) { render(); const sig = formsSig(); loadForms().then(() => { if (formsSig() !== sig) live(); }).catch(() => {}); }
 });
