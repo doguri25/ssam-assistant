@@ -9,7 +9,8 @@ import { normRv } from './plan-rv.js';
 const LIST_KEY = 'events', CUR_KEY = 'event:current';
 
 export const KINDS = [['sports', '운동회'], ['arts', '학예회'], ['field', '현장체험학습'], ['other', '기타']];
-export const DOCS = [['plan', '계획서'], ['roles', '역할 분담표'], ['safety', '안전 점검표'], ['letter', '가정통신문']];
+// 역할 분담표는 뺐음(참여 교직원 이름을 AI로 보내지 않게 — 선생님 요청 2026-11-10)
+export const DOCS = [['plan', '계획서'], ['safety', '안전 점검표'], ['letter', '가정통신문']];
 export const REF_KINDS = [['upper', '상위 계획'], ['official', '교육청 공문'], ['other', '기타']];
 
 const str = v => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
@@ -23,8 +24,8 @@ export function newEvent() {
   return {
     id: 'ev' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     kind: 'sports', name: '', purpose: '', grades: '', date: '', place: '', outdoor: false, budget: '',
-    staff: [], lastSurvey: '', options: null, picked: null,
-    docs: { plan: '', safety: '', letter: '', rain: '', roles: [], done: false }, rv: [],
+    lastSurvey: '', options: null, picked: null,
+    docs: { plan: '', safety: '', letter: '', rain: '', done: false }, rv: [],
     refs: [], refNotes: { options: [], docs: [] },
     survey: null, status: 'draft', step: 1, maxStep: 1, updatedAt: 0
   };
@@ -40,14 +41,6 @@ export function normOptions(v) {
     staffNeed: str(o.staffNeed).trim(),
     budget: (Array.isArray(o.budget) ? o.budget : []).filter(b => isObj(b) && str(b.name).trim()).map(b => ({ name: str(b.name).trim(), amount: num(b.amount) }))
   })).filter(o => o.timetable.length).slice(0, 3);
-}
-
-/* 명단에 없는 이름은 뺌 (명단이 비면 그대로). 명단 이름의 앞뒤 띄어쓰기는 보지 않음(「김교사 」로 쳐도 AI가 쓴 「김교사」는 남게) */
-export function normRoles(v, staff) {
-  const names = new Set((staff || []).map(s => s && str(s.name).trim()).filter(Boolean));
-  return (Array.isArray(v) ? v : []).filter(r => isObj(r) && str(r.name).trim())
-    .map(r => ({ name: str(r.name).trim(), roles: strs(r.roles) }))
-    .filter(r => !names.size || names.has(r.name));
 }
 
 export function normItems(v) {
@@ -132,12 +125,11 @@ function normEvent(v) {
   for (const k of ['name', 'purpose', 'grades', 'place', 'budget', 'lastSurvey']) e[k] = str(v[k]);
   e.date = isDate(v.date) ? v.date : '';
   e.outdoor = v.outdoor === true;
-  e.staff = (Array.isArray(v.staff) ? v.staff : []).filter(s => isObj(s) && str(s.name).trim() !== '' || isObj(s) && str(s.duty).trim() !== '')
-    .map(s => ({ name: str(s.name), duty: str(s.duty) }));
+  // 예전에 넣은 참여 교직원(staff)·역할 분담표(docs.roles)는 읽을 때 버림(다시 저장하면 지워짐)
   e.options = v.options == null ? null : normOptions(v.options);
   e.picked = Number.isInteger(v.picked) && e.options && v.picked >= 0 && v.picked < e.options.length ? v.picked : null;
   const d = isObj(v.docs) ? v.docs : {};
-  e.docs = { plan: str(d.plan), safety: str(d.safety), letter: str(d.letter), rain: str(d.rain), roles: normRoles(d.roles, []), done: d.done === true };
+  e.docs = { plan: str(d.plan), safety: str(d.safety), letter: str(d.letter), rain: str(d.rain), done: d.done === true };
   e.rv = normRv(v.rv).filter(x => ['plan', 'safety', 'letter', 'rain'].includes(x.section));
   e.refs = normRefs(v.refs);
   const rn = isObj(v.refNotes) ? v.refNotes : {};
@@ -167,14 +159,6 @@ export function deleteEvent(id) { set(LIST_KEY, listEventPlans().filter(e => e.i
 export const currentEventId = () => { const v = get(CUR_KEY, null); return typeof v === 'string' ? v : null; };
 export const setCurrentEvent = id => set(CUR_KEY, id);
 
-/* 평균보다 역할이 2개 이상 많은 사람. 2명 미만이면 비교하지 않음 */
-export function roleLoad(roles) {
-  const list = (roles || []).filter(r => r && r.name);
-  if (list.length < 2) return [];
-  const avg = list.reduce((s, r) => s + r.roles.length, 0) / list.length;
-  return list.filter(r => r.roles.length >= avg + 2).map(r => r.name);
-}
-
 /* 가정통신문 필수 항목 (같은 뜻의 말도 인정) */
 const NEED = [['날짜', /날짜|일시|일정/], ['준비물', /준비물|챙길\s*것|가져올\s*것/], ['복장', /복장|옷차림/], ['문의처', /문의|연락처/]];
 export const letterMissing = text => NEED.filter(([, re]) => !re.test(String(text || ''))).map(([k]) => k);
@@ -195,7 +179,7 @@ const pickedOption = e => (e.options && e.picked != null ? e.options[e.picked] :
 export function docDoc(e, docId) {
   const d = e.docs || {};
   const opt = pickedOption(e);
-  if (docId === 'roles') return { title: `${e.name} 역할 분담표`, blocks: [{ type: 'table', head: true, rows: [['이름', '맡은 역할'], ...(d.roles || []).map(r => [r.name, r.roles.join(', ')])] }] };
+  if (!DOCS.some(x => x[0] === docId)) return null;
   if (docId === 'safety') {
     const blocks = [{ type: 'p', text: d.safety || '' }];
     if (e.outdoor || String(d.rain || '').trim()) blocks.push({ type: 'h', text: '우천 시 대체 일정' }, { type: 'p', text: d.rain || '' });

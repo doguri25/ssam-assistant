@@ -21,7 +21,7 @@ import { listPlans, planText } from './year-model.js';
 import { putReportSources } from './report.js';
 import { putLetterDraft } from '../etc/letter.js';
 import { letterBodyFromEvent } from '../etc/letter-ai.js';
-import { KINDS, DOCS, REF_KINDS, normRefs, guessKind, refsBlock, normRefNotes, newEvent, listEventPlans, getEvent, saveEvent, deleteEvent, currentEventId, setCurrentEvent, normOptions, normRoles, roleLoad, letterMissing, docDoc, confirmBlockers, normItems, maskResult } from './event-model.js';
+import { KINDS, DOCS, REF_KINDS, normRefs, guessKind, refsBlock, normRefNotes, newEvent, listEventPlans, getEvent, saveEvent, deleteEvent, currentEventId, setCurrentEvent, normOptions, letterMissing, docDoc, confirmBlockers, normItems, maskResult } from './event-model.js';
 
 const STEPS = ['행사 정보', '구성안', '문서', '설문·결과'];
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -99,7 +99,7 @@ const calCtx = () => ({ breaks: getSchool().breaks, events: listCalendar(), sour
 /* ---------- 그리기 ---------- */
 function render() {
   const html = `<div class="m-page yp-page ev-page">
-    <div class="m-head"><h2>행사계획</h2><p class="muted">행사 정보를 넣으면 구성안 2~3개, 계획서·역할 분담표·안전 점검표·가정통신문, 설문과 결과 보고서까지 만들어요.</p></div>
+    <div class="m-head"><h2>행사계획</h2><p class="muted">행사 정보를 넣으면 구성안 2~3개, 계획서·안전 점검표·가정통신문, 설문과 결과 보고서까지 만들어요.</p></div>
     <div class="yp-grid">
       <aside class="yp-side" aria-labelledby="evListH">
         <div class="yp-side-h"><b id="evListH">지난 행사</b><button class="btn text" type="button" data-e="new">+ 새 행사</button></div>
@@ -165,14 +165,6 @@ function step1() {
         ${f('evBudget', 'budget', '예산', { ph: '예) 150만 원' })}
       </div>
       <div id="evDateBox">${dateWarnHTML()}</div>
-    </div>
-    <div class="yp-card">
-      <h3>참여 교직원 <span class="muted">(선택 · 이름과 맡은 업무만)</span></h3>
-      <div class="ev-staff" id="evStaff">${ev.staff.map((s, i) => `<div class="ev-staff-row">
-        <input class="field" data-staff="${i}" data-f="name" value="${esc(s.name)}" placeholder="이름" aria-label="${i + 1}번째 교직원 이름" autocomplete="off">
-        <input class="field" data-staff="${i}" data-f="duty" value="${esc(s.duty)}" placeholder="맡은 업무(예: 체육부)" aria-label="${i + 1}번째 교직원 업무" autocomplete="off">
-        <button class="icon-btn" type="button" data-staffdel="${i}" aria-label="빼기">×</button></div>`).join('') || '<p class="muted">없으면 역할 분담표를 역할만으로 만들어요.</p>'}</div>
-      <div class="row"><button class="btn text" type="button" data-e="staffAdd">+ 교직원 더하기</button></div>
     </div>
     <div class="yp-card">
       <div class="yp-src-h"><h3>작년 설문 결과 <span class="muted">(선택)</span></h3><span class="row"><button class="btn text" type="button" data-e="importMemo">지난 행사 개선 메모 불러오기</button><button class="btn" type="button" data-e="lastFile">파일 넣기</button></span></div>
@@ -281,30 +273,20 @@ function step2() {
     <div class="row"><button class="btn text" type="button" data-e="options">다시 만들기 (고른 안·고친 시간표는 사라져요)</button></div>`;
 }
 
-const hasDocs = e => !!(e.docs.plan.trim() || e.docs.letter.trim() || e.docs.safety.trim() || e.docs.roles.length);
+const hasDocs = e => !!(e.docs.plan.trim() || e.docs.letter.trim() || e.docs.safety.trim());
 function step3() {
-  if (busy[ev.id] === 'docs') return `<div class="yp-card"><p class="muted"><span class="spin"></span> 계획서·역할 분담표·안전 점검표·가정통신문을 쓰고 있어요…</p></div>`;
-  if (!hasDocs(ev)) return `<div class="yp-card"><h3>문서 세트</h3><p class="muted">고른 안으로 계획서·역할 분담표·안전 점검표·가정통신문을 만들어요.${ev.outdoor ? ' 야외 행사는 우천 시 대체 일정도 써요.' : ''}</p>
+  if (busy[ev.id] === 'docs') return `<div class="yp-card"><p class="muted"><span class="spin"></span> 계획서·안전 점검표·가정통신문을 쓰고 있어요…</p></div>`;
+  if (!hasDocs(ev)) return `<div class="yp-card"><h3>문서 세트</h3><p class="muted">고른 안으로 계획서·안전 점검표·가정통신문을 만들어요.${ev.outdoor ? ' 야외 행사는 우천 시 대체 일정도 써요.' : ''}</p>
     <div class="row"><button class="btn primary" type="button" data-e="docs">문서 만들기</button></div></div>`;
   const d = ev.docs;
+  if (!DOCS.some(x => x[0] === curDoc)) curDoc = 'plan'; // 예전에 보던 역할 분담표 탭(뺐음)
   const tabs = `<div class="seg ev-docs" role="tablist">${DOCS.map(([id, label]) => `<button type="button" role="tab" data-doc="${id}" aria-pressed="${curDoc === id}" aria-selected="${curDoc === id}">${label}</button>`).join('')}</div>`;
-  let body = '';
-  if (curDoc === 'roles') {
-    const over = roleLoad(d.roles);
-    body = `<p class="muted">역할은 쉼표로 나눠요. 한 사람에게 평균보다 2개 이상 많으면 표시해요.</p>
-      <div class="yp-tbl-wrap"><table class="yp-tbl" id="evRoles"><thead><tr><th>이름</th><th>맡은 역할</th><th></th></tr></thead><tbody>${d.roles.map((r, i) => `<tr data-role="${i}" class="${over.includes(r.name) ? 'ev-over' : ''}">
-        <td><input class="field" data-rf="name" data-ri="${i}" value="${esc(r.name)}" aria-label="이름"></td>
-        <td><input class="field" data-rf="roles" data-ri="${i}" value="${esc(r.roles.join(', '))}" aria-label="맡은 역할">${over.includes(r.name) ? '<span class="ev-over-t">역할이 많아요</span>' : ''}</td>
-        <td><button class="icon-btn" type="button" data-roledel="${i}" aria-label="이 줄 빼기">×</button></td></tr>`).join('')}</tbody></table></div>
-      <div class="row"><button class="btn text" type="button" data-e="roleAdd">+ 줄 더하기</button></div>`;
-  } else {
-    body = `<textarea class="field ev-doc${hasOpen(ev, curDoc) ? ' rv-mark' : ''}" data-docf="${curDoc}" rows="14" aria-label="${DOCS.find(x => x[0] === curDoc)[1]}">${esc(d[curDoc])}</textarea>`;
-    if (curDoc === 'safety') body += `<label class="yp-f"><span class="lab">우천 시 대체 일정${ev.outdoor ? ' <b class="req" aria-hidden="true">*</b> <span class="muted">(야외 행사는 있어야 확정할 수 있어요)</span>' : ''}</span>
-      <textarea class="field${hasOpen(ev, 'rain') ? ' rv-mark' : ''}" id="evRain" rows="3" placeholder="예) 비가 오면 강당에서 학년별로 나누어 운영">${esc(d.rain)}</textarea></label>`;
-    if (curDoc === 'letter') {
-      const miss = letterMissing(d.letter);
-      body += `<div id="evLetterBox">${letterBoxHTML(miss)}</div><div class="ev-qr" id="evLetterQr">${letterQrHTML()}</div>`;
-    }
+  let body = `<textarea class="field ev-doc${hasOpen(ev, curDoc) ? ' rv-mark' : ''}" data-docf="${curDoc}" rows="14" aria-label="${DOCS.find(x => x[0] === curDoc)[1]}">${esc(d[curDoc])}</textarea>`;
+  if (curDoc === 'safety') body += `<label class="yp-f"><span class="lab">우천 시 대체 일정${ev.outdoor ? ' <b class="req" aria-hidden="true">*</b> <span class="muted">(야외 행사는 있어야 확정할 수 있어요)</span>' : ''}</span>
+    <textarea class="field${hasOpen(ev, 'rain') ? ' rv-mark' : ''}" id="evRain" rows="3" placeholder="예) 비가 오면 강당에서 학년별로 나누어 운영">${esc(d.rain)}</textarea></label>`;
+  if (curDoc === 'letter') {
+    const miss = letterMissing(d.letter);
+    body += `<div id="evLetterBox">${letterBoxHTML(miss)}</div><div class="ev-qr" id="evLetterQr">${letterQrHTML()}</div>`;
   }
   return `${refNotesHTML(ev.refNotes.docs, ev.refNotes.stale)}<div id="evRvBox">${rvBox()}</div><div class="yp-card">${tabs}${body}
       <div class="row yp-out"><button class="btn" type="button" data-e="copyDoc">복사</button>${exportButton('data-e="hwpx"')}<span class="grow"></span>
@@ -456,17 +438,16 @@ function confirmEvent() {
 function docsPrompt(e) {
   const o = picked();
   const s = getSchool();
-  return `[행사 문서]\n학교 행사 문서를 써 주세요: 계획서, 역할 분담표, 안전 점검표, 가정통신문${e.outdoor ? ', 우천 시 대체 일정' : ''}.\n\n`
+  return `[행사 문서]\n학교 행사 문서를 써 주세요: 계획서, 안전 점검표, 가정통신문${e.outdoor ? ', 우천 시 대체 일정' : ''}.\n\n`
     + `종류: ${kindName(e.kind)}\n행사명: ${e.name}\n목적: ${e.purpose || '(없음)'}\n대상: ${e.grades}\n날짜: ${e.date}\n장소: ${e.place} (${e.outdoor ? '야외' : '실내'})\n예산: ${e.budget || '(정하지 않음)'}\n학교: ${s.name || '(학교명 없음)'}\n`
     + (o ? `\n고른 구성안(${o.label}): ${o.summary}\n시간표:\n${o.timetable.map(t => `- ${t.time} ${t.activity}${t.place ? ' (' + t.place + ')' : ''}`).join('\n')}\n필요 인력: ${o.staffNeed || '-'}\n예산 내역: ${o.budget.map(b => `${b.name} ${b.amount}원`).join(', ') || '-'}\n` : '')
     + refsPart(e)
-    + (e.staff.length ? `\n참여 교직원(이 이름만 쓰세요):\n${e.staff.filter(x => x.name.trim()).map(x => `- ${x.name.trim()}${x.duty.trim() ? ' (' + x.duty.trim() + ')' : ''}`).join('\n')}\n` : '\n참여 교직원 명단이 없어요. 역할 분담표의 name에는 「진행 담당」처럼 역할 이름을 쓰세요.\n')
     + '\n규칙:\n- plan: 학교 계획서 문체(「가.」「1)」 목록), 개요·운영 방침·세부 운영·안전 대책·평가 순\n'
-    + '- roles: [{"name":"…","roles":["…"]}] 사람마다 고르게 나눔\n- safety: 「- 」로 시작하는 점검 항목 목록\n'
+    + '- safety: 「- 」로 시작하는 점검 항목 목록\n'
     + '- letter: 학부모가 읽기 쉬운 말로. 날짜(일시)·준비물·복장·문의처(학교 교무실 전화)를 꼭 넣음\n'
     + (e.outdoor ? '- rain: 비가 오면 어떻게 할지(장소·시간 바꾸기) 두세 줄\n' : '- rain: 빈 글\n')
     + refsRule(e)
-    + '- 메모에 없는 사실은 지어내지 않음\n\n답은 JSON 하나만: {"plan":"…","roles":[…],"safety":"…","letter":"…","rain":"…"' + (e.refs.length ? ',"refNotes":["…"]' : '') + '}';
+    + '- 메모에 없는 사실은 지어내지 않음\n\n답은 JSON 하나만: {"plan":"…","safety":"…","letter":"…","rain":"…"' + (e.refs.length ? ',"refNotes":["…"]' : '') + '}';
 }
 async function runDocs() {
   const id = ev.id;
@@ -477,7 +458,7 @@ async function runDocs() {
   try {
     const v = await ai.generateJSON(docsPrompt(ev), { task: 'plan', valid: x => x && !Array.isArray(x) && typeof x === 'object' && (typeof x.letter === 'string' || typeof x.plan === 'string') });
     const t = x => (Array.isArray(x) ? x.filter(y => typeof y === 'string').join('\n') : typeof x === 'string' ? x : '');
-    apply(id, e => { e.docs = { plan: t(v.plan), safety: t(v.safety), letter: t(v.letter), rain: t(v.rain), roles: normRoles(v.roles, e.staff.filter(x => x.name.trim())), done: false }; e.rv = []; e.refNotes = { ...e.refNotes, docs: normRefNotes(v.refNotes), stale: false }; if (e.status === 'final') { e.status = 'draft'; removeEvents('event:' + e.id); } });
+    apply(id, e => { e.docs = { plan: t(v.plan), safety: t(v.safety), letter: t(v.letter), rain: t(v.rain), done: false }; e.rv = []; e.refNotes = { ...e.refNotes, docs: normRefNotes(v.refNotes), stale: false }; if (e.status === 'final') { e.status = 'draft'; removeEvents('event:' + e.id); } });
     clearState(id);
     finish(id, 'docs');
     reviewDocs(id);
@@ -537,7 +518,6 @@ function optionsPrompt(e) {
   return `[행사 구성안]\n학교 행사 계획을 돕는 도우미예요. 아래 행사의 구성안을 ${hasLast ? '3' : '2'}개 만들어 주세요.\n\n`
     + `종류: ${kindName(e.kind)}\n행사명: ${e.name}\n목적: ${e.purpose || '(없음)'}\n대상: ${e.grades}\n날짜: ${e.date}\n장소: ${e.place} (${e.outdoor ? '야외' : '실내'})\n예산: ${e.budget || '(정하지 않음)'}\n`
     + `학교: ${s.name || '(학교명 없음)'}, 학급 ${s.classes || '-'}개, 학생 ${s.students || '-'}명\n`
-    + (e.staff.length ? `참여 교직원 ${e.staff.length}명\n` : '')
     + (hasLast ? `\n작년 설문 결과:\n"""\n${stripPersonal(e.lastSurvey).text.slice(0, 8000)}\n"""\n` : '')
     + refsPart(e)
     + '\n규칙:\n'
@@ -603,7 +583,6 @@ document.addEventListener('input', e => {
   const el = e.target;
   if (el.dataset.ek && el.type !== 'date') { ev[el.dataset.ek] = el.value; if (el.value.trim()) el.classList.remove('bad'); unconfirm(); }
   else if (el.id === 'evLast') { if (el.value.length > MAX_SRC) { el.value = cap(el.value); toast('앞 6만 자만 저장해요', 4000); } ev.lastSurvey = el.value; }
-  else if (el.dataset.staff != null) { const s = ev.staff[+el.dataset.staff]; if (s) s[el.dataset.f] = el.value; }
   else if (el.dataset.tt != null) { const t = picked() && picked().timetable[+el.dataset.tt]; if (t) t[el.dataset.f] = el.value; }
   else if (el.dataset.docf) {
     ev.docs[el.dataset.docf] = el.value;
@@ -614,14 +593,8 @@ document.addEventListener('input', e => {
   else if (el.id === 'evForm') { survey().formUrl = el.value; const q = box.querySelector('#evQr'); if (q) q.innerHTML = qrHTML(); }
   else if (el.id === 'evReport') survey().report = el.value;
   else if (el.id === 'evNext') survey().nextMemo = el.value;
-  else if (el.dataset.rf) {
-    const r = ev.docs.roles[+el.dataset.ri]; if (!r) return;
-    if (el.dataset.rf === 'roles') r.roles = el.value.split(/[,，]/).map(x => x.trim()).filter(Boolean); else r.name = el.value;
-    // 과부하 표시만 고침 (입력 칸은 그대로)
-    const over = roleLoad(ev.docs.roles);
-    box.querySelectorAll('#evRoles tr[data-role]').forEach(tr => { const x = ev.docs.roles[+tr.dataset.role]; tr.classList.toggle('ev-over', !!x && over.includes(x.name)); });
-  } else return;
-  if (el.dataset.docf || el.dataset.rf || el.id === 'evRain') unconfirm();
+  else return;
+  if (el.dataset.docf || el.id === 'evRain') unconfirm();
   persistSoon();
 });
 document.addEventListener('change', e => {
@@ -693,8 +666,6 @@ document.addEventListener('click', e => {
   if (od) { ev.outdoor = od.dataset.outdoor === '1'; unconfirm(); persist(); box.querySelectorAll('[data-outdoor]').forEach(b => { const on = b === od; b.setAttribute('aria-pressed', on); b.setAttribute('aria-checked', on); }); return; }
   const sg = e.target.closest('[data-suggest]');
   if (sg) { ev.date = sg.dataset.suggest; unconfirm(); persist(); const d = box.querySelector('#evDate'); if (d) d.value = ev.date; const b = box.querySelector('#evDateBox'); if (b) b.innerHTML = dateWarnHTML(); return; }
-  const sd = e.target.closest('[data-staffdel]');
-  if (sd) { ev.staff.splice(+sd.dataset.staffdel, 1); persist(); renderMain(); return; }
   const tg = e.target.closest('[data-target]');
   if (tg) { survey().target = tg.dataset.target; persist(); renderMain(); return; }
   const rp = e.target.closest('[data-refplan]');
@@ -711,8 +682,6 @@ document.addEventListener('click', e => {
   }
   const dt = e.target.closest('[data-doc]');
   if (dt) { curDoc = dt.dataset.doc; renderMain(); return; }
-  const rd = e.target.closest('[data-roledel]');
-  if (rd) { ev.docs.roles.splice(+rd.dataset.roledel, 1); persist(); renderMain(); return; }
   const pk = e.target.closest('[data-pick]');
   if (pk) { ev.picked = +pk.dataset.pick; persist(); renderMain(); return; }
   const td = e.target.closest('[data-ttdel]');
@@ -724,7 +693,6 @@ document.addEventListener('click', e => {
   else if (a === 'next') next();
   else if (a === 'prev') goStep(Math.max(1, ev.step - 1));
   else if (a === 'options') { if (ev.options) apply(ev.id, x => { x.options = null; x.picked = null; }); runOptions(); }
-  else if (a === 'staffAdd') { ev.staff.push({ name: '', duty: '' }); persist(); renderMain(); const r = box.querySelector(`[data-staff="${ev.staff.length - 1}"][data-f="name"]`); if (r) r.focus(); }
   else if (a === 'ttAdd' && picked()) { picked().timetable.push({ time: '', activity: '', place: '' }); persist(); renderMain(); }
   else if (a === 'lastFile') box.querySelector('#evFile').click();
   else if (a === 'refFile') box.querySelector('#evRefFile').click();
@@ -733,10 +701,9 @@ document.addEventListener('click', e => {
   else if (a === 'refView') { const r = ev.refs.find(x => x.id === b.dataset.id); if (r) refSheet(r); }
   else if (a === 'refDel') { ev.refs = ev.refs.filter(x => x.id !== b.dataset.id); refsChanged(ev); unconfirm(); persist(); renderMain(); }
   else if (a === 'docs') runDocs();
-  else if (a === 'roleAdd') { ev.docs.roles.push({ name: '', roles: [] }); persist(); renderMain(); }
   else if (a === 'letterDone') { if (!letterMissing(ev.docs.letter).length) { ev.docs.done = true; persist(); const lb = box.querySelector('#evLetterBox'); if (lb) lb.innerHTML = letterBoxHTML([]); toast('가정통신문을 완성했어요'); } }
   else if (a === 'copyDoc') {
-    const text = curDoc === 'roles' ? ['이름\t맡은 역할', ...ev.docs.roles.map(r => `${r.name}\t${r.roles.join(', ')}`)].join('\n') : (ev.docs[curDoc] || '');
+    const text = ev.docs[curDoc] || '';
     copyText(text).then(ok => toast(ok ? '복사했어요' : '복사하지 못했어요'));
   }
   else if (a === 'hwpx') downloadDoc();

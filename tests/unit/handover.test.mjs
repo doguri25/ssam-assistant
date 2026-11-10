@@ -32,8 +32,6 @@ function seed() {
   savePlan({ ...newPlan(), year: 2026, name: '독서 교육', goal: '책 읽는 학교', draft: normDraft({ schedule: [{ title: '독서 골든벨', date: '2026-10-08' }] }) });
   saveEvent({ ...newEvent(), name: '작년 운동회', date: '2025-10-10' });
   saveEvent({ ...newEvent(), name: '가을 운동회', date: '2026-10-15', status: 'final',
-    staff: [{ name: '김가람', duty: '진행' }, { name: '이나래', duty: '방송' }],
-    docs: { plan: '', safety: '', letter: '', rain: '', roles: [{ name: '이나래', roles: ['방송'] }], done: false },
     survey: { target: 'student', items: [], formUrl: '', result: null, textSummary: '', report: '', nextMemo: '김가람 선생님과 상의해 점심시간을 늘려요. 이나래 방송 장비 미리 점검. 문의 010-1234-5678' } });
   saveEvent({ ...newEvent(), name: '학예회' });
   pushRecent({ id: 'pc1', at: new Date(2026, 10, 2).getTime(), form: { type: 'goods', project: '과학 실험 재료 구입', items: [{ name: '비커', qty: 8, price: 4500 }, { name: '유리 막대', qty: 8, price: 1200 }] }, draft: { title: '5학년 과학 실험 재료 구입' } });
@@ -82,7 +80,7 @@ test('월별 할 일: 3월~2월 12줄, 1·2월은 다음 해 날짜, 학년도 �
   assert.equal(rows.reduce((n, r) => n + r.items.length, 0), 7);
 });
 
-test('모으기: 지금 학년도 것을 처음에 고르고, 담당자·행사 교직원·역할 분담 이름과 전화번호는 빼고, 모델은 그대로', () => {
+test('모으기: 지금 학년도 것을 처음에 고르고, 담당자·행사 메모 속 교직원 이름과 전화번호는 빼고, 모델은 그대로', () => {
   seed();
   const before = JSON.stringify([listPlans(), listEventPlans()]);
   const d = collectHandover({ year: 2026, school: '한빛초등학교' });
@@ -101,7 +99,7 @@ test('모으기: 지금 학년도 것을 처음에 고르고, 담당자·행사 
   assert.equal(d.reports[0].summary, '학년별 탐구 실험(○○○ 부장님 진행)');
   // 학사일정: 공문 일정(gongmun)은 공문에서 모으므로 빼고, 학년도 밖은 뺌
   assert.deepEqual(d.calendar, [{ date: '2026-12-24', title: '겨울방학식' }]);
-  assert.ok(d.names.includes('김가람') && d.names.includes('이나래') && d.names.includes('박하늘'));
+  assert.ok(d.names.includes('박하늘'), JSON.stringify(d.names));
   const { names, ...rest } = d;
   noPersonal(JSON.stringify(rest), '모은 자료');
 });

@@ -87,23 +87,19 @@ await run('event-plan', [
     assert(prompts.at(-1).includes('보완안은 만들지 마세요'), '프롬프트');
     assert(await page.locator(`${V} .ev-opt[data-opt]`).count() === 2, '안 수');
   }],
-  ['3단계 문서: 4개 탭, 역할이 많은 사람 표시', async () => {
+  ['3단계 문서: 3개 탭(역할 분담표 없음), 1단계에 참여 교직원 칸 없음, 프롬프트에 교직원·역할 분담 없음', async () => {
     await page.click(`${V} #evList [data-ev]:has-text("가을 운동회")`);
     await page.click(`${V} ol.steps [data-step="1"]`);
-    for (const [i, n, d] of [[0, '김교사', '체육부'], [1, '이교사', '보건'], [2, '박교사', '6학년']]) {
-      await page.click(`${V} [data-e="staffAdd"]`);
-      await page.fill(`${V} [data-staff="${i}"][data-f="name"]`, n); await page.fill(`${V} [data-staff="${i}"][data-f="duty"]`, d);
-    }
+    assert(await page.locator(`${V} [data-e="staffAdd"], ${V} #evStaff`).count() === 0, '참여 교직원 칸이 남음');
     await page.click(`${V} ol.steps [data-step="2"]`);
     await page.click(`${V} [data-e="next"]`);
     await page.click(`${V} [data-e="docs"]`);
-    await page.waitForSelector(`${V} [data-doc="roles"]`, { timeout: 8000 });
-    assert(await page.locator(`${V} [data-doc]`).count() === 4, '문서 탭 수');
+    await page.waitForSelector(`${V} [data-doc="letter"]`, { timeout: 8000 });
+    assert(await page.locator(`${V} [data-doc]`).count() === 3 && await page.locator(`${V} [data-doc="roles"]`).count() === 0, '문서 탭');
     const pr = prompts.at(-1);
-    assert(pr.startsWith('[행사 문서]') && pr.includes('김교사') && pr.includes('가족 릴레이(학년별)'), '프롬프트');
-    await page.click(`${V} [data-doc="roles"]`);
-    assert(await page.locator(`${V} #evRoles [data-role]`).count() === 3, '명단에 없는 사람이 들어감');
-    assert(await page.locator(`${V} #evRoles [data-role="0"].ev-over`).count() === 1, '김교사 표시 없음');
+    assert(pr.startsWith('[행사 문서]') && pr.includes('가족 릴레이(학년별)'), '프롬프트');
+    assert(!/역할 분담|교직원|roles/.test(pr), '프롬프트에 역할 분담·교직원: ' + pr.slice(0, 300));
+    assert(!(await page.textContent(`${V}`)).includes('역할 분담표'), '화면에 역할 분담표');
   }],
   ['가정통신문: 문의처가 빠지면 [완성]이 꺼지고, 더하면 켜짐', async () => {
     await page.click(`${V} [data-doc="letter"]`);

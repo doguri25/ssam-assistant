@@ -15,6 +15,7 @@ import { listReports } from '../plan/report-model.js';
 import { reportTitle } from '../plan/report-ai.js';
 import { isSign, isDateLine } from '../../core/hwpx-form.js';
 import { normPages } from './handover-fit.js';
+import { maskPersons } from '../../core/chat-names.js';
 
 export { PAGES, PAGE_LINES, LINE_CHARS, normPages, docLines, estPages, fitPages, fitNotice } from './handover-fit.js';
 
@@ -106,7 +107,8 @@ export function collectHandover({ year = currentYear(), school = '' } = {}) {
   if (!duties.some(d => d.on)) duties.forEach(d => { d.on = true; });
   const evs = events.map(e => ({
     id: e.id, name: c(e.name) || '이름 없는 행사', date: e.date, status: e.status === 'final' ? '확정' : '준비 중',
-    memo: c(e.survey && e.survey.nextMemo), on: !e.date || inSchoolYear(e.date, year)
+    // 내년 개선 메모 속 교직원 이름(「이나래 방송 장비 점검」): 참여 교직원 명단(역할 분담표)을 뺀 뒤로 아는 이름이 없어 이름 모양으로 가림
+    memo: maskPersons(c(e.survey && e.survey.nextMemo)).text, on: !e.date || inSchoolYear(e.date, year)
   }));
   const purchases = recent.map(r => ({
     id: r.id, title: c((r.draft && r.draft.title) || r.form.project) || '제목 없는 품의', kind: typeLabel(r.form.type),

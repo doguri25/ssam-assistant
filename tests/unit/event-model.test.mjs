@@ -1,8 +1,8 @@
-// 행사 모델: 저장·목록, AI 답 다듬기, 역할 부담, 가정통신문 빠진 항목, 확정 막기, 한글 문서
+// 행사 모델: 저장·목록, AI 답 다듬기, 가정통신문 빠진 항목, 확정 막기, 한글 문서 (역할 분담표·참여 교직원은 뺐음)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as store from '../../web/core/store.js';
-import { KINDS, DOCS, newEvent, listEventPlans, getEvent, saveEvent, deleteEvent, currentEventId, setCurrentEvent, normOptions, normRoles, normItems, roleLoad, letterMissing, confirmBlockers, docDoc, REF_KINDS, normRefs, guessKind, refsBlock, normRefNotes } from '../../web/menus/plan/event-model.js';
+import { KINDS, DOCS, newEvent, listEventPlans, getEvent, saveEvent, deleteEvent, currentEventId, setCurrentEvent, normOptions, normItems, letterMissing, confirmBlockers, docDoc, REF_KINDS, normRefs, guessKind, refsBlock, normRefNotes } from '../../web/menus/plan/event-model.js';
 
 function mem() {
   const m = new Map();
@@ -11,7 +11,7 @@ function mem() {
 
 test('종류·문서 이름', () => {
   assert.deepEqual(KINDS.map(k => k[0]), ['sports', 'arts', 'field', 'other']);
-  assert.deepEqual(DOCS.map(d => d[1]), ['계획서', '역할 분담표', '안전 점검표', '가정통신문']);
+  assert.deepEqual(DOCS.map(d => d[1]), ['계획서', '안전 점검표', '가정통신문']);
 });
 
 test('저장·목록·지우기·현재·망가진 값', () => {
@@ -25,7 +25,7 @@ test('저장·목록·지우기·현재·망가진 값', () => {
   store.set('events', 'x'); assert.deepEqual(listEventPlans(), []);
   store.set('events', [null, { id: 3 }, { id: 'e1', name: '현장', kind: '없는', staff: [{ name: '김', duty: '안전' }, 'x'] }]);
   const l = listEventPlans();
-  assert.equal(l.length, 1); assert.equal(l[0].kind, 'other'); assert.deepEqual(l[0].staff, [{ name: '김', duty: '안전' }]);
+  assert.equal(l.length, 1); assert.equal(l[0].kind, 'other'); assert.ok(!('staff' in l[0]), '예전에 넣은 교직원 이름이 남음');
   assert.equal(l[0].outdoor, false); assert.equal(l[0].options, null); assert.equal(l[0].step, 1);
 });
 
@@ -38,12 +38,11 @@ test('구성안 다듬기', () => {
   assert.equal(normOptions([1, 2, 3, 4].map(i => ({ label: '안' + i, timetable: [{ activity: 'a' }] }))).length, 3);
 });
 
-test('역할 다듬기와 부담', () => {
-  assert.deepEqual(normRoles([{ name: '김교사', roles: ['진행', ''] }, { name: '없는 사람', roles: ['x'] }], [{ name: '김교사' }]), [{ name: '김교사', roles: ['진행'] }]);
-  assert.equal(normRoles([{ name: '김교사', roles: ['진행'] }, { name: '박', roles: ['x'] }], []).length, 2);
-  assert.deepEqual(roleLoad([{ name: 'A', roles: ['1', '2', '3', '4', '5'] }, { name: 'B', roles: ['1'] }, { name: 'C', roles: ['1'] }]), ['A']);
-  assert.deepEqual(roleLoad([{ name: 'A', roles: ['1', '2', '3'] }]), []);
-  assert.deepEqual(roleLoad([]), []);
+test('예전에 만든 역할 분담표·교직원 이름은 읽을 때 버림', () => {
+  store.set('events', [{ id: 'e2', name: '운동회', staff: [{ name: '김교사', duty: '체육부' }], docs: { plan: '본문', roles: [{ name: '김교사', roles: ['사회'] }] } }]);
+  const e = getEvent('e2');
+  assert.ok(!('staff' in e) && !('roles' in e.docs), JSON.stringify(e));
+  assert.ok(!JSON.stringify(e).includes('김교사'));
 });
 
 test('설문 문항 다듬기', () => {
@@ -58,7 +57,7 @@ test('가정통신문 빠진 항목', () => {
 
 const E = () => ({ ...newEvent(), name: '가을 운동회', purpose: '협동심', grades: '전교생', date: '2027-05-07', place: '운동장', budget: '50만 원',
   options: normOptions([{ label: '새로운 안', timetable: [{ time: '09:00', activity: '개회식', place: '운동장' }], budget: [{ name: '상품', amount: 300000 }] }]), picked: 0,
-  docs: { plan: '본문', safety: '안전 점검', letter: '날짜 준비물 복장 문의', rain: '우천 시 강당', roles: [{ name: '김교사', roles: ['진행'] }] } });
+  docs: { plan: '본문', safety: '안전 점검', letter: '날짜 준비물 복장 문의', rain: '우천 시 강당' } });
 
 test('확정 막기: 야외는 안전 점검표·우천 일정, 가정통신문 빠진 항목', () => {
   const e = E();
@@ -73,7 +72,7 @@ test('한글 문서', () => {
   const p = docDoc(e, 'plan');
   assert.equal(p.title, '가을 운동회 운영 계획');
   assert.deepEqual(p.blocks.find(b => b.type === 'table').rows[0], ['항목', '내용']);
-  assert.deepEqual(docDoc(e, 'roles').blocks.find(b => b.type === 'table').rows[0], ['이름', '맡은 역할']);
+  assert.equal(docDoc(e, 'roles'), null);
   assert.equal(docDoc(e, 'letter').title, '가을 운동회 안내');
   assert.ok(docDoc({ ...e, outdoor: true }, 'safety').blocks.some(b => b.type === 'p' && b.text.includes('우천 시 강당')));
 });

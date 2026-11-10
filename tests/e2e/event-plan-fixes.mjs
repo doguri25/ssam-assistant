@@ -1,4 +1,4 @@
-// 행사계획 최종 검토 고침: 설문이 다른 행사로 섞임, 확정 뒤 날짜·야외 바꾸기, 4단계 입력 끊김, 보고서 프롬프트의 행사, 역할 복사·가정통신문 QR
+// 행사계획 최종 검토 고침: 설문이 다른 행사로 섞임, 확정 뒤 날짜·야외 바꾸기, 4단계 입력 끊김, 보고서 프롬프트의 행사, (역할 분담표는 뺐음)·가정통신문 QR
 import { join } from 'node:path';
 import { open, run, assert, mockClaude, FIXTURES } from './helpers.mjs';
 
@@ -95,13 +95,10 @@ await run('event-plan-fixes', [
     assert((await getEv(a)).survey.report === '보고서', 'A 보고서');
     await page.reload(); await page.waitForTimeout(400);
   }],
-  ['역할 분담표 복사, 가정통신문 탭에 QR 미리보기', async () => {
+  ['예전 행사에 남은 역할 분담표는 보이지 않음, 가정통신문 탭에 QR 미리보기', async () => {
     await seed([base('운동회', { step: 3, survey: { target: 'student', items: [], formUrl: 'https://forms.gle/abc123', result: null, report: '', nextMemo: '' } })], 0);
     await page.reload(); await page.waitForTimeout(400); await go();
-    await page.click(`${V} [data-doc="roles"]`);
-    await page.click(`${V} [data-e="copyDoc"]`);
-    await page.waitForTimeout(150);
-    assert(await page.evaluate(() => navigator.clipboard.readText()) === '이름\t맡은 역할\n김교사\t사회, 음향\n이교사\t안전', '역할 복사');
+    assert(await page.locator(`${V} [data-doc="roles"]`).count() === 0, '역할 분담표 탭이 남음');
     await page.click(`${V} [data-doc="letter"]`);
     await page.waitForSelector(`${V} #evLetterQr img`, { timeout: 5000 });
   }],

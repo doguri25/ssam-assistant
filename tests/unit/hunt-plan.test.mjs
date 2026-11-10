@@ -1,10 +1,10 @@
 // 계획 메뉴 버그 잡기(2026-11-10): 설문 서술형 답의 이름·전화번호, 연간계획 AI에 담당자 이름, 작년 학년도 날짜를 그대로 쓴 초안 일정,
-// 띄어쓰기 붙은 교직원 이름의 역할이 빠짐 (화면 쪽은 tests/e2e/hunt-plan.mjs)
+// (역할 분담표는 뺐음) (화면 쪽은 tests/e2e/hunt-plan.mjs)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as store from '../../web/core/store.js';
 import { summarize } from '../../web/core/survey.js';
-import { maskResult, saveEvent, getEvent, newEvent, normRoles } from '../../web/menus/plan/event-model.js';
+import { maskResult, saveEvent, getEvent, newEvent } from '../../web/menus/plan/event-model.js';
 import { ownerForAI, textForAI, fitSchedule } from '../../web/menus/plan/year-model.js';
 
 function mem() {
@@ -55,10 +55,4 @@ test('[yp-ai-year] 초안 일정 날짜가 계획 학년도 밖이면 그 학년
   // 2026학년도(2027년 2월은 28일까지)
   assert.equal(fitSchedule([{ title: 'a', date: '2028-02-29', month: 2 }], 2026).schedule[0].date, '2027-02-28');
   assert.equal(fitSchedule(s.slice(2, 4), 2027).moved, 0);
-});
-
-test('[ev-roles-space] 참여 교직원 이름 앞뒤에 띄어쓰기가 있어도 AI가 쓴 그 사람의 역할은 남음', () => {
-  const staff = [{ name: '김교사 ', duty: '체육부' }, { name: ' 이교사', duty: '보건' }];
-  assert.deepEqual(normRoles([{ name: '김교사', roles: ['사회'] }, { name: '이교사', roles: ['안전'] }, { name: '없는 교사', roles: ['x'] }], staff),
-    [{ name: '김교사', roles: ['사회'] }, { name: '이교사', roles: ['안전'] }]);
 });
