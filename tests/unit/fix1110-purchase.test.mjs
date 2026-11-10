@@ -68,3 +68,13 @@ test('흔한 세는 말(벌·인분·봉지·갑·곽·송이·다발·그루·�
   assert.deepEqual(one('줄넘기 30개 2,000원'), ['줄넘기', '개', '30', '2000']);
   assert.deepEqual(one('1회용 컵 100개 50원'), ['1회용 컵', '개', '100', '50']);
 });
+
+test('계획·공문에서 옮긴 줄 머리(「가.」「나)」「(다)」「①」)는 품명에 넣지 않음', () => {
+  const name = s => parseLines(s).items[0].name;
+  assert.equal(name('가. 알코올램프 10개 5,000원'), '알코올램프');
+  assert.equal(name('  나) 비커 8개 4,500원'), '비커');
+  assert.equal(name('(다) 전자저울 4대 23,000원'), '전자저울');
+  assert.equal(name('① 유리 막대 8개 1,200원'), '유리 막대');
+  assert.equal(name('가위 4자루 2,000원'), '가위');
+  assert.equal(name('나무 블록 2세트 15,000원'), '나무 블록');
+});

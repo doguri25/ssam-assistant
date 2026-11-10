@@ -52,7 +52,8 @@ const koWon = s => String(s).replace(KO_AMT, (m, head, tail) => {
   return `${Math.round(n)}원`;
 });
 function parseLine(raw) {
-  let s = dropContext(String(raw).replace(/^\s*(?:[-•·*▪◦]|\d+[).]|\(\d+\))\s*/, '').trim());
+  // 줄 머리: 「-」「1.」「1)」「(1)」, 계획·공문에서 옮긴 「가.」「나)」「(다)」「①」(뒤에 빈칸이 올 때만 — 「가위」「나무」는 이름)
+  let s = dropContext(String(raw).replace(/^\s*(?:[-•·*▪◦]|\d+[).]|\(\d+\)|[가-하][.)](?=\s)|\([가-하]\)|[①-⑳])\s*/, '').trim());
   if (!s) return null;
   let price = null, total = null;
   const tot = /(?:총|합계|전체)\s*(?:금액)?\s*:?\s*([\d,]+(?:\.\d+)?)\s*(만)?\s*원?/.exec(s);
