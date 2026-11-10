@@ -127,7 +127,9 @@ function keyTableHTML(t) {
   </div>`;
 }
 /* 1단계: [학생 문제지 넣기(스캔한 것)] → [답안 넣기] 차례, 줄마다 알림. 빈 문제지는 접어 둔 작은 칸(학생 문제지와 헷갈리지 않게) */
-let moreOpen = false; // 「빈 문제지도 있으면」을 펼쳤는지
+/* 「빈 문제지도 있으면」을 펼쳤는지, 평가 id마다(이 화면에만): 선생님이 접고 편 대로, 빈 문제지를 넣은 바로 뒤에만 펼침 */
+const moreOpen = new Map();
+const openMore = id => moreOpen.set(id, true);
 function keyHTML(t) {
   const m = U.msg.id === t.id ? U.msg : { key: '', paper: '' }, hasPaper = !!(t.paper && t.paper.text);
   return `<div class="yp-card">
@@ -137,7 +139,7 @@ function keyHTML(t) {
       <div class="row"><button class="btn primary" type="button" data-un="keyFile">답안 넣기</button><span class="muted" id="unKeyMsg" role="status">${esc(m.key)}</span></div>
       <input type="file" id="unKeyFile" accept=".hwp,.hwpx,.pdf,.txt,.png,.jpg,.jpeg,.webp" hidden>
       ${bundleBoxHTML('unit', '학생 문제지 스캔·답안·빈 문제지를 한꺼번에 넣으면 알아서 나눠요')}
-      <details class="un-more"${moreOpen || m.paper ? ' open' : ''}><summary>빈 문제지도 있으면 (선택)${hasPaper ? ' · 넣었어요' : ''}</summary>
+      <details class="un-more" data-more="${esc(t.id)}"${moreOpen.get(t.id) ? ' open' : ''}><summary>빈 문제지도 있으면 (선택)${hasPaper ? ' · 넣었어요' : ''}</summary>
         <p class="muted cls-note">학생이 풀기 전의 빈 문제지(한글·PDF)를 넣으면 채점 AI가 문제를 보고 채점해요. 없어도 돼요.</p>
         <div class="row"><button class="btn" type="button" data-un="paperFile">빈 문제지 넣기</button><span class="muted" id="unPaperMsg" role="status">${esc(m.paper)}</span></div>
         <input type="file" id="unPaperFile" accept=".hwp,.hwpx,.pdf,.txt" hidden>
@@ -275,7 +277,7 @@ function useKey(id, t0, k, text, name) {
   const withPaper = !!(sp.paper && !(t.paper && t.paper.text));
   if (withPaper) { t.paper = { text: sp.paper.slice(0, 12000) }; fill(t.meta, parsePaper(sp.paper).meta, ['subject', 'grade', 'term', 'unitNo', 'unitName', 'round']); }
   U.msg = { ...U.msg, id, key: `「${name}」에서 ${k.items.length}문항을 읽었어요${withPaper ? '. 문제 부분은 빈 문제지로 넣었어요' : ''}${k.pointsGuessed ? '. 배점이 없어 100점을 문항 수로 나눠 넣었어요(고칠 수 있어요)' : ''}` };
-  if (withPaper) U.msg.paper = `「${name}」 · ${Object.keys(parsePaper(sp.paper).questions).length}문항`;
+  if (withPaper) { U.msg.paper = `「${name}」 · ${Object.keys(parsePaper(sp.paper).questions).length}문항`; openMore(id); }
   const made = !getTest(id);
   commit(t);
   if (made && curId() !== id && getTest(id)) { toast(`「${name}」에서 답안을 읽어 새 단원평가를 만들었어요`, 6000); if (visible() && U.view === 'list') render(); }
@@ -284,6 +286,7 @@ function useKey(id, t0, k, text, name) {
 }
 async function loadPaper(file, t0 = cur()) {
   const id = t0.id;
+  openMore(id); // 읽는 중·못 읽었다는 알림이 접힌 칸에 숨지 않게
   setMsg(id, 'paper', `「${file.name}」 읽는 중…`);
   let text;
   try { text = await readText(file, { columns: true }); } catch (e) { setMsg(id, 'paper', fileMessage(e && e.code)); return; }
@@ -296,6 +299,7 @@ function usePaper(id, t0, text, name) {
   t.paper = { text: text.slice(0, 12000) };
   fill(t.meta, p.meta, ['subject', 'grade', 'term', 'unitNo', 'unitName', 'round']);
   U.msg = { ...U.msg, id, paper: `「${name}」 · ${Object.keys(p.questions).length}문항` };
+  openMore(id);
   commit(t);
   refresh(id);
 }
@@ -351,7 +355,7 @@ async function putPaperFiles(files) {
     const where = go === 'key' ? '답안' : '빈 문제지', ro = go === 'key' ? '으로' : '로';
     moved.push(`「${f.name}」 파일은 ${where}${ro} 보여서 ${where}${ro} 넣었어요`);
     papers.note(id, moved.join(' · '));
-    if (go === 'key') await loadKey(f, t0); else { moreOpen = true; await loadPaper(f, t0); }
+    if (go === 'key') await loadKey(f, t0); else await loadPaper(f, t0);
   }
   if (scans.length) await papers.put(scans, t0);
 }
@@ -480,7 +484,7 @@ const release = () => {
   setTimeout(() => { if (pressAt === at) pressAt = 0; if (pendingRefresh && !editing() && !pressing()) { pendingRefresh = false; if (visible()) render(); } }, 0);
 };
 document.addEventListener('pointerup', release, true);
-document.addEventListener('toggle', e => { if (e.target.matches && e.target.matches('.un-more')) moreOpen = e.target.open; }, true);
+document.addEventListener('toggle', e => { if (e.target.matches && e.target.matches('.un-more[data-more]')) moreOpen.set(e.target.dataset.more, e.target.open); }, true);
 document.addEventListener('pointercancel', release, true);
 
 onEnter('evaluate', (tab, section) => {

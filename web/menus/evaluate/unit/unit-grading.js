@@ -20,8 +20,9 @@ import { esc, SS, AI_KEY, registerStep, registerPapers, inStep, cur, curId, comm
 const TYPE = Object.fromEntries(ITEM_TYPES);
 /* 세션 상태: 넣은 스캔은 한 평가에만 붙음(raw: 넣은 장, pages: 모아찍기를 자르고 뒷면을 돌린 쪽). 채점은 한 번에 한 평가만(run: 그 평가의 차례·멈춤) */
 // usedNow: 이 화면을 켠 뒤 채점한 평가(사용량 줄 앞에 「지난 채점」을 붙이지 않음), loading: 스캔을 읽어 나누는 중인 평가(다른 메뉴에 갔다 와도 「읽는 중」이 보이게)
-// hold: 답안을 넣기 전에 받은 학생 문제지 { id, raw, skipped, msg } — 답안이 들어오면 나눔, note: 다른 단추로 넣은 파일을 옮겨 넣었다는 알림 { id, text }
-const G = { testId: null, raw: [], pages: [], idx: [], msg: '', running: new Map(), run: null, usedNow: new Set(), loading: null, hold: null, note: null };
+// holds: 답안을 넣기 전에 받은 학생 문제지, 평가마다 { raw, skipped } (이 화면에만, 저장 안 함) — 그 평가를 보고 있을 때 답안이 들어오면 나눔,
+// note: 다른 단추로 넣은 파일을 옮겨 넣었다는 알림 { id, text }
+const G = { testId: null, raw: [], pages: [], idx: [], msg: '', running: new Map(), run: null, usedNow: new Set(), loading: null, holds: new Map(), note: null };
 const pagesOf = (id, i) => (G.testId === id && G.idx[i]) || [];
 const hasPages = id => G.testId === id && G.pages.length > 0;
 const busy = id => !!G.run && G.run.id === id && (G.run.queue.length > 0 || G.running.size > 0);
@@ -44,7 +45,8 @@ const perNow = () => Math.max(1, getSet().pagesPer | 0);
 // 학생 문제지 줄(#unAnsMsg) 글: 그 평가를 보고 있을 때만 바로 바꿈
 const sayFor = id => m => { G.msg = m; const el = getBox() && getBox().querySelector('#unAnsMsg'); if (el && curId() === id) el.textContent = m; };
 /* 이 평가의 학생 문제지 줄 글: 답안 전이라 받아 둔 것, 읽는 중·나눈 결과, (1단계만) 다른 단추로 넣은 파일을 옮긴 알림 */
-const ansMsg = (t, note = true) => [G.hold && G.hold.id === t.id ? G.hold.msg : G.testId === t.id || G.loading === t.id ? G.msg : '', note && G.note && G.note.id === t.id ? G.note.text : ''].filter(Boolean).join(' · ');
+const holdMsg = (t, h) => `학생 문제지 스캔 ${h.raw.length}장을 받았어요. ${hasKey(t) ? '2단계에서' : '답안을 넣으면'} 학생별로 나눠요${h.skipped.length ? ` · 읽지 못한 파일 ${h.skipped.length}개` : ''}`;
+const ansMsg = (t, note = true) => [G.holds.has(t.id) ? holdMsg(t, G.holds.get(t.id)) : G.testId === t.id || G.loading === t.id ? G.msg : '', note && G.note && G.note.id === t.id ? G.note.text : ''].filter(Boolean).join(' · ');
 async function loadAnswers(fileList, t0 = cur()) {
   const id = t0.id, per = perNow(), say = sayFor(id), before = G.msg;
   // 채점하는 동안 스캔을 바꾸면 채점 중인 학생에게 다른 쪽이 붙음: 끝나거나 멈춘 뒤에
@@ -66,21 +68,23 @@ export async function loadAnswerPages(raw, t0 = cur()) {
   if (busyOther(id) || busy(id)) { say('채점하는 중이에요. 끝나거나 멈춘 뒤에 다시 넣어 주세요.'); SS().files.freePages(raw); return false; }
   return place(t0, id, perNow(), { pages: raw, skipped: [] }, say, G.msg);
 }
-/* 답안을 넣기 전이면 학생 문제지를 이 화면에 받아 두고 답안이 들어오면 나눔(keyArrived). 답안이 있으면 바로 학생별로 나눔 */
+/* 답안을 넣기 전이면 학생 문제지를 이 화면에 받아 두고 답안이 들어오면 나눔(keyArrived). 답안이 있으면 바로 학생별로 나눔.
+   받아 둔 것은 평가마다 따로(다른 평가에 넣어도 버리지 않음), 같은 평가에 다시 넣으면 새것으로 바꿈 */
 async function place(t0, id, per, r, say, before) {
   if (hasKey(getTest(id) || t0)) return placeRaw(t0, id, per, r, say);
-  if (G.hold && G.hold.raw !== r.pages) SS().files.freePages(G.hold.raw);
-  const skip = (r.skipped || []).length;
-  G.hold = { id, raw: r.pages, skipped: r.skipped || [], msg: `학생 문제지 스캔 ${r.pages.length}장을 받았어요. 답안을 넣으면 학생별로 나눠요${skip ? ` · 읽지 못한 파일 ${skip}개` : ''}` };
+  const old = G.holds.get(id);
+  if (old && old.raw !== r.pages) SS().files.freePages(old.raw);
+  G.holds.set(id, { raw: r.pages, skipped: r.skipped || [] });
   if (G.testId !== id) G.msg = before; // 다른 평가에 붙은 스캔의 줄 글은 그대로
   refresh(id);
   return true;
 }
-/* 답안이 들어오면 받아 둔 학생 문제지를 학생별로 나눔(1단계 답안·한꺼번에 넣기, 2단계로 갈 때). 채점하는 중이면 끝난 뒤 2단계로 갈 때 */
+/* 답안이 들어오면 받아 둔 학생 문제지를 학생별로 나눔(1단계 답안·한꺼번에 넣기, 2단계로 갈 때). 채점하는 중이면 끝난 뒤 2단계로 갈 때.
+   그 평가를 보고 있지 않으면(답안을 읽는 동안 다른 평가로 감) 받아 둔 채로 두었다가 그 평가를 열 때(2단계) 나눔 — 지금 보는 평가의 스캔을 치우지 않게 */
 function keyArrived(id) {
-  const h = G.hold, t = getTest(id);
-  if (!h || h.id !== id || !hasKey(t) || busy(id) || busyOther(id)) return;
-  G.hold = null;
+  const h = G.holds.get(id), t = getTest(id);
+  if (!h || !hasKey(t) || busy(id) || busyOther(id) || curId() !== id) return;
+  G.holds.delete(id);
   placeRaw(t, id, perNow(), { pages: h.raw, skipped: h.skipped }, sayFor(id));
 }
 async function placeRaw(t0, id, per, r, say) {
@@ -504,7 +508,7 @@ function askFinish() {
 registerStep(2, {
   html: step2HTML,
   // 1단계에서 받아 두었는데 아직 나누지 못한 학생 문제지(답안을 넣을 때 다른 평가를 채점하던 중 등)
-  bind: (box, t) => { if (G.hold && G.hold.id === t.id) setTimeout(() => keyArrived(t.id), 0); }
+  bind: (box, t) => { if (G.holds.has(t.id)) setTimeout(() => keyArrived(t.id), 0); }
 });
 /* 1단계 [학생 문제지 넣기(스캔한 것)] 줄과 다른 단추·한꺼번에 넣기에서 학생 쪽으로 나눈 것 (unit.js가 씀) */
 registerPapers({

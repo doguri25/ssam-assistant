@@ -14,11 +14,12 @@ await page.addInitScript(() => {
   if (!localStorage.getItem('ssam:unit:set')) localStorage.setItem('ssam:unit:set', JSON.stringify({ pagesPer: 1, maskOn: false, mask: [], maskAll: false }));
 });
 const prompts = [], keyImages = [];
-let roleOf = () => 'student';
+let roleOf = () => 'student', keyGate = null;
 await mockClaude(page, async ({ prompt, images }) => {
   const head = prompt.split('\n')[0];
   prompts.push(head);
   if (head === '[단원평가 정답지]') keyImages.push(images);
+  if (head === '[단원평가 정답지]' && keyGate) await keyGate; // 답안을 읽는 동안 다른 평가로 감
   // 한꺼번에 넣기의 쪽 나누기: 본 쪽은 모두 학생(roleOf로 바꿈)
   if (head === '[쪽 나누기]') return JSON.stringify({ pages: Array.from({ length: images }, (_, i) => ({ i, role: roleOf(i) })) });
   if (head === '[단원평가 정답지]') return JSON.stringify({ meta: {}, domains: [], items: [{ no: 1, content: '학생 글을 답안으로 읽음', answer: '틀림', points: 100 }] });
@@ -183,6 +184,60 @@ await run('unit-route', [
     await page.waitForTimeout(300);
     assert(prompts.length === n0 && (await cur()).students.length === 2 && (await cur()).key.items.length === 1, '닫았는데 넣음');
     assert(!(await text('#unKeyMsg')).includes('읽는 중'), await text('#unKeyMsg'));
+  }],
+  // [버그] 답안 전에 받아 둔 학생 문제지는 한 평가 몫뿐이라, 평가 A의 답안을 읽는 동안 새 평가 B에 학생 문제지를 넣으면 A의 것이 말없이 버려짐
+  ['평가 A에 받아 둔 학생 문제지는 A의 답안을 읽는 동안 새 평가 B에 학생 문제지를 넣어도 남음 → A를 열면 A 학생 3명, B는 B대로 2명', async () => {
+    const ids = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:unit:list') || '[]').map(s => s.id));
+    const before = await ids();
+    await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} #unNew`);
+    await page.setInputFiles(`${V} #unAnsFile`, await photos(3));
+    await waitText('#unAnsMsg', '학생 문제지 스캔 3장을 받았어요');
+    let release;
+    keyGate = new Promise(r => { release = r; });
+    const n0 = asked('[단원평가 정답지]');
+    await page.setInputFiles(`${V} #unKeyFile`, { ...(await photos(1))[0], name: '정답지.png' });
+    for (let i = 0; i < 100 && asked('[단원평가 정답지]') === n0; i++) await page.waitForTimeout(100);
+    assert(asked('[단원평가 정답지]') === n0 + 1, '답안 AI를 부르지 않음');
+    // A의 답안을 읽는 동안 목록으로 나가 새 평가 B에 학생 문제지 2장
+    await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} #unNew`);
+    await page.setInputFiles(`${V} #unAnsFile`, await photos(2));
+    await waitText('#unAnsMsg', '학생 문제지 스캔 2장을 받았어요');
+    keyGate = null; release();
+    await page.waitForFunction(n => JSON.parse(localStorage.getItem('ssam:unit:list') || '[]').length === n, before.length + 1);
+    const aId = (await ids()).find(x => !before.includes(x));
+    // B를 보고 있는 동안 A의 답안이 들어와도 B의 받아 둔 것·알림은 그대로
+    assert((await text('#unAnsMsg')).includes('2장을 받았어요'), await text('#unAnsMsg'));
+    await page.setInputFiles(`${V} #unKeyFile`, KEY);
+    await waitText('#unAnsMsg', '학생 2명');
+    // A를 열면 받아 둔 3장을 학생별로 나눔
+    await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} [data-un-open="${aId}"]`);
+    await page.waitForFunction(() => document.querySelectorAll('.unit-box [data-st]').length === 3, null, { timeout: 15000 });
+    const a = await page.evaluate(id => JSON.parse(localStorage.getItem('ssam:unit:t:' + id)), aId);
+    assert(a.students.length === 3 && a.key.items.length === 1, JSON.stringify([a.students.length, a.key.items.length]));
+  }],
+  // [버그] 「빈 문제지도 있으면 (선택)」을 접어도 빈 문제지 알림이 있는 동안은 다시 그릴 때마다 펼쳐짐
+  ['「빈 문제지도 있으면」은 빈 문제지를 넣은 바로 뒤에만 펼치고, 선생님이 접으면 다시 그려도 접힌 채', async () => {
+    await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} #unNew`);
+    await page.setInputFiles(`${V} #unKeyFile`, KEY);
+    await waitText('.un-sum', '10문항');
+    await page.setInputFiles(`${V} #unAnsFile`, PAPER);
+    await waitText('#unPaperMsg', '10문항');
+    assert(await page.locator(`${V} details.un-more[open]`).count() === 1, '넣은 뒤 펼치지 않음');
+    await page.click(`${V} details.un-more > summary`);
+    await page.waitForFunction(() => !document.querySelector('.unit-box details.un-more').open);
+    await page.click(`${V} [data-un="addItem"]`); // 화면을 다시 그림
+    await page.waitForFunction(() => document.querySelector('.unit-box .un-sum').textContent.startsWith('11문항'));
+    assert(await page.locator(`${V} details.un-more[open]`).count() === 0, '접었는데 다시 펼쳐짐');
+    await page.click(`${V} [data-un="delItem"][data-no="11"]`);
+    await page.waitForFunction(() => document.querySelector('.unit-box .un-sum').textContent.startsWith('10문항'));
+    assert(await page.locator(`${V} details.un-more[open]`).count() === 0, '접었는데 다시 펼쳐짐(빼기)');
+    // 빈 문제지를 다시 넣으면 그 바로 뒤엔 펼침
+    await page.setInputFiles(`${V} #unPaperFile`, PAPER);
+    await page.waitForFunction(() => document.querySelector('.unit-box details.un-more').open);
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
