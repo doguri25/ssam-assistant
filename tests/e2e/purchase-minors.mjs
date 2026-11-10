@@ -120,6 +120,13 @@ await run('purchase-minors', [
     assert(c.draft && c.draft.title === '교실 물품 구입', JSON.stringify(c.draft));
     assert(await tailOk(), '사유가 다시 맞춰지지 않음');
     assert((await page.inputValue(`${P} #pcReason`)).includes('금6,000원'), await page.inputValue(`${P} #pcReason`));
+    // 최근 작성의 이 품의도 남은 품목으로(나눈 품목이 두 번 세어져 최근 작성·인수인계서 예산이 부풀지 않게)
+    const rec = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:purchase:recent')));
+    const mineRec = rec.find(r => r.id === 'pcF');
+    assert(mineRec && JSON.stringify(mineRec.form.items.filter(i => i.name).map(i => i.name)) === '["물티슈"]', JSON.stringify(mineRec && mineRec.form.items.map(i => i.name)));
+    assert(mineRec.draft && mineRec.draft.reason.includes('금6,000원'), '최근 작성의 사유');
+    const all = rec.flatMap(r => r.form.items.filter(i => i.name).map(i => i.name)).sort();
+    assert(JSON.stringify(all) === JSON.stringify(['가위', '물티슈', '지퍼백']), '품목이 두 번: ' + JSON.stringify(all));
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
