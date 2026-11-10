@@ -39,6 +39,26 @@ function readNav() {
   return null;
 }
 
+/* 다른 메뉴에서 AI가 일하는 중이면 그 메뉴 버튼에 작은 점(지금 보는 메뉴는 화면에 진행이 보여서 뺌). 일은 메뉴를 옮겨도 뒤에서 이어짐.
+   AI 부르기(평가 메뉴의 generate — 새 메뉴의 core/ai.js도 그것을 부름)가 부를 때마다 window.SSAM_WORK(업무)로 알리고, 끝나면 돌려받은 함수를 부름.
+   업무로 메뉴를 앎(채점·평어는 평가 등). 모르는 업무는 부를 때 보던 메뉴, 설정에서 부른 계획 AI는 인수인계서라 설정 */
+const TASK_MENU = { grade: 'evaluate', writing: 'evaluate', letter: 'etc', message: 'etc', reply: 'etc', gongmun: 'etc', purchase: 'purchase', plan: 'plan', report: 'plan' };
+const working = {};
+function drawWork() {
+  document.querySelectorAll('.side-btn[data-menu-go]').forEach(b => {
+    const on = !!working[b.dataset.menuGo] && !(cur && cur.menu === b.dataset.menuGo);
+    b.classList.toggle('working', on);
+    if (on) b.title = `${b.textContent.trim()}에서 AI가 일하는 중이에요`; else b.removeAttribute('title');
+  });
+}
+if (typeof window !== 'undefined') window.SSAM_WORK = task => {
+  const here = cur ? cur.menu : 'evaluate';
+  const m = task === 'plan' && here === 'settings' ? 'settings' : TASK_MENU[task] || here;
+  working[m] = (working[m] || 0) + 1; drawWork();
+  let done = false;
+  return () => { if (done) return; done = true; if (!--working[m]) delete working[m]; drawWork(); };
+};
+
 /* 헤더 오른쪽(⋮ 왼쪽)에 메뉴별 버튼을 둠. 메뉴·탭이 바뀔 때마다 비워짐 */
 export function setActions(html) {
   const el = $('#topExtra');
@@ -57,6 +77,7 @@ export function go(menuId, tabId) {
   document.querySelectorAll('[data-menu-go]').forEach(b => {
     if (b.dataset.menuGo === m.id) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
+  drawWork();
   $('#menuTitle').textContent = m.label;
   drawTabs(m);
   if (m.id === 'evaluate') {
