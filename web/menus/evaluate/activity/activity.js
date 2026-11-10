@@ -30,7 +30,8 @@ export const visible = () => curTab === 'activity' && !!box && box.isConnected &
 export const curAct = () => (A.id ? getActivity(A.id) : A.draft);
 const hasContent = a => !!(a.sheet.student || a.sheet.teacher || a.items.length || (A.critFor === a.id && A.critPages.length));
 export function commitAct(a) {
-  if (!getActivity(a.id) && !hasContent(a)) { A.draft = a; return true; }
+  // 저장 전 새 활동지는 화면에 둠 — 지금 보는 활동지일 때만(다른 활동지로 간 뒤 끝난 읽기가 화면을 처음 활동지로 바꾸지 않게, 단원평가와 같게)
+  if (!getActivity(a.id) && !hasContent(a)) { if (curAct() && curAct().id === a.id) A.draft = a; return true; }
   const ok = saveActivity(a);
   if (!ok) toast('저장 공간이 모자라 저장하지 못했어요. 설정 › 학년도에서 백업하고 지난 자료를 정리해 주세요.', 7000);
   if (ok && curAct() && curAct().id === a.id) { A.id = a.id; A.draft = null; }

@@ -7,7 +7,7 @@ import { exportButton, exportDoc, downloadsButton } from '../../../core/doc-expo
 import { studentTotal } from './unit-grade.js';
 import {
   listTests, loadTests, graded, makeTitle, filterTests, summaryTable, studentHistory, itemStats, domainStats, reteach,
-  levelOf, LEVEL_NAME, getPyeongeo, savePyeongeo
+  levelOf, LEVEL_NAME, getPyeongeo, savePyeongeo, contentKey
 } from './unit-model.js';
 import { tableDoc, tableCsv } from './unit-docs.js';
 import { pyeongeoPrompt, normPyeongeo } from './unit-ai.js';
@@ -126,9 +126,9 @@ function contentRates(tests, no) {
     const s = graded(t).find(x => x.no === no);
     if (!s) continue;
     for (const it of t.key.items) {
-      const v = m.get(it.content) || [0, 0];
+      const k = contentKey(t, it), v = m.get(k) || [0, 0]; // 평가 내용이 없는 문항끼리 뭉치지 않게
       v[0] += Number(s.items[it.no] && s.items[it.no].pts) || 0; v[1] += Number(it.points) || 0;
-      m.set(it.content, v);
+      m.set(k, v);
     }
   }
   return [...m].filter(([, v]) => v[1]).map(([content, v]) => ({ content, rate: v[0] / v[1] }));

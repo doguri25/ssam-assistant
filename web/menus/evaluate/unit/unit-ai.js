@@ -1,7 +1,7 @@
 /* 단원평가 AI 프롬프트와 답 읽기 (스펙 3.2~3.4). 학생은 번호로만, 이름은 보내지 않음 */
 import { itemType } from './unit-key.js';
 import { ITEM_TYPES, studentTotal } from './unit-grade.js';
-import { makeTitle, LEVEL_NAME } from './unit-model.js';
+import { makeTitle, LEVEL_NAME, itemName } from './unit-model.js';
 import { redoKind } from './unit-redo.js';
 
 const TYPE_NAME = Object.fromEntries(ITEM_TYPES);
@@ -81,8 +81,9 @@ export function feedbackPrompt(test, students) {
     const t = studentTotal(test, st), good = [], weak = [];
     for (const it of test.key.items) {
       const pts = Number(st.items[it.no] && st.items[it.no].pts) || 0;
-      if (pts >= it.points) good.push(it.content);
-      else weak.push(pts > 0 ? `${it.content}(부분 점수)` : it.content);
+      // 평가 내용이 없는 문항은 「3번 문항」(빈 글이면 맞힌 것·다시 볼 것이 모두 「없음」으로 감)
+      if (pts >= it.points) good.push(itemName(it));
+      else weak.push(pts > 0 ? `${itemName(it)}(부분 점수)` : itemName(it));
     }
     return `- ${st.no}번 | 점수 ${t.score}/${t.total} | 맞힌 것: ${[...new Set(good)].join(', ') || '없음'} | 다시 볼 것: ${[...new Set(weak)].join(', ') || '없음'}`;
   });

@@ -15,6 +15,10 @@ const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(
 export const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 export const graded = test => ((test && test.students) || []).filter(s => !s.skip && s.status === 'done');
 const domainsOf = it => String(it.domain || '').split('·').filter(Boolean);
+/* 평가 내용이 없는 문항(정답을 한 줄로 늘어놓은 정답·해설지 등)의 이름: 한 평가 안에서는 「3번 문항」,
+   여러 평가를 모을 때(contentKey)는 평가 이름을 붙여 다른 평가의 문항과 뭉치지 않게 */
+export const itemName = it => String((it && it.content) || '').trim() || `${it.no}번 문항`;
+export const contentKey = (t, it) => String((it && it.content) || '').trim() || `${makeTitle(t.meta)} ${it.no}번`;
 
 export function makeTitle(m = {}) {
   const parts = [m.grade ? `${m.grade}학년` : '', m.subject || '', m.unitNo ? `${m.unitNo}단원` : '', m.unitName || '', m.round ? `(${m.round}회)` : ''].filter(Boolean);
@@ -147,8 +151,8 @@ export function studentHistory(tests, no) {
     for (const it of t.key.items) {
       const got = Number(s.items[it.no] && s.items[it.no].pts) || 0, full = Number(it.points) || 0;
       for (const d of domainsOf(it)) { const v = dom.get(d) || [0, 0]; v[0] += got; v[1] += full; dom.set(d, v); }
-      const w = weak.get(it.content) || { content: it.content, lost: 0, pages: it.pages };
-      w.lost += full - got; weak.set(it.content, w);
+      const key = contentKey(t, it), w = weak.get(key) || { content: key, lost: 0, pages: it.pages };
+      w.lost += full - got; weak.set(key, w);
     }
   }
   return {

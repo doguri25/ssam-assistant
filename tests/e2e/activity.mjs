@@ -9,12 +9,14 @@ await page.addInitScript(() => {
   if (!localStorage.getItem('ssam:engine')) localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true }));
 });
 const calls = [];
+let rolesGate = null;
 await page.route('https://api.anthropic.com/**', async route => {
   const body = JSON.parse(route.request().postData());
   const c = body.messages[0].content;
   const prompt = typeof c === 'string' ? c : c.filter(x => x.type === 'text').map(x => x.text).join('\n');
   calls.push({ head: prompt.split('\n')[0], prompt });
   let out = '{}';
+  if (prompt.startsWith('[쪽 나누기]')) { if (rolesGate) await rolesGate; out = JSON.stringify({ pages: [0, 1, 2, 3].map(i => ({ i, role: 'student' })) }); }
   if (prompt.startsWith('[활동지 기준]')) {
     out = prompt.includes('[교사용')
       ? JSON.stringify({ items: [{ no: 1, type: 'write', ask: '이웃을 도운 경험', answer: '무거운 짐을 들어 드렸어요.', ok: '도운 일을 구체적으로 씀', part: '한 낱말만 씀', src: 'teacher' }, { no: 2, type: 'write', ask: '돕는 방법 제안', answer: '', ok: '방법과 까닭', part: '방법만', src: 'ai' }] })
@@ -91,6 +93,25 @@ await run('activity', [
     await until(async () => calls.filter(c => c.head === '[활동지 기준]').length === n0 + 1);
     const masks = await page.evaluate(() => window.__masks);
     assert(masks.length >= 1 && masks.every(m => Array.isArray(m) && m.some(r => r.y === 0 && r.h >= 0.15)), JSON.stringify(masks));
+  }],
+  // [버그] 새 활동지에 넣은 학생 스캔을 읽는 동안 다른 새 활동지로 가면, 다 읽은 뒤 화면이 처음 활동지로 바뀌어 쓰던 활동지(이름 등)가 사라짐
+  ['새 활동지에 넣은 학생 스캔 3장을 읽는 동안 다른 새 활동지로 가도, 다 읽은 뒤 화면은 지금 쓰는 활동지 그대로', async () => {
+    await page.click(`${P} [data-ac="back"]`);
+    await page.click(`${P} [data-ac="new"]`);
+    let release;
+    rolesGate = new Promise(r => { release = r; });
+    const n0 = calls.filter(c => c.head === '[쪽 나누기]').length;
+    const shots = [];
+    for (let i = 0; i < 3; i++) shots.push({ name: `학생${i + 1}.png`, mimeType: 'image/png', buffer: await page.screenshot({ clip: { x: i * 7, y: 0, width: 300, height: 420 } }) });
+    await page.setInputFiles('#bundleFile-act', shots);
+    await until(async () => calls.filter(c => c.head === '[쪽 나누기]').length === n0 + 1);
+    await page.click(`${P} [data-ac="back"]`);
+    await page.click(`${P} [data-ac="new"]`);
+    await page.fill(`${P} #actTitle`, '두 번째 활동');
+    rolesGate = null; release();
+    await until(() => page.evaluate(async () => { const m = await import('./menus/evaluate/activity/activity.js'); return !!(m.A.pending && m.A.pending.pages.length === 3); }));
+    await page.waitForTimeout(300);
+    assert(await page.inputValue(`${P} #actTitle`) === '두 번째 활동', `화면이 바뀜: 「${await page.inputValue(`${P} #actTitle`)}」`);
   }],
   ['[예시로 채우기] → 목록에 예시 활동지', async () => {
     await page.click(`${P} [data-ac="back"]`);

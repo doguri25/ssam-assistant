@@ -97,18 +97,22 @@ export const needsCheck = c => !!(c && c.flag && !c.ok);
 
 /* 정답표의 한 문항을 고친 뒤: 채점한 학생의 그 칸을 읽은 답으로 다시 맞춤.
    선생님이 고친 칸은 그대로 두되 배점 안으로만 줄임. 정답·유형을 고쳤으면 단답의 지난 AI 판단은 쓰지 않음.
-   AI 처음 값(ai0): 정답표 고침은 칸 채점이 틀린 것이 아니라서 손대지 않은 칸은 새 점수를 따르고, 고친 칸은 배점 안으로만(처음 값이 없던 옛 칸은 그대로 없음) */
-export function rescoreItem(test, no, field = '') {
+   AI 처음 값(ai0): 정답표 고침은 칸 채점이 틀린 것이 아니라서 손대지 않은 칸은 새 점수를 따르고, 고친 칸은 배점 안으로만(처음 값이 없던 옛 칸은 그대로 없음).
+   배점을 고쳤으면(prev: 고치기 전 배점) AI 점수·선생님 점수·처음 값을 새 배점의 같은 비율로(만점은 만점) — 올린 배점에서 맞힌 칸이 「앱과 AI가 달라요」가 되지 않게.
+   고치기 전 배점이 0이었으면 AI 판단을 알 수 없어 고르기·기호·선 잇기·단답은 앱이 맞춘 점수를 AI 점수로 봄 */
+export function rescoreItem(test, no, field = '', prev = null) {
   const stale = field === 'answer' || field === 'type';
   const it = test.key.items.find(i => i.no === no);
   if (!it) return;
   const full = Number(it.points) || 0;
+  const old = field === 'points' && prev != null && prev !== '' && Number.isFinite(Number(prev)) ? Math.max(0, Number(prev)) : null;
+  const fit = v => { const x = Number(v) || 0; return old > 0 ? (x >= old ? full : Math.min(full, Math.round(x / old * full))) : Math.min(x, full); };
   for (const st of test.students || []) {
     const c = st.items && st.items[no];
     if (!c) continue;
-    if (c.manual) { c.pts = Math.min(Number(c.pts) || 0, full); if (c.ai0 != null) c.ai0 = Math.min(Number(c.ai0) || 0, full); continue; }
-    // 지난 AI 판단이 낡았으면 앱이 맞춘 점수를 AI 점수로 봄(글자가 다른 단답은 0 → 노란 칸)
-    const ai = stale && it.type !== 'essay' ? (autoJudge(it, c.read) ?? 0) : Math.min(Number(c.ai) || 0, full);
+    if (c.manual) { c.pts = fit(c.pts); if (c.ai0 != null) c.ai0 = fit(c.ai0); continue; }
+    // 지난 AI 판단이 낡았으면(정답·유형을 고침, 배점이 0이었음) 앱이 맞춘 점수를 AI 점수로 봄(글자가 다른 단답은 0 → 노란 칸)
+    const ai = (stale || old === 0) && it.type !== 'essay' ? (autoJudge(it, c.read) ?? 0) : fit(c.ai);
     const g = gradeCell(it, { read: c.read, points: ai, sure: c.flag !== 'low', why: stale ? '' : c.why });
     st.items[no] = c.ai0 != null ? { ...g, ai0: g.pts } : g;
   }

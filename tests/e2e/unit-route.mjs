@@ -13,12 +13,13 @@ await page.addInitScript(() => {
   if (!localStorage.getItem('ssam:engine')) localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true }));
   if (!localStorage.getItem('ssam:unit:set')) localStorage.setItem('ssam:unit:set', JSON.stringify({ pagesPer: 1, maskOn: false, mask: [], maskAll: false }));
 });
-const prompts = [], keyImages = [];
-let roleOf = () => 'student';
+const prompts = [], keyImages = [], full = [];
+let roleOf = () => 'student', keyGate = null;
 await mockClaude(page, async ({ prompt, images }) => {
   const head = prompt.split('\n')[0];
-  prompts.push(head);
+  prompts.push(head); full.push(prompt);
   if (head === '[단원평가 정답지]') keyImages.push(images);
+  if (head === '[단원평가 정답지]' && keyGate) await keyGate; // 답안을 읽는 동안 다른 평가로 감
   // 한꺼번에 넣기의 쪽 나누기: 본 쪽은 모두 학생(roleOf로 바꿈)
   if (head === '[쪽 나누기]') return JSON.stringify({ pages: Array.from({ length: images }, (_, i) => ({ i, role: roleOf(i) })) });
   if (head === '[단원평가 정답지]') return JSON.stringify({ meta: {}, domains: [], items: [{ no: 1, content: '학생 글을 답안으로 읽음', answer: '틀림', points: 100 }] });
@@ -141,6 +142,155 @@ await run('unit-route', [
     assert(JSON.stringify(keyImages.slice(n0)) === '[1]', JSON.stringify(keyImages));
     const x = await cur();
     assert(x.key.items.length === 1 && x.students.length === 3, JSON.stringify([x.key.items.length, x.students.length]));
+  }],
+  // [버그] 사진 1~2장·글자 없는 PDF 1~2쪽은 쪽 나누기 AI(3쪽부터)가 보지 않아, 학생 문제지여도 답안으로 읽혀 가리지 않은 그림(이름)이 답안 AI로 감
+  ['[답안 넣기]에 이름 없는 사진 1장 → 「답안인가요, 학생 문제지인가요?」 → [학생 문제지예요] → 학생 문제지로 받아 둠(답안 AI 안 부름)', async () => {
+    roleOf = () => 'student';
+    await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} #unNew`);
+    const n0 = asked('[단원평가 정답지]');
+    await page.setInputFiles(`${V} #unKeyFile`, (await photos(1))[0]);
+    await page.waitForSelector('#sheetRoot #unKindAsk');
+    assert((await page.textContent('#sheetRoot #unKindAsk')).includes('이 사진은 답안(정답)인가요, 학생 문제지인가요?'), await page.textContent('#sheetRoot #unKindAsk'));
+    await page.click('#sheetRoot #unKindPapers');
+    await waitText('#unAnsMsg', '학생 문제지 스캔 1장을 받았어요');
+    assert((await text('#unKeyMsg')).includes('학생 문제지로 넣었어요'), await text('#unKeyMsg'));
+    assert(asked('[단원평가 정답지]') === n0, '답안 AI를 부름');
+    assert((await text('.un-sum')).startsWith('0문항'), await text('.un-sum'));
+  }],
+  ['[답안 넣기]에 이름 없는 사진 → [답안이에요] → 답안 AI가 그 사진을 읽음, 받아 둔 학생 문제지를 나눔', async () => {
+    const n0 = keyImages.length;
+    await page.setInputFiles(`${V} #unKeyFile`, { ...(await photos(1))[0], name: 'IMG_0002.png' });
+    await page.waitForSelector('#sheetRoot #unKindAsk');
+    await page.click('#sheetRoot #unKindKey');
+    await waitText('.un-sum', '1문항');
+    assert(JSON.stringify(keyImages.slice(n0)) === '[1]', JSON.stringify(keyImages));
+    await waitText('#unAnsMsg', '학생 1명');
+  }],
+  ['[답안 넣기]에 글자 없는 PDF 2쪽 → 묻고 [학생 문제지예요] → 학생 2명(쪽 나누기·답안 AI 안 부름), 창을 닫으면 아무것도 넣지 않음', async () => {
+    const n0 = prompts.length;
+    await page.setInputFiles(`${V} #unKeyFile`, await scanPdf(2));
+    await page.waitForSelector('#sheetRoot #unKindAsk');
+    assert((await page.textContent('#sheetRoot #unKindAsk')).includes('이 파일은'), await page.textContent('#sheetRoot #unKindAsk'));
+    await page.click('#sheetRoot #unKindPapers');
+    await waitText('#unAnsMsg', '학생 2명');
+    assert(prompts.length === n0, JSON.stringify(prompts.slice(n0)));
+    assert((await cur()).students.length === 2, '학생 수');
+    // 닫기: 답안도 학생 문제지도 그대로
+    await page.setInputFiles(`${V} #unKeyFile`, await scanPdf(1));
+    await page.waitForSelector('#sheetRoot #unKindAsk');
+    await page.click('#sheetRoot #sheetBg', { position: { x: 5, y: 5 } });
+    await page.waitForFunction(() => !document.querySelector('#sheetRoot #unKindAsk'));
+    await page.waitForTimeout(300);
+    assert(prompts.length === n0 && (await cur()).students.length === 2 && (await cur()).key.items.length === 1, '닫았는데 넣음');
+    assert(!(await text('#unKeyMsg')).includes('읽는 중'), await text('#unKeyMsg'));
+  }],
+  // [버그] 답안 전에 받아 둔 학생 문제지는 한 평가 몫뿐이라, 평가 A의 답안을 읽는 동안 새 평가 B에 학생 문제지를 넣으면 A의 것이 말없이 버려짐
+  ['평가 A에 받아 둔 학생 문제지는 A의 답안을 읽는 동안 새 평가 B에 학생 문제지를 넣어도 남음 → A를 열면 A 학생 3명, B는 B대로 2명', async () => {
+    const ids = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:unit:list') || '[]').map(s => s.id));
+    const before = await ids();
+    await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} #unNew`);
+    await page.setInputFiles(`${V} #unAnsFile`, await photos(3));
+    await waitText('#unAnsMsg', '학생 문제지 스캔 3장을 받았어요');
+    let release;
+    keyGate = new Promise(r => { release = r; });
+    const n0 = asked('[단원평가 정답지]');
+    await page.setInputFiles(`${V} #unKeyFile`, { ...(await photos(1))[0], name: '정답지.png' });
+    for (let i = 0; i < 100 && asked('[단원평가 정답지]') === n0; i++) await page.waitForTimeout(100);
+    assert(asked('[단원평가 정답지]') === n0 + 1, '답안 AI를 부르지 않음');
+    // A의 답안을 읽는 동안 목록으로 나가 새 평가 B에 학생 문제지 2장
+    await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} #unNew`);
+    await page.setInputFiles(`${V} #unAnsFile`, await photos(2));
+    await waitText('#unAnsMsg', '학생 문제지 스캔 2장을 받았어요');
+    keyGate = null; release();
+    await page.waitForFunction(n => JSON.parse(localStorage.getItem('ssam:unit:list') || '[]').length === n, before.length + 1);
+    const aId = (await ids()).find(x => !before.includes(x));
+    // B를 보고 있는 동안 A의 답안이 들어와도 B의 받아 둔 것·알림은 그대로
+    assert((await text('#unAnsMsg')).includes('2장을 받았어요'), await text('#unAnsMsg'));
+    await page.setInputFiles(`${V} #unKeyFile`, KEY);
+    await waitText('#unAnsMsg', '학생 2명');
+    // A를 열면 받아 둔 3장을 학생별로 나눔
+    await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} [data-un-open="${aId}"]`);
+    await page.waitForFunction(() => document.querySelectorAll('.unit-box [data-st]').length === 3, null, { timeout: 15000 });
+    const a = await page.evaluate(id => JSON.parse(localStorage.getItem('ssam:unit:t:' + id)), aId);
+    assert(a.students.length === 3 && a.key.items.length === 1, JSON.stringify([a.students.length, a.key.items.length]));
+  }],
+  // [버그] 「빈 문제지도 있으면 (선택)」을 접어도 빈 문제지 알림이 있는 동안은 다시 그릴 때마다 펼쳐짐
+  ['「빈 문제지도 있으면」은 빈 문제지를 넣은 바로 뒤에만 펼치고, 선생님이 접으면 다시 그려도 접힌 채', async () => {
+    await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} #unNew`);
+    await page.setInputFiles(`${V} #unKeyFile`, KEY);
+    await waitText('.un-sum', '10문항');
+    await page.setInputFiles(`${V} #unAnsFile`, PAPER);
+    await waitText('#unPaperMsg', '10문항');
+    assert(await page.locator(`${V} details.un-more[open]`).count() === 1, '넣은 뒤 펼치지 않음');
+    await page.click(`${V} details.un-more > summary`);
+    await page.waitForFunction(() => !document.querySelector('.unit-box details.un-more').open);
+    await page.click(`${V} [data-un="addItem"]`); // 화면을 다시 그림
+    await page.waitForFunction(() => document.querySelector('.unit-box .un-sum').textContent.startsWith('11문항'));
+    assert(await page.locator(`${V} details.un-more[open]`).count() === 0, '접었는데 다시 펼쳐짐');
+    await page.click(`${V} [data-un="delItem"][data-no="11"]`);
+    await page.waitForFunction(() => document.querySelector('.unit-box .un-sum').textContent.startsWith('10문항'));
+    assert(await page.locator(`${V} details.un-more[open]`).count() === 0, '접었는데 다시 펼쳐짐(빼기)');
+    // 빈 문제지를 다시 넣으면 그 바로 뒤엔 펼침
+    await page.setInputFiles(`${V} #unPaperFile`, PAPER);
+    await page.waitForFunction(() => document.querySelector('.unit-box details.un-more').open);
+  }],
+  // [버그] 학생 이름이 적힌 글: [빈 문제지 넣기]는 빈 문제지로 저장해 학생마다 채점 AI로 보내고, [답안 넣기]는 그 글을 답안 AI로 보냄
+  ['학생 이름이 적힌 글: [빈 문제지 넣기]·[답안 넣기]의 글 파일은 넣지 않고, 글자 인식된 학생 문제지 PDF 1쪽은 학생 문제지로(이름이 저장되거나 AI로 가지 않음)', async () => {
+    const NAMED = '수학 3단원 평가\n이름: 김가람\n1. 다음 중 알맞은 것은? ( 3 )\n2. 계산하세요. 12+5 = 17';
+    const stored = () => page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('ssam:')).map(k => localStorage.getItem(k)).join(''));
+    const f0 = full.length;
+    // 답안이 있는 평가(저장됨)의 [빈 문제지 넣기]
+    await page.setInputFiles(`${V} #unPaperFile`, { name: '3반 학생 문제지.txt', mimeType: 'text/plain', buffer: Buffer.from(NAMED) });
+    await waitText('#unPaperMsg', '학생 이름이 적힌 글이라');
+    assert(!(await stored()).includes('김가람'), '빈 문제지로 이름이 저장됨');
+    // [답안 넣기]의 글 파일
+    await page.setInputFiles(`${V} #unKeyFile`, { name: '수학 평가.txt', mimeType: 'text/plain', buffer: Buffer.from(NAMED) });
+    await waitText('#unKeyMsg', '학생 이름이 적힌 글이라 넣지 않았어요');
+    // [답안 넣기]의 글자 인식된 학생 문제지 PDF 1쪽(복사기 「검색 가능 PDF」)
+    const pg = await t.ctx.newPage();
+    await pg.setContent(`<!doctype html><meta charset="utf-8"><style>body{font:18px sans-serif}</style>${NAMED.split('\n').map(l => `<p>${l}</p>`).join('')}`);
+    const pdf = await pg.pdf({ format: 'A4' }); await pg.close();
+    await page.setInputFiles(`${V} #unKeyFile`, { name: '스캔0001.pdf', mimeType: 'application/pdf', buffer: pdf });
+    await waitText('#unKeyMsg', '학생 문제지로 보여서 학생 문제지로 넣었어요');
+    await waitText('#unAnsMsg', '학생 1명');
+    assert(!full.slice(f0).some(p => p.includes('김가람')), '이름이 AI로 감: ' + full.slice(f0).map(p => p.split('\n')[0]).join(','));
+    assert(!(await stored()).includes('김가람'), '이름이 저장됨');
+    assert((await cur()).key.items.length === 10, '답안이 바뀜');
+    // 정답 파일 이름이면(교사용 예시에 이름이 적힘) 답안으로 읽되, 답안 AI에는 이름 칸을 가린 글
+    const f1 = full.length;
+    await page.setInputFiles(`${V} #unKeyFile`, { name: '3단원 정답.txt', mimeType: 'text/plain', buffer: Buffer.from('[교사용] 수학 3단원\n이름: 홍길동\n1. 다음 중 알맞은 것은? ( ③ )\n2. 계산하세요. ( 17 )') });
+    await waitText('.un-sum', '1문항');
+    const sentKey = full.slice(f1).find(p => p.startsWith('[단원평가 정답지]')) || '';
+    assert(sentKey.includes('알맞은 것') && !sentKey.includes('홍길동'), sentKey.slice(-120));
+  }],
+  // [버그] 채점한 평가에 학생 수가 다른 스캔을 다시 넣고 「학생 수가 달라요」에서 [취소]하면 학생 문제지 줄에 「… 읽는 중」이 그대로 남음
+  ['채점한 평가에 학생 수가 다른 스캔 → 「학생 수가 달라요」 [취소] → 학생 문제지 줄은 넣기 전 그대로(「읽는 중」이 남지 않음), 채점 결과도 그대로', async () => {
+    const id = await page.evaluate(async () => {
+      const m = await import('./menus/evaluate/unit/unit-model.js');
+      const x = m.newTest({ meta: { subject: '국어', grade: 3, unitNo: 8 }, key: { domains: [], items: [{ no: 1, content: '고르기', domain: '', type: 'choice', answer: '③', points: 100, criteria: '', pages: '' }] } });
+      x.students = [1, 2].map(no => ({ no, skip: false, status: 'done', items: { 1: { read: '③', pts: 100, ai: 100, flag: '', why: '', ok: true, manual: false } }, good: '', cheer: '' }));
+      m.saveTest(x);
+      return x.id;
+    });
+    await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} [data-un-open="${id}"]`);
+    await page.click(`${V} .steps [data-step="2"]`);
+    await page.setInputFiles(`${V} #unAnsFile`, await photos(2));
+    await waitText('#unAnsMsg', '학생 2명');
+    const before = await text('#unAnsMsg');
+    await page.setInputFiles(`${V} #unAnsFile`, await photos(3));
+    await page.waitForSelector('#sheetRoot #unRedoOk');
+    await page.click('#sheetRoot [data-close]');
+    await page.waitForTimeout(200);
+    assert(!(await text('#unAnsMsg')).includes('읽는 중'), await text('#unAnsMsg'));
+    assert((await text('#unAnsMsg')) === before, `${await text('#unAnsMsg')} ≠ ${before}`);
+    const x = await page.evaluate(id => JSON.parse(localStorage.getItem('ssam:unit:t:' + id)), id);
+    assert(x.students.length === 2 && x.students.every(s => s.status === 'done'), JSON.stringify(x.students.map(s => s.status)));
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

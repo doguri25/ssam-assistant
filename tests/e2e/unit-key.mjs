@@ -158,6 +158,31 @@ await run('unit-key', [
     assert((await page.textContent(`${B} #unPaperMsg`)).includes('8문항'), await page.textContent(`${B} #unPaperMsg`));
     await page.click(`${B} [data-un="back"]`);
   }],
+  // [버그] 채점한 뒤 정답표에서 배점을 올리면 맞힌 칸이 모두 「앱과 AI의 판단이 달라요」 노란 칸이 되고, 서술형 AI 점수는 옛 배점 그대로
+  ['채점한 뒤 배점을 4 → 5로 올림: 맞힌 고르기 칸은 5점 그대로 확인함(노란 칸 아님), 서술형 3/4는 배점 8에서 6/8', async () => {
+    const id = await page.evaluate(async () => {
+      const m = await import('./menus/evaluate/unit/unit-model.js'), g = await import('./menus/evaluate/unit/unit-grade.js');
+      const items = [{ no: 1, content: '고르기', domain: '', type: 'choice', answer: '③', points: 4, criteria: '', pages: '' }, { no: 2, content: '까닭 쓰기', domain: '', type: 'essay', answer: '(예) 까닭', points: 4, criteria: '', pages: '' }];
+      const x = m.newTest({ meta: { subject: '과학', grade: 3, unitNo: 9 }, key: { domains: [], items } });
+      const cells = () => Object.fromEntries(Object.entries(g.mergeCells({}, { 1: g.gradeCell(items[0], { read: '③', points: 4, sure: true }), 2: g.gradeCell(items[1], { read: '까닭', points: 3, sure: true }) })).map(([k, c]) => [k, { ...c, ok: true }]));
+      x.students = [1, 2].map(no => ({ no, skip: false, status: 'done', items: cells(), good: '', cheer: '' }));
+      m.saveTest(x);
+      return x.id;
+    });
+    await page.click(`${B} [data-unv="list"]`);
+    await page.click(`${B} [data-un-open="${id}"]`);
+    await page.click(`${B} .steps [data-step="1"]`);
+    await page.fill(`${B} [data-k="1-points"]`, '5'); await page.dispatchEvent(`${B} [data-k="1-points"]`, 'change');
+    await page.fill(`${B} [data-k="2-points"]`, '8'); await page.dispatchEvent(`${B} [data-k="2-points"]`, 'change');
+    const x = await page.evaluate(id => JSON.parse(localStorage.getItem('ssam:unit:t:' + id)), id);
+    for (const s of x.students) {
+      assert(s.items[1].pts === 5 && s.items[1].flag === '', JSON.stringify(s.items[1]));
+      assert(s.items[2].pts === 6, JSON.stringify(s.items[2]));
+    }
+    await page.click(`${B} .steps [data-step="3"]`);
+    assert((await page.textContent(`${B} #unPending`)).includes('확인할 칸 2개'), await page.textContent(`${B} #unPending`)); // 서술형 2칸만(배점이 바뀌어 다시 확인)
+    await page.click(`${B} [data-un="back"]`);
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();

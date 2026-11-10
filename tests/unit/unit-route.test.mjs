@@ -104,3 +104,26 @@ test('[학생 문제지 넣기]에 학생 이름이 적힌 한글·글 파일: �
   // 빈 이름 칸(인쇄 머리)은 그대로 빈 문제지
   assert.equal(paperFileGoes({ name: '빈 문제지.hwp', text: '수학 3단원 평가\n이름: (        )\n1. 다음 중 알맞은 것은?\n2. 계산하세요.' }), 'paper');
 });
+
+test('[버그] [답안 넣기]에 넣은 사진·글자 없는 PDF 한두 쪽: 답안이라는 근거도 학생 문제지라는 근거도 없으면 물음(학생 이름이 보이는 그림을 답안 AI로 보내지 않게)', async () => {
+  const { keyFileGoes } = await import('../../web/menus/evaluate/unit/unit-route.js');
+  // 고치기 전: 쪽 나누기 AI는 3쪽부터라 사진 1장·PDF 2쪽은 근거 없이 「답안」 → 가리지 않은 그림이 답안 AI로 감
+  assert.equal(keyFileGoes({ name: 'IMG_0001.jpg', b: { pages: [pg()], roles: ['student'], seen: [] } }), 'ask');
+  assert.equal(keyFileGoes({ name: '3반 스캔.pdf', b: { pages: [pg(), pg()], roles: ['student', 'student'], seen: [] } }), 'ask');
+  // 3쪽 이상인데 쪽 나누기 AI가 실패한 것도 근거가 없음
+  assert.equal(keyFileGoes({ name: '스캔.pdf', b: { pages: [pg(), pg(), pg()], roles: ['student', 'student', 'student'], seen: [] } }), 'ask');
+  // 이름이 정답 파일 이름이면 묻지 않고 답안
+  for (const name of ['정답지.png', '단원평가 해설.pdf', '교사용.jpg', '모범 답안.jpeg']) assert.equal(keyFileGoes({ name, b: { pages: [pg()], roles: ['student'] } }), 'key', name);
+  // 글자층 글이 있으면(정답표로 읽히지 않아도) AI가 글로 읽음 — 묻지 않음
+  assert.equal(keyFileGoes({ name: '답.pdf', text: '1번 ③ 2번 ④ 3번 서술형 …', b: { pages: [], roles: [] } }), 'key');
+  // 근거가 있으면 그대로: AI가 본 쪽이 학생 → 학생 문제지, 글자 인식된 학생 스캔 → 학생 문제지, AI가 정답 쪽으로 봄 → 답안, 섞임 → 나눠 넣기
+  assert.equal(keyFileGoes({ name: 'a.pdf', b: { pages: [pg(), pg(), pg()], roles: ['student', 'student', 'student'], seen: [0, 1, 2] } }), 'papers');
+  assert.equal(keyFileGoes({ name: 'a.pdf', b: { pages: [pg({ ocr: true })], roles: ['student'] } }), 'papers');
+  assert.equal(keyFileGoes({ name: 'a.pdf', b: { pages: [pg(), pg(), pg()], roles: ['teacher', 'teacher', 'teacher'], seen: [0, 1, 2] } }), 'key');
+  assert.equal(keyFileGoes({ name: 'a.pdf', b: { pages: [pg(), pg(), pg()], roles: ['teacher', 'student', 'student'], seen: [0, 1, 2] } }), 'both');
+  // 글자층 쪽(인쇄된 정답 쪽)이 섞인 스캔: 정답 쪽이라는 근거가 있음
+  assert.equal(keyFileGoes({ name: 'a.pdf', b: { pages: [pg({ text: '정답 '.repeat(20) }), pg()], roles: ['teacher', 'student'] } }), 'key');
+  // 읽은 쪽이 없으면 답안 그대로(AI가 파일을 읽음)
+  assert.equal(keyFileGoes({ name: 'a.pdf', b: { pages: [], roles: [] } }), 'key');
+  assert.equal(keyFileGoes({ name: 'a.pdf' }), 'key');
+});

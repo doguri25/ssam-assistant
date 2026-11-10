@@ -32,6 +32,19 @@ export function keyScanGoes(b) {
   return pages.every((p, i) => roles[i] === 'student') ? 'papers' : 'both';
 }
 
+/* [답안 넣기]에 넣은 파일(name, 정답표로 읽히지 않은 글자층 글 text, 쪽을 나눠 본 b) → 'key' | 'papers' | 'both' | 'ask'.
+   정답 파일 이름(keyName)이면 답안, 글이 있으면 keyScanGoes대로(답안 AI는 글로 읽음).
+   글자 없는 그림(사진·스캔 PDF)인데 학생 쪽이라는 근거(글자 인식·AI가 본 쪽)도 정답·빈 쪽이라는 근거도 없으면 'ask'(선생님께 물음):
+   쪽 나누기 AI는 3쪽부터라 사진 한두 장·PDF 한두 쪽은 근거가 없고, 학생 문제지면 이름이 보이는 그림이 답안 AI로 감 */
+export function keyFileGoes({ name = '', text = '', b = null } = {}) {
+  if (keyName(name)) return 'key';
+  const go = keyScanGoes(b);
+  if (go !== 'key' || String(text || '').trim()) return go;
+  const pages = (b && b.pages) || [], roles = (b && b.roles) || [];
+  const told = ((b && b.seen) || []).length > 0 || pages.some(p => p && p.ocr) || roles.some(r => r && r !== 'student');
+  return pages.length && !told ? 'ask' : 'key';
+}
+
 /* 한꺼번에 넣기에서 나눈 것(b) → 단원평가 어디에 넣을지 { keyText, paperText, keyPages, blankPages, stuPages }.
    답안 글: 교사용으로 나눈 글, 없으면 학생용 글이 정답표로 읽힐 때 그 글.
    빈 문제지 글: 남은 학생용 글이 문항 둘 이상이거나 8줄을 넘을 때만(정답·해설지 앞머리 몇 줄이 넣어 둔 문제지를 덮어쓰지 않게).
