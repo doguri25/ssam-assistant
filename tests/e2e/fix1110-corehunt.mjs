@@ -80,6 +80,22 @@ await run('fix1110-corehunt', [
     assert(!(await p.textContent('#toast')).includes('AI를 저장했어요'), await p.textContent('#toast'));
     await p.click('#sheetRoot [data-close]');
   }],
+  ['[core-save-toast] 저장 공간이 꽉 차면 설정 › AI·화면의 바꾼 줄이 「저장했어요」 대신 저장 공간 알림', async () => {
+    const p = t2.page;
+    await p.click('nav.app-side [data-menu-go="settings"]'); await p.click('#menuTabs [data-tab="ai"]');
+    await p.click('section[data-menu="settings"] [data-set="resetRoles"]');
+    await p.waitForTimeout(150);
+    assert(!(await p.textContent('#toast')).includes('기본으로 되돌렸어요'), await p.textContent('#toast'));
+    await p.evaluate(() => document.getElementById('setReviewAi').dispatchEvent(new Event('change', { bubbles: true })));
+    await p.waitForTimeout(150);
+    assert(!(await p.textContent('#toast')).includes('검토 AI를 저장했어요'), await p.textContent('#toast'));
+    await p.click('#menuTabs [data-tab="screen"]');
+    const r = p.locator('section[data-menu="settings"] [data-ib-set="mode"]').last();
+    await r.check();
+    await p.waitForTimeout(150);
+    const msg = await p.textContent('#toast');
+    assert(!msg.includes('떠 있는 버튼 설정을 바꿨어요') && msg.includes('저장 공간이 모자라'), msg);
+  }],
   ['[core-chat-blocked] 저장소가 막혀도 채팅이 답함', async () => {
     await h3.send('오늘 할 일');
     await h3.waitBot('오늘');

@@ -339,7 +339,7 @@ document.addEventListener('click', e => {
     const a = b.dataset.set;
     if (a === 'openAi') { aiMsg = null; SSAM().ai.openSettings(); }
     else if (a === 'testAi') testAi();
-    else if (a === 'resetRoles') { resetRoles(); again(); toast('업무별 AI를 기본으로 되돌렸어요'); }
+    else if (a === 'resetRoles') { const ok = resetRoles(); again(); toast(ok ? '업무별 AI를 기본으로 되돌렸어요' : FULL_MSG, ok ? undefined : 8000); }
     else if (a === 'rosterFile') box.querySelector('#rosterFile').click();
     else if (a === 'backup') makeBackupFile();
     else if (a === 'restore') box.querySelector('#backupFile').click();
@@ -381,9 +381,9 @@ document.addEventListener('click', e => {
 
 document.addEventListener('change', e => {
   const ib = e.target.dataset && e.target.dataset.ibSet;
-  if (ib && box && box.contains(e.target)) { setInboxSettings({ [ib]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }); toast('떠 있는 버튼 설정을 바꿨어요'); return; }
+  if (ib && box && box.contains(e.target)) { const ok = setInboxSettings({ [ib]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }); toast(ok ? '떠 있는 버튼 설정을 바꿨어요' : FULL_MSG, ok ? undefined : 8000); return; }
   if (box && e.target.name === 'pcFlow' && box.contains(e.target)) { setPurchaseFlow(e.target.value); toast('품의 넣는 방식을 바꿨어요'); return; }
-  if (box && e.target.id === 'setReviewAi' && box.contains(e.target)) { setDefaultReview(aiFromValue(e.target.value)); again(); toast('기본 검토 AI를 저장했어요'); return; }
+  if (box && e.target.id === 'setReviewAi' && box.contains(e.target)) { const ok = setDefaultReview(aiFromValue(e.target.value)); again(); toast(ok ? '기본 검토 AI를 저장했어요' : FULL_MSG, ok ? undefined : 8000); return; }
   if (!box || !box.contains(e.target) || !['rosterFile', 'backupFile'].includes(e.target.id)) return;
   const f = e.target.files[0], id = e.target.id; e.target.value = '';
   if (f) (id === 'rosterFile' ? importRoster : restoreFile)(f);
