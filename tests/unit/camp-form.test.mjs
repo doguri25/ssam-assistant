@@ -159,3 +159,80 @@ test('견본 날짜형: 날짜 머리가 두 줄(월·일)이면 위 줄에 월,
   assert.deepEqual(t[2], ['1', '3-2', '김하늘', '○', '○', '', '2']);
   assert.equal(t.length, 5);
 });
+
+/* ---------- 검토에서 나온 양식 모양 ---------- */
+const rowsOf = async out => (await readTables(bytesOf(out))).tables.map(t => t.rows);
+test('교시형: 학생 칸이 아닌 칸(교과·비고·교사 사인)은 그대로, 칸에 적힌 학생 이름(지어낸)·빈칸·「학생1」만 학생 칸', async () => {
+  const f = form([{ type: 'table', head: true, rows: [['순', '일시', '시간', '교과', '가나다', '학생2', '', '비고', '교사 사인'], ['', '', '', '', '', '', '', '', ''], ['계', '', '', '', '', '', '', '', '']] }]);
+  const out = await fillCampForm('attend', camp(), f);
+  const [t] = await rowsOf(out);
+  assert.deepEqual(t[0], ['순', '일시', '시간', '교과', '김하늘', '이바다', '박구름', '비고', '교사 사인']);
+  assert.deepEqual(t[1].slice(3), ['', '○', '/', '○', '', '']);
+  assert.ok(!out.warn.length, JSON.stringify(out.warn));
+});
+
+test('날짜형: 성별·출석률 칸은 날짜 칸이 아님, 날짜 아래 요일 줄이면 위 줄에 날짜·아래 줄에 요일', async () => {
+  const WD = secPr => PARA(`<hp:run charPrIDRef="2">${secPr}</hp:run>${RUN(2, '출석부')}`, 1) + TPARA(TBL([
+    [H('순', 0, { rs: 2, h: 2000 }), H('이름', 1, { rs: 2, h: 2000 }), H('성별', 2, { rs: 2, h: 2000 }), H('', 3), H('', 4), H('출석률', 5, { rs: 2, h: 2000 }), H('계', 6, { rs: 2, h: 2000 })],
+    [H('월', 3), H('화', 4)],
+    [D('1', 0), D('', 1), D('', 2), D('', 3), D('', 4), D('', 5), D('', 6)]], 7, 3200));
+  const [t] = await rowsOf(await fillCampForm('attend', camp({ unit: 'day' }), await handForm(WD)));
+  assert.deepEqual(t.slice(0, 2), [['순', '이름', '성별', '1/8', '1/11', '출석률', '계'], ['', '', '', '금', '월', '', '']]);
+  assert.deepEqual(t[2], ['1', '김하늘', '', '○', '○', '', '2']);
+});
+
+test('날짜형: 위 줄 월 칸이 날짜 칸 여럿을 합쳤으면 그 칸에 「n월」, 아래 줄에 일', async () => {
+  const MONTH = secPr => PARA(`<hp:run charPrIDRef="2">${secPr}</hp:run>${RUN(2, '출석부')}`, 1) + TPARA(TBL([
+    [H('순', 0, { rs: 2, h: 2000 }), H('이름', 1, { rs: 2, h: 2000 }), H('9월', 2, { cs: 3 }), H('계', 5, { rs: 2, h: 2000 })],
+    [H('3', 2), H('10', 3), H('17', 4)],
+    [D('1', 0), D('', 1), D('', 2), D('', 3), D('', 4), D('', 5)]], 6, 3200));
+  const [t] = await rowsOf(await fillCampForm('attend', camp({ unit: 'day' }), await handForm(MONTH)));
+  assert.deepEqual(t.slice(0, 2), [['순', '이름', '1월', '', '', '계'], ['', '', '8', '11', '', '']]);
+});
+
+test('합친 머리 칸만 있어 이름·날짜를 쓸 칸이 없으면 알림', async () => {
+  const MERGED = secPr => PARA(`<hp:run charPrIDRef="2">${secPr}</hp:run>${RUN(2, '출석부')}`, 1) + TPARA(TBL([
+    [H('순', 0), H('일시', 1), H('시간', 2), H('학생', 3, { cs: 3 })],
+    [D('1', 0), D('', 1), D('', 2), D('', 3), D('', 4), D('', 5)]], 6, 2200));
+  const out = await fillCampForm('attend', camp(), await handForm(MERGED));
+  assert.ok(out.warn.join(' ').includes('이름'), JSON.stringify(out.warn));
+});
+
+test('관찰: 「지도 교과」 줄은 건너뛰고 「관찰 및 지도 결과」 줄에, 한 표에 이름·결과 묶음이 둘이면 둘 다', async () => {
+  const f = form([{ type: 'table', head: true, rows: [['이름', '', ''], ['지도 교과', '국어', '수학'], ['관찰 및 지도 결과', '', ''], ['이름', '', ''], ['관찰 및 지도 결과', '', '']] }]);
+  const out = await fillCampForm('observe', camp(), f);
+  const [t] = await rowsOf(out);
+  assert.deepEqual(t, [['이름', '김하늘', '이바다'], ['지도 교과', '국어', '수학'], ['관찰 및 지도 결과', '받아쓰기에 자신감이 붙음.', '두 자리 덧셈을 정확히 함.'],
+    ['이름', '박구름', ''], ['관찰 및 지도 결과', '끝까지 집중함.', '']]);
+  assert.ok(!out.warn.length, JSON.stringify(out.warn));
+});
+
+test('출석 및 관찰 기록부 양식(교시형): 출석표와 함께 뒤쪽 관찰 표도 채움', async () => {
+  const f = form([{ type: 'table', head: true, rows: [['순', '일시', '시간', '', '', ''], ['', '', '', '', '', ''], ['계', '', '', '', '', '']] }, { type: 'break' },
+    { type: 'table', head: true, rows: [['이름', '', '', ''], ['관찰 및 지도 결과', '', '', '']] }]);
+  const [, o] = await rowsOf(await fillCampForm('attend', camp(), f));
+  assert.deepEqual(o, [['이름', '김하늘', '이바다', '박구름'], ['관찰 및 지도 결과', '받아쓰기에 자신감이 붙음.', '두 자리 덧셈을 정확히 함.', '끝까지 집중함.']]);
+});
+
+test('표 안 제목 줄은 칸 이름에서 빼고, 「순서」도 순 칸, 첫 머리 칸이 비어도 머리로 봄', async () => {
+  const f = form([{ type: 'table', head: true, rows: [['교과캠프 수업 확인서', '', '', '', ''], ['순서', '날짜', '시간', '지도 내용', '확인(서명)'], ['1', '', '', '', ''], ['계', '', '', '', '']] }]);
+  const T = secPr => PARA(`<hp:run charPrIDRef="2">${secPr}</hp:run>${RUN(2, '확인서')}`, 1) + TPARA(TBL([
+    [H('교과캠프 수업 확인서', 0, { cs: 5 })], ['순서', '날짜', '시간', '지도 내용', '확인(서명)'].map((x, c) => H(x, c)),
+    [D('1', 0), D('', 1), D('', 2), D('', 3), D('', 4)], [D('계', 0), D('', 1), D('', 2), D('', 3), D('', 4)]], 5, 4400));
+  const [t] = await rowsOf(await fillCampForm('confirm', camp(), await handForm(T)));
+  assert.deepEqual(t.slice(2, 5).map(r => r[0]), ['1', '2', '3']);
+  assert.equal(t[2][3], '낱말 읽기');
+  void f;
+  const g = form([{ type: 'table', head: true, rows: [['', '일시', '시간', '', '', ''], ['', '', '', '', '', '']] }]);
+  const [u] = await rowsOf(await fillCampForm('attend', camp(), g));
+  assert.deepEqual(u[0].slice(3), ['김하늘', '이바다', '박구름']);
+});
+
+test('머리와 「계」 줄만 있는 표는 다른 표를 찾아보고 없으면 NO_MATCH, 계 줄·「총 ( )시간」이 없으면 지도 시간 알림, 「보조 지도교사」 줄은 그대로', async () => {
+  await assert.rejects(fillCampForm('confirm', camp(), form([{ type: 'table', head: true, rows: [['순', '날짜', '시간', '지도 내용'], ['계', '', '', '']] }])), e => e.code === 'NO_MATCH');
+  const out = await fillCampForm('confirm', camp(), form([{ type: 'p', text: '지도교사 :    (인)' }, { type: 'p', text: '보조 지도교사 :    (인)' },
+    { type: 'table', head: true, rows: [['순', '날짜', '시간', '지도 내용'], ['', '', '', '']] }]));
+  assert.ok(out.warn.join(' ').includes('총 3시간'), JSON.stringify(out.warn));
+  const { texts } = await readTables(bytesOf(out));
+  assert.ok(texts.includes('지도교사 : 한가람 (인)') && texts.includes('보조 지도교사 :    (인)'), JSON.stringify(texts));
+});

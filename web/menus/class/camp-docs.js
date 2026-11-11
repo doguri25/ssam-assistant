@@ -21,9 +21,9 @@ const notesOf = (layout, dflt) => (layoutOk(layout) && Array.isArray(layout.note
 
 /* ---------- 양식 칸 이름 → 칸 뜻 ---------- */
 const FIELD = {
-  confirm: [['seq', /^(?:순|순번|연번|번호|no\.?)$/i], ['date', /날짜|일자|일시|월\s*일/], ['sign', /확인|서명|날인|사인/], ['content', /내용|학습|활동/], ['subject', /교과|과목/], ['time', /시간|교시/]],
-  attendPeriod: [['seq', /^(?:순|순번|연번|번호|no\.?)$/i], ['date', /날짜|일자|일시|월\s*일/], ['time', /시간|교시/], ['student', /^(?:학생|아동|이름|성명)\s*\d*$|^\d+$/]],
-  attendDay: [['seq', /^(?:순|순번|연번|번호|no\.?)$/i], ['total', /^계$|합계|출석\s*(?:수|일)/], ['gradeClass', /학년|반/], ['name', /이름|성명/], ['date', /날짜|일자|^\d{1,2}\s*[./월]\s*\d{1,2}/]]
+  confirm: [['seq', /^(?:순|순번|순서|연번|번호|no\.?)$/i], ['date', /날짜|일자|일시|월\s*일/], ['sign', /확인|서명|날인|사인/], ['content', /내용|학습|활동/], ['subject', /교과|과목/], ['time', /시간|교시/]],
+  attendPeriod: [['seq', /^(?:순|순번|순서|연번|번호|no\.?)$/i], ['date', /날짜|일자|일시|월\s*일/], ['time', /시간|교시/], ['student', /^(?:학생|아동|이름|성명)\s*\d*$|^\d+$/]],
+  attendDay: [['seq', /^(?:순|순번|순서|연번|번호|no\.?)$/i], ['total', /^계$|합계|출석\s*(?:수|일)/], ['gradeClass', /학년|반/], ['name', /이름|성명/], ['date', /날짜|일자|^\d{1,2}\s*[./월]\s*\d{1,2}/]]
 };
 /* 칸 이름 목록 → 칸 뜻 목록(모르는 칸은 '') */
 export function mapColumns(cols, kind) {
