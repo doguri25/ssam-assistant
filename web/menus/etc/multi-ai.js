@@ -70,7 +70,7 @@ export function normQuant(v) {
 /* ---------- 근거자료 제목 읽기(plan) ---------- */
 export function evidencePrompt({ text = '', nImages = 0, item = '' } = {}, info) {
   return [EVIDENCE_TAG,
-    `교사 다면평가 정량평가 「${tidy(item) || '항목'}」의 근거자료(공문·이수증·상장·사진)예요. 비고 칸에 적을 문서 제목·문서 번호·날짜를 찾습니다.`,
+    `교사 다면평가 정량평가 「${maskSchool(tidy(item), info) || '항목'}」의 근거자료(공문·이수증·상장·사진)예요. 비고 칸에 적을 문서 제목·문서 번호·날짜를 찾습니다.`,
     '- title: 문서 제목(공문은 「제목」 줄, 이수증·상장은 연수·상 이름). 40자 안쪽. 사람·학교 이름은 쓰지 않습니다.',
     '- no: 문서 번호의 숫자만(「○○학교-1234」 → "1234", 「제12호」 → "12"). 없으면 "".',
     '- date: 시행일·발급일(YYYY.MM.DD.). 없으면 "".',
@@ -90,17 +90,23 @@ export function normEvidence(v) {
 }
 
 /* ---------- 줄글 → 자기실적평가서 칸(writing) ---------- */
+/* 학교 양식에서 온 글(지표·칸 이름)·내 정보 값의 학교 이름 가리기(사람 이름 모양은 줄글에서만 가림 — 지표 낱말이 바뀌지 않게) */
+export function maskSchool(text, info = {}) {
+  let s = str(text);
+  for (const [w, to] of [[(info || {}).school, '○○학교'], [(info || {}).name, '○○○']]) { const t = tidy(w); if (t.length >= 2) s = s.split(t).join(to); }
+  return s.replace(/[가-힣]{2,12}(?:초등학교|중학교|고등학교)/g, '○○학교');
+}
 export function qualPrompt({ parsed, draft = '', facts = {}, basics = {} } = {}, info) {
-  const p = parsed, f = facts || {};
+  const p = parsed, f = facts || {}, m = s => maskSchool(s, info);
   const known = [['주당 수업시수', f.hours], ['수업 공개', f.open], ['학생·학부모 상담', f.counsel], ['학생 상담', f.counselStudent], ['학부모 상담', f.counselParent], ['직무연수', f.training], ['업무', f.duty]]
-    .filter(([, x]) => tidy(x)).map(([k, x]) => `- ${k}: ${tidy(x)}`);
+    .filter(([, x]) => tidy(x)).map(([k, x]) => `- ${k}: ${m(tidy(x))}`);
   const sample = { basics: Object.fromEntries(p.basics.map(b => [b, ''])), sections: p.sections.map(s => ({ key: s.key, parts: s.parts.map(n => ({ name: n, items: ['…'] })) })), missing: [{ path: 'basics.' + p.basics[0], hint: '' }] };
   return [QUAL_TAG,
     '초등 교사가 올해 한 일을 편하게 쓴 줄글을 「교사 자기실적평가서」 칸에 나눠 넣습니다.',
-    '[평가 지표]', ...p.criteria.map(c => `- ${[c.area, c.element].filter(Boolean).join(' › ')}${c.max != null ? `(${c.max}점)` : ''}: ${c.indicators.join(' / ')}`),
-    '', '[기초 자료 칸] (앱이 아는 값, 모르면 빈칸)', ...p.basics.map(b => `- ${b}: ${tidy(basics[b])}`),
+    '[평가 지표]', ...p.criteria.map(c => m(`- ${[c.area, c.element].filter(Boolean).join(' › ')}${c.max != null ? `(${c.max}점)` : ''}: ${c.indicators.join(' / ')}`)),
+    '', '[기초 자료 칸] (앱이 아는 값, 모르면 빈칸)', ...p.basics.map(b => m(`- ${b}: ${maskFor(tidy(basics[b]), info)}`)),
     ...(known.length ? ['', '[정량평가에서 아는 수]', ...known] : []),
-    '', '[자기실적 평가 영역과 칸] key(영역): 칸', ...p.sections.map(s => `- ${s.key}(${s.name}): ${s.parts.join(', ')}`),
+    '', '[자기실적 평가 영역과 칸] key(영역): 칸', ...p.sections.map(s => m(`- ${s.key}(${s.name}): ${s.parts.join(', ')}`)),
     '', '[선생님 줄글]', maskFor(draft, info).slice(0, 6000) || '(없음)',
     '',
     '규칙:',

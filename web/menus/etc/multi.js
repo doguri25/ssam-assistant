@@ -93,7 +93,7 @@ function itemHTML(it) {
       ${ev.length ? `<ul class="mv-ev-list">${ev.map(x => `<li><button class="btn text mv-ev-file" type="button" data-mv-evfile="${esc(it.id)}|${esc(x.id)}" title="파일 내려받기">${esc(x.name)}</button>
         <input class="field" data-mv-evlabel="${esc(it.id)}|${esc(x.id)}" value="${esc(x.label)}" aria-label="${esc(x.name)} 비고 글" autocomplete="off">
         <button class="icon-btn" type="button" data-mv-evdel="${esc(it.id)}|${esc(x.id)}" aria-label="${esc(x.name)} 빼기">✕</button></li>`).join('')}</ul>` : ''}
-      <div class="row"><button class="btn" type="button" data-mv="evAdd" data-item="${esc(it.id)}"${n ? ' disabled' : ''}>${n ? '<span class="spin"></span>읽는 중…' : '근거자료 넣기'}</button>
+      <div class="row"><button class="btn" type="button" data-mv="evAdd" data-item="${esc(it.id)}" title="PDF·한글·워드·사진, 5MB까지. ${NO_KID}"${n ? ' disabled' : ''}>${n ? '<span class="spin"></span>읽는 중…' : '근거자료 넣기'}</button>
         <input type="file" id="mvEv-${esc(it.id)}" data-mv-evinput="${esc(it.id)}" hidden multiple accept="${EVIDENCE_ACCEPT}"></div>
       <label class="yp-f"><span class="lab">비고${edited ? ' <span class="cls-tag">고친 글</span>' : ''}</span><textarea class="field" data-mv-note="${esc(it.id)}" rows="2" placeholder="근거자료를 넣으면 「• 문서 제목 [번호, 날짜.]」가 들어가요">${esc(st.quant.notes[it.id] || '')}</textarea></label>
       ${edited && ev.length ? `<button class="btn text" type="button" data-mv="noteAuto" data-item="${esc(it.id)}">근거자료로 다시 채우기</button>` : ''}
@@ -131,6 +131,7 @@ function quantHTML() {
         ${q.formName ? '<button class="btn text" type="button" data-mv="quantFormDel">기준 양식 지우기</button>' : ''}
         <input type="file" id="mvQuantFile" hidden accept="${FORM_ACCEPT}"></div>
       <p class="muted" style="margin:0">한글(.hwp·.hwpx)·PDF·워드 기준 양식은 AI 없이 읽어요. 사진·스캔이거나 규칙으로 못 읽으면 AI가 읽어요(학교·이름은 가려 보내요).</p>
+      <p class="muted" style="margin:0">항목마다 [근거자료 넣기]로 공문·이수증 PDF·사진·한글 파일(5MB까지)을 넣으면 비고 칸에 「문서 제목 [번호, 날짜.]」가 들어가요. ${NO_KID}</p>
       ${aiRowHTML('plan')}
     </section>
     <section class="yp-card mv-sum">${totalHTML()}</section>
@@ -360,7 +361,7 @@ function editCriteria(el) {
     else if (k === 'imax') it.max = toNum(v);
     else if (k === 'iguide') it.guide = v;
     else if (k === 'tlabel' && it.tiers[+el.dataset.t]) it.tiers[+el.dataset.t].label = v;
-    else if (k === 'tpoints' && it.tiers[+el.dataset.t]) it.tiers[+el.dataset.t].points = toNum(v);
+    else if (k === 'tpoints' && it.tiers[+el.dataset.t]) it.tiers[+el.dataset.t].points = toNum(v) ?? 0; // 비운 점수는 0(점수 없는 지표는 저장할 때 빠짐)
     Object.assign(it, deriveItem(it));
   }
   save(); stale = true;

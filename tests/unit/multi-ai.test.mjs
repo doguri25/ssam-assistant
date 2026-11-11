@@ -57,6 +57,11 @@ test('정성 프롬프트: 지표·영역·칸·기초 자료(앱이 아는 값)
   assert.ok(p.startsWith(QUAL_TAG)); clean(p, '정성 프롬프트');
   for (const s of ['교육자로서 품성을 갖추고', '추진 목표', '창의적 업무개선 사항', '담당 학년 및 학급: 3-1', '22.8', '12건', '92시간', '코스웨어로 수학 수업', '"missing"', '지어내지'])
     assert.ok(p.includes(s), `${s} 없음`);
+  // 학교 양식에서 온 글(지표)·기초 자료 값에 든 학교 이름도 가림
+  const own = { ...parsed, criteria: [{ area: '1. 태도', element: '새싹초등학교 교육 목표 실천', max: 10, indicators: ['새싹초등학교 교육 목표를 실천하는가?'] }] };
+  const p2 = qualPrompt({ parsed: own, draft: '', facts: { duty: '새싹초등학교 연구부장' }, basics: { '담당 업무': '새싹초등학교 정보부장' } }, INFO);
+  clean(p2, '양식 글');
+  assert.ok(p2.includes('교육 목표를 실천하는가?') && p2.includes('정보부장'), p2.slice(0, 300));
 });
 
 test('정성 AI 답 → 보고서: 앱이 아는 기초 자료가 앞섬, 모르는 칸은 입력 필요(AI 안내 남김), 고친 칸은 두거나 덮기(mergeReport)', () => {
