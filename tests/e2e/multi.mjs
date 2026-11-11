@@ -15,7 +15,7 @@ await page.clock.setFixedTime(new Date('2026-11-11T09:00:00'));
 await page.addInitScript(() => {
   if (!localStorage.getItem('ssam:engine')) localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true }));
 });
-const SCHOOL = '새싹초등학교', TEACHER = '한가람', KIDS = ['김민수', '박지훈'];
+const SCHOOL = '새싹초등학교', TEACHER = '한가람', KIDS = ['최이솔', '박하랑'];
 const reqs = [];
 let slow = 0;
 await mockClaude(page, async ({ prompt, images }) => {
@@ -185,7 +185,7 @@ await run('multi', [
   ['정성: 줄글 → AI로 넣기(가짜) — 다른 메뉴에 가도 이어지고 기타에 「AI가 일하는 중」 점, 학교·이름 없이 보냄', async () => {
     await page.click(`${P} [data-mv-view="qual"]`);
     assert((await page.textContent(P)).includes('예시 서식이에요'), '예시 서식 안내');
-    await page.fill(`${P} #mvDraft`, '새싹초등학교 3학년 담임 한가람이에요. 김민수 학생과 박지훈 학생을 상담했어요. 코스웨어로 수학 기초 학습을 매주 했어요.');
+    await page.fill(`${P} #mvDraft`, '새싹초등학교 3학년 담임 한가람이에요. 최이솔 학생과 박하랑 학생을 상담했어요. 코스웨어로 수학 기초 학습을 매주 했어요.');
     slow = 900;
     await page.click(`${P} [data-mv="fill"]`);
     await page.click('nav.app-side [data-menu-go="plan"]');

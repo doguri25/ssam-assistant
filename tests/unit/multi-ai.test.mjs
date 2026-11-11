@@ -8,11 +8,11 @@ import { parseQualText, defaultQual, mergeReport, buildReport, getAt } from '../
 import { QUANT_TEXT, QUAL_TEXT, SCHOOL, TEACHER } from './multi-fixtures.mjs';
 
 const INFO = { school: SCHOOL, name: TEACHER, gradeClass: '3-1', duty: '생활안전부장', position: '교사' };
-const NAMES = [SCHOOL, TEACHER, '박지훈', '이서연', '010-1234-5678'];
+const NAMES = [SCHOOL, TEACHER, '박하랑', '윤다솜', '010-1234-5678'];
 const clean = (s, what) => { for (const n of NAMES) assert.ok(!s.includes(n), `${what}에 「${n}」: ${s.slice(0, 300)}`); };
 
 test('가리기: 학교 이름(내 정보·○○초등학교 꼴·【 】)·선생님 이름·사람 이름 모양·전화번호', () => {
-  const s = maskFor(`【새싹초등학교】 평가 기간\n새싹초등학교 교사 한가람이 박지훈 학생, 이서연 학생과 상담함. 문의 010-1234-5678\n방과후학교 운영`, INFO);
+  const s = maskFor(`【새싹초등학교】 평가 기간\n새싹초등학교 교사 한가람이 박하랑 학생, 윤다솜 학생과 상담함. 문의 010-1234-5678\n방과후학교 운영`, INFO);
   clean(s, '가린 글');
   assert.ok(s.includes('방과후학교 운영') && s.includes('상담함'), '학교 이름이 아닌 낱말은 그대로: ' + s);
   assert.ok(!maskFor('다른초등학교 교사', {}).includes('다른초등학교'), '내 정보가 없어도 ○○초등학교 꼴은 가림');
@@ -41,7 +41,7 @@ test('정량 AI 답 정리: 기준 모양(항목 2개 이상), 못 쓰면 null, 
 });
 
 test('근거자료 제목 읽기 프롬프트(가린 글·사진 수)와 답 정리(번호·날짜 꼴)', () => {
-  const p = evidencePrompt({ text: '새싹초등학교\n제목 연수 이수 확인\n교장 한가람\n시행 새싹초등학교-12 (2025. 8. 1.) 박지훈 010-1234-5678', nImages: 0, item: '직무연수 이수' }, INFO);
+  const p = evidencePrompt({ text: '새싹초등학교\n제목 연수 이수 확인\n교장 한가람\n시행 새싹초등학교-12 (2025. 8. 1.) 박하랑 010-1234-5678', nImages: 0, item: '직무연수 이수' }, INFO);
   assert.ok(p.startsWith(EVIDENCE_TAG)); clean(p, '근거자료 프롬프트');
   assert.ok(p.includes('직무연수 이수') && p.includes('"title"') && p.includes('"no"') && p.includes('"date"'));
   assert.ok(evidencePrompt({ text: '', nImages: 2, item: '수업 공개' }, INFO).includes('그림 2장'));
@@ -52,7 +52,7 @@ test('근거자료 제목 읽기 프롬프트(가린 글·사진 수)와 답 정
 
 test('정성 프롬프트: 지표·영역·칸·기초 자료(앱이 아는 값)·정량 수·가린 줄글, 선생님·학교·학생 이름 없음', () => {
   const parsed = parseQualText(QUAL_TEXT);
-  const draft = '새싹초등학교 3학년 담임 한가람이에요. 박지훈 학생과 이서연 학생을 상담했어요. 코스웨어로 수학 수업을 했어요. 학부모 문의 010-1234-5678';
+  const draft = '새싹초등학교 3학년 담임 한가람이에요. 박하랑 학생과 윤다솜 학생을 상담했어요. 코스웨어로 수학 수업을 했어요. 학부모 문의 010-1234-5678';
   const p = qualPrompt({ parsed, draft, facts: { hours: '22.8', open: '2회', counsel: '12건', training: '92시간', duty: '연구부장' }, basics: { '담당 학년 및 학급': '3-1', '담당 업무': '생활안전부장' } }, INFO);
   assert.ok(p.startsWith(QUAL_TAG)); clean(p, '정성 프롬프트');
   for (const s of ['교육자로서 품성을 갖추고', '추진 목표', '창의적 업무개선 사항', '담당 학년 및 학급: 3-1', '22.8', '12건', '92시간', '코스웨어로 수학 수업', '"missing"', '지어내지'])
