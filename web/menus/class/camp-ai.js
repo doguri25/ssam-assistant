@@ -60,9 +60,10 @@ export function findWeekdays(text) {
 /* ---------- 수업 일정 ---------- */
 const subjectsText = camp => (camp.subjects.length ? camp.subjects.join(', ') : '(정하지 않음)');
 /* → { prompt, range, weekdays } (range·weekdays: 앱이 글에서 읽은 것, 없으면 null) */
-export function schedulePrompt(text, camp, { year, today } = {}) {
+/* plan: 운영 계획서 글(계획 파일 넣기) — 글을 더 길게 보내고, 기간·요일은 부르는 쪽이 「기간」 줄에서 읽은 것(range·weekdays)을 씀 */
+export function schedulePrompt(text, camp, { year, today, plan = false, range: r0, weekdays: w0 } = {}) {
   const raw = String(text == null ? '' : text);
-  const range = findRange(raw, { year, today }), weekdays = findWeekdays(raw);
+  const range = r0 !== undefined && r0 !== null ? r0 : findRange(raw, { year, today }), weekdays = w0 !== undefined && w0 !== null ? w0 : findWeekdays(raw);
   const days = range ? expandDates(range.from, range.to, { weekdays: (weekdays || [1, 2, 3, 4, 5]).filter(d => d >= 1 && d <= 5) }) : null;
   const day = camp.unit === 'day';
   const prompt = ['[기초학력 캠프 수업 일정]',
@@ -70,13 +71,14 @@ export function schedulePrompt(text, camp, { year, today } = {}) {
     `캠프 교과: ${subjectsText(camp)} · 대상: ${toAlias(camp.target, camp) || '(없음)'} · 출석 단위: ${day ? '날마다(하루에 한 줄)' : '교시마다'}`,
     days ? `앱이 읽은 기간: ${range.from} ~ ${range.to} → 주말·공휴일을 빼면 수업 날 ${days.length}일(${days.map(d => `${+d.slice(5, 7)}/${+d.slice(8, 10)}(${WEEK[weekday(d)]})`).join(', ')})` : '',
     '',
-    '[선생님 글]', toAlias(raw, camp).slice(0, 2000) || '(없음)',
+    plan ? '[운영 계획서]' : '[선생님 글]', toAlias(raw, camp).slice(0, plan ? 6000 : 2000) || '(없음)',
     '',
     '규칙:',
     '- 날짜는 앱이 셉니다. from·to(기간 첫날·끝날, YYYY-MM-DD)와 weekdays(수업하는 요일 번호: 1=월 2=화 3=수 4=목 5=금)만 씁니다. 「평일」은 [1,2,3,4,5]. 기간 없이 날짜를 하나하나 말했으면 dates에 그 날짜들을 씁니다. 주말·공휴일은 앱이 뺍니다.',
     '- 하루 시간: start(첫 교시 시작, HH:MM), periods(하루 교시 수), minutes(한 교시 분), rest(쉬는 시간 분). 교시 시각이 고르지 않으면 slots에 [{"start":"09:00","end":"09:40"}, …]를 씁니다.',
     '- order: 하루 교시마다 교과(교시 수만큼, 날마다 같음). 예: ["국어","수학","국어","수학","국어"]',
     `- lessons: 교과마다 지도 내용을 차시 차례대로(${day ? '그 교과가 든 수업 날 수만큼, 하루에 한 줄' : '그 교과 수업 수만큼 = 수업 날 수 × 하루에 든 그 교과 교시 수'}). 한 줄 40자 안쪽으로 구체적으로(예: 「받침 없는 낱말 받아쓰기」「두 자리 수 덧셈(받아올림 없음)」). 기초학력 수준(낮은 학년 내용 복습)에 맞추고, 교재·플랫폼(예: 아이스크림 홈런)을 말했으면 그에 맞게 씁니다.`,
+    ...(plan ? ['- 계획서에 차시별 지도 내용이 있으면 그 차례대로 그대로 쓰고, 없으면 교과·차시에 맞게 씁니다. 계획 수립·기안·결과 보고 같은 행정 날짜는 수업 날이 아닙니다.'] : []),
     '- 학생 이름은 쓰지 않습니다.',
     '',
     '[출력] JSON 하나만:',

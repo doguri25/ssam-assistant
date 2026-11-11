@@ -41,6 +41,12 @@ await mockClaude(page, async ({ prompt, images }) => {
   }
   return '{}';
 });
+// 계획 파일(지어낸 운영 계획서): 기간·시간·교시·대상·교과·지도교사·지도 계획 표
+const PLAN = Buffer.from(makeHwpx({ title: '2027학년도 겨울방학 기초학력 교과캠프 운영 계획', blocks: [
+  { type: 'p', text: '2027학년도 겨울방학 기초학력 교과캠프 운영 계획' }, { type: 'p', text: '1. 추진 일정' }, { type: 'p', text: ' 가. 계획 수립: 2026. 12. 1. ~ 12. 5.' },
+  { type: 'p', text: '2. 운영 개요' }, { type: 'p', text: ' 가. 기간: 2027. 1. 8.(금) ~ 1. 22.(금) (평일)' }, { type: 'p', text: ' 나. 시간: 09:00 ~ 12:40 (하루 5교시, 1교시 40분, 쉬는 시간 5분)' },
+  { type: 'p', text: ' 다. 대상: 3학년 학습지원 대상 학생' }, { type: 'p', text: ' 라. 교과: 국어, 수학' }, { type: 'p', text: ' 마. 지도 교사: 한가람 (010-1234-5678)' },
+  { type: 'table', head: true, rows: [['차시', '국어', '수학'], ['1', '받침 없는 낱말 읽기', '두 자리 수 덧셈'], ['2', '받침 있는 낱말 읽기', '두 자리 수 뺄셈']] }] }));
 const C = 'section[data-menu="class"]', P = `${C} .cls-camp`;
 const toast = () => page.textContent('#toast');
 const waitToast = s => page.waitForFunction(s => (document.querySelector('#toast') || {}).textContent.includes(s), s, { timeout: 8000 });
@@ -252,6 +258,26 @@ await run('camp', [
       assert(r.doc <= 390 && r.app[0] <= r.app[1], `${k}: ${JSON.stringify(r)}`);
     }
     await page.setViewportSize({ width: 1280, height: 860 });
+  }],
+  ['계획 파일 넣기: 운영 계획서 → 빈 칸(캠프 이름·대상)만 채우고, 수업 일정은 계획서 기간·평일·교시로(지도 내용은 AI), 이름·전화번호는 AI로 안 감', async () => {
+    await page.click(`${P} [data-cp="new"]`);
+    assert(await page.$(`${P} [data-cp="planFile"][data-where="info"]`), '캠프 정보에 [계획 파일 넣기]');
+    const before = reqs.length;
+    await page.setInputFiles(`${P} #cpPlanFile-info`, { name: '겨울 캠프 운영 계획.hwpx', mimeType: 'application/octet-stream', buffer: PLAN });
+    await waitToast('수업 55줄을 만들었어요');
+    assert((await toast()).includes('계획서에서 캠프 이름·대상을 채웠어요'), await toast());
+    const c = await camp();
+    assert(c.name === '겨울방학 기초학력 교과캠프' && c.target === '3학년' && c.teacher === '한가람', JSON.stringify([c.name, c.target, c.teacher]));
+    assert(c.sessions.length === 55 && c.sessions[0].date === '2027-01-08' && c.sessions[0].start === '09:00' && c.sessions[0].content === '국어 1차시 낱말 읽기', JSON.stringify(c.sessions[0]));
+    assert(c.sessions.every(s => s.date >= '2027-01-08' && s.date <= '2027-01-22' && !['2027-01-09', '2027-01-16'].includes(s.date)), '계획서 기간·평일(토요일 빼고)');
+    const r = reqs.slice(before).find(x => x.prompt.includes('[운영 계획서]'));
+    assert(r && r.prompt.includes('받침 있는 낱말 읽기') && !r.prompt.includes('010-1234-5678'), '계획서 글(지도 계획 포함, 전화번호 가림)');
+    noNames(r.prompt, '계획서 글');
+    await secGo('sched');
+    assert(await page.$(`${P} [data-cp="planFile"][data-where="sched"]`), '수업 일정에도 [계획 파일 넣기]');
+    assert((await page.inputValue(`${P} #cpSchedPrompt`)).startsWith('1/8~1/22 평일, 09:00~12:40 하루 5교시'), '일정 칸 요약');
+    await page.click(`${P} [data-cp="del"]`);
+    await page.click('#cpDelOk');
   }],
   ['캠프 지우기', async () => {
     await page.click(`${P} [data-cp="new"]`);

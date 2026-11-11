@@ -17,6 +17,7 @@ import * as M from './camp-model.js';
 import { campDoc, docTitle, docLabel } from './camp-docs.js';
 import { schedulePrompt, normSchedule, buildSessions, obsPrompt, normObs, reportHeads, reportPrompt, normCampReport, layoutPrompt, normLayout } from './camp-ai.js';
 import { fillCampForm, REPORT_DEFAULT_MSG, NO_MATCH_MSG } from './camp-form.js';
+import { readPlan, planSchedule, planPrompt, planDraft, fillCampInfo } from './camp-plan.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad = n => String(n).padStart(2, '0');
@@ -48,6 +49,11 @@ function redraw() { if (!visible()) return; if (typing()) stale = true; else ren
 
 /* ---------- 그리기 ---------- */
 const btnBusy = (k, idle, doing) => (busy[k] ? `<span class="spin"></span>${doing}` : idle);
+const PLAN_ACCEPT = '.hwp,.hwpx,.pdf,.docx,.txt,.png,.jpg,.jpeg,.webp,.heic';
+/* 계획 파일 넣기 줄(캠프 정보·수업 일정에 하나씩) */
+const planRow = (c, where) => `<div class="row cp-plan"><button class="btn tonal" type="button" data-cp="planFile" data-where="${where}"${busy[`${c.id}:plan`] ? ' disabled' : ''}>${btnBusy(`${c.id}:plan`, '계획 파일 넣기', '계획서 읽는 중…')}</button>
+  <span class="muted">운영 계획서(한글·PDF·워드)를 넣으면 캠프 이름·대상·교과·지도교사(빈 칸만)와 수업 일정(기간·시간·교시${ai.ready() ? '·지도 내용' : ''})을 채워요.</span>
+  <input type="file" id="cpPlanFile-${where}" hidden accept="${PLAN_ACCEPT}"></div>`;
 function pickHTML(camps, c) {
   return `<div class="row cp-bar">
     ${camps.length ? `<label class="cp-pick"><span class="lab">캠프</span><select class="field" id="cpPick" aria-label="캠프 고르기">${camps.map(x => `<option value="${esc(x.id)}"${c && x.id === c.id ? ' selected' : ''}>${esc(x.name || '이름 없는 캠프')}</option>`).join('')}</select></label>` : ''}
@@ -62,6 +68,7 @@ function infoHTML(c) {
     <td><input class="field" data-st="${esc(s.id)}" data-k="name" value="${esc(s.name)}" aria-label="${i + 1}번째 학생 이름" autocomplete="off"></td>
     <td><button class="icon-btn" type="button" data-cp="delStudent" data-id="${esc(s.id)}" aria-label="${i + 1}번째 학생 빼기">×</button></td></tr>`).join('');
   return `<section class="yp-card">
+      ${planRow(c, 'info')}
       <div class="cp-grid">${f('name', '캠프 이름', '예) 3-(1) 느린학습자 지원 중점학급 교과캠프', 'wide')}${f('teacher', '지도교사', '선생님 이름(AI로 보내지 않아요)')}${f('target', '대상', '예) 3학년')}
         ${f('subjects', '교과', '예) 국어, 수학')}${f('approval', '결재란 칸', '예) 계(담당자), 교감, 교장')}</div>
       <div class="yp-f"><span class="lab">출석 단위</span><div class="seg" role="group" aria-label="출석 단위">${M.UNITS.map(([k, l]) => `<button type="button" data-unit="${k}" aria-pressed="${c.unit === k}">${l}</button>`).join('')}</div>
@@ -84,6 +91,7 @@ function schedHTML(c) {
     <td><input class="field wide" data-ss="${esc(s.id)}" data-k="content" value="${esc(s.content)}" aria-label="${i + 1}번째 줄 지도 내용" autocomplete="off"></td>
     <td><button class="icon-btn" type="button" data-cp="delRow" data-id="${esc(s.id)}" aria-label="${i + 1}번째 줄 지우기">×</button></td></tr>`).join('');
   return `<section class="yp-card cp-ai">
+      ${planRow(c, 'sched')}
       <label class="yp-f"><span class="lab">AI로 만들기</span><textarea class="field" id="cpSchedPrompt" rows="3" placeholder="예) 1/8~1/23 평일, 9:00~12:40 하루 5교시(40분·쉬는 5분), 국어·수학, 3학년 2명, 아이스크림 홈런">${esc(drafts[c.id] || '')}</textarea></label>
       <div class="row"><button class="btn tonal" type="button" data-cp="schedAi"${busy[k] ? ' disabled' : ''}>${btnBusy(k, 'AI로 만들기', 'AI가 만드는 중…')}</button>
         <span class="muted">날짜는 앱이 세고 주말·공휴일은 빼요. 지도 내용은 AI가 교과·차시에 맞게 써요.</span></div>
@@ -298,6 +306,64 @@ function schedAi() {
   const marked = Object.keys(c.att).length;
   ask('수업 일정에 어떻게 넣을까요?', `지금 수업 줄이 ${c.sessions.length}개 있어요.${marked ? ' 바꾸면 그 줄의 출석 체크도 지워져요.' : ''}`,
     [['add', '뒤에 더하기'], ['replace', '바꾸기', true]], mode => runSched(c.id, text, mode));
+}
+/* ---------- 계획 파일 넣기 ---------- */
+/* 운영 계획서 → 캠프 정보(빈 칸만) + 수업 일정. AI가 있으면 계획서 글(가림)을 일정 AI에, 없으면 규칙으로 날짜 × 교시(지도 내용 빈칸) */
+async function addPlan(file) {
+  const c0 = cur();
+  if (!c0) return;
+  const id = c0.id, k = `${id}:plan`;
+  if (busy[k]) return;
+  const isImg = IMAGE.test(file.name || '') || /^image\//.test(file.type || '');
+  if (isImg && !ai.ready()) { toast('사진·스캔 계획서는 AI가 읽어요. 설정 › AI에서 키를 넣거나 한글·PDF·워드 계획서를 넣어 주세요.', 7000); return; }
+  busy[k] = true; redraw();
+  try {
+    let text = '';
+    if (!isImg) { try { text = await readText(file); } catch (e) { if (!e || e.code !== 'PDF_NO_TEXT') throw e; } }
+    if (!text.trim() && !ai.ready()) { toast(fileMessage('PDF_NO_TEXT'), 7000); return; }
+    const ctx = { year: currentYear(), today: today() };
+    const p = readPlan(text, ctx);
+    let spec, byAI = false;
+    if (ai.ready()) {
+      const images = text.trim() ? [] : (SS().files && SS().files.toImages ? (await SS().files.toImages(file)).slice(0, 3) : []);
+      const c1 = M.getCamp(id);
+      if (!c1) return;
+      const { prompt, range, weekdays } = planPrompt(text, { ...c1, subjects: c1.subjects.length ? c1.subjects : p.subjects, target: c1.target || p.target }, ctx, p);
+      const v = await ai.generateJSON(images.length ? `${prompt}\n\n(계획서는 그림 ${images.length}장으로 보내요. 그림에서 기간·시간·교과·지도 내용을 읽어 주세요.)` : prompt, { images, task: 'plan', valid: o => isObj(o) });
+      spec = normSchedule(v, { range, weekdays }); byAI = true;
+    }
+    const c = M.getCamp(id);
+    if (!c) return; // 그사이 지운 캠프
+    const got = fillCampInfo(c, p);
+    if (!spec) spec = planSchedule(p, c);
+    const { sessions, empty } = buildSessions(spec, c);
+    if (!drafts[id] && planDraft(p)) drafts[id] = planDraft(p);
+    const last = got.length ? got[got.length - 1].charCodeAt(got[got.length - 1].length - 1) - 0xac00 : 0;
+    const info = got.length ? `계획서에서 ${got.join('·')}${last >= 0 && last % 28 ? '을' : '를'} 채웠어요. ` : '';
+    if (!sessions.length) {
+      if (save(c)) render();
+      toast(`${info}계획서에서 수업 기간·시간을 찾지 못해 수업 일정은 만들지 못했어요. 수업 일정의 [AI로 만들기] 칸에 읽은 내용을 적어 두었으니 고쳐서 눌러 주세요.`, 9000);
+      return;
+    }
+    const apply = mode => {
+      const x = M.getCamp(id);
+      if (!x) return;
+      Object.assign(x, { name: c.name, target: c.target, subjects: c.subjects, teacher: c.teacher });
+      if (mode === 'add') x.sessions = M.sortSessions([...x.sessions, ...sessions]);
+      else { x.sessions = sessions; x.att = {}; }
+      if (!x.subjects.length) x.subjects = [...new Set(sessions.flatMap(s => s.subject.split('·')).filter(Boolean))].slice(0, 12);
+      if (!save(x)) return;
+      render();
+      toast(`${info}수업 ${sessions.length}줄을 ${mode === 'add' ? '더했어요' : '만들었어요'}${spec.dropped ? ` · 주말·공휴일 ${spec.dropped}일은 뺐어요` : ''}`
+        + (empty ? (byAI ? ` · 지도 내용이 빈 ${empty}줄은 채워 주세요` : ' · 지도 내용은 비어 있어요(AI 키가 있으면 계획서의 지도 내용까지 넣어요)') : '') + '. 날짜·시간을 확인해 주세요.', 9000);
+    };
+    if (!c.sessions.length) { apply('replace'); return; }
+    save(c);
+    const marked = Object.keys(c.att).length;
+    ask('계획서 수업 일정을 어떻게 넣을까요?', `지금 수업 줄이 ${c.sessions.length}개 있어요.${marked ? ' 바꾸면 그 줄의 출석 체크도 지워져요.' : ''}`,
+      [['add', '뒤에 더하기'], ['replace', '바꾸기', true]], apply);
+  } catch (e) { toast(e && e.code && isFileCode(e.code) ? fileMessage(e.code) : errText(e), 7000); }
+  finally { delete busy[k]; redraw(); }
 }
 async function runSched(id, text, mode) {
   const k = `${id}:sched`;
@@ -557,6 +623,7 @@ function onClick(e) {
   else if (a === 'sortRows') { c.sessions = M.sortSessions(c.sessions); if (save(c)) render(); }
   else if (a === 'bulk') openBulk();
   else if (a === 'schedAi') schedAi();
+  else if (a === 'planFile') { const f = box.querySelector(`#cpPlanFile-${b.dataset.where}`); if (f) f.click(); }
   else if (a === 'attPrev' || a === 'attNext') { const ds = M.campDates(c), i = ds.indexOf(attDate); setAttDate(ds[Math.max(0, Math.min(ds.length - 1, i + (a === 'attPrev' ? -1 : 1)))]); }
   else if (a === 'attToday') { const ds = M.campDates(c), t = today(); if (ds.includes(t)) setAttDate(t); else toast('오늘은 수업이 없어요. 가까운 수업 날을 골라 주세요.'); }
   else if (a === 'attAll') { if (save(M.markAll(c, attDate))) { render(); toast(`${M.fmtDate(attDate)} 수업을 모두 출석으로 표시했어요`); } }
@@ -578,6 +645,7 @@ document.addEventListener('change', e => {
   if (el.id === 'cpPick') { M.setCurrentCamp(el.value); render(); return; }
   if (el.id === 'cpAttDate') { setAttDate(el.value); return; }
   if (el.dataset.formPick) { const c = cur(); c.forms[el.dataset.formPick] = el.value; if (save(c)) render(); return; }
+  if (/^cpPlanFile-/.test(el.id || '')) { const f = el.files[0]; el.value = ''; if (f) addPlan(f); return; }
   const m = /^cpFile-(\w+)$/.exec(el.id || '');
   if (m) { const f = el.files[0]; el.value = ''; if (f) addForm(m[1], f); return; }
   // 학생 칸(학년·반·번호)은 칸을 벗어나면 정리한 값으로
