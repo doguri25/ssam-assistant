@@ -11,6 +11,7 @@ export const CONFIRM_NOTE = '※확인(서명)란은 지도 교사가 반드시 
 export const ATTEND_NOTE = '※ 출석 : ○ , 결석 : /';
 export const OBSERVE_PER_PAGE = 5;
 const MARK = { O: '○', X: '/' };
+export const SIGN_CELL = '\n\n';
 export const hoursText = camp => `지도 시간: 총 ( ${hoursTotal(camp)} )시간`;
 const teacherLine = camp => (camp.teacher ? [{ type: 'p', text: `지도교사: ${camp.teacher}` }] : []);
 const noteBlocks = lines => lines.filter(Boolean).map(text => ({ type: 'small', text }));
@@ -58,7 +59,8 @@ export function confirmDoc(camp, layout) {
   return {
     title: titleOf('confirm', camp, layout),
     blocks: [
-      ...(ap.length ? [{ type: 'table', head: true, rows: [ap, ap.map(() => '')] }] : []),
+      // 결재란: 칸 이름 줄 + 도장 찍을 빈 줄(빈 줄 둘로 높이를 줌)
+      ...(ap.length ? [{ type: 'table', head: true, rows: [ap, ap.map(() => SIGN_CELL)] }] : []),
       ...teacherLine(camp),
       { type: 'table', head: true, rows: [t.head, ...t.rows, t.footer] },
       ...noteBlocks(notesOf(layout, [CONFIRM_NOTE]))

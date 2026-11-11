@@ -43,7 +43,7 @@ test('수업 확인서: 지도교사, 결재란(고친 칸 이름), 표 머리·
   const d = confirmDoc(c);
   assert.equal(d.title, '3-(1) 교과캠프 수업 확인서');
   const [ap, main] = tables(d);
-  assert.deepEqual(ap.rows, [['담당', '교감', '교장'], ['', '', '']], '결재란');
+  assert.deepEqual(ap.rows, [['담당', '교감', '교장'], ['\n\n', '\n\n', '\n\n']], '결재란(도장 찍을 빈 줄)');
   assert.equal(main.head, true);
   assert.deepEqual(main.rows[0], t.head);
   assert.deepEqual(main.rows.at(-1), t.footer);
