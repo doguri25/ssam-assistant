@@ -52,6 +52,9 @@ const toast = () => page.textContent('#toast');
 const waitToast = s => page.waitForFunction(s => (document.querySelector('#toast') || {}).textContent.includes(s), s, { timeout: 8000 });
 const tab = async () => { await page.click('nav.app-side [data-menu-go="class"]'); await page.click('#menuTabs [data-tab="camp"]'); await page.waitForSelector(`${P} .cp-page`); };
 const secGo = async k => { await page.click(`${P} [data-sec="${k}"]`); };
+const attDay = () => page.getAttribute(`${P} .cp-day[aria-pressed="true"]`, 'data-att-date'); // 고른 수업 날(날짜 칩)
+const stepLine = k => page.textContent(`${P} .cp-step[data-sec="${k}"] .cp-step-line`);
+const box = sel => page.$eval(sel, e => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, r: r.right, b: r.bottom }; });
 const camp = () => page.evaluate(() => { const v = JSON.parse(localStorage.getItem('ssam:camp') || 'null'); return v && v.camps.find(c => c.id === v.current) || (v && v.camps[0]); });
 const noNames = (s, what) => { for (const n of NAMES) assert(!s.includes(n), `${what}에 「${n}」: ${s.slice(0, 200)}`); };
 const dec = u => new TextDecoder().decode(u);
@@ -122,9 +125,33 @@ await run('camp', [
     assert(p.includes('수업 날 11일') && p.includes('아이스크림 홈런'), p.slice(0, 400));
     assert((await page.textContent(`${P} .cp-count`)).includes('55줄 · 총 55시간'));
   }],
+  ['단계 진행 표시 6칸: 번호·이름·상태 한 줄, 다 된 단계 ✓, 지금 단계 aria-current, 칸에 치면 상태 줄이 바로 바뀜', async () => {
+    const steps = await page.$$eval(`${P} .cp-steps .cp-step`, a => a.map(b => [b.dataset.sec, b.querySelector('.cp-step-name').textContent]));
+    assert(JSON.stringify(steps) === JSON.stringify([['info', '캠프 정보'], ['sched', '수업 일정'], ['att', '출석 체크'], ['obs', '관찰 기록'], ['report', '결과 보고서'], ['docs', '문서 내보내기']]), JSON.stringify(steps));
+    assert(!(await page.$(`${P} .cp-secs`)), '둥근 섹션 탭은 없어짐');
+    assert(await page.$$eval(`${P} .cp-step[aria-current="step"]`, a => a.map(b => b.dataset.sec).join()) === 'sched', '지금 단계 하나');
+    assert(await stepLine('info') === '대상 3학년 · 국어·수학', await stepLine('info'));
+    assert(await stepLine('sched') === '55줄 · 총 55시간');
+    assert(await stepLine('att') === '0 / 55 수업 체크');
+    assert(await stepLine('obs') === '입력 필요 2명');
+    assert(await stepLine('report') === '아직 안 씀');
+    assert(await stepLine('docs') === '1 / 4 준비됨', '지도 내용이 다 있으면 수업 확인서는 준비됨: ' + await stepLine('docs'));
+    const done = await page.$$eval(`${P} .cp-step.done`, a => a.map(b => b.dataset.sec + b.querySelector('.cp-step-n').textContent));
+    assert(done.join() === 'info✓,sched✓', '다 된 단계 ✓: ' + done.join());
+    assert((await page.textContent(`${P} .cp-step[data-sec="att"] .cp-step-n`)) === '3', '안 된 단계는 번호');
+    const bg = await page.$eval(`${P} .cp-step[aria-current="step"]`, b => [getComputedStyle(b).backgroundColor, getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()]);
+    assert(bg[0] !== 'rgba(0, 0, 0, 0)' && bg[0] !== 'rgb(255, 255, 255)', '지금 단계는 진한 칸: ' + bg.join());
+    await secGo('info');
+    assert(await page.getAttribute(`${P} .cp-step[data-sec="info"]`, 'aria-current') === 'step');
+    await page.fill(`${P} [data-cf="target"]`, '3학년 2반');
+    assert(await stepLine('info') === '대상 3학년 2반 · 국어·수학', '치는 동안 상태 줄: ' + await stepLine('info'));
+    assert(await page.evaluate(() => document.activeElement.dataset.cf) === 'target', '초점은 칸에 그대로');
+    await page.fill(`${P} [data-cf="target"]`, '3학년');
+    await secGo('sched');
+  }],
   ['출석 체크: 가까운 수업 날, 칸은 ○ → / → 빈칸, 모두 출석, 학생별 출석·결석·출석률', async () => {
     await secGo('att');
-    assert(await page.inputValue(`${P} #cpAttDate`) === '2027-01-08', '오늘(11/11)에 수업이 없으면 가까운 수업 날');
+    assert(await attDay() === '2027-01-08', '오늘(11/11)에 수업이 없으면 가까운 수업 날');
     const v0 = await camp(), s1 = v0.sessions[0].id, a = v0.students[0].id, b = v0.students[1].id;
     const cell = `${P} [data-att="${s1}|${a}"]`;
     await page.click(cell); assert(await page.textContent(cell) === '○', '○');
@@ -137,8 +164,29 @@ await run('camp', [
     await page.click(`${P} [data-att="${s1}|${b}"]`); // 이바다 1교시 결석
     const stats = await page.textContent(`${P} .cp-stats`);
     assert(stats.includes('5/55') && stats.includes('4/55') && stats.includes('80%') && stats.includes('100%'), stats);
+    assert((await page.textContent(`${P} .cp-day[data-att-date="2027-01-08"]`)).includes('✓'), '다 체크한 날 칩에 ✓');
+    assert(!(await page.textContent(`${P} .cp-day[data-att-date="2027-01-11"]`)).includes('✓'));
     await page.click(`${P} [data-cp="attNext"]`);
-    assert(await page.inputValue(`${P} #cpAttDate`) === '2027-01-11', '다음 수업 날');
+    assert(await attDay() === '2027-01-11', '다음 수업 날');
+  }],
+  ['출석 칸 64×48 이상: ○ 진한 채움 · / 주황 테두리 · — 점선(글은 빈칸), 날짜 칩을 누르면 그날로', async () => {
+    const v = await camp(), [a, b] = v.students.map(s => s.id), s0 = v.sessions.find(s => s.date === '2027-01-11').id;
+    const empty = `${P} [data-att="${s0}|${a}"]`;
+    const sz = await box(empty);
+    assert(sz.w >= 64 && sz.h >= 48, '칸 크기 ' + JSON.stringify(sz));
+    const e = await page.$eval(empty, el => ({ t: el.textContent, before: getComputedStyle(el, '::before').content, border: getComputedStyle(el).borderTopStyle, label: el.getAttribute('aria-label') }));
+    assert(e.t === '' && e.before.includes('—') && e.border === 'dashed' && e.label.endsWith('체크 안 함'), JSON.stringify(e));
+    await page.click(`${P} .cp-day[data-att-date="2027-01-08"]`);
+    assert(await attDay() === '2027-01-08', '칩으로 날 고르기');
+    assert(await page.evaluate(() => document.activeElement && document.activeElement.dataset.attDate) === '2027-01-08', '누른 칩에 초점');
+    const s1 = v.sessions[0].id;
+    const o = await page.$eval(`${P} [data-att="${s1}|${a}"]`, el => ({ t: el.textContent, bg: getComputedStyle(el).backgroundColor, ink: getComputedStyle(el).color }));
+    const x = await page.$eval(`${P} [data-att="${s1}|${b}"]`, el => ({ t: el.textContent, border: getComputedStyle(el).borderTopWidth, w: getComputedStyle(el).fontWeight }));
+    assert(o.t === '○' && o.bg !== 'rgb(255, 255, 255)' && o.ink === 'rgb(255, 255, 255)', '○ 진한 채움 ' + JSON.stringify(o));
+    assert(x.t === '/' && x.border === '2px' && +x.w >= 700, '/ 주황 테두리·굵게 ' + JSON.stringify(x));
+    assert((await page.textContent(`${P} .cp-att-rest`)).includes('다 체크했어요'), '남은 칸 없음');
+    assert(await page.isDisabled(`${P} [data-cp="attAll"]`), '남은 칸이 없으면 [남은 칸 모두 출석]은 꺼짐');
+    await page.click(`${P} [data-cp="attNext"]`);
   }],
   ['관찰 기록: 메모 → AI(이름 대신 학생A·학생B), 선생님이 고친 칸은 물은 뒤 그대로', async () => {
     await secGo('obs');
@@ -250,12 +298,43 @@ await run('camp', [
     await secGo('info');
     await page.click(`${P} [data-unit="period"]`);
   }],
-  ['390px 폭: 화면마다 가로로 넘치지 않음', async () => {
+  ['[남은 칸 모두 출석]: 빈칸만 ○, 표시한 /는 그대로 · 문서 준비 상자(출석 옆): 준비됨 ✓·할 일 남음(까닭)·그 단계로', async () => {
+    await secGo('att');
+    await page.click(`${P} .cp-day[data-att-date="2027-01-12"]`);
+    const v0 = await camp(), [a, b] = v0.students.map(s => s.id), day = v0.sessions.filter(s => s.date === '2027-01-12');
+    const cell = `${P} [data-att="${day[0].id}|${b}"]`;
+    await page.click(cell); await page.click(cell); // 빈칸 → ○ → /
+    assert((await page.textContent(`${P} .cp-att-rest`)).includes('남은 칸 9개'), await page.textContent(`${P} .cp-att-rest`));
+    await page.click(`${P} [data-cp="attAll"]`);
+    await waitToast('남은 9칸을 출석으로 표시했어요');
+    const v = await camp();
+    assert(v.att[day[0].id][b] === 'X' && day.every(s => v.att[s.id][a] === 'O') && day.slice(1).every(s => v.att[s.id][b] === 'O'), '빈칸만 ○: ' + JSON.stringify(day.map(s => v.att[s.id])));
+    assert((await page.textContent(`${P} .cp-day[data-att-date="2027-01-12"]`)).includes('✓'));
+    // 문서 준비: 수업 확인서·관찰 기록부·결과 보고서는 준비됨, 출석부는 할 일 남음(출석 45줄 남음)
+    const rd = await page.$$eval(`${P} .cp-ready .cp-rd`, a => a.map(li => [li.dataset.ready, li.classList[1], li.querySelector('.cp-rd-s').textContent.trim(), li.querySelector('.cp-dot').textContent]));
+    assert(JSON.stringify(rd) === JSON.stringify([['confirm', 'ready', '준비됨', '✓'], ['attend', 'todo', '할 일 남음: 출석 45줄 남음', ''], ['observe', 'ready', '준비됨', '✓'], ['report', 'ready', '준비됨', '✓']]), JSON.stringify(rd));
+    assert((await page.textContent(`${P} .cp-ready .cls-card-h`)).includes('3 / 4 준비됨'));
+    assert(await stepLine('docs') === '3 / 4 준비됨' && await stepLine('obs') === '2명 다 씀' && await stepLine('report') === '4칸', '단계 상태 줄');
+    assert(!(await page.$(`${P} .cp-rd[data-ready="attend"] [data-sec]`)), '지금 단계(출석 체크)로 가는 단추는 없음');
+    const m = await box(`${P} .cp-att-main`), r = await box(`${P} .cp-ready`);
+    assert(r.x >= m.r, '넓으면 출석 옆: ' + JSON.stringify({ m, r }));
+    await page.click(`${P} .cp-rd[data-ready="observe"] [data-sec]`);
+    assert(await page.getAttribute(`${P} .cp-step[data-sec="docs"]`, 'aria-current') === 'step', '준비된 문서는 문서 내보내기로');
+    await secGo('att');
+  }],
+  ['390px 폭: 화면마다 가로로 넘치지 않음 · 단계 표시는 가로 스크롤(지금 단계가 보임) · 문서 준비는 출석 아래', async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     for (const k of ['info', 'sched', 'att', 'obs', 'report', 'docs']) {
       await secGo(k); await page.waitForTimeout(100);
       const r = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, app: [document.querySelector('#app').scrollWidth, document.querySelector('#app').clientWidth] }));
       assert(r.doc <= 390 && r.app[0] <= r.app[1], `${k}: ${JSON.stringify(r)}`);
+      const s = await page.$eval(`${P} .cp-steps ol`, ol => { const c = ol.querySelector('[aria-current="step"]').getBoundingClientRect(), o = ol.getBoundingClientRect(); return { scroll: ol.scrollWidth > ol.clientWidth, seen: c.left >= o.left - 1 && c.right <= o.right + 1 }; });
+      assert(s.scroll && s.seen, `${k} 단계 표시: ${JSON.stringify(s)}`);
+      if (k === 'att') {
+        const m = await box(`${P} .cp-att-main`), rd = await box(`${P} .cp-ready`), c = await box(`${P} .cp-mark`);
+        assert(rd.y >= m.b, '좁으면 문서 준비는 아래');
+        assert(c.w >= 64 && c.h >= 48, '휴대폰에서도 칸 64×48: ' + JSON.stringify(c));
+      }
     }
     await page.setViewportSize({ width: 1280, height: 860 });
   }],

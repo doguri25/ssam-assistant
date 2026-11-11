@@ -3,7 +3,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  parseQuantText, DEFAULT_QUANT, defaultQuant, parseTier, deriveItem, tierOf, itemScore, groupScore, totalScore, allItems, fmtPts, normCriteria
+  parseQuantText, DEFAULT_QUANT, defaultQuant, parseTier, deriveItem, tierOf, itemScore, groupScore, totalScore, allItems, fmtPts, normCriteria,
+  missingItems, groupBar, countCalc, stepCount
 } from '../../web/menus/etc/multi-quant.js';
 import { QUANT_TEXT, QUANT_FLAT, SCHOOL, TEACHER } from './multi-fixtures.mjs';
 
@@ -169,4 +170,49 @@ test('항목을 고치면 지표 글에서 다시 읽음(deriveItem), 망가진 
   assert.equal(n.groups[0].items[0].max, 2, '항목 최대가 없으면 가장 큰 지표 점수');
   assert.ok(n.groups[0].id && n.groups[0].items[0].id);
   assert.equal(normCriteria(null), null); assert.equal(normCriteria({ groups: [] }), null);
+});
+
+// 화면 개선(스펙 2026-11-11-ui-refresh §4): 점수 요약 줄(입력 필요 항목·묶음 막대), 횟수 항목 [−]·[+]와 셈 글
+test('입력 필요 항목: 점수가 안 나오는 항목(빈 값·고르지 않음·잘못된 값), 기준 차례대로', () => {
+  const c = parseQuantText(QUANT_TEXT);
+  assert.equal(missingItems(c, {}).length, 11, '처음엔 모두');
+  const v = {};
+  const put = (name, e) => { v[item(c, name).id] = e; };
+  put('주당 수업시수', { v: '22.8' }); put('수업 공개 횟수', { v: '0' }); put('수업 컨설팅 횟수', { count: '0' });
+  put('학생·학부모 상담 실적', { v: '많이' }); put('학년 곤란도', { v: '' });
+  const m = missingItems(c, v);
+  assert.equal(m.length, 8);
+  assert.equal(m[0].name, '학생·학부모 상담 실적', '첫 빈 항목(잘못된 값도 입력 필요)');
+  assert.ok(!m.some(i => i.name === '수업 컨설팅 횟수'), '0회도 넣은 값');
+  assert.deepEqual(missingItems(null, v), []);
+});
+
+test('묶음 막대: 소계·최대·채움(%)·절반 미만이면 low, 아무것도 안 넣으면 빈 막대(low 아님)', () => {
+  const c = parseQuantText(QUANT_TEXT);
+  const g = c.groups[0], v = {};
+  assert.deepEqual(groupBar(g, v), { score: null, max: 30, pct: 0, low: false });
+  v[item(c, '수업 컨설팅 횟수').id] = { count: '1' };
+  assert.deepEqual(groupBar(g, v), { score: 1, max: 30, pct: 3, low: true });
+  v[item(c, '주당 수업시수').id] = { v: '22' };
+  assert.deepEqual(groupBar(g, v), { score: 26, max: 30, pct: 87, low: false });
+  // 절반 딱 맞으면 low 아님
+  assert.equal(groupBar({ max: 4, items: [{ id: 'x', kind: 'choice', max: 2, tiers: [{ label: '유', points: 2 }] }] }, { x: { v: '0' } }).low, false);
+  assert.equal(groupBar({ max: 0, items: [] }, {}).pct, 0);
+});
+
+test('횟수 셈 글: 「3회 × 1점 = 3점 → 최대 2점」, 최대 안이면 화살표 없음, 빈 값은 회당·최대', () => {
+  const cons = item(parseQuantText(QUANT_TEXT), '수업 컨설팅 횟수');
+  assert.equal(countCalc(cons, '3'), '3회 × 1점 = 3점 → 최대 2점');
+  assert.equal(countCalc(cons, '2'), '2회 × 1점 = 2점');
+  assert.equal(countCalc(cons, '0'), '0회 × 1점 = 0점');
+  assert.equal(countCalc(cons, ''), '회당 1점 · 최대 2점');
+  assert.equal(countCalc({ ...cons, unit: '건', per: 0.5 }, '3'), '3건 × 0.5점 = 1.5점');
+});
+
+test('[−]·[+]: 한 번씩 늘리고 줄임, 0 아래로는 안 내려감, 빈 값에서 [+]는 1·[−]는 0', () => {
+  assert.equal(stepCount('2', 1), '3'); assert.equal(stepCount('2', -1), '1');
+  assert.equal(stepCount('0', -1), '0');
+  assert.equal(stepCount('', 1), '1'); assert.equal(stepCount('', -1), '0');
+  assert.equal(stepCount('2.6', 1), '4', '소수는 반올림한 뒤');
+  assert.equal(stepCount('많이', 1), '1');
 });

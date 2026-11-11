@@ -292,3 +292,26 @@ export function totalScore(criteria, values = {}, short = false) {
   const ss = (criteria ? criteria.groups : []).map(g => groupScore(g, values, short)).filter(s => s != null);
   return ss.length ? round2(ss.reduce((a, b) => a + b, 0)) : null;
 }
+
+/* ---------- 화면: 점수 요약 줄·항목 카드 (스펙 2026-11-11-ui-refresh §4) ---------- */
+/* 「입력 필요」 항목: 점수가 안 나오는 항목(빈 값·고르지 않음·어느 지표에도 안 맞는 값), 기준 차례대로 */
+export const missingItems = (criteria, values = {}, short = false) => allItems(criteria).filter(it => itemScore(it, (values || {})[it.id], short) == null);
+/* 묶음 막대 { score, max, pct(0~100), low }: low = 소계가 묶음 최대의 절반 미만(아무것도 안 넣었으면 아님) */
+export function groupBar(group, values = {}, short = false) {
+  const score = groupScore(group, values, short), max = group.max;
+  const pct = score == null || !(max > 0) ? 0 : Math.max(0, Math.min(100, Math.round(score / max * 100)));
+  return { score, max, pct, low: score != null && max > 0 && score < max / 2 };
+}
+/* 횟수 항목 셈 글: 「3회 × 1점 = 3점 → 최대 2점」, 빈 값은 「회당 1점 · 최대 2점」 */
+export function countCalc(item, count) {
+  const u = item.unit || '회', per = item.per || 0, cap = ((item.tiers || [])[0] || {}).points ?? item.max ?? 0, c = toNum(count);
+  if (c == null || c < 0) return `${u}당 ${fmtPts(per)}점 · 최대 ${fmtPts(cap)}점`;
+  const raw = round2(c * per);
+  return `${fmtPts(c)}${u} × ${fmtPts(per)}점 = ${fmtPts(raw)}점${raw > cap ? ` → 최대 ${fmtPts(cap)}점` : ''}`;
+}
+/* [−]·[+]: 횟수를 하나씩(0 아래로는 안 내려감). 빈 값·잘못된 값에서 [+]는 1, [−]는 0 */
+export function stepCount(value, d) {
+  const n = toNum(value);
+  if (n == null || n < 0) return d > 0 ? '1' : '0';
+  return String(Math.max(0, Math.round(n) + d));
+}

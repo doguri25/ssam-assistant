@@ -114,6 +114,49 @@ await run('multi', [
     const v = await data();
     assert(v.quant.values[h].v === '22.8' && v.quant.values[h].deduct === '2', JSON.stringify(v.quant.values));
   }],
+  ['점수 요약 줄(위에 고정): 총점 「n / 100점」, 묶음 막대(절반 미만이면 주황), 입력 필요 n곳 → 첫 빈 항목으로 초점, 빈 항목은 주황 테두리', async () => {
+    const h = await itemId('주당 수업시수');
+    assert(await page.$eval(`${P} .mv-bar-wrap`, e => getComputedStyle(e).position) === 'sticky', 'sticky');
+    assert((await page.textContent(`${P} .mv-bar .mv-bar-total`)).replace(/\s+/g, '') === '총점49.6/100점', await page.textContent(`${P} .mv-bar .mv-bar-total`));
+    const bar = g => page.$eval(`${P} [data-mv-gbar="${g}"]`, e => ({ num: e.querySelector('.mv-gbar-num').textContent, low: e.classList.contains('low'), w: e.querySelector('.mv-meter i').style.width, fill: getComputedStyle(e.querySelector('.mv-meter i')).backgroundColor }));
+    const g1 = await bar('g1'), g3 = await bar('g3');
+    assert(g1.num === '29.6 / 30' && !g1.low && g1.w === '99%', JSON.stringify(g1));
+    assert(g3.num === '— / 10' && !g3.low && g3.w === '0%', '안 넣은 묶음: ' + JSON.stringify(g3));
+    await page.fill(`${P} [data-mv-v="${await itemId('직무연수 이수')}"]`, '12'); // 4점 → 4 / 10
+    const g3b = await bar('g3');
+    assert(g3b.num.startsWith('4 / 10') && g3b.low && g3b.num.includes('절반 미만') && g3b.fill !== g1.fill, '절반 미만은 주황: ' + JSON.stringify(g3b));
+    // 입력 필요: 11개 중 6개 넣음 → 5곳, 빈 항목 카드는 주황 테두리 + 「입력 필요」
+    assert((await page.textContent(`${P} [data-mv="quantNeed"]`)).trim() === '입력 필요 5곳', await page.textContent(`${P} [data-mv="quantNeed"]`));
+    assert((await page.$$(`${P} .mv-item.need`)).length === 5, '빈 항목 5개');
+    const grade = await itemId('학년 곤란도');
+    const nd = await page.$eval(`${P} .mv-item[data-item="${grade}"]`, e => ({ tag: !e.querySelector('.mv-q-need').hidden && e.querySelector('.mv-q-need').textContent, bw: getComputedStyle(e).borderTopWidth }));
+    assert(nd.tag === '입력 필요' && nd.bw === '2px', JSON.stringify(nd));
+    assert(await page.$eval(`${P} .mv-item[data-item="${h}"]`, e => !e.classList.contains('need') && e.querySelector('.mv-q-need').hidden), '넣은 항목은 표시 없음');
+    await page.click(`${P} [data-mv="quantNeed"]`);
+    await page.waitForFunction(id => document.activeElement && document.activeElement.dataset.mvPick === id && document.activeElement.dataset.i === '0', grade);
+    await page.waitForFunction(() => { const a = document.activeElement.getBoundingClientRect(), b = document.querySelector('.mv-bar').getBoundingClientRect(); return a.top >= b.bottom && a.bottom <= innerHeight; });
+    const top = await page.evaluate(() => [document.querySelector('.mv-bar').getBoundingClientRect().top, document.querySelector('#app').getBoundingClientRect().top]);
+    assert(top[0] >= top[1] && top[0] <= top[1] + 12, '스크롤해도 요약 줄은 위에: ' + top.join());
+    await page.click(`${P} [data-mv-pick="${grade}"][data-i="1"]`);
+    assert((await page.textContent(`${P} [data-mv="quantNeed"]`)).trim() === '입력 필요 4곳' && !(await page.$eval(`${P} .mv-item[data-item="${grade}"]`, e => e.classList.contains('need'))), '고르면 바로 빠짐');
+    assert(await page.$eval(`${P} [data-mv-pick="${grade}"][data-i="1"]`, e => getComputedStyle(e, '::before').content.includes('✓')), '고른 지표 ✓');
+    assert(await page.$eval(`${P} [data-mv-tier="${h}"].on`, e => getComputedStyle(e, '::before').content.includes('✓')), '범위 항목: 맞는 구간 ✓');
+    assert(await page.$eval(`${P} .mv-bar [data-mv="exportQuant"][data-exp-main]`, e => e.textContent) === '한글로 내려받기', '요약 줄에 [한글로 내려받기]');
+    await page.evaluate(() => { document.querySelector('#app').scrollTop = 0; });
+  }],
+  ['횟수 항목: [−] n회 [+]와 「3회 × 1점 = 3점 → 최대 2점」', async () => {
+    const k = await itemId('수업 컨설팅 횟수'), calc = () => page.textContent(`${P} [data-mv-calc="${k}"]`);
+    assert(await calc() === '3회 × 1점 = 3점 → 최대 2점', await calc());
+    await page.click(`${P} [data-mv-step="${k}"][data-d="-1"]`);
+    assert(await page.inputValue(`${P} [data-mv-count="${k}"]`) === '2' && await calc() === '2회 × 1점 = 2점' && await score('수업 컨설팅 횟수') === '2점');
+    await page.click(`${P} [data-mv-step="${k}"][data-d="1"]`); await page.click(`${P} [data-mv-step="${k}"][data-d="1"]`);
+    assert(await page.inputValue(`${P} [data-mv-count="${k}"]`) === '4' && await calc() === '4회 × 1점 = 4점 → 최대 2점');
+    assert((await data()).quant.values[k].count === '4', '저장');
+    const sz = await page.$eval(`${P} [data-mv-step="${k}"][data-d="1"]`, e => { const r = e.getBoundingClientRect(); return [r.width, r.height]; });
+    assert(sz[0] >= 44 && sz[1] >= 44, '누르는 칸 44px: ' + sz);
+    await page.click(`${P} [data-mv-step="${k}"][data-d="-1"]`);
+    assert(await calc() === '3회 × 1점 = 3점 → 최대 2점');
+  }],
   ['학교 기준 양식(.hwpx) → AI 없이 읽어 항목이 바뀌고, 같은 이름 항목 값은 이어짐', async () => {
     await page.setInputFiles(`${P} #mvQuantFile`, { name: '2026 다면평가 정량 기준.hwpx', mimeType: 'application/octet-stream', buffer: QUANT_FORM });
     await page.waitForFunction(() => [...document.querySelectorAll('.mv-box .mv-item-h b')].some(b => b.textContent === '학교 행사 지원'));
@@ -150,6 +193,24 @@ await run('multi', [
     const [dl] = await Promise.all([page.waitForEvent('download'), page.click(`${P} [data-mv-evfile^="${h}|"]`)]);
     assert(dl.suggestedFilename() === '교육과정 운영 계획.hwpx', dl.suggestedFilename());
     assert((await page.textContent(P)).includes('근거자료 파일은 이 기기에만 있어요'), '안내');
+  }],
+  ['근거자료 칩: 라벨 + ×, 맨 끝에 [+ 근거자료], ×로 빼면 비고·파일도 빠짐', async () => {
+    const h = await itemId('주당 수업시수'), w = await itemId('학교 행사 지원');
+    const chips = await page.$$eval(`${P} .mv-item[data-item="${h}"] .mv-ev-list > li`, a => a.map(li => li.classList.contains('mv-evchip') ? 'chip:' + li.querySelector('[data-mv-evlabel]').value : li.textContent.trim()));
+    assert(JSON.stringify(chips) === JSON.stringify(['chip:2026학년도 학교 교육과정 운영 계획 [12, 2026.08.01.]', '+ 근거자료']), JSON.stringify(chips));
+    await page.setInputFiles(`${P} #mvEv-${w}`, { name: '행사 계획.hwpx', mimeType: 'application/octet-stream', buffer: GONGMUN });
+    await page.waitForSelector(`${P} .mv-item[data-item="${w}"] .mv-evchip`);
+    assert(await page.inputValue(`${P} [data-mv-note="${w}"]`) === '• 2026학년도 학교 교육과정 운영 계획 [12, 2026.08.01.]');
+    const del = `${P} .mv-item[data-item="${w}"] [data-mv-evdel]`;
+    assert(await page.getAttribute(del, 'aria-label') === '행사 계획.hwpx 빼기' && (await page.textContent(del)).trim() === '×');
+    const sz = await page.$eval(del, e => { const r = e.getBoundingClientRect(); return [r.width, r.height]; });
+    assert(sz[0] >= 40 && sz[1] >= 44, '× 누르는 칸: ' + sz);
+    await page.click(del);
+    await page.waitForFunction(w => !document.querySelector(`.mv-item[data-item="${w}"] .mv-evchip`), w);
+    const v = await data();
+    assert(!v.quant.evidence[w] && !v.quant.notes[w], JSON.stringify([v.quant.evidence[w], v.quant.notes[w]]));
+    const n = await page.evaluate(async () => (await (await import('./core/form-store.js')).forms('multi')).list().then(l => l.filter(f => f.kind === 'evidence').length));
+    assert(n === 2, '뺀 파일은 이 기기에서도 지움: ' + n);
   }],
   ['한글 내려받기: 양식 모양(평가 기간·지표마다 한 줄·○·점수·소계·비고·감점·총 계·작성자·귀하·확인), 워드도', async () => {
     await page.click(`${P} [data-mv-pick="${await itemId('업무 곤란도')}"][data-i="0"]`);
@@ -300,7 +361,7 @@ await run('multi', [
     assert(await page.getAttribute(`${P} [data-mv-view="qual"]`, 'aria-pressed') === 'true');
     assert(await page.getAttribute('#menuTabs [data-tab="multi"]', 'aria-current') === 'page');
   }],
-  ['390px 폭: 정량·정성(펼친 칸 포함) 가로로 넘치지 않음', async () => {
+  ['390px 폭: 정량·정성(펼친 칸 포함) 가로로 넘치지 않음 · 정량 요약 줄은 스크롤해도 위에', async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     for (const v of ['quant', 'qual']) {
       await page.click(`${P} [data-mv-view="${v}"]`); await page.waitForTimeout(100);
@@ -308,6 +369,14 @@ await run('multi', [
       if (!(await page.$(`${P} .mv-info[open]`))) await page.click(`${P} .mv-info summary`);
       const r = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, app: [document.querySelector('#app').scrollWidth, document.querySelector('#app').clientWidth] }));
       assert(r.doc <= 390 && r.app[0] <= r.app[1], `${v}: ${JSON.stringify(r)}`);
+      if (v === 'quant') {
+        // 휴대폰에서도 요약 줄은 위에(틀이 #app을 스크롤하든 문서를 스크롤하든)
+        await page.evaluate(() => [...document.querySelectorAll('.mv-item')].at(-1).scrollIntoView({ block: 'center' }));
+        await page.waitForFunction(() => { const b = document.querySelector('.mv-bar').getBoundingClientRect(); return b.top >= -1 && b.top <= 24 && b.right <= innerWidth + 1; });
+        const r2 = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, bar: document.querySelector('.mv-bar').getBoundingClientRect().height }));
+        assert(r2.doc <= 390 && r2.bar < 220, '붙은 요약 줄: ' + JSON.stringify(r2));
+        await page.evaluate(() => { document.querySelector('#app').scrollTop = 0; scrollTo(0, 0); });
+      }
     }
     await page.setViewportSize({ width: 1280, height: 860 });
   }],

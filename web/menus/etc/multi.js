@@ -1,5 +1,6 @@
 /* 기타 › 다면평가 (스펙 2026-11-11): 내 정보 → [정량평가]·[정성평가] 두 쪽(누른 쪽 기억).
-   정량: 학교 기준 양식 넣기(규칙으로 읽고, 못 읽거나 사진·스캔이면 AI, 둘 다 못 하면 예시 기준) → 항목마다 숫자·고르기·횟수·감점 → 점수·소계·총점,
+   정량: 학교 기준 양식 넣기(규칙으로 읽고, 못 읽거나 사진·스캔이면 AI, 둘 다 못 하면 예시 기준) → 항목마다 숫자·고르기·횟수·감점 → 점수·소계·총점
+         (위에 고정한 점수 요약 줄: 총점·묶음 막대·입력 필요 n곳·내려받기 — 스펙 2026-11-11-ui-refresh §4),
          항목마다 근거자료(이 기기 IndexedDB forms('multi'))와 비고(「문서 제목 [번호, 날짜.]」), 기준 고치기, 양식 모양대로 한글·워드·PDF.
    정성: 기준 양식(정성 기준 + 자기실적평가서) 넣기 → 줄글 → [AI로 넣기](AI가 없으면 [넣기] — 낱말로 나눔) → 입력 필요 칸 채우기 → 교사 자기실적평가서.
    자료는 학년도 키 multi(multi-model.js). 학교·성명은 문서에만, AI로 가는 글은 가림(multi-ai.js maskFor). AI 일은 다른 메뉴로 가도 이어짐 */
@@ -15,7 +16,7 @@ import { readText, fileMessage, isFileCode } from '../../core/files.js';
 import { currentYear } from '../../core/years.js';
 import { getSchool } from '../../core/settings.js';
 import { getMulti, saveMulti, remapQuant, shiftPick, syncNotes, qualParsed, VIEWS, HOMEROOM, HEAD } from './multi-model.js';
-import { parseQuantText, defaultQuant, isDefaultQuant, deriveItem, tierOf, itemScore, groupScore, totalScore, allItems, fmtPts, toNum } from './multi-quant.js';
+import { parseQuantText, defaultQuant, isDefaultQuant, deriveItem, tierOf, itemScore, groupScore, totalScore, allItems, fmtPts, toNum, missingItems, groupBar, countCalc, stepCount } from './multi-quant.js';
 import { parseQualText, quantFacts, prefillBasics, buildReport, refreshMissing, normReport, remapFilled, getAt, setAt, mergeReport, missingCount, SELF_LEVELS } from './multi-qual.js';
 import { evidenceLabel, composeLabel, isComplete, okEvidenceFile, isImageName, fileBase, EVIDENCE_ACCEPT } from './multi-evidence.js';
 import { maskFor, quantPrompt, normQuant, evidencePrompt, normEvidence, qualPrompt, normQualAI, qualFormPrompt, normQualForm } from './multi-ai.js';
@@ -77,26 +78,37 @@ function infoHTML() {
 
 /* ---------- 그리기: 정량 ---------- */
 const kindWord = { range: '수 넣기', choice: '고르기', count: '횟수' };
+const CLIP_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5 12.6 19.9a5.5 5.5 0 0 1-7.8-7.8l8.4-8.4a3.7 3.7 0 0 1 5.2 5.2l-8.4 8.4a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"/></svg>';
+/* 칩 속 비고 글 칸의 너비(글자 수, 한글은 두 칸) — field-sizing을 못 쓰는 브라우저용 */
+const chipSize = s => Math.max(6, Math.min(48, [...String(s || '')].reduce((n, ch) => n + (/[ㄱ-힣]/.test(ch) ? 2 : 1), 1)));
+/* 항목 카드: 고른 지표 ✓ 칩·나머지 회색 칩(범위 항목은 숫자 칸 옆에 어느 구간인지), 횟수 항목 [−] n회 [+]·셈 글,
+   값이 빈 항목은 주황 테두리 + 「입력 필요」(paintScores가 칠함), 근거자료는 칩(라벨 + ×) + [+ 근거자료] */
 function itemHTML(it) {
   const e = st.quant.values[it.id] || {}, ev = st.quant.evidence[it.id] || [], n = busy.ev[it.id] || 0, edited = !!st.quant.notesEdited[it.id];
+  const id = esc(it.id), name = esc(it.name), u = esc(it.unit || '회');
   let input = '';
-  if (it.kind === 'range') input = `<label class="mv-num"><input class="field" inputmode="decimal" data-mv-v="${esc(it.id)}" value="${esc(e.v)}" aria-label="${esc(it.name)} 값" autocomplete="off"><span class="muted">${esc(it.unit)}</span></label>`;
-  else if (it.kind === 'count') input = `<label class="mv-num"><input class="field" inputmode="numeric" data-mv-count="${esc(it.id)}" value="${esc(e.count)}" aria-label="${esc(it.name)} 횟수" autocomplete="off"><span class="muted">${esc(it.unit || '회')} · ${esc(it.unit || '회')}당 ${fmtPts(it.per)}점, 최대 ${fmtPts(it.tiers[0].points)}점</span></label>`;
-  else input = `<div class="seg mv-pick" role="group" aria-label="${esc(it.name)} 지표 고르기">${it.tiers.map((t, k) => `<button type="button" data-mv-pick="${esc(it.id)}" data-i="${k}" aria-pressed="${String(e.v) === String(k)}">${esc(t.label)} · ${fmtPts(t.points)}점</button>`).join('')}</div>`;
-  const deduct = it.deduct ? `<label class="mv-num"><span class="muted">${esc(it.deduct.label || '감점')}</span><input class="field" inputmode="decimal" data-mv-deduct="${esc(it.id)}" value="${esc(e.deduct)}" aria-label="${esc(it.deduct.label || '감점')}(${esc(it.deduct.unit)})" autocomplete="off"><span class="muted">${esc(it.deduct.unit)} · ${fmtPts(it.deduct.per)}점씩 감점</span></label>` : '';
-  const tiers = it.kind === 'choice' ? '' : `<ul class="mv-tiers">${it.tiers.map((t, k) => `<li class="chip" data-mv-tier="${esc(it.id)}" data-i="${k}">${esc(t.label)} · ${fmtPts(t.points)}점</li>`).join('')}</ul>`;
-  return `<li class="mv-item" data-item="${esc(it.id)}">
-    <div class="mv-item-h"><b>${esc(it.name)}</b><span class="muted">${it.max != null ? `${fmtPts(it.max)}점` : ''} · ${kindWord[it.kind]}</span><span class="grow"></span><span class="mv-score" data-mv-score="${esc(it.id)}"></span></div>
-    <div class="mv-inputs">${input}${deduct}</div>${tiers}
+  if (it.kind === 'range') input = `<label class="mv-num"><input class="field" inputmode="decimal" data-mv-v="${id}" value="${esc(e.v)}" aria-label="${name} 값" autocomplete="off"><span class="muted">${esc(it.unit)}</span></label>`;
+  else if (it.kind === 'count') input = `<div class="mv-count" role="group" aria-label="${name} 횟수">
+      <button class="mv-step" type="button" data-mv-step="${id}" data-d="-1" aria-label="${name} 1${u} 줄이기">−</button>
+      <label class="mv-num"><input class="field" inputmode="numeric" data-mv-count="${id}" value="${esc(e.count)}" aria-label="${name} 횟수" autocomplete="off"><span class="muted">${u}</span></label>
+      <button class="mv-step" type="button" data-mv-step="${id}" data-d="1" aria-label="${name} 1${u} 늘리기">+</button></div>
+    <span class="mv-calc" data-mv-calc="${id}" aria-live="polite"></span>`;
+  else input = `<div class="mv-pick" role="group" aria-label="${name} 지표 고르기">${it.tiers.map((t, k) => `<button type="button" class="mv-tchip" data-mv-pick="${id}" data-i="${k}" aria-pressed="${String(e.v) === String(k)}">${esc(t.label)} · ${fmtPts(t.points)}점</button>`).join('')}</div>`;
+  const deduct = it.deduct ? `<label class="mv-num mv-deduct"><span class="muted">${esc(it.deduct.label || '감점')}</span><input class="field" inputmode="decimal" data-mv-deduct="${id}" value="${esc(e.deduct)}" aria-label="${esc(it.deduct.label || '감점')}(${esc(it.deduct.unit)})" autocomplete="off"><span class="muted">${esc(it.deduct.unit)} · ${fmtPts(it.deduct.per)}점씩 감점</span></label>` : '';
+  const tiers = it.kind === 'choice' ? '' : `<ul class="mv-tiers" aria-label="${name} 지표">${it.tiers.map((t, k) => `<li class="chip" data-mv-tier="${id}" data-i="${k}">${esc(t.label)} · ${fmtPts(t.points)}점</li>`).join('')}</ul>`;
+  return `<li class="mv-item" data-item="${id}">
+    <div class="mv-item-h"><b>${name}</b><span class="muted">${it.max != null ? `${fmtPts(it.max)}점` : ''} · ${kindWord[it.kind]}</span><span class="mv-q-need" hidden>입력 필요</span><span class="grow"></span><span class="mv-score" data-mv-score="${id}"></span></div>
+    <div class="mv-inputs">${input}${it.kind === 'range' ? tiers : ''}${deduct}</div>${it.kind === 'range' ? '' : tiers}
     ${it.guide ? `<p class="muted mv-guide">증빙: ${esc(it.guide)}</p>` : ''}
     <div class="mv-ev">
-      ${ev.length ? `<ul class="mv-ev-list">${ev.map(x => `<li><button class="btn text mv-ev-file" type="button" data-mv-evfile="${esc(it.id)}|${esc(x.id)}" title="파일 내려받기">${esc(x.name)}</button>
-        <input class="field" data-mv-evlabel="${esc(it.id)}|${esc(x.id)}" value="${esc(x.label)}" aria-label="${esc(x.name)} 비고 글" autocomplete="off">
-        <button class="icon-btn" type="button" data-mv-evdel="${esc(it.id)}|${esc(x.id)}" aria-label="${esc(x.name)} 빼기">✕</button></li>`).join('')}</ul>` : ''}
-      <div class="row"><button class="btn" type="button" data-mv="evAdd" data-item="${esc(it.id)}" title="PDF·한글·워드·사진, 5MB까지. ${NO_KID}"${n ? ' disabled' : ''}>${n ? '<span class="spin"></span>읽는 중…' : '근거자료 넣기'}</button>
-        <input type="file" id="mvEv-${esc(it.id)}" data-mv-evinput="${esc(it.id)}" hidden multiple accept="${EVIDENCE_ACCEPT}"></div>
-      <label class="yp-f"><span class="lab">비고${edited ? ' <span class="cls-tag">고친 글</span>' : ''}</span><textarea class="field" data-mv-note="${esc(it.id)}" rows="2" placeholder="근거자료를 넣으면 「• 문서 제목 [번호, 날짜.]」가 들어가요">${esc(st.quant.notes[it.id] || '')}</textarea></label>
-      ${edited && ev.length ? `<button class="btn text" type="button" data-mv="noteAuto" data-item="${esc(it.id)}">근거자료로 다시 채우기</button>` : ''}
+      <ul class="mv-ev-list" aria-label="${name} 근거자료">${ev.map(x => `<li class="mv-evchip">
+        <button class="mv-evchip-file" type="button" data-mv-evfile="${id}|${esc(x.id)}" title="「${esc(x.name)}」 내려받기" aria-label="「${esc(x.name)}」 파일 내려받기">${CLIP_SVG}</button>
+        <input class="mv-evchip-label" data-mv-evlabel="${id}|${esc(x.id)}" value="${esc(x.label)}" size="${chipSize(x.label)}" aria-label="${esc(x.name)} 비고 글" title="${esc(x.label)}" autocomplete="off">
+        <button class="mv-evchip-del" type="button" data-mv-evdel="${id}|${esc(x.id)}" aria-label="${esc(x.name)} 빼기">×</button></li>`).join('')}
+        <li class="mv-ev-addli"><button class="btn mv-ev-add" type="button" data-mv="evAdd" data-item="${id}" title="PDF·한글·워드·사진, 5MB까지. ${NO_KID}"${n ? ' disabled' : ''}>${n ? '<span class="spin"></span>읽는 중…' : '+ 근거자료'}</button>
+        <input type="file" id="mvEv-${id}" data-mv-evinput="${id}" hidden multiple accept="${EVIDENCE_ACCEPT}"></li></ul>
+      <label class="yp-f"><span class="lab">비고${edited ? ' <span class="cls-tag">고친 글</span>' : ''}</span><textarea class="field" data-mv-note="${id}" rows="2" placeholder="근거자료를 넣으면 「• 문서 제목 [번호, 날짜.]」가 들어가요">${esc(st.quant.notes[it.id] || '')}</textarea></label>
+      ${edited && ev.length ? `<button class="btn text" type="button" data-mv="noteAuto" data-item="${id}">근거자료로 다시 채우기</button>` : ''}
     </div></li>`;
 }
 function groupHTML(g) {
@@ -105,6 +117,38 @@ function groupHTML(g) {
     <ol class="mv-items">${g.items.map(itemHTML).join('')}</ol></section>`;
 }
 const totalHTML = () => `<div class="mv-total"><span>총점</span><b data-mv-total></b><span class="muted">/ ${fmtPts(st.quant.criteria.total)}점</span>${st.info.short ? '<span class="cls-tag">근무 6개월 이하</span>' : ''}</div>`;
+/* 점수 요약 줄(위에 고정): 총점 큰 글씨, 묶음마다 소계 막대(절반 미만이면 주황), 「입력 필요 n곳」(첫 빈 항목으로), [한글로 내려받기] */
+function barHTML() {
+  const c = st.quant.criteria;
+  return `<div class="mv-bar-wrap"><section class="mv-bar" aria-label="점수 요약">
+      <div class="mv-bar-top">
+        <p class="mv-bar-total"><span class="mv-bar-lab">총점</span><b data-mv-total></b><span class="mv-bar-of">/ ${fmtPts(c.total)}점</span>${st.info.short ? '<span class="cls-tag">6개월 이하</span>' : ''}</p>
+        <button class="btn mv-need-go" type="button" data-mv="quantNeed"></button>
+        <span class="grow"></span>${exportButton('data-mv="exportQuant"', { cls: 'primary' })}
+      </div>
+      <ul class="mv-bars" aria-label="묶음 소계">${c.groups.map(g => `<li class="mv-gbar" data-mv-gbar="${esc(g.id)}"><span class="mv-gbar-name" title="${esc(g.name)}">${esc(g.name)}</span>
+        <span class="mv-gbar-num"></span><span class="mv-meter" aria-hidden="true"><i></i></span></li>`).join('')}</ul>
+    </section></div>`;
+}
+/* 위 고정은 CSS sticky(#app이 스크롤될 때). 틀이 #app 대신 문서를 스크롤하면(좁은 화면) sticky가 듣지 않으므로
+   그때만 요약 줄을 화면 맨 위에 띄우고(fixed) 제자리는 같은 높이로 비워 둠 */
+let floatRaf = 0;
+function floatBar() {
+  floatRaf = 0;
+  const wrap = box && box.querySelector('.mv-bar-wrap'), bar = wrap && wrap.firstElementChild;
+  if (!bar || (!visible() && !bar.classList.contains('float'))) return;
+  const app = document.getElementById('app'), doc = document.scrollingElement || document.documentElement;
+  const docScrolls = !!app && app.scrollHeight <= app.clientHeight + 1 && doc.scrollHeight > innerHeight + 1;
+  const r = wrap.getBoundingClientRect(), view = wrap.parentElement.getBoundingClientRect();
+  const on = visible() && docScrolls && r.top < 0 && view.bottom > bar.offsetHeight + 24;
+  bar.classList.toggle('float', on);
+  wrap.style.minHeight = on ? `${bar.offsetHeight}px` : '';
+  bar.style.left = on ? `${r.left}px` : '';
+  bar.style.width = on ? `${r.width}px` : '';
+}
+const floatSoon = () => { if (!floatRaf) floatRaf = requestAnimationFrame(floatBar); };
+addEventListener('scroll', floatSoon, { passive: true });
+addEventListener('resize', floatSoon);
 function editHTML() {
   const c = st.quant.criteria;
   const inp = (attrs, v, label, cls = '') => `<input class="field${cls}" ${attrs} value="${esc(v)}" aria-label="${esc(label)}" autocomplete="off">`;
@@ -124,17 +168,17 @@ function editHTML() {
 }
 function quantHTML() {
   const q = st.quant, c = q.criteria, dflt = isDefaultQuant(c) && !q.formName;
-  return `<section class="yp-card mv-form">
+  return `${barHTML()}
+    <section class="yp-card mv-form">
       <div class="cls-card-h"><h3>정량평가 기준</h3><span class="muted">${esc(q.formName ? `「${q.formName}」 · ` : '')}묶음 ${c.groups.length}개 · 항목 ${allItems(c).length}개</span></div>
       ${dflt ? '<p class="banner info"><span class="grow">예시 기준이에요. 학교 기준 양식을 넣어 주세요.</span></p>' : ''}
       <div class="row"><button class="btn" type="button" data-mv="quantForm"${busy.quantForm ? ' disabled' : ''}>${busy.quantForm ? '<span class="spin"></span>읽는 중…' : '기준 양식 넣기'}</button>
         ${q.formName ? '<button class="btn text" type="button" data-mv="quantFormDel">기준 양식 지우기</button>' : ''}
         <input type="file" id="mvQuantFile" hidden accept="${FORM_ACCEPT}"></div>
       <p class="muted" style="margin:0">한글(.hwp·.hwpx)·PDF·워드 기준 양식은 AI 없이 읽어요. 사진·스캔이거나 규칙으로 못 읽으면 AI가 읽어요(글은 학교·이름을 가려 보내고, 사진·스캔은 그림 그대로 가요).</p>
-      <p class="muted" style="margin:0">항목마다 [근거자료 넣기]로 공문·이수증 PDF·사진·한글 파일(5MB까지)을 넣으면 비고 칸에 「문서 제목 [번호, 날짜.]」가 들어가요. ${NO_KID}</p>
+      <p class="muted" style="margin:0">항목마다 [+ 근거자료]로 공문·이수증 PDF·사진·한글 파일(5MB까지)을 넣으면 비고 칸에 「문서 제목 [번호, 날짜.]」가 들어가요. ${NO_KID}</p>
       ${aiRowHTML('plan')}
     </section>
-    <section class="yp-card mv-sum">${totalHTML()}</section>
     ${c.groups.map(groupHTML).join('')}
     ${editHTML()}
     <section class="yp-card mv-sum">${totalHTML()}
@@ -195,19 +239,48 @@ function pageHTML() {
     <div class="mv-view">${st.view === 'quant' ? quantHTML() : qualHTML()}</div>
   </div>`;
 }
-/* 점수·소계·총점·고른 지표만 다시 칠함(칸에 치는 동안 화면을 다시 그리지 않게) */
+/* 점수·소계·총점·고른 지표·입력 필요·묶음 막대만 다시 칠함(칸에 치는 동안 화면을 다시 그리지 않게) */
 function paintScores() {
   if (!box || st.view !== 'quant') return;
   const c = st.quant.criteria, v = st.quant.values, short = !!st.info.short;
+  const miss = new Set(missingItems(c, v, short).map(i => i.id));
   for (const it of allItems(c)) {
-    const e = v[it.id] || {}, s = itemScore(it, e, short), t = tierOf(it, it.kind === 'count' ? e.count : e.v, short);
-    const el = box.querySelector(`[data-mv-score="${CSS.escape(it.id)}"]`);
+    const e = v[it.id] || {}, s = itemScore(it, e, short), t = tierOf(it, it.kind === 'count' ? e.count : e.v, short), q = CSS.escape(it.id);
+    const el = box.querySelector(`[data-mv-score="${q}"]`);
     if (el) { el.textContent = s == null ? '—' : `${fmtPts(s)}점`; el.classList.toggle('on', s != null); }
-    box.querySelectorAll(`[data-mv-tier="${CSS.escape(it.id)}"]`).forEach(x => x.classList.toggle('on', !!t && +x.dataset.i === t.index));
+    box.querySelectorAll(`[data-mv-tier="${q}"]`).forEach(x => x.classList.toggle('on', !!t && +x.dataset.i === t.index));
+    const li = box.querySelector(`.mv-item[data-item="${q}"]`);
+    if (li) { li.classList.toggle('need', miss.has(it.id)); const tag = li.querySelector('.mv-q-need'); if (tag) tag.hidden = !miss.has(it.id); }
+    const calc = it.kind === 'count' && box.querySelector(`[data-mv-calc="${q}"]`);
+    if (calc) calc.textContent = countCalc(it, e.count);
   }
-  for (const g of c.groups) { const el = box.querySelector(`[data-mv-gsum="${CSS.escape(g.id)}"]`); if (el) el.textContent = `소계 ${fmtPts(groupScore(g, v, short)) || '—'} / ${fmtPts(g.max)}점`; }
+  for (const g of c.groups) {
+    const el = box.querySelector(`[data-mv-gsum="${CSS.escape(g.id)}"]`);
+    if (el) el.textContent = `소계 ${fmtPts(groupScore(g, v, short)) || '—'} / ${fmtPts(g.max)}점`;
+    const bar = box.querySelector(`[data-mv-gbar="${CSS.escape(g.id)}"]`);
+    if (!bar) continue;
+    const b = groupBar(g, v, short);
+    bar.classList.toggle('low', b.low);
+    bar.querySelector('.mv-meter i').style.width = `${b.pct}%`;
+    bar.querySelector('.mv-gbar-num').innerHTML = `${b.score == null ? '—' : fmtPts(b.score)} / ${fmtPts(b.max)}${b.low ? '<span class="sr"> (절반 미만)</span>' : ''}`;
+  }
   const tt = totalScore(c, v, short);
   box.querySelectorAll('[data-mv-total]').forEach(x => { x.textContent = tt == null ? '—' : fmtPts(tt); });
+  const nb = box.querySelector('[data-mv="quantNeed"]');
+  if (nb) {
+    nb.innerHTML = miss.size ? `<span>입력 필요 <b data-mv-qneed>${miss.size}</b>곳</span>` : '<span><span aria-hidden="true">✓ </span>모두 넣었어요</span>';
+    nb.classList.toggle('warn', !!miss.size);
+    nb.disabled = !miss.size;
+  }
+}
+/* 「입력 필요 n곳」: 첫 빈 항목으로 스크롤·초점 */
+function goNeed() {
+  const it = missingItems(st.quant.criteria, st.quant.values, !!st.info.short)[0];
+  const li = it && box.querySelector(`.mv-item[data-item="${CSS.escape(it.id)}"]`);
+  const f = li && (li.querySelector('.mv-inputs input') || li.querySelector('.mv-inputs button'));
+  if (!f) return;
+  li.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  f.focus({ preventScroll: true });
 }
 /* 입력 필요 표시·띠만 다시 칠함 */
 function paintNeed() {
@@ -235,6 +308,7 @@ export function render() {
   keepFiles(box, () => { box.innerHTML = pageHTML(); });
   if (sel) { const n = box.querySelector(sel); if (n && !n.disabled) n.focus({ preventScroll: true }); }
   paintScores();
+  floatBar();
 }
 
 /* ---------- 파일 읽기 ---------- */
@@ -526,6 +600,7 @@ function onInput(el) {
     const [itemId, evId] = el.dataset.mvEvlabel.split('|'), ev = (st.quant.evidence[itemId] || []).find(x => x.id === evId);
     if (!ev) return;
     ev.label = el.value; ev.edited = true; syncNotes(st.quant, itemId); save();
+    el.size = chipSize(el.value);
     const n = box.querySelector(`[data-mv-note="${CSS.escape(itemId)}"]`);
     if (n && !st.quant.notesEdited[itemId]) n.value = st.quant.notes[itemId] || '';
     return;
@@ -555,6 +630,15 @@ function onClick(e) {
     st.quant.values[id] = { v: '', count: '', deduct: '', ...st.quant.values[id], v: cur === i ? '' : i };
     save();
     box.querySelectorAll(`[data-mv-pick="${CSS.escape(id)}"]`).forEach(b => b.setAttribute('aria-pressed', String(st.quant.values[id].v === b.dataset.i)));
+    paintScores(); return;
+  }
+  const sp = t.closest('[data-mv-step]');
+  if (sp) {
+    const id = sp.dataset.mvStep, next = stepCount((st.quant.values[id] || {}).count, +sp.dataset.d);
+    st.quant.values[id] = { v: '', count: '', deduct: '', ...st.quant.values[id], count: next };
+    save();
+    const n = box.querySelector(`[data-mv-count="${CSS.escape(id)}"]`);
+    if (n) n.value = next;
     paintScores(); return;
   }
   const sf = t.closest('[data-mv-self]');
@@ -589,7 +673,8 @@ function onClick(e) {
     const cell = tag && tag.closest('.mv-cell, li');
     const f = cell && cell.querySelector('input, button');
     if (f) { f.scrollIntoView({ block: 'center' }); f.focus(); }
-  } else if (a === 'exportQuant') exportQuant();
+  } else if (a === 'quantNeed') goNeed();
+  else if (a === 'exportQuant') exportQuant();
   else if (a === 'exportQual') exportQual();
 }
 
