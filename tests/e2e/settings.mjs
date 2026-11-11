@@ -54,7 +54,7 @@ await run('settings', [
     await page.fill(`${S} [data-break="0"][data-f="from"]`, '2027-07-24');
     await page.fill(`${S} [data-break="0"][data-f="to"]`, '2027-08-20');
     await page.click(`${S} [data-set="saveSchool"]`);
-    await page.reload(); await page.waitForTimeout(300);
+    await page.reload(); await page.waitForTimeout(300); await tab('school'); // 켜면 「오늘」이라 다시 들어감
     assert(await page.inputValue(`${S} #schName`) === '쌤초등학교', '학교명');
     assert(await page.inputValue(`${S} #schClasses`) === '24', '학급 수');
     assert(await page.inputValue(`${S} [data-break="0"][data-f="label"]`) === '여름방학', '방학 이름');
@@ -63,7 +63,7 @@ await run('settings', [
     await page.fill(`${S} [data-break="0"][data-f="from"]`, '2027-09-01');
     await page.click(`${S} [data-set="saveSchool"]`);
     assert((await page.textContent(S)).includes('시작일이 끝일보다 늦어요'), '안내 없음');
-    await page.reload(); await page.waitForTimeout(300);
+    await page.reload(); await page.waitForTimeout(300); await tab('school');
     assert(await page.inputValue(`${S} [data-break="0"][data-f="from"]`) === '2027-07-24', '잘못된 값이 저장됨');
   }],
   ['품의 기준 금액: 기본 20,000,000원, 바꾸면 남고, 잘못된 값은 거절', async () => {
@@ -71,7 +71,7 @@ await run('settings', [
     assert(await page.inputValue(`${S} #limitWon`) === '20000000', '기본값');
     assert((await page.textContent(S)).includes('행정실에 확인해 주세요'), '안내 문구');
     await page.fill(`${S} #limitWon`, '30000000'); await page.click(`${S} [data-set="saveLimit"]`);
-    await page.reload(); await page.waitForTimeout(300);
+    await page.reload(); await page.waitForTimeout(300); await tab('purchase');
     assert(await page.inputValue(`${S} #limitWon`) === '30000000', '저장 안 됨');
     await page.fill(`${S} #limitWon`, '-5'); await page.click(`${S} [data-set="saveLimit"]`);
     assert((await page.textContent(S)).includes('1원 이상'), '거절 안내 없음');
