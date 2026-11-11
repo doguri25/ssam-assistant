@@ -56,7 +56,7 @@ await run('year-plan', [
     assert(await page.locator(`${Y} #ypReview input[data-idea]`).count() === 2, '제안 수');
     await page.check(`${Y} #ypReview input[data-idea="저학년 짝 독서"]`);
     assert((await page.textContent(`${Y} #ypList`)).includes('독서교육'), '지난 계획에 없음');
-    await page.reload(); await page.waitForTimeout(500);
+    await page.reload(); await page.waitForTimeout(500); await go(); // 켜면 「오늘」이라 다시 들어감
     assert(await page.isChecked(`${Y} #ypReview input[data-idea="저학년 짝 독서"]`), '새로고침 뒤 체크가 사라짐');
   }],
   ['작년 결과 없이 만들면 AI를 부르지 않고 알림', async () => {
