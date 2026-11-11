@@ -44,3 +44,9 @@ test('평가: 새 탭(단원평가·활동지)은 마지막 탭, 기존 앱 화�
   assert.equal(pickTab(evaluate, undefined, { evaluate: 'hk' }, o(undefined)), 'hk', '기존 앱이 아직 없으면 마지막 탭');
   assert.equal(pickTab(evaluate, undefined, { evaluate: 'gone' }, o('unit')), 'pyeongeo', 'mode가 기존 앱 화면이 아니면 쓰지 않음');
 });
+
+test('탭이 없는 메뉴(오늘)는 빈 탭', () => {
+  const home = menu('home');
+  assert.equal(pickTab(home, undefined, {}), '');
+  assert.equal(pickTab(home, 'x', { home: 'y' }), '');
+});

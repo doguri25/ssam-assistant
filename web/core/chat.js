@@ -3,7 +3,7 @@
    분명하지 않거나 묻는 글이면 쌤비서 도우미(chat-assist.js): 선생님 AI(notes)에 쌤비서 안내·최근 대화·앱 상태(모두 이름·전화번호 가림)를 주고
    답(reply)을 보이고, 해 달라는 일(actions, 2개까지)은 규칙과 같은 손잡이(run)로 함. 답을 쓰는 동안 「…」와 [멈추기].
    AI가 없거나 답하지 못하면 안내(chat-knowledge.js)에서 찾아 답하고, 애매하면 후보 버튼.
-   열면 맨 위 「오늘 할 일」(briefing.js, AI 없이). 「3번 …」은 평가 › 행동특성 그 번호 메모 끝에 한 줄([되돌리기]).
+   열면 맨 위 「오늘 할 일」(briefing.js·brief-data.js, AI 없이 — 「오늘」 화면과 같은 줄, 맨 위 [오늘 화면 열기]). 「3번 …」은 평가 › 행동특성 그 번호 메모 끝에 한 줄([되돌리기]).
    파일은 버튼·창에 끌어 놓거나 📎로 — 받는 곳(inbox.js) 흐름 그대로. 기록은 최근 30개(ssam:chat, 학년도와 상관없음, 이름·전화번호는 가려서, 파일 이름은 남기지 않음).
    메뉴에 넘기는 글은 줄바꿈을 살리고 전화번호·전자 우편·사람 이름만 그 자리에서 가림(handoffText, 그 메뉴가 개인정보 규칙으로 다시 거름).
    메뉴가 돌려준 상태('started'·'no-ai'·'busy'·'empty' …)대로 말함 — 시작하지 않았으면 「쓰고 있어요」라고 하지 않음.
@@ -12,11 +12,12 @@ import { get, set, remove } from './store.js';
 import { go, MENUS } from './shell.js';
 import * as ai from './ai.js';
 import { maskContacts } from './privacy.js';
-import { listEvents, addDays, weekday } from './calendar.js';
+import { weekday } from './calendar.js';
 import { routeText, payloadFor, isSure, INTENT_IDS, intentLabel, LANGS, langLabel, parseMemo, maskMemo, memoLine, appendMemo, nosText, safeText, handoffText } from './chat-route.js';
 import { assistPrompt, parseAssist, replyHTML, mentionedNos, planActions, offlineWay } from './chat-assist.js';
 import { offlineAnswer } from './chat-knowledge.js';
 import { briefing, EMPTY } from './briefing.js';
+import { gather, goRoute } from './brief-data.js';
 
 const KEY = 'chat', FLAG = 'chat:open', MAX = 30;
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -116,7 +117,7 @@ export function toggleChat() { if (isChatOpen()) closeChat(); else openChat(); }
 const dayText = d => `${+d.slice(5, 7)}월 ${+d.slice(8, 10)}일(${DAY[weekday(d)]})`;
 function briefHTML() {
   const t = today();
-  return `<section class="chat-brief" aria-label="오늘 할 일"><h4>오늘 할 일 <small>${esc(dayText(t))}</small></h4>
+  return `<section class="chat-brief" aria-label="오늘 할 일"><div class="cb-head"><h4>오늘 할 일 <small>${esc(dayText(t))}</small></h4><button type="button" class="btn text tiny cb-home" data-chat="home">오늘 화면 열기</button></div>
     ${!brief ? '<p class="muted cb-none"><span class="spin"></span>세는 중…</p>' : brief.length ? `<ul>${brief.map((l, i) => `<li><button type="button" class="cb-line" data-brief="${i}">${l.when ? `<span class="cb-when${l.hot ? ' hot' : ''}">${esc(l.when)}</span>` : ''}<span class="cb-t">${esc(l.text)}</span></button></li>`).join('')}</ul>`
     : `<p class="muted cb-none">${EMPTY}</p>`}</section>`;
 }
@@ -143,18 +144,6 @@ function draw() {
 const findMsg = id => [...history(), ...temp].find(m => m.id === id);
 
 /* ---------- 오늘 할 일 ---------- */
-async function gather() {
-  const t = today(), mods = await Promise.all(['../menus/etc/gongmun-model.js', '../menus/plan/event-model.js', '../menus/evaluate/unit/unit-model.js', '../menus/evaluate/activity/activity-model.js']
-    .map(p => import(p).catch(() => null)));
-  const [gm, evm, um, am] = mods;
-  const units = um ? um.listTests().slice(0, 15).map(s => { const x = um.getTest(s.id); return x && { id: x.id, title: s.title, date: (x.meta && x.meta.date) || s.date, done: !!x.done, sample: !!(x.meta && x.meta.sample), students: x.students || [] }; }).filter(Boolean) : [];
-  const activities = am ? am.listActivities().slice(0, 15).map(s => { const x = am.getActivity(s.id); return x && { id: x.id, title: s.title || (x.meta && x.meta.title), date: (x.meta && x.meta.date) || s.date, done: !!x.done, sample: !!(x.meta && x.meta.sample), students: x.students || [] }; }).filter(Boolean) : [];
-  const ids = get('grs', []);
-  const grs = (Array.isArray(ids) ? ids : []).slice(0, 3).map(id => { const b = get('gr:' + id, null); return b && typeof b === 'object' ? { id, title: b.title, students: Array.isArray(b.students) ? b.students : [] } : null; }).filter(Boolean);
-  // 금요일: 다음 주 주간학습안내를 이미 쓰기 시작했는지(글이 있는 칸)
-  const w = get('class:weekly:' + addDays(t, 3), null), filled = v => (typeof v === 'string' ? !!v.trim() : v && typeof v === 'object' ? Object.values(v).some(filled) : false);
-  return { today: t, docs: gm ? gm.listDocs() : [], events: listEvents(), plans: evm ? evm.listEventPlans() : [], units, activities, grs, weekly: { started: !!(w && (filled(w.notes) || filled(w.cells))) } };
-}
 let briefTok = 0;
 async function refreshBrief() {
   const tok = ++briefTok;
@@ -172,6 +161,7 @@ async function onClick(e) {
   if (b.dataset.chat === 'close') { closeChat(); return; }
   if (b.dataset.chat === 'clear') { clearHistory(); ta.focus(); return; }
   if (b.dataset.chat === 'attach') { deps.pickFiles(); return; }
+  if (b.dataset.chat === 'home') { go('home'); afterGo(); return; }
   if (b.dataset.chat === 'stop') { stopAssist(true); ta.focus(); return; }
   if (b.dataset.brief != null) { const l = (brief || [])[+b.dataset.brief]; if (l) { await goRoute(l.route); afterGo(); } return; }
   if (b.dataset.chip != null) {
@@ -196,23 +186,6 @@ async function onClick(e) {
 }
 /* 좁은 화면에서는 메뉴로 간 뒤 채팅을 닫아 그 화면이 보이게 */
 function afterGo() { if (window.innerWidth < 720) closeChat(); }
-
-async function goRoute(r) {
-  if (!r) return;
-  if (r.to === 'gongmun') go('etc', 'gongmun');
-  else if (r.to === 'event') {
-    go('plan', 'event');
-    const b = r.id && document.querySelector(`section[data-menu="plan"] [data-ev="${CSS.escape(r.id)}"]`);
-    if (b) b.click();
-  }
-  else if (r.to === 'year') go('plan', 'year');
-  else if (r.to === 'today') go('class', 'today');
-  else if (r.to === 'weekly') go('class', 'weekly');
-  else if (r.to === 'gr') go('evaluate', 'gr');
-  else if (r.to === 'hk') { go('evaluate', 'hk'); if (r.no && SS().hk) SS().hk.select(r.no); }
-  else if (r.to === 'unit') { go('evaluate', 'unit'); if (r.id) { try { (await import('../menus/evaluate/unit/unit.js')).openTest(r.id, r.step); } catch (e) {} } }
-  else if (r.to === 'activity') { go('evaluate', 'activity'); if (r.id) { try { (await import('../menus/evaluate/activity/activity.js')).openActivity(r.id); } catch (e) {} } }
-}
 
 /* ---------- 보내기 ---------- */
 function sendBox() {

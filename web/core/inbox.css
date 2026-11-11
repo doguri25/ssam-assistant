@@ -57,7 +57,9 @@ html[data-theme="mono"] .ssam-mark .sm-line{stroke:#9ca3af}
 .chat-head .chat-x{width:32px;height:32px;font-size:20px;line-height:1}
 .chat-log{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:8px;overscroll-behavior:contain}
 .chat-brief{border:1px solid var(--line,#e4e6eb);border-radius:var(--r-m,12px);padding:10px 12px;background:var(--surface2,#f2f3f6)}
-.chat-brief h4{margin:0 0 6px;font:700 13.5px/1.3 var(--f-display,inherit)}
+.chat-brief .cb-head{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:0 0 6px}
+.chat-brief h4{margin:0;font:700 13.5px/1.3 var(--f-display,inherit)}
+.chat-brief .cb-home{flex:none}
 .chat-brief h4 small{font-weight:500;color:var(--ink3,#5c6170);margin-left:4px}
 .chat-brief ul{list-style:none;margin:0;padding:0;display:grid;gap:2px}
 .chat-brief .cb-line{display:flex;gap:8px;align-items:baseline;width:100%;text-align:left;padding:5px 6px;border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;font-size:13px;cursor:pointer}
@@ -95,6 +97,13 @@ html[data-theme="mono"] .ssam-mark .sm-line{stroke:#9ca3af}
 .chat-drop{display:none}
 .chat-panel.drop{outline:2px dashed var(--accent,#4f46e5);outline-offset:-6px}
 .chat-panel.drop .chat-drop{display:grid;place-items:center;position:absolute;inset:0;background:color-mix(in srgb,var(--accent-soft,#eef0ff) 88%,transparent);font-weight:700;color:var(--accent-ink,#3730a3);pointer-events:none}
-@media (max-width:480px){.chat-panel{right:12px;width:calc(100vw - 24px);bottom:88px;height:calc(100vh - 104px)}.chat-panel.nofab{bottom:12px;height:calc(100vh - 24px)}}
+/* 휴대폰(≤760px): 버튼·놓기 판·채팅 창은 아래 탭(--bottom-h, core/shell.css) 위로 */
+@media (max-width:760px){
+  .inbox-fab{right:16px;bottom:calc(var(--bottom-h,0px) + 12px)}
+  .inbox-pad{bottom:calc(var(--bottom-h,0px) + 8px)}
+  .chat-panel{bottom:calc(var(--bottom-h,0px) + 80px);height:min(560px,calc(100vh - var(--bottom-h,0px) - 96px))}
+  .chat-panel.nofab{bottom:calc(var(--bottom-h,0px) + 12px);height:min(600px,calc(100vh - var(--bottom-h,0px) - 28px))}
+}
+@media (max-width:480px){.chat-panel{right:12px;width:calc(100vw - 24px);height:calc(100vh - var(--bottom-h,0px) - 96px)}.chat-panel.nofab{height:calc(100vh - var(--bottom-h,0px) - 28px)}}
 @media (prefers-reduced-motion:reduce){.chat-panel{animation:none}}
 @media print{.inbox-fab,.inbox-pad,.chat-panel{display:none}}
