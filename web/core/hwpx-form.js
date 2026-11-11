@@ -514,3 +514,5 @@ export async function fillForm(form, roles, letter) {
   return { bytes: zipStore(files), warn };
 }
 export const _test = { paraText, local, setText };
+/* 표 채우기(hwpx-table.js)가 같이 쓰는 작은 도구(동작은 위와 같음) */
+export { unesc, local, kidsNamed, walk, inNested, paraText, setText, openTag, charPrOf, textRun, noBreak };
