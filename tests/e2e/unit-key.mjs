@@ -123,8 +123,10 @@ await run('unit-key', [
     await page.waitForTimeout(100);
     assert(await cards() === 4, '안 지워짐');
   }],
-  ['다시 열어도 남고, 단원평가 탭으로 다시 열림', async () => {
+  ['다시 열어도 남고, 평가로 가면 단원평가 탭으로 다시 열림(켜면 「오늘」)', async () => {
     await page.reload(); await page.waitForTimeout(500);
+    assert(await page.isVisible('section[data-menu="home"]'), '켜면 오늘');
+    await page.click('nav.app-side [data-menu-go="evaluate"]');
     assert(await page.locator('#menuTabs [data-tab="unit"][aria-current="page"]').count() === 1, '탭');
     assert(await page.isVisible(B), '화면');
     assert(await cards() === 4, '카드');
