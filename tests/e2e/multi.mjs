@@ -372,7 +372,10 @@ await run('multi', [
       if (v === 'quant') {
         // 휴대폰에서도 요약 줄은 위에(틀이 #app을 스크롤하든 문서를 스크롤하든)
         await page.evaluate(() => [...document.querySelectorAll('.mv-item')].at(-1).scrollIntoView({ block: 'center' }));
-        await page.waitForFunction(() => { const b = document.querySelector('.mv-bar').getBoundingClientRect(); return b.top >= -1 && b.top <= 24 && b.right <= innerWidth + 1; });
+        // 스크롤하는 칸의 맨 위: #app이 스크롤하면 그 위(머리 줄 바로 아래 — 휴대폰 아래 탭 틀), 문서가 스크롤하면 화면 맨 위
+        await page.waitForFunction(() => { const b = document.querySelector('.mv-bar').getBoundingClientRect(), a = document.querySelector('#app');
+          const top = a.scrollHeight > a.clientHeight + 1 ? Math.max(0, a.getBoundingClientRect().top) : 0;
+          return b.top >= top - 1 && b.top <= top + 24 && b.right <= innerWidth + 1; });
         const r2 = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, bar: document.querySelector('.mv-bar').getBoundingClientRect().height }));
         assert(r2.doc <= 390 && r2.bar < 220, '붙은 요약 줄: ' + JSON.stringify(r2));
         await page.evaluate(() => { document.querySelector('#app').scrollTop = 0; scrollTo(0, 0); });

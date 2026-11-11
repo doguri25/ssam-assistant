@@ -1,5 +1,5 @@
 // 11-04 버그 고치기(공통·설정): 새 학년도 창의 [백업 파일 만들기], 시험용 AI가 늦게 와도 설정 › AI가 바로 바뀜, 떠 있는 버튼의 옛 엑셀(.xls) 안내
-import { open, run, assert } from './helpers.mjs';
+import { open, run, assert, enter } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -48,8 +48,9 @@ await run('fix1104-core', [
   ['[core-7] 시험용 업스테이지 정보가 늦게 와도 열어 둔 설정 › AI가 바로 「시험용」으로 바뀜', async () => {
     await page.unroute(/ssam-relay[\w-]*\.vercel\.app/);
     await page.route(/ssam-relay[\w-]*\.vercel\.app/, async r => { await new Promise(x => setTimeout(x, 700)); await r.fulfill({ status: 200, contentType: 'application/json', body: '{"available":true,"until":"2027-03-31","daily":400}' }); });
-    await page.evaluate(() => { localStorage.removeItem('ssam:engine'); localStorage.setItem('ssam:nav', JSON.stringify({ menu: 'settings', tab: 'ai' })); });
+    await page.evaluate(() => { localStorage.removeItem('ssam:engine'); });
     await page.reload();
+    await enter(page, 'settings', 'ai'); // 켜면 「오늘」 — 정보가 오기 전에 설정 › AI를 열어 둠
     await page.waitForSelector(`${S} .set-big`);
     await page.waitForFunction(() => (document.querySelector('#sideAiName') || {}).textContent?.includes('시험용'), null, { timeout: 6000 });
     await page.waitForTimeout(100);

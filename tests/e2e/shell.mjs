@@ -1,4 +1,4 @@
-// 창 틀: 세로 메뉴 + 헤더(┌), 메뉴 전환, 마지막 위치 기억, 좁은 화면
+// 창 틀: 세로 메뉴 + 헤더(┌), 메뉴 전환, 켜면 늘 「오늘」(마지막 메뉴는 저장만, 메뉴마다 마지막 탭 기억), 좁은 화면(아래 탭·더보기)
 import { open, run, assert, mockClaude } from './helpers.mjs';
 
 const t = await open();
@@ -19,7 +19,11 @@ await page.goto(url);
 await page.waitForTimeout(600);
 
 await run('shell', [
-  ['처음 열면 평가 › 교과 평어', async () => {
+  ['처음 열면 오늘(가로 메뉴 없음), 평가로 가면 교과 평어', async () => {
+    assert(await current('nav.app-side') === '오늘', '세로 메뉴 현재: ' + await current('nav.app-side'));
+    assert(await title() === '오늘', '제목: ' + await title());
+    assert(await page.isHidden('#menuTabs'), '오늘에 가로 메뉴가 보임');
+    await page.click('nav.app-side [data-menu-go="evaluate"]');
     assert(await current('nav.app-side') === '평가', '세로 메뉴 현재: ' + await current('nav.app-side'));
     assert(await title() === '평가', '제목: ' + await title());
     const ts = await tabs();
@@ -30,13 +34,14 @@ await run('shell', [
     const h = await page.evaluate(() => [document.querySelector('nav.app-side .app-logo').getBoundingClientRect().height, document.querySelector('header.app-top').getBoundingClientRect().height]);
     assert(h[0] === 76 && h[1] === 76, '높이: ' + h.join(', '));
   }],
-  ['품의로 가면 제목·가로 메뉴·섹션이 바뀌고, 새로고침해도 품의', async () => {
+  ['품의로 가면 제목·가로 메뉴·섹션이 바뀌고, 새로고침하면 오늘(품의는 저장만)', async () => {
     await page.click('nav.app-side [data-menu-go="purchase"]');
     assert(await title() === '품의', '제목: ' + await title());
     assert((await tabs()).join('|') === '새 품의|저장한 템플릿|최근 작성', '가로 메뉴');
     assert(await page.isVisible('section[data-menu="purchase"]') && !(await page.isVisible('section[data-menu="evaluate"]')), '섹션 표시');
+    assert((await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:nav')))).menu === 'purchase', '마지막 메뉴 저장');
     await page.reload(); await page.waitForTimeout(400);
-    assert(await title() === '품의', '새로고침 뒤 제목: ' + await title());
+    assert(await title() === '오늘' && await page.isVisible('section[data-menu="home"]'), '새로고침 뒤 제목: ' + await title());
   }],
   ['평가 › 평가지 채점을 누르면 채점 화면', async () => {
     await page.click('nav.app-side [data-menu-go="evaluate"]');
@@ -54,6 +59,7 @@ await run('shell', [
     assert(await title() === '계획' && await current('header.app-top nav.app-tabs') === '행사계획', '계획으로 돌아오면: ' + await current('header.app-top nav.app-tabs'));
     assert(await page.isVisible('section[data-menu="plan"]'), '계획 화면이 안 보임');
     await page.reload(); await page.waitForTimeout(400);
+    await side('plan'); // 새로 고치면 오늘부터
     assert(await current('header.app-top nav.app-tabs') === '행사계획', '새로고침 뒤: ' + await current('header.app-top nav.app-tabs'));
     await side('class'); await side('plan');
     assert(await current('header.app-top nav.app-tabs') === '행사계획', '새로고침 뒤 학급 갔다 오면: ' + await current('header.app-top nav.app-tabs'));
@@ -77,14 +83,15 @@ await run('shell', [
     assert(await title() === '설정' && await current('header.app-top nav.app-tabs') === 'AI', '정한 탭 → ' + await current('header.app-top nav.app-tabs'));
     await page.click('nav.app-side [data-menu-go="evaluate"]');
   }],
-  ['망가진 위치 값이면 평가로 열림', async () => {
-    for (const bad of ['{"menu":"없음","tab":"x"}', '망가진 값']) {
-      await page.evaluate(v => localStorage.setItem('ssam:nav', v), bad);
+  ['저장된 위치 값이 무엇이든(망가졌어도) 오늘로 열림', async () => {
+    for (const v of ['{"menu":"없음","tab":"x"}', '망가진 값', '{"menu":"evaluate","tab":"gr"}', '{"menu":"plan","tab":"event"}']) {
+      await page.evaluate(v => localStorage.setItem('ssam:nav', v), v);
       await page.reload(); await page.waitForTimeout(400);
-      assert(await title() === '평가', `${bad} → ${await title()}`);
+      assert(await title() === '오늘', `${v} → ${await title()}`);
     }
   }],
   ['평어를 만드는 동안 메뉴를 옮겨도 계속 만들고 진행 표시가 보임', async () => {
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); // 새로 고친 뒤라 오늘부터
     await page.click('header.app-top nav.app-tabs [data-tab="pyeongeo"]');
     await page.click('#srcPaste');
     await page.fill('#pasteBox', await page.getAttribute('#pasteBox', 'placeholder'));
@@ -104,36 +111,42 @@ await run('shell', [
     const bg = await page.evaluate(() => getComputedStyle(document.querySelector('#pane .sent .side')).backgroundColor);
     assert(bg !== 'rgb(21, 23, 28)', '글자 수 칸 배경이 세로 메뉴 색: ' + bg);
   }],
-  ['390px 폭에서 가로 스크롤 없고 메뉴 글자가 한 줄', async () => {
+  ['390px 폭에서 가로 스크롤 없고 아래 탭 메뉴 글자가 한 줄', async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(200);
     const w = await page.evaluate(() => document.documentElement.scrollWidth);
     assert(w <= 390, 'scrollWidth ' + w);
-    const hs = await page.evaluate(() => [...document.querySelectorAll('.side-btn span')].map(s => s.getBoundingClientRect().height));
+    const hs = await page.evaluate(() => [...document.querySelectorAll('#bottomTabs .bt-btn span')].map(s => s.getBoundingClientRect().height));
+    assert(hs.length === 5, '아래 탭 칸 수 ' + hs.length);
     assert(hs.every(h => h > 0 && h < 26), '메뉴 글자 높이(줄바꿈?): ' + hs.join(','));
     await page.setViewportSize({ width: 1280, height: 860 });
   }],
-  ['380px 폭: 세로 메뉴 버튼·가로 메뉴가 모두 화면 안, 본문도 가로로 넘치지 않음', async () => {
+  ['380px 폭: 아래 탭 버튼이 모두 화면 안, 가로 메뉴는 한 줄 가로 스크롤(끝 탭까지 닿음), 본문도 가로로 넘치지 않음', async () => {
     await page.setViewportSize({ width: 380, height: 800 });
-    await page.click('nav.app-side [data-menu-go="settings"]'); await page.click('#menuTabs [data-tab="school"]');
+    await page.click('#moreBtn'); await page.click('#sheetRoot .more-go[data-more-go="settings"]'); await page.click('#menuTabs [data-tab="school"]');
     await page.click('section[data-menu="settings"] [data-set="addBreak"]');
     await page.waitForTimeout(200);
     const r = await page.evaluate(() => ({
-      side: [...document.querySelectorAll('.app-side .side-btn')].map(b => { const x = b.getBoundingClientRect(); return [b.textContent.trim(), Math.round(x.left), Math.round(x.right)]; }),
-      tabs: [...document.querySelectorAll('#menuTabs button')].map(b => { const x = b.getBoundingClientRect(); return [b.textContent.trim(), Math.round(x.right)]; }),
+      side: [...document.querySelectorAll('#bottomTabs .bt-btn')].map(b => { const x = b.getBoundingClientRect(); return [b.textContent.trim(), Math.round(x.left), Math.round(x.right)]; }),
+      row: (() => { const el = document.querySelector('#menuTabs'), x = el.getBoundingClientRect(); return [Math.round(x.left), Math.round(x.right), getComputedStyle(el).overflowX]; })(),
+      tops: [...new Set([...document.querySelectorAll('#menuTabs button')].map(b => Math.round(b.getBoundingClientRect().top)))],
       app: [document.querySelector('#app').scrollWidth, document.querySelector('#app').clientWidth],
-      sideBox: [document.querySelector('.app-side').scrollWidth, document.querySelector('.app-side').clientWidth]
+      sideBox: [document.querySelector('#bottomTabs').scrollWidth, document.querySelector('#bottomTabs').clientWidth]
     }));
-    assert(r.side.every(([, l, rt]) => l >= 0 && rt <= 380), '세로 메뉴 버튼이 화면 밖: ' + JSON.stringify(r.side));
-    assert(r.tabs.every(([, rt]) => rt <= 380), '가로 메뉴가 화면 밖: ' + JSON.stringify(r.tabs));
-    assert(r.sideBox[0] <= r.sideBox[1], '세로 메뉴가 넘침: ' + r.sideBox);
+    assert(r.side.length === 5 && r.side.every(([, l, rt]) => l >= 0 && rt <= 380), '아래 탭 버튼이 화면 밖: ' + JSON.stringify(r.side));
+    assert(r.row[0] >= 0 && r.row[1] <= 380 && r.row[2] === 'auto' && r.tops.length === 1, '가로 메뉴: ' + JSON.stringify(r));
+    const last = await page.evaluate(() => { const b = [...document.querySelectorAll('#menuTabs button')].at(-1); b.scrollIntoView({ inline: 'end', block: 'nearest' }); const x = b.getBoundingClientRect(); return [b.textContent.trim(), Math.round(x.left), Math.round(x.right)]; });
+    assert(last[1] >= 0 && last[2] <= 380, '끝 탭에 닿지 못함: ' + JSON.stringify(last));
+    assert(r.sideBox[0] <= r.sideBox[1], '아래 탭이 넘침: ' + r.sideBox);
     assert(r.app[0] <= r.app[1], '본문이 넘침: ' + r.app);
     await page.setViewportSize({ width: 1280, height: 860 });
   }],
   ['설정에서 끄고 다시 켜면 설정만 보이고 「곧 만들어요」 자리가 없음', async () => {
     await page.click('nav.app-side [data-menu-go="settings"]'); await page.click('#menuTabs [data-tab="ai"]');
     await page.reload(); await page.waitForTimeout(500);
-    assert(await title() === '설정', '제목: ' + await title());
+    assert(await title() === '오늘', '켜면 오늘: ' + await title());
+    await page.click('nav.app-side [data-menu-go="settings"]');
+    assert(await title() === '설정' && await current('header.app-top nav.app-tabs') === 'AI', '제목: ' + await title());
     assert(await page.locator('section[data-menu="settings"] .ph').count() === 0, '설정에 「곧 만들어요」가 남음');
     assert((await page.textContent('section[data-menu="settings"]')).includes('지금 쓰는 AI'), '설정 › AI 내용 없음');
   }],

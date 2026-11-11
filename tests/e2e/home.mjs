@@ -158,11 +158,12 @@ await run('home', [
     await page.waitForFunction(() => !document.querySelector('#sheetRoot').childElementCount);
   }],
   ['오늘 캠프 수업이 없으면 캠프 카드를 숨기고 두 카드가 넓어짐', async () => {
-    const w1 = (await page.locator(`${H} .hm-gm`).boundingBox()).width;
+    const gmW = () => page.evaluate(() => document.querySelector('section[data-menu="home"] .hm-gm').getBoundingClientRect().width); // 한 번에 재기(다시 그리는 중에도)
+    const w1 = await gmW();
     await page.evaluate(() => { const c = JSON.parse(localStorage.getItem('ssam:camp')); c.camps[0].sessions.forEach(s => { s.date = '2026-11-20'; }); localStorage.setItem('ssam:camp', JSON.stringify(c)); });
     await page.click('nav.app-side [data-menu-go="purchase"]'); await page.click('nav.app-side [data-menu-go="home"]');
     assert(await page.locator(`${H} .hm-camp`).count() === 0, '캠프 카드가 남음');
-    const w2 = (await page.locator(`${H} .hm-gm`).boundingBox()).width;
+    const w2 = await gmW();
     assert(w2 > w1 + 40, `넓어지지 않음 ${w1} → ${w2}`);
   }],
   ['채팅 「오늘 할 일」 맨 위 [오늘 화면 열기]', async () => {
@@ -220,7 +221,7 @@ await run('home', [
     await page.waitForSelector('#sheetRoot .more-sheet');
     assert(await page.getAttribute('#moreBtn', 'aria-expanded') === 'true', '펼침 표시');
     const labels = await page.locator('#sheetRoot .more-go').allInnerTexts();
-    assert(labels.join('|') === '연수|계획|기타|설정', labels.join('|'));
+    assert(labels.join('|') === '계획|연수|기타|설정', labels.join('|'));
     const info = await page.textContent('#sheetRoot .more-foot');
     assert(info.includes('2026학년도') && info.includes('사용 중인 AI'), info);
     const sb = await page.locator('#sheetRoot .more-sheet').boundingBox();

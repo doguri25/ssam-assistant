@@ -95,6 +95,8 @@ section[data-menu="evaluate"][hidden]{display:none}
   .m-page{padding:20px 16px}
   /* 알림은 아래 탭·쌤 버튼 위로 */
   .toast{bottom:calc(var(--bottom-h) + 80px);transform:translate(-50%,calc(100% + var(--bottom-h) + 100px))}
+  /* 나이스·에듀파인 붙여넣기 패널(평가 화면)도 아래 탭 위로 */
+  .neis{bottom:calc(var(--bottom-h) + 12px);max-height:calc(100% - var(--bottom-h) - 88px)}
 }
 @media (max-width:760px) and (prefers-reduced-motion:reduce){.bt-btn.working::after{animation:none}}
 /* 더보기 시트(core/shell.js openMore): 아래 탭에 없는 메뉴 + 학년도·사용 중인 AI */

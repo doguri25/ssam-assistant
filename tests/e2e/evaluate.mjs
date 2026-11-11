@@ -1,6 +1,6 @@
 // 평가 메뉴: window.SSAM 다리, 저장 키(ssam:), 창체 학습지 흐름
 import { join } from 'node:path';
-import { open, run, assert, mockClaude, FIXTURES } from './helpers.mjs';
+import { open, run, assert, mockClaude, FIXTURES, enter } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -15,6 +15,7 @@ await mockClaude(page, ({ prompt, images }) => {
 });
 await page.goto(url);
 await page.waitForTimeout(600);
+await enter(page, 'evaluate'); // 켜면 「오늘」이라 평가로 들어감
 
 await run('evaluate', [
   ['window.SSAM.setMode로 행특 화면이 열림', async () => {
@@ -25,7 +26,7 @@ await run('evaluate', [
     assert(await page.evaluate(() => window.SSAM.getMode()) === 'hk', 'getMode가 hk가 아님');
   }],
   ['저장 키는 ssam:으로만 시작', async () => {
-    await page.reload(); await page.waitForTimeout(500);
+    await page.reload(); await page.waitForTimeout(500); await enter(page, 'evaluate');
     const keys = await page.evaluate(() => Object.keys(localStorage));
     assert(keys.includes('ssam:mode'), 'ssam:mode 없음: ' + keys.join(','));
     assert(!keys.some(k => k.startsWith('pe:')), 'pe: 키가 남음: ' + keys.join(','));

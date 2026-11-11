@@ -20,8 +20,8 @@ export const MENUS = [
 ].map(m => ({ ...m, icon: m.id, tabs: m.tabs.map(([id, label]) => ({ id, label })) }));
 
 const NAV_KEY = 'ssam:nav'; // 마지막 메뉴·탭(채팅 도우미가 「보고 있는 화면」으로 읽음). 켤 때는 쓰지 않음 — 늘 「오늘」
-/* 휴대폰 아래 탭: 이 넷 + 더보기(나머지 메뉴) */
-const BOTTOM = ['home', 'evaluate', 'class', 'purchase'];
+/* 휴대폰 아래 탭: 이 넷 + 더보기(MORE — 아래 탭에 없는 메뉴, 시트에 이 차례로) */
+const BOTTOM = ['home', 'evaluate', 'class', 'purchase'], MORE = ['plan', 'training', 'etc', 'settings'];
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SSAM = () => window.SSAM || {};
@@ -62,7 +62,7 @@ function drawWork() {
   // 휴대폰 더보기: 그 안 메뉴 가운데 하나라도 일하는 중이면 점
   const more = $('#moreBtn');
   if (more) {
-    const on = MENUS.some(m => !BOTTOM.includes(m.id) && busy(m.id));
+    const on = MORE.some(busy);
     more.classList.toggle('working', on);
     if (on) more.title = '더보기 안 메뉴에서 AI가 일하는 중이에요'; else more.removeAttribute('title');
   }
@@ -152,7 +152,7 @@ function openMore() {
   if (!SSAM().openSheet) return;
   const item = m => `<button type="button" class="more-go" data-more-go="${m.id}"${cur && cur.menu === m.id ? ' aria-current="page"' : ''}>${icon(m.icon, 22)}<span>${esc(m.label)}</span></button>`;
   SSAM().openSheet(`<h3>더보기</h3>
-    <nav class="more-grid" aria-label="다른 메뉴">${MENUS.filter(m => !BOTTOM.includes(m.id)).map(item).join('')}</nav>
+    <nav class="more-grid" aria-label="다른 메뉴">${MORE.map(find).map(item).join('')}</nav>
     <div class="more-foot">
       <button type="button" class="more-info" data-more-go="settings" data-more-tab="years"><small>학년도</small><b>${esc(yearText())}</b></button>
       <button type="button" class="more-info" data-more-go="settings" data-more-tab="ai"><small>사용 중인 AI</small><b>${esc(aiText())}</b></button>
