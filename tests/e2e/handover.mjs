@@ -213,7 +213,7 @@ await run('handover', [
     assert(!(await prev()).includes('독서 교육'), '고른 것');
     assert((await page.inputValue(`${P} #hoPages`)) === '1', '쪽 수');
     await page.reload(); await page.waitForTimeout(400);
-    await page.waitForSelector(`${P} #hoPrev h1`); // 새로 고쳐도 기타 › 인수인계서
+    await tab(); // 켜면 「오늘」 — 기타 › 인수인계서로 다시 들어가도 남음
     await page.waitForFunction(([s, v]) => document.querySelector(`${s} #hoForm`).value === v, [P, id]);
     assert((await page.inputValue(`${P} #hoPages`)) === '1' && (await fit()).startsWith('1쪽'), '쪽 수·알림');
   }],
@@ -227,12 +227,12 @@ await run('handover', [
     });
     await page.evaluate(() => sessionStorage.setItem('t:formsDown', '1'));
     await page.reload(); await page.waitForTimeout(400);
-    await page.waitForSelector(`${P} #hoPrev h1`);
+    await tab(); // 켜면 「오늘」이라 다시 들어감
     await page.waitForTimeout(400);
     assert((await saved()).formId === id, '고른 양식이 지워짐: ' + JSON.stringify((await saved()).formId));
     await page.evaluate(() => sessionStorage.removeItem('t:formsDown'));
     await page.reload(); await page.waitForTimeout(400);
-    await page.waitForSelector(`${P} #hoPrev h1`);
+    await tab(); // 켜면 「오늘」이라 다시 들어감
     await page.waitForFunction(([s, v]) => document.querySelector(`${s} #hoForm`).value === v && document.querySelector(`${s} [data-ho="delForm"]`), [P, id]);
     // 양식을 고르는 그때 읽기가 실패해도: 「찾지 못했어요」로 지우지 않고 고른 것을 남김
     await page.evaluate(async () => { const s = await (await import('./core/form-store.js')).forms('handover'); window.__get = s.get; s.get = async () => { throw new Error('busy'); }; });
@@ -273,7 +273,7 @@ await run('handover', [
     await page.evaluate(() => localStorage.removeItem('ssam:engine'));
     await page.addInitScript(() => localStorage.removeItem('ssam:engine'));
     await page.reload(); await page.waitForTimeout(400);
-    await page.waitForSelector(`${P} #hoPrev h1`);
+    await tab(); // 켜면 「오늘」이라 다시 들어감
     await page.click(`${P} [data-ho="ai"]`);
     await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('설정 › AI'));
     assert(reqs.length === 2, 'AI를 부름');
