@@ -407,6 +407,13 @@ async function run(intent, p = {}) {
     else { go('etc', 'handover'); say('기타 › 인수인계서로 왔어요.'); }
     afterGo(); return;
   }
+  if (intent === 'multi') {
+    const fn = await optional('../menus/etc/multi.js', 'openMulti');
+    if (fn) Promise.resolve().then(() => fn(p.view)).catch(() => {}); else go('etc', 'multi');
+    say(p.view === 'qual' ? '기타 › 다면평가(정성평가)로 왔어요. 올해 한 일을 줄글로 적어 주세요.'
+      : p.view === 'quant' ? '기타 › 다면평가(정량평가)로 왔어요. 항목마다 숫자를 넣으면 점수가 계산돼요.' : '기타 › 다면평가로 왔어요. 정량평가·정성평가 가운데 골라 주세요.');
+    afterGo(); return;
+  }
   if (intent === 'briefing') { await refreshBrief(); say(brief && brief.length ? `오늘 할 일 ${brief.length}개를 맨 위에 모았어요. 누르면 그 화면으로 가요.` : EMPTY); if (logEl) logEl.scrollTop = 0; return; }
   if (intent === 'memo') { await addMemo(p); return; }
   if (intent === 'memoView') { await viewMemo(p); return; }

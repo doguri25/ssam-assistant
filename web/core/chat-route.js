@@ -30,6 +30,7 @@ export const INTENTS = [
   ['memoView', '메모 보기', '학생 번호의 관찰 메모 보기'],
   ['briefing', '오늘 할 일', '오늘 할 일·급한 일 모아 보기'],
   ['handover', '인수인계서', '업무 인수인계서 만들기'],
+  ['multi', '다면평가', '교사 다면평가: 정량평가 점수 계산·근거자료, 정성평가 자기실적평가서'],
   ['aikey', 'AI 키', '설정 › AI 키 넣기·바꾸기']
 ];
 export const INTENT_IDS = INTENTS.map(i => i[0]);
@@ -65,6 +66,8 @@ const RULES = [
   ['camp', /(?:기초\s*학력|교과)\s*캠프/, 3.5], ['camp', /캠프\s*출석|(?:기초\s*학력|교과)\s*캠프.{0,20}(?:출석|관찰|수업\s*확인|결과\s*보고|보고서|일정|기록)/, 4.5],
   ['briefing', /브리핑|오늘\s*(?:할\s*일|할일|일정)|할\s*일\s*(?:알려|보여|뭐|있)|급한\s*(?:일|것)|챙길\s*(?:일|것)/, 4],
   ['handover', /인수\s*인계/, 4],
+  // 교사 다면평가: 「정량평가」「정성평가」「자기실적평가서」도
+  ['multi', /다면\s*평가|자기\s*실적\s*평가|정량\s*평가|정성\s*평가/, 4],
   ['aikey', /(?:AI|ai|Ai|에이아이)\s*(?:키|설정)|API\s*키|api\s*key|키\s*(?:넣|바꾸|바꿔|설정|등록)/i, 4],
   ['translate', /번역/, 4]
 ];
@@ -98,6 +101,7 @@ export function payloadFor(intent, text) {
     return { text: rest.length >= 4 ? s : '' };
   }
   if (intent === 'translate') return { lang: langOf(t) };
+  if (intent === 'multi') return { view: /정성|자기\s*실적/.test(t) ? 'qual' : /정량/.test(t) ? 'quant' : '' };
   if (intent === 'memo' || intent === 'memoView') { const m = parseMemo(t); return m ? { nos: m.nos, body: m.body } : { nos: [], body: '' }; }
   return {};
 }

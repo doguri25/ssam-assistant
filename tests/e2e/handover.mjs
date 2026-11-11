@@ -60,7 +60,7 @@ await run('handover', [
   ['기타에 「인수인계서」 탭(공문 처리 다음) → 업무 인수인계서 화면, 다른 기타 화면은 숨음', async () => {
     await page.click('nav.app-side [data-menu-go="etc"]');
     const tabs = await page.$$eval('#menuTabs [data-tab]', l => l.map(x => x.textContent));
-    assert(JSON.stringify(tabs) === JSON.stringify(['쪽지 작성', '가정통신문', '공문 처리', '인수인계서']), JSON.stringify(tabs));
+    assert(JSON.stringify(tabs) === JSON.stringify(['쪽지 작성', '가정통신문', '공문 처리', '인수인계서', '다면평가']), JSON.stringify(tabs));
     await page.click('#menuTabs [data-tab="handover"]');
     await page.waitForSelector(`${P} #hoPrev table`);
     assert((await page.textContent(`${P} h2`)).includes('업무 인수인계서'), '제목');
