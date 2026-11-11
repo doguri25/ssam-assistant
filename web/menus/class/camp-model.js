@@ -120,6 +120,23 @@ export function markAll(camp, date) {
   for (const s of camp.sessions) if (s.date === date) att[s.id] = Object.fromEntries(camp.students.map(st => [st.id, 'O']));
   return { ...camp, att };
 }
+/* 수업 하나를 학생 모두 표시했는지(○·/ 둘 다 셈). 학생이 없으면 아님 */
+export const sessionChecked = (camp, s) => camp.students.length > 0 && camp.students.every(st => MARKS.includes(camp.att[s.id] && camp.att[s.id][st.id]));
+/* 그날 표시 안 한 칸 수 */
+export const remainingOn = (camp, date) => camp.sessions.filter(s => s.date === date).reduce((n, s) => n + camp.students.filter(st => !MARKS.includes(camp.att[s.id] && camp.att[s.id][st.id])).length, 0);
+/* 그날 수업을 모두 표시한 날(수업 없는 날은 아님) */
+export const dayDone = (camp, date) => { const l = camp.sessions.filter(s => s.date === date); return l.length > 0 && l.every(s => sessionChecked(camp, s)); };
+/* [남은 칸 모두 출석]: 그날 빈칸만 ○(표시한 ○·/는 그대로) */
+export function markRest(camp, date) {
+  const att = { ...camp.att };
+  for (const s of camp.sessions) {
+    if (s.date !== date) continue;
+    const row = { ...(att[s.id] || {}) };
+    for (const st of camp.students) if (!MARKS.includes(row[st.id])) row[st.id] = 'O';
+    if (Object.keys(row).length) att[s.id] = row;
+  }
+  return { ...camp, att };
+}
 
 /* ---------- 학생A·학생B ---------- */
 export const aliasOf = i => (i < 26 ? `학생${String.fromCharCode(65 + i)}` : `학생${i + 1}`);

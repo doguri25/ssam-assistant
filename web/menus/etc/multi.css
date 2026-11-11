@@ -1,6 +1,7 @@
 /* 기타 › 다면평가 (multi.js) — 카드·칸 모양은 plan.css(.yp-card·.yp-f)와 class.css(.cls-card-h·.cls-tag)를 같이 씀 */
 .mv-page .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .mv-page .field{min-width:0;box-sizing:border-box}
+.mv-page .grow{flex:1}
 .mv-info summary{cursor:pointer;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;list-style-position:inside}
 .mv-info summary .muted{font-size:13px;overflow-wrap:anywhere}
 .mv-info[open] summary{margin-bottom:4px}
@@ -13,31 +14,74 @@
 .mv-check input{margin-top:2px;accent-color:var(--accent)}
 .mv-views button{min-height:40px;font-size:14px;padding:8px 18px}
 .mv-view{display:flex;flex-direction:column;gap:16px;min-width:0}
-/* 총점 */
+/* 총점(아래 카드) */
 .mv-total{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:15px}
 .mv-total b{font-size:26px;font-variant-numeric:tabular-nums;color:var(--accent-ink,var(--ink))}
-/* 묶음·항목 */
+/* 점수 요약 줄: 위에 고정(스펙 2026-11-11-ui-refresh §4) */
+.mv-bar-wrap{position:sticky;top:8px;z-index:6;min-width:0}
+.mv-bar-wrap::before{content:'';position:absolute;left:-2px;right:-2px;bottom:100%;height:10px;background:var(--bg)} /* 붙었을 때 위 틈으로 글이 비치지 않게 */
+.mv-bar{display:flex;flex-direction:column;gap:10px;padding:12px 16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m);box-shadow:var(--shadow);min-width:0;box-sizing:border-box}
+.mv-bar.float{position:fixed;top:0;z-index:30;border-top-left-radius:0;border-top-right-radius:0;padding-top:max(10px,env(safe-area-inset-top))}
+.mv-bar-top{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;min-width:0}
+.mv-bar-total{margin:0;display:flex;align-items:baseline;gap:6px;white-space:nowrap}
+.mv-bar-lab{font-size:13px;font-weight:600;color:var(--ink2)}
+.mv-bar-total b{font:800 32px/1 var(--f-display);font-variant-numeric:tabular-nums;color:var(--ink);letter-spacing:-.5px}
+.mv-bar-of{font:600 16px/1 var(--f-body);color:var(--ink2)}
+.mv-bar .btn{min-height:44px}
+.mv-need-go.warn{background:var(--warn-soft);border-color:var(--warn);color:var(--warn);font-weight:600}
+.mv-need-go:disabled{opacity:1;background:var(--ok-soft);border-color:transparent;color:var(--ok)}
+.mv-bars{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px 16px}
+.mv-gbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 8px;align-items:baseline;font-size:12.5px;min-width:0}
+.mv-gbar-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink2)}
+.mv-gbar-num{font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink);white-space:nowrap}
+.mv-meter{grid-column:1/-1;display:block;height:8px;border-radius:4px;background:var(--surface3);overflow:hidden}
+.mv-meter i{display:block;height:100%;width:0;border-radius:4px;background:var(--accent);transition:width .25s}
+.mv-gbar.low .mv-meter i{background:var(--warn)}
+.mv-gbar.low .mv-gbar-num{color:var(--warn)}
+/* 묶음·항목 카드 */
 .mv-sub{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
-.mv-items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px}
-.mv-item{display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid var(--line);min-width:0}
-.mv-item:first-child{border-top:0;padding-top:0}
+.mv-items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.mv-item{display:flex;flex-direction:column;gap:10px;padding:14px 16px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface);min-width:0}
+.mv-item.need{border:2px solid var(--warn);padding:13px 15px}
+.mv-item :is(input,textarea,button){scroll-margin-top:200px}
 .mv-item-h{display:flex;align-items:baseline;gap:4px 10px;flex-wrap:wrap}
 .mv-item-h b{overflow-wrap:anywhere}
+.mv-q-need{display:inline-flex;align-items:center;font-size:12px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--warn-soft);color:var(--warn)}
+.mv-q-need[hidden]{display:none}
 .mv-score{font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink3);white-space:nowrap}
 .mv-score.on{color:var(--ok)}
 .mv-inputs{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
 .mv-num{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px}
-.mv-num .field{width:96px;text-align:right;font-variant-numeric:tabular-nums}
-.mv-pick{gap:6px}
-.mv-pick button{text-align:left;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.mv-num .field{flex:none;width:96px;min-height:44px;text-align:right;font-variant-numeric:tabular-nums}
+/* 지표 칩: 고른 것(맞는 구간)은 ✓ 초록, 나머지는 회색 */
+.mv-pick{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+.mv-tchip{min-height:44px;max-width:100%;padding:8px 14px;border:1px solid var(--line);border-radius:var(--r-pill,999px);background:var(--surface2);color:var(--ink2);font:500 13px/1.35 var(--f-body);text-align:left;white-space:normal;overflow-wrap:anywhere;cursor:pointer}
+.mv-tchip:hover{border-color:var(--ok)}
+.mv-tchip[aria-pressed="true"],.mv-tiers .chip.on{background:var(--ok-soft);border-color:var(--ok);color:var(--ok);font-weight:700}
+.mv-tchip[aria-pressed="true"]::before,.mv-tiers .chip.on::before{content:'✓';margin-right:5px;font-weight:800}
 .mv-tiers{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
-.mv-tiers .chip{white-space:normal;overflow-wrap:anywhere}
-.mv-tiers .chip.on{background:var(--ok-soft,#e7f6ec);color:var(--ok);font-weight:700}
+.mv-inputs .mv-tiers{flex:1 1 260px;min-width:0}
+.mv-inputs .mv-deduct{flex:1 0 100%}
+.mv-tiers .chip{padding:5px 12px;border:1px solid transparent;border-radius:var(--r-pill,999px);font-size:12.5px;white-space:normal;overflow-wrap:anywhere}
+/* 횟수: [−] n회 [+] · 셈 글 */
+.mv-count{display:inline-flex;align-items:center;gap:6px}
+.mv-count .field{width:64px;text-align:center}
+.mv-step{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 20px/1 var(--f-body);display:grid;place-items:center;cursor:pointer}
+.mv-step:hover{background:var(--surface2);border-color:var(--accent)}
+.mv-calc{font-size:13px;font-weight:600;color:var(--ink2);font-variant-numeric:tabular-nums}
 .mv-guide{margin:0;font-size:12.5px;white-space:pre-line;overflow-wrap:anywhere}
+/* 근거자료: 칩(라벨 + ×) + [+ 근거자료] */
 .mv-ev{display:flex;flex-direction:column;gap:8px;min-width:0}
-.mv-ev-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
-.mv-ev-list li{display:grid;grid-template-columns:minmax(0,auto) minmax(0,1fr) auto;gap:6px;align-items:center}
-.mv-ev-file{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;justify-content:flex-start}
+.mv-ev-list{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
+.mv-evchip{display:inline-flex;align-items:center;max-width:100%;min-height:44px;border:1px solid var(--line);border-radius:var(--r-pill,999px);background:var(--accent-soft);color:var(--accent-ink);min-width:0}
+.mv-evchip:focus-within{border-color:var(--accent)}
+.mv-evchip-file,.mv-evchip-del{flex:none;width:40px;height:44px;border:0;background:transparent;color:inherit;display:grid;place-items:center;cursor:pointer;border-radius:999px}
+.mv-evchip-file:hover,.mv-evchip-del:hover{background:var(--surface)}
+.mv-evchip-del{font:600 18px/1 var(--f-body)}
+.mv-evchip-label{flex:0 1 auto;min-width:0;max-width:100%;field-sizing:content;border:0;background:transparent;color:inherit;font:500 13px/1.3 var(--f-body);padding:6px 2px;border-bottom:1px dashed transparent}
+.mv-evchip-label:hover,.mv-evchip-label:focus{border-bottom-color:currentColor}
+.mv-evchip-label:focus-visible{outline-offset:0}
+.mv-ev-add{min-height:44px}
 .mv-ev textarea.field{min-height:0;font-size:13px}
 /* 기준 고치기 */
 .mv-edit summary,.mv-crit summary{cursor:pointer;color:var(--accent);font-weight:600}
@@ -69,8 +113,12 @@
 .mv-self p{margin:2px 0 0;font-size:12.5px}
 @media (max-width:640px){
   .mv-period{grid-column:1/-1}
-  .mv-ev-list li{grid-template-columns:minmax(0,1fr) auto}
-  .mv-ev-list li .field{grid-column:1/-1;grid-row:2}
-  .mv-ev-file{max-width:100%}
   .mv-total b{font-size:22px}
+  .mv-bar{padding:10px 12px;gap:8px}
+  .mv-bar-top{gap:6px 8px}
+  .mv-bar-total b{font-size:26px}
+  .mv-bars{display:flex;overflow-x:auto;gap:6px 14px;padding-bottom:2px;scrollbar-width:thin}
+  .mv-gbar{flex:0 0 128px}
+  .mv-item{padding:12px}
+  .mv-item.need{padding:11px}
 }
