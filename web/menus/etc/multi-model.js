@@ -59,20 +59,46 @@ export const getMulti = () => normMulti(get(KEY, null));
 export const saveMulti = m => (set(KEY, m) ? m : null);
 export const qualParsed = m => (m && m.qual && m.qual.criteria) || defaultQual();
 
-/* 기준을 바꿈: 같은 이름(빈칸 무시) 항목의 값·근거자료·비고는 새 항목으로 옮기고, 옮길 곳이 없는 근거자료는 dropped(파일을 지울 수 있게) */
+/* 기준을 바꿈: 같은 이름 항목(빈칸 무시, 그다음 괄호 글 「[통합학급 유무]」「(25점)」도 무시)의 값·근거자료·비고는 새 항목으로 옮기고,
+   고른 지표(choice의 지표 차례)는 지표 글로 찾아 옮김(같은 글이 없으면 비움). 옮길 곳이 없는 근거자료는 dropped(파일을 지울 수 있게) */
+const nameKey = n => str(n).replace(/\s/g, '');
+const looseKey = n => str(n).replace(/\[[^\]]*\]|\([^)]*\)|【[^】]*】/g, '').replace(/[\s·.,]/g, '');
+const tierKey = l => str(l).replace(/\([^)]*\)/g, '').replace(/[\s•·,]/g, '');
+function movePick(entry, from, to) {
+  const e = { ...entry };
+  if (e.v === undefined || e.v === '') return e;
+  if (from.kind !== 'choice' && to.kind !== 'choice') return e;
+  if (from.kind !== to.kind) { delete e.v; return e; }
+  const t = from.tiers[+e.v];
+  const k = t ? tierKey(t.label) : '';
+  let i = k ? to.tiers.findIndex(x => tierKey(x.label) === k) : -1;
+  if (i < 0 && k.length >= 2) i = to.tiers.findIndex(x => { const y = tierKey(x.label); return y.length >= 2 && (y.includes(k) || k.includes(y)); });
+  if (i < 0) delete e.v; else e.v = String(i);
+  return e;
+}
 export function remapQuant(quant, criteria) {
-  const key = n => str(n).replace(/\s/g, '');
-  const oldBy = new Map(allItems(quant.criteria).map(i => [key(i.name), i.id]));
-  const out = { ...quant, criteria, values: {}, evidence: {}, notes: {}, notesEdited: {} };
-  const moved = new Set();
-  for (const it of allItems(criteria)) {
-    const o = oldBy.get(key(it.name));
-    if (!o || moved.has(o)) continue;
-    moved.add(o);
-    for (const k of ['values', 'evidence', 'notes', 'notesEdited']) if (quant[k] && quant[k][o] !== undefined) out[k][it.id] = quant[k][o];
+  const olds = allItems(quant.criteria), out = { ...quant, criteria, values: {}, evidence: {}, notes: {}, notesEdited: {} };
+  const moved = new Set(), pairs = [];
+  const news = allItems(criteria);
+  for (const key of [nameKey, looseKey]) for (const it of news) {
+    if (pairs.some(([, n]) => n === it)) continue;
+    const o = olds.find(x => !moved.has(x.id) && key(x.name) && key(x.name) === key(it.name));
+    if (o) { moved.add(o.id); pairs.push([o, it]); }
+  }
+  for (const [o, it] of pairs) {
+    for (const k of ['evidence', 'notes', 'notesEdited']) if (quant[k] && quant[k][o.id] !== undefined) out[k][it.id] = quant[k][o.id];
+    if (quant.values && quant.values[o.id] !== undefined) out.values[it.id] = movePick(quant.values[o.id], o, it);
   }
   const dropped = Object.entries(quant.evidence || {}).filter(([id]) => !moved.has(id)).flatMap(([, list]) => arr(list));
   return { quant: out, dropped };
+}
+/* 기준 고치기에서 지표를 지움: 고른 지표 차례를 당기고, 지운 지표를 골랐으면 비움 */
+export function shiftPick(values, itemId, delIndex) {
+  const e = values && values[itemId];
+  if (!e || e.v === undefined || !/^\d+$/.test(str(e.v))) return values;
+  const v = +e.v;
+  if (v === delIndex) delete e.v; else if (v > delIndex) e.v = String(v - 1);
+  return values;
 }
 /* 근거자료가 바뀌면 비고 칸을 라벨 줄로(선생님이 고친 비고는 그대로) */
 export function syncNotes(quant, itemId) {

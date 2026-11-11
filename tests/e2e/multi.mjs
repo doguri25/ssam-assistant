@@ -246,13 +246,17 @@ await run('multi', [
     assert(!(await page.textContent(P)).includes('예시 서식이에요'));
     assert(!reqs.some(r => r.prompt.startsWith('[다면평가 정성 기준 읽기]')), '규칙으로 읽음');
   }],
-  ['사진 정량 기준 → AI가 읽음(그림), 맞는 항목이 없는 근거자료는 빠짐', async () => {
+  ['사진 정량 기준 → AI가 읽음(그림), 맞는 항목이 없는 근거자료는 먼저 물은 뒤 지움', async () => {
     await page.click(`${P} [data-mv-view="quant"]`);
     await page.setInputFiles(`${P} #mvQuantFile`, join(FIXTURES, 'sheet-1.png'));
+    await page.waitForSelector('[data-ask="go"]');
+    const q = await page.evaluate(() => document.querySelector('[data-ask="go"]').closest('div').parentElement.textContent);
+    assert(q.includes('근거자료') && q.includes('1개'), q);
+    await page.click('[data-ask="go"]');
     await page.waitForFunction(() => [...document.querySelectorAll('.mv-box .mv-item-h b')].map(b => b.textContent).join('|') === '주당 수업시수|직무연수');
     const r = reqs.filter(x => x.prompt.startsWith('[다면평가 정량 기준 읽기]')).at(-1);
     assert(r.images === 1, '그림으로 보냄');
-    assert((await toast()).includes('AI가 읽었어요') && (await toast()).includes('근거자료 1개는 뺐어요'), await toast());
+    assert((await toast()).includes('AI가 읽었어요') && (await toast()).includes('근거자료 1개는 지웠어요'), await toast());
     assert(await score('주당 수업시수') === '30점', '값은 이어짐(감점 칸이 없는 기준)');
     const v = await data();
     assert(Object.keys(v.quant.evidence).length === 1, '주당 수업시수 근거자료만 남음');

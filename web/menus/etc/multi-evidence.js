@@ -26,7 +26,7 @@ function firstDate(s) {
   }
   return '';
 }
-const DOC_NO = /[가-힣A-Za-z]{2,}\s*[-‐–]\s*(\d{1,6})(?!\d)/;
+const DOC_NO = /[가-힣][가-힣A-Za-z]+\s*[-‐–]\s*(\d{1,6})(?!\d)/; // 「○○학교-1234」(한글 이름 — 「COVID-19」는 번호가 아님)
 
 /* 글·파일 이름 → { title, no, date, label }: 제목은 「제목」 줄, 번호는 시행 줄의 「○○학교-1234」 → 「[1234,」 → 「제1234호」 → 다른 「○○-1234」,
    날짜는 시행 줄 → 「[1234, 날짜]」 → 글의 첫 날짜. 모자라면 있는 것만, 제목이 없으면 파일 이름 */
@@ -38,13 +38,14 @@ export function evidenceLabel(text, fileName) {
     const m = /^제\s*목(?:\s*[:：|]\s*|\s+)(.+)$/.exec(l);
     if (m) { title = clip(tidy(m[1].split(' | ')[0]), 80); if (title) break; }
   }
-  const run = lines.find(l => /^시\s*행(?:\s|[:：|])/.test(l)) || '';
+  // 시행 줄: 줄 처음의 「시행」을 먼저, 없으면 줄 가운데(「협조자 | 시행 ○○학교-1234 (날짜)」)의 시행부터
+  const run = lines.find(l => /^시\s*행(?:\s|[:：|])/.test(l)) || (lines.map(l => /(?:^|[\s|])시\s*행(?:\s|[:：|])(.*)$/.exec(l)).find(m => m && DOC_NO.test(m[1])) || [])[1] || '';
   const bracket = /\[\s*(\d{1,6})\s*,\s*([^\]]*)\]/.exec(t);
   let no = '';
   const rm = DOC_NO.exec(run);
   if (rm) no = rm[1];
   else if (bracket) no = bracket[1];
-  else { const h = /제\s*(\d{1,6})\s*호/.exec(t); if (h) no = h[1]; else { const o = DOC_NO.exec(t.replace(/20\d{2}\s*-\s*\d/g, ' ')); if (o) no = o[1]; } }
+  else { const h = /제\s*(\d{1,6}(?:\s*-\s*\d{1,6})?)\s*호/.exec(t); if (h) no = h[1].replace(/\s/g, ''); else { const o = DOC_NO.exec(t.replace(/20\d{2}\s*-\s*\d/g, ' ')); if (o) no = o[1]; } }
   const date = firstDate(run) || (bracket ? firstDate(bracket[2]) : '') || firstDate(t);
   const r = { title, no, date };
   return { ...r, label: composeLabel(r, fileName) };

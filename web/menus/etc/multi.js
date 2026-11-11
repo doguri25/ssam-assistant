@@ -14,9 +14,9 @@ import { forms, newFormId, MAX_FORM } from '../../core/form-store.js';
 import { readText, fileMessage, isFileCode } from '../../core/files.js';
 import { currentYear } from '../../core/years.js';
 import { getSchool } from '../../core/settings.js';
-import { getMulti, saveMulti, remapQuant, syncNotes, qualParsed, VIEWS, HOMEROOM, HEAD } from './multi-model.js';
+import { getMulti, saveMulti, remapQuant, shiftPick, syncNotes, qualParsed, VIEWS, HOMEROOM, HEAD } from './multi-model.js';
 import { parseQuantText, defaultQuant, isDefaultQuant, deriveItem, tierOf, itemScore, groupScore, totalScore, allItems, fmtPts, toNum } from './multi-quant.js';
-import { parseQualText, quantFacts, prefillBasics, buildReport, refreshMissing, normReport, getAt, setAt, mergeReport, missingCount, SELF_LEVELS } from './multi-qual.js';
+import { parseQualText, quantFacts, prefillBasics, buildReport, refreshMissing, normReport, remapFilled, getAt, setAt, mergeReport, missingCount, SELF_LEVELS } from './multi-qual.js';
 import { evidenceLabel, composeLabel, isComplete, okEvidenceFile, isImageName, fileBase, EVIDENCE_ACCEPT } from './multi-evidence.js';
 import { maskFor, quantPrompt, normQuant, evidencePrompt, normEvidence, qualPrompt, normQualAI, qualFormPrompt, normQualForm } from './multi-ai.js';
 import { quantDoc, qualDoc, QUAL_TITLE } from './multi-docs.js';
@@ -130,7 +130,7 @@ function quantHTML() {
       <div class="row"><button class="btn" type="button" data-mv="quantForm"${busy.quantForm ? ' disabled' : ''}>${busy.quantForm ? '<span class="spin"></span>읽는 중…' : '기준 양식 넣기'}</button>
         ${q.formName ? '<button class="btn text" type="button" data-mv="quantFormDel">기준 양식 지우기</button>' : ''}
         <input type="file" id="mvQuantFile" hidden accept="${FORM_ACCEPT}"></div>
-      <p class="muted" style="margin:0">한글(.hwp·.hwpx)·PDF·워드 기준 양식은 AI 없이 읽어요. 사진·스캔이거나 규칙으로 못 읽으면 AI가 읽어요(학교·이름은 가려 보내요).</p>
+      <p class="muted" style="margin:0">한글(.hwp·.hwpx)·PDF·워드 기준 양식은 AI 없이 읽어요. 사진·스캔이거나 규칙으로 못 읽으면 AI가 읽어요(글은 학교·이름을 가려 보내고, 사진·스캔은 그림 그대로 가요).</p>
       <p class="muted" style="margin:0">항목마다 [근거자료 넣기]로 공문·이수증 PDF·사진·한글 파일(5MB까지)을 넣으면 비고 칸에 「문서 제목 [번호, 날짜.]」가 들어가요. ${NO_KID}</p>
       ${aiRowHTML('plan')}
     </section>
@@ -273,18 +273,32 @@ async function addQuantForm(file) {
       toast(`기준 양식을 읽지 못했어요. 예시 기준을 그대로 둘게요.${ai.ready() ? '' : ' 설정 › AI에서 키를 넣으면 AI가 읽어요.'} [기준 고치기]에서 항목을 고칠 수 있어요.`, 8000);
       return;
     }
-    const id = await keepForm(file, 'quant-form');
-    await dropFile(st.quant.formId);
-    const { quant, dropped } = remapQuant(st.quant, c);
-    st.quant = { ...quant, formId: id, formName: fileBase(file.name) || '기준 양식' };
-    for (const e of dropped) await dropFile(e.fileId);
-    save();
-    toast(`「${st.quant.formName}」 기준을 ${by}읽었어요: 묶음 ${c.groups.length}개 · 항목 ${allItems(c).length}개. 항목·점수를 확인해 주세요.${dropped.length ? ` 맞는 항목이 없는 근거자료 ${dropped.length}개는 뺐어요.` : ''}`, 8000);
+    const apply = async () => {
+      const { quant, dropped } = remapQuant(st.quant, c);
+      const id = await keepForm(file, 'quant-form');
+      await dropFile(st.quant.formId);
+      st.quant = { ...quant, formId: id, formName: fileBase(file.name) || '기준 양식' };
+      for (const e of dropped) await dropFile(e.fileId);
+      if (save()) render();
+      toast(`「${st.quant.formName}」 기준을 ${by}읽었어요: 묶음 ${c.groups.length}개 · 항목 ${allItems(c).length}개. 항목·점수를 확인해 주세요.${dropped.length ? ` 맞는 항목이 없는 근거자료 ${dropped.length}개는 지웠어요.` : ''}`, 8000);
+    };
+    // 새 기준에 같은 항목이 없는 근거자료가 있으면 먼저 물음(지우면 되돌릴 수 없음)
+    const lost = lostEvidence(c);
+    if (lost.count) ask('근거자료를 지울까요?', `새 기준에는 「${lost.names.join('」·「')}」 항목이 없어 그 근거자료 ${lost.count}개를 지워요. 파일은 다시 넣어야 해요.`, [['go', '지우고 바꾸기', true]], apply);
+    else await apply();
   } catch (e) { toast(errText(e), 7000); }
   finally { busy.quantForm = false; redraw(); }
 }
+/* 기준 c로 바꾸면 옮길 곳이 없는 근거자료: { count, names(항목 이름) } */
+function lostEvidence(c) {
+  const { dropped } = remapQuant(st.quant, c);
+  const ids = new Set(dropped.map(e => e.id));
+  const names = allItems(st.quant.criteria).filter(it => (st.quant.evidence[it.id] || []).some(e => ids.has(e.id))).map(it => it.name);
+  return { count: dropped.length, names: names.slice(0, 4) };
+}
 function delQuantForm() {
-  ask('기준 양식을 지울까요?', '예시 기준으로 돌아가요. 같은 이름 항목의 값·근거자료는 남아요.', [['go', '지우기', true]], async () => {
+  const lost = lostEvidence(defaultQuant());
+  ask('기준 양식을 지울까요?', `예시 기준으로 돌아가요. 같은 이름 항목의 값·근거자료는 남아요.${lost.count ? ` 예시 기준에 없는 「${lost.names.join('」·「')}」 항목의 근거자료 ${lost.count}개는 지워져요.` : ''}`, [['go', '지우기', true]], async () => {
     await dropFile(st.quant.formId);
     const { quant, dropped } = remapQuant(st.quant, defaultQuant());
     st.quant = { ...quant, formId: '', formName: '' };
@@ -369,14 +383,37 @@ function editCriteria(el) {
 function editAct(a, b) {
   const c = st.quant.criteria, g = c.groups[+b.dataset.g], it = g && g.items[+b.dataset.i];
   if (a === 'ceAddGroup') c.groups.push({ id: rid('g'), name: `${'가나다라마바사아자차카타파하'[c.groups.length] || '새'}. 새 묶음`, max: 10, items: [deriveItem({ id: rid('q'), name: '새 항목', max: 10, tiers: [{ label: '있음', points: 10 }, { label: '없음', points: 0 }] })] });
-  else if (a === 'ceDelGroup' && g) { if (c.groups.length < 2) { toast('묶음이 하나는 있어야 해요.'); return; } c.groups.splice(+b.dataset.g, 1); }
+  else if (a === 'ceDelGroup' && g) {
+    if (c.groups.length < 2) { toast('묶음이 하나는 있어야 해요.'); return; }
+    dropItems(g.items, () => c.groups.splice(c.groups.indexOf(g), 1)); return;
+  }
   else if (a === 'ceAddItem' && g) g.items.push(deriveItem({ id: rid('q'), name: '새 항목', max: 5, tiers: [{ label: '있음', points: 5 }, { label: '없음', points: 0 }] }));
-  else if (a === 'ceDelItem' && it) { if (g.items.length < 2) { toast('묶음에 항목이 하나는 있어야 해요. 묶음 빼기를 눌러 주세요.'); return; } g.items.splice(+b.dataset.i, 1); }
+  else if (a === 'ceDelItem' && it) {
+    if (g.items.length < 2) { toast('묶음에 항목이 하나는 있어야 해요. 묶음 빼기를 눌러 주세요.'); return; }
+    dropItems([it], () => g.items.splice(g.items.indexOf(it), 1)); return;
+  }
   else if (a === 'ceAddTier' && it) { it.tiers.push({ label: '새 지표', points: 0 }); Object.assign(it, deriveItem(it)); }
-  else if (a === 'ceDelTier' && it) { if (it.tiers.length < 2) { toast('지표가 하나는 있어야 해요.'); return; } it.tiers.splice(+b.dataset.t, 1); Object.assign(it, deriveItem(it)); }
+  else if (a === 'ceDelTier' && it) { if (it.tiers.length < 2) { toast('지표가 하나는 있어야 해요.'); return; } it.tiers.splice(+b.dataset.t, 1); shiftPick(st.quant.values, it.id, +b.dataset.t); Object.assign(it, deriveItem(it)); }
   else return;
   c.total = c.groups.reduce((s, x) => s + (x.max || 0), 0);
   if (save()) render();
+}
+
+/* 기준 고치기에서 항목·묶음 빼기: 그 항목의 값·비고·근거자료(파일까지)도 지움 — 근거자료가 있으면 먼저 물음 */
+function dropItems(items, remove) {
+  const n = items.reduce((k, it) => k + (st.quant.evidence[it.id] || []).length, 0);
+  const go = async () => {
+    for (const it of items) {
+      for (const e of st.quant.evidence[it.id] || []) await dropFile(e.fileId);
+      for (const k of ['values', 'evidence', 'notes', 'notesEdited']) delete st.quant[k][it.id];
+    }
+    remove();
+    const c = st.quant.criteria;
+    c.total = c.groups.reduce((s, x) => s + (x.max || 0), 0);
+    if (save()) render();
+  };
+  if (n) ask('근거자료도 지울까요?', `빼는 항목에 근거자료 ${n}개가 있어요. 함께 지워져요.`, [['go', '빼고 지우기', true]], go);
+  else go();
 }
 
 /* ---------- 정성 ---------- */
@@ -396,7 +433,7 @@ async function addQualForm(file) {
     if (!any(p)) { toast(`기준 양식을 읽지 못했어요. 예시 서식을 그대로 둘게요.${ai.ready() ? '' : ' 사진·스캔은 AI가 읽어요(설정 › AI).'}`, 8000); return; }
     const id = await keepForm(file, 'qual-form');
     await dropFile(st.qual.formId);
-    st.qual = { ...st.qual, criteria: p, formId: id, formName: fileBase(file.name) || '기준 양식' };
+    st.qual = { ...st.qual, criteria: p, formId: id, formName: fileBase(file.name) || '기준 양식', filled: remapFilled(st.qual.filled, p) };
     if (st.qual.report) st.qual.report = normReport(st.qual.report, p);
     save();
     const miss = [!p.read.criteria && '평가 지표', !p.read.basics && '기초 자료', !p.read.sections && '자기실적 평가 칸'].filter(Boolean);
@@ -408,6 +445,7 @@ function delQualForm() {
   ask('기준 양식을 지울까요?', '예시 서식(교사 자기실적평가서)으로 돌아가요. 쓴 칸은 같은 이름 칸에 남아요.', [['go', '지우기', true]], async () => {
     await dropFile(st.qual.formId);
     st.qual = { ...st.qual, criteria: null, formId: '', formName: '' };
+    st.qual.filled = remapFilled(st.qual.filled, qualParsed(st));
     if (st.qual.report) st.qual.report = normReport(st.qual.report, qualParsed(st));
     if (save()) { render(); toast('기준 양식을 지웠어요. 예시 서식으로 만들어요.'); }
   });

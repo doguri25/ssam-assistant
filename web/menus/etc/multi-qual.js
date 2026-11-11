@@ -257,12 +257,25 @@ export function refreshMissing(r, parsed, facts = {}) {
 }
 export const missingCount = r => (r && Array.isArray(r.missing) ? r.missing.length : 0);
 const cleanItem = x => tidy(x).replace(/^(?:[-•·*▪◦○]+)\s*/, '').slice(0, 300);
+/* 기준이 바뀌면 선생님이 고친 칸 표시(basics.칸·sections.key.칸)를 새 칸 이름으로(빈칸 무시), 없는 칸은 버림 */
+export function remapFilled(filled, parsed) {
+  const p = parsed || DEFAULT_QUAL, out = {};
+  for (const [k, on] of Object.entries(isObj(filled) ? filled : {})) {
+    if (on !== true) continue;
+    const [kind, a, b] = k.split('.');
+    if (kind === 'basics') { const n = p.basics.find(x => flat(x) === flat(a)); if (n) out[`basics.${n}`] = true; }
+    else if (kind === 'sections') { const sec = p.sections.find(x => x.key === a); const n = sec && sec.parts.find(x => flat(x) === flat(b)); if (n) out[`sections.${a}.${n}`] = true; }
+    else if (kind === 'self') out[k] = true;
+  }
+  return out;
+}
 /* 아무 모양(저장한 것·AI 답) → 지금 기준의 보고서 모양(모르는 칸은 버림, 영역은 key나 이름으로, 칸은 이름으로) + 입력 필요 */
 export function normReport(v, parsed, facts = {}) {
   const p = parsed || DEFAULT_QUAL, o = isObj(v) ? v : {};
   const ob = isObj(o.basics) ? o.basics : {}, os = arr(o.sections).filter(isObj), self = isObj(o.self) ? o.self : {};
   const r = {
-    basics: Object.fromEntries(p.basics.map(b => [b, typeof ob[b] === 'string' ? tidy(ob[b]).slice(0, 200) : ''])),
+    // 칸 이름은 빈칸을 무시하고 맞춤(「연간 수업공개 실적」 ↔ 「연간 수업 공개 실적」)
+    basics: Object.fromEntries(p.basics.map(b => { const k = typeof ob[b] === 'string' ? b : Object.keys(ob).find(x => flat(x) === flat(b) && typeof ob[x] === 'string'); return [b, k ? tidy(ob[k]).slice(0, 200) : '']; })),
     sections: p.sections.map(s => {
       const src = os.find(x => x.key === s.key) || os.find(x => flat(x.name) && flat(x.name) === flat(s.name)) || {};
       const sp = arr(src.parts).filter(isObj);

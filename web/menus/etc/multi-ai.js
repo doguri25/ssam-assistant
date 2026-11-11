@@ -21,6 +21,11 @@ export function maskFor(text, info = {}) {
   let s = str(text);
   const i = info || {};
   for (const [w, to] of [[i.school, '○○학교'], [i.name, '○○○']]) { const t = tidy(w); if (t.length >= 2) s = s.split(t).join(to); }
+  // 학교의 짧은 이름(「푸른솔초」「푸른솔초-555」「푸른솔 초등학교」「푸른솔중」): 학교 이름에서 「초등학교·중학교·초…」를 뺀 앞 글
+  const base = tidy(i.school).replace(/\s*(?:초등학교|중학교|고등학교|학교|초|중|고)$/, '');
+  if (base.length >= 2) s = s.split(base).join('○○');
+  // 「성명 ○○○」「성명: ○ ○ ○」「이름: ○○」(드문 성씨도)
+  s = s.replace(/(성\s*명|이\s*름\s*[:：])\s*[:：]?\s*(?:[가-힣]\s?){2,4}(?=\s|$|서명|\(|,|\/|\|)/g, '$1 ○○○ ');
   s = s.replace(/【\s*[^】\n]{0,20}?(?:학교|초|중|고)\s*】/g, '【○○학교】').replace(/[가-힣]{2,12}(?:초등학교|중학교|고등학교)/g, '○○학교');
   return maskContacts(maskPersons(s).text);
 }

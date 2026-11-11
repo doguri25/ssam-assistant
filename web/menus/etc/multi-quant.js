@@ -13,7 +13,12 @@ const tidy = s => str(s).replace(/[ \t]/g, ' ').replace(/\s+/g, ' ').trim();
 /* 「22.8」「22.8시간」「2점」 → 수, 아니면 null */
 export function toNum(v) {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
-  const m = /^\s*(-?\d+(?:\.\d+)?)/.exec(str(v));
+  const s = str(v).trim();
+  let m = /^(-?)(\d{1,3}(?:,\d{3})+)(?![\d,])/.exec(s); // 「1,000」은 천
+  if (m) return +(m[1] + m[2].replace(/,/g, ''));
+  m = /^(-?)(\d*)[.,](\d+)/.exec(s); // 「22.8」「1,5」「.5」
+  if (m) return +`${m[1]}${m[2] || '0'}.${m[3]}`;
+  m = /^(-?\d+)/.exec(s);
   return m ? +m[1] : null;
 }
 /* 점수 글: 24.4 → 「24.4」, 25 → 「25」, 없으면 '' */
@@ -26,7 +31,7 @@ const UNIT = '(시간|시수|차시|개월|건|회|일|년|명|개|점|%)?';
 const LO = new RegExp(`${NUM}\\s*${UNIT}\\s*(이상|초과)`);
 const HI = new RegExp(`${NUM}\\s*${UNIT}\\s*(미만|이하)`);
 const SPAN = new RegExp(`${NUM}\\s*${UNIT}\\s*[~～∼〜–-]\\s*${NUM}\\s*${UNIT}`);
-const SHORT = /\(\s*\d+\s*개월\s*이하\s*(\d+(?:\.\d+)?)\s*점\s*\)/;
+const SHORT = /\(\s*(?:근무\s*)?\d+\s*개월\s*(?:이하|미만)\s*(?:는|은)?\s*[:：]?\s*(\d+(?:\.\d+)?)\s*점\s*\)/;
 const PER = /(회|건|번)\s*당\s*(\d+(?:\.\d+)?)\s*점/;
 /* 지표 글 + 점수 → { label, min, minInc, max, maxInc, points, short, unit, per }.
    「(6개월 이하 n점)」은 short, 「회당 n점」은 per(횟수), 그 밖의 괄호 글은 범위로 읽지 않음 */
@@ -36,20 +41,25 @@ export function parseTier(label, points) {
   const rest = t.replace(SHORT, ' ').replace(/\([^)]*\)/g, ' ');
   let min = null, minInc = false, max = null, maxInc = false, unit = '';
   const lo = LO.exec(rest), hi = HI.exec(rest);
-  if (lo) { min = +lo[1]; minInc = lo[3] === '이상'; unit = lo[2] || ''; }
-  if (hi) { max = +hi[1]; maxInc = hi[3] === '이하'; unit = unit || hi[2] || ''; }
-  if (!lo && !hi) { const sp = SPAN.exec(rest); if (sp) { min = +sp[1]; minInc = true; max = +sp[3]; maxInc = true; unit = sp[2] || sp[4] || ''; } }
+  const sp = SPAN.exec(rest);
+  if (sp) { // 「75～89시간」「20시간~22시간 미만」: 두 끝을 다 씀(끝에 미만·초과가 붙으면 그 끝은 빼고)
+    min = +sp[1]; max = +sp[3]; unit = sp[2] || sp[4] || '';
+    minInc = !(lo && lo[3] === '초과' && +lo[1] === min); maxInc = !(hi && hi[3] === '미만' && +hi[1] === max);
+  } else {
+    if (lo) { min = +lo[1]; minInc = lo[3] === '이상'; unit = lo[2] || ''; }
+    if (hi) { max = +hi[1]; maxInc = hi[3] === '이하'; unit = unit || hi[2] || ''; }
+  }
   return { label: t, min, minInc, max, maxInc, points: toNum(points), short: sm ? +sm[1] : null, unit, per: pm ? +pm[2] : null, perUnit: pm ? (pm[1] === '번' ? '회' : pm[1]) : '' };
 }
 
 /* 비고 글의 감점 규칙: 「※ 수업일 휴직 기간은 월 0.2씩 감점」 → { per: 0.2, unit: '개월', label: '수업일 휴직 기간' } */
-const DEDUCT = /(월|회당|건당|일당)\s*(\d+(?:\.\d+)?)\s*점?\s*씩?\s*감점/;
-const DEDUCT_UNIT = { 월: '개월', 회당: '회', 건당: '건', 일당: '일' };
+const DEDUCT = /(1\s*개월\s*당|개월\s*당|매\s*월|월|회당|건당|일당)\s*(\d+(?:\.\d+)?)\s*점?\s*씩?\s*감점/;
+const DEDUCT_UNIT = { 회당: '회', 건당: '건', 일당: '일' };
 export function parseDeduct(guide) {
   const g = str(guide), m = DEDUCT.exec(g);
   if (!m) return null;
   const label = (g.slice(0, m.index).split(/※|\n/).pop() || '').replace(/^.*\)\s+/, '').replace(/\s*(?:은|는|이|가)\s*$/, '').trim();
-  return { per: +m[2], unit: DEDUCT_UNIT[m[1]], label: label.slice(0, 40) };
+  return { per: +m[2], unit: /월/.test(m[1]) ? '개월' : DEDUCT_UNIT[m[1]], label: label.slice(0, 40) };
 }
 
 /* 항목을 지표 글에서 다시 읽음: kind(회당 → count, 모든 지표에 범위 → range, 나머지 choice)·단위·감점·최대.
@@ -252,7 +262,7 @@ export function tierOf(item, value, short = false) {
     return { index: +s, tier: tiers[+s], points: pts(tiers[+s]) };
   }
   const x = toNum(value);
-  if (x == null) return null;
+  if (x == null || x < 0) return null; // 시간·건수에 음수는 없음
   let i = tiers.findIndex(t => inRange(t, x));
   if (i < 0) {
     let best = -1;

@@ -66,8 +66,8 @@ const RULES = [
   ['camp', /(?:기초\s*학력|교과)\s*캠프/, 3.5], ['camp', /캠프\s*출석|(?:기초\s*학력|교과)\s*캠프.{0,20}(?:출석|관찰|수업\s*확인|결과\s*보고|보고서|일정|기록)/, 4.5],
   ['briefing', /브리핑|오늘\s*(?:할\s*일|할일|일정)|할\s*일\s*(?:알려|보여|뭐|있)|급한\s*(?:일|것)|챙길\s*(?:일|것)/, 4],
   ['handover', /인수\s*인계/, 4],
-  // 교사 다면평가: 「정량평가」「정성평가」「자기실적평가서」도
-  ['multi', /다면\s*평가|자기\s*실적\s*평가|정량\s*평가|정성\s*평가/, 4],
+  // 교사 다면평가: 「정량평가」「정성평가」「자기실적평가서」도. 쪽지·가정통신문·단원평가·평어·결과 보고서 낱말(3)이 함께 있으면 그 탭이 앞섬
+  ['multi', /다면\s*평가|자기\s*실적\s*평가|정량\s*평가|정성\s*평가/, 2.8],
   ['aikey', /(?:AI|ai|Ai|에이아이)\s*(?:키|설정)|API\s*키|api\s*key|키\s*(?:넣|바꾸|바꿔|설정|등록)/i, 4],
   ['translate', /번역/, 4]
 ];
@@ -155,6 +155,8 @@ export function routeText(text) {
   // 번역: 언어 낱말 + 번역을 바라는 말(「번역」「베트남어로」「영문으로」「러시아어 가정통신문」)이면 번역(가정통신문보다 앞섬)
   const lang = langOf(t);
   if (lang && (/번역/.test(t) || LANG_CUE.test(t))) scores.translate = 5;
+  // 다면평가 낱말은 글감일 때가 많음: 쪽지·가정통신문·단원평가·평어·결과 보고서 같은 글 넣는 일이 분명하면 그 일(「다면평가 위원회 안내 쪽지」)
+  if (scores.multi && ['message', 'letter', 'unit', 'pyeongeo', 'report', 'gr', 'gongmun', 'purchase'].some(id => (scores[id] || 0) >= 3)) scores.multi = 1;
   // 관찰 메모: 글 앞이 「n번」
   const memo = parseMemo(t);
   if (memo && !NOT_MEMO.test(memo.body)) {
