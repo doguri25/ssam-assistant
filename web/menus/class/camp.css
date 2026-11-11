@@ -3,8 +3,19 @@
 .cp-bar{align-items:flex-end}
 .cp-pick{display:flex;flex-direction:column;gap:6px;flex:1 1 220px;min-width:0;max-width:420px}
 .cp-pick .field{min-width:0;width:100%;box-sizing:border-box}
-.cp-secs{gap:6px}
-.cp-secs button{min-height:36px}
+/* 단계 진행 표시(스펙 2026-11-11-ui-refresh §3): 6칸, 좁으면 가로 스크롤 */
+.cp-steps ol{list-style:none;margin:0;padding:4px 4px 6px;display:flex;gap:8px;overflow-x:auto;position:relative;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+.cp-steps li{flex:1 0 148px;display:flex;min-width:0}
+.cp-step{flex:1;display:flex;align-items:flex-start;gap:10px;min-width:0;min-height:60px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface);color:var(--ink2);text-align:left;font:inherit;cursor:pointer;transition:border-color .15s,background .15s}
+.cp-step:hover{border-color:var(--accent)}
+.cp-step-n{flex:none;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--surface2);color:var(--ink2);font:700 13px/1 var(--f-body)}
+.cp-step.done .cp-step-n{background:var(--ok-soft);color:var(--ok)}
+.cp-step-t{display:flex;flex-direction:column;gap:2px;min-width:0}
+.cp-step-name{font:700 14px/1.3 var(--f-body);color:var(--ink)}
+.cp-step-line{font-size:12.5px;line-height:1.35;color:var(--ink3);overflow-wrap:anywhere}
+.cp-step[aria-current="step"]{background:var(--accent);border-color:var(--accent)}
+.cp-step[aria-current="step"] .cp-step-name,.cp-step[aria-current="step"] .cp-step-line{color:var(--on-accent)}
+.cp-step[aria-current="step"] .cp-step-n{background:var(--on-accent);color:var(--accent)}
 .cp-sec{display:flex;flex-direction:column;gap:16px;min-width:0}
 .cp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px 14px}
 .cp-grid .yp-f.wide{grid-column:1/-1}
@@ -27,18 +38,52 @@
 .cp-sched input[type="time"]{width:104px}
 .cp-sched td:nth-child(5) .field{width:96px}
 .cp-sched .field.wide{min-width:240px}
-/* 출석 체크 */
-.cp-day-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.cp-day-nav .field{flex:0 1 auto;min-width:0;width:auto}
+/* 출석 체크: 왼쪽 출석, 오른쪽(좁으면 아래) 문서 준비 */
+.cp-att-wrap{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:16px;align-items:start}
+.cp-att-main{display:flex;flex-direction:column;gap:16px;min-width:0}
+/* 날짜 칩 줄 */
+.cp-day-nav{display:flex;align-items:center;gap:4px;min-width:0}
+.cp-day-arrow{flex:none;width:44px;height:44px;font-size:22px;line-height:1}
+.cp-day-arrow:disabled{opacity:.35;cursor:default}
+.cp-days{flex:1;min-width:0;display:flex;gap:6px;overflow-x:auto;padding:4px;position:relative;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+.cp-day{flex:none;min-height:44px;padding:6px 14px;border:1px solid var(--line);border-radius:var(--r-pill,999px);background:var(--surface);color:var(--ink2);font:500 13.5px/1.2 var(--f-body);white-space:nowrap;cursor:pointer;font-variant-numeric:tabular-nums}
+.cp-day:hover{border-color:var(--accent)}
+.cp-day.done{color:var(--ok);font-weight:600}
+.cp-day[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:700}
+.cp-att-bar{align-items:center;gap:6px 8px}
+.cp-att-bar .btn{min-height:44px}
+.cp-att-day{font:700 16px/1.3 var(--f-display)}
+.cp-legend{margin:0;display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;font-size:12.5px}
+.cp-key-i{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.cp-key{display:inline-grid;place-items:center;width:30px;height:22px;border-radius:6px;font:700 14px/1 var(--f-body);box-sizing:border-box}
+/* 출석 칸 64×48: ○ 출석(진한 채움) · / 결석(주황 테두리·연한 바탕·굵게) · — 체크 안 함(점선) */
 .cp-att th,.cp-att td{border-bottom:1px solid var(--line);padding:6px;white-space:nowrap}
 .cp-att tbody th{font-weight:600;font-size:13.5px;font-variant-numeric:tabular-nums}
-.cp-att thead th:nth-child(n+3){text-align:center;min-width:64px}
+.cp-att thead th:nth-child(n+3){text-align:center;min-width:76px}
 .cp-att td{text-align:center}
 .cp-att td:nth-child(2){text-align:left}
-.cp-mark{width:48px;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:700 20px/1 var(--f-body);cursor:pointer}
-.cp-mark:hover{border-color:var(--accent)}
-.cp-mark.m-O{background:var(--ok-soft,#e7f6ec);color:var(--ok);border-color:transparent}
-.cp-mark.m-X{background:var(--err-soft,#fdecec);color:var(--err);border-color:transparent}
+.cp-mark{width:64px;height:48px;border-radius:10px;font:700 22px/1 var(--f-body);cursor:pointer;box-sizing:border-box;transition:box-shadow .15s}
+.cp-mark:hover{box-shadow:0 0 0 3px var(--accent-soft)}
+.cp-mark.m-O,.cp-key.m-O{background:var(--accent);border:1.5px solid var(--accent);color:var(--on-accent)}
+.cp-mark.m-O{font-size:28px}
+.cp-mark.m-X,.cp-key.m-X{background:var(--warn-soft);border:2px solid var(--warn);color:var(--warn);font-weight:800}
+.cp-mark.m-none,.cp-key.m-none{background:var(--surface);border:1.5px dashed var(--ink3);color:var(--ink3)}
+.cp-mark.m-none::before,.cp-key.m-none::before{content:'—';font-weight:500}
+/* 문서 준비 상자 */
+.cp-ready{gap:8px}
+.cp-rd-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.cp-rd{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:6px 0;border-top:1px solid var(--line2)}
+.cp-rd:first-child{border-top:0}
+.cp-dot{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;box-sizing:border-box;font:800 11px/1 var(--f-body)}
+.cp-rd.ready .cp-dot{background:var(--ok);color:var(--surface)}
+.cp-rd.todo .cp-dot{background:var(--warn)}
+.cp-rd.none .cp-dot{border:2px solid var(--ink3);background:transparent}
+.cp-rd-t{display:flex;flex-direction:column;min-width:0}
+.cp-rd-t b{font-size:13.5px;line-height:1.35;color:var(--ink)}
+.cp-rd-s{font-size:12.5px;line-height:1.4;color:var(--ink3)}
+.cp-rd.ready .cp-rd-s{color:var(--ok);font-weight:600}
+.cp-rd.todo .cp-rd-s{color:var(--warn);font-weight:600}
+.cp-rd-go{min-height:44px;padding:6px 8px}
 .cp-stats th,.cp-stats td{border-bottom:1px solid var(--line);padding:8px 6px;white-space:nowrap}
 .cp-stats tbody th{font-weight:600}
 /* 관찰 기록 */
@@ -69,7 +114,11 @@
 .cp-prev-doc .pd-break{border-top:1px dashed var(--line);margin:10px 0}
 /* 한 날 여러 교시 더하기 창 */
 .cp-bulk .field{width:100%;box-sizing:border-box;min-width:0}
+@media (max-width:960px){
+  .cp-att-wrap{grid-template-columns:minmax(0,1fr)}
+}
 @media (max-width:640px){
-  .cp-mark{width:44px;height:42px}
+  .cp-steps li{flex-basis:136px}
+  .cp-step{padding:8px 10px;gap:8px}
   .cp-doc-row .field{max-width:none}
 }
