@@ -41,6 +41,7 @@ function keyOf(name, used) {
   used.add(k);
   return k;
 }
+const PART = /목표|실적|계획|개선|성과|과제|사항/;
 const spaced = w => new RegExp('^' + [...flat(w)].map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s*') + '\\s*');
 
 /* ---------- 기준 양식 글 읽기 ---------- */
@@ -81,7 +82,7 @@ function readSections(t) {
     const name = tidy(nm).replace(/[\s…\-]+$/, '');
     if (!name || name.length > 20) return;
     const re = spaced(name);
-    const parts = [...new Set(pieces.map(p => tidy(tidy(p).split(/\s+-\s*|\s*-\s+|…/)[0]).replace(re, '').trim()).filter(p => p && p.length <= 30 && !/^[…\-]+$/.test(p)))];
+    const parts = [...new Set(pieces.map(p => tidy(tidy(p).split(/\s+-\s*|\s*-\s+|…/)[0]).replace(re, '').trim()).filter(p => p && p.length <= 16 && PART.test(p) && !/^[…\-]+$/.test(p)))]; // 칸 이름(「추진 목표」 등)만 — 예시 글(◦ 기초학력 향상 …)은 칸 이름이 아님
     out.push({ key: keyOf(name, used), name, parts: parts.length ? parts : ['추진 목표', '추진 실적'] });
   });
   return out.slice(0, 8);
@@ -188,12 +189,16 @@ const BETTER = /개선|새로|새롭게|처음|바꾸|바꿨|바꿈|줄였|줄�
 /* 줄글을 문장으로: 줄바꿈·문장 끝(한글 뒤 . ! ?)마다, 앞의 •·-·1) 와 끝의 마침표는 뺌 */
 export const sentences = draft => str(draft).replace(/\r\n?/g, '\n').split(/\n+|(?<=[가-힣][.!?])\s+/)
   .map(s => tidy(s).replace(/^(?:[-•·*▪◦○]+|\d{1,2}[.)](?=\s))\s*/, '').replace(/[.。!]+$/, '').trim()).filter(s => s.length >= 2);
+const STRONG = /^(업무|사안|주무)$/; // 담당 업무를 가리키는 낱말은 무겁게
 function scoreOf(sentence, secs) {
   let s = flat(sentence);
   const all = secs.flatMap(sec => sectionWords(sec).map(w => [sec.key, flat(w)])).sort((a, b) => b[1].length - a[1].length);
   const hits = {};
+  // 직함(「생활안전부장」·「교무부장」)은 담당 업무 — 직함 속 생활·안전 낱말은 세지 않음
+  const duty = secs.find(sec => sec.key === 'duty');
+  if (duty) s = s.replace(/[가-힣]{0,6}부장/g, () => { hits.duty = (hits.duty || 0) + 3; return ' '; });
   // 긴 낱말(학습공동체·학교폭력·코스웨어)이 먼저, 더 무겁게: 「전문적 학습공동체에서 수업 나눔」은 전문성개발
-  for (const [k, w] of all) { const n = s.split(w).length - 1; if (n) { hits[k] = (hits[k] || 0) + n * (w.length >= 4 ? 2 : 1); s = s.split(w).join(' '); } }
+  for (const [k, w] of all) { const n = s.split(w).length - 1; if (n) { hits[k] = (hits[k] || 0) + n * (STRONG.test(w) ? 3 : w.length >= 4 ? 2 : 1); s = s.split(w).join(' '); } }
   let best = '', top = 0;
   for (const sec of secs) if ((hits[sec.key] || 0) > top) { top = hits[sec.key]; best = sec.key; }
   return best;

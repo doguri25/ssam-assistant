@@ -119,3 +119,19 @@ test('입력 필요: 적으면 사라짐(refreshMissing), 칸 길(getAt·setAt),
   assert.equal(n.missing.find(m => m.path === 'basics.담임 여부').hint, '담임인지 적어 주세요', 'AI가 준 안내는 남김');
   assert.equal(normReport(null, q).sections.length, 4);
 });
+
+test('자기실적평가서 영역에 「추진 목표」 같은 머리 없이 예시 글(◦ …)만 있으면 그 글을 칸 이름으로 쓰지 않고 기본 칸(추진 목표·추진 실적)', () => {
+  const q = parseQualText('교사 자기실적평가서\n4. 평가자 기초 자료\n○ 담당 과목：담임\n5. 자기실적 평가 가. 학습지도 ◦ 기초학력 향상을 위한 맞춤형 학습 기회 제공 ◦ 그림책 읽기 프로그램 운영 나. 생활지도 ◦ 생활지도 추진 목표 - 인성교육 ◦ 생활지도 추진 실적 - 캠페인 ※ 자기 평가 종합 상황');
+  const learn = q.sections.find(s => s.key === 'learn'), life = q.sections.find(s => s.key === 'life');
+  assert.deepEqual(learn.parts, ['추진 목표', '추진 실적']);
+  assert.deepEqual(life.parts, ['추진 목표', '추진 실적']);
+});
+
+test('줄글 나누기: 「○○부장으로 … 처리」는 담당 업무(직함 속 생활·안전 낱말에 끌리지 않음), 「업무를 새로 … 개선」은 창의적 업무개선 사항', () => {
+  const out = splitDraft('정보안전부장으로 학교폭력 사안을 접수하고 처리했어요.\n학생회와 함께 학교폭력예방 캠페인을 새로 운영해 업무를 개선했어요.\n학교폭력예방 캠페인과 어깨동무 프로그램을 운영했어요.', DEFAULT_QUAL);
+  const items = key => out.find(s => s.key === key).parts.map(p => [p.name, p.items]);
+  const duty = Object.fromEntries(items('duty'));
+  assert.deepEqual(duty['추진 실적'], ['정보안전부장으로 학교폭력 사안을 접수하고 처리했어요']);
+  assert.deepEqual(duty['창의적 업무개선 사항'], ['학생회와 함께 학교폭력예방 캠페인을 새로 운영해 업무를 개선했어요']);
+  assert.deepEqual(Object.fromEntries(items('life'))['추진 실적'], ['학교폭력예방 캠페인과 어깨동무 프로그램을 운영했어요']);
+});
