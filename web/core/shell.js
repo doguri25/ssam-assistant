@@ -1,5 +1,7 @@
 /* 창 틀: 왼쪽 세로 메뉴 + 상단 헤더(메뉴 제목·가로 메뉴). 메뉴마다 <section data-menu>를 보이고 숨김.
-   평가 메뉴의 가로 메뉴는 기존 앱의 화면(mode)과 같음: window.SSAM.setMode로 바꿈 */
+   평가 메뉴의 가로 메뉴는 기존 앱의 화면(mode)과 같음: window.SSAM.setMode로 바꿈.
+   휴대폰(≤760px, shell.css): 세로 메뉴 대신 아래 탭 5칸(오늘·평가·학급·품의·더보기 — 더보기는 시트: 계획·연수·기타·설정, 학년도·사용 중인 AI),
+   가로 메뉴는 한 줄 가로 스크롤 칩. 앱을 켜면(열기·새로 고침) 늘 「오늘」 (스펙 2026-11-11 §1) */
 import { icon } from './icons.js';
 import { renderPlaceholder } from '../menus/placeholder.js';
 import { ensureYears } from './years.js';
@@ -7,6 +9,7 @@ import { freeze, onFail, FULL_MSG, flushAll, usage } from './store.js';
 import { TABS_KEY, parseTabs, pickTab } from './nav-tabs.js';
 
 export const MENUS = [
+  { id: 'home', label: '오늘', tabs: [] },
   { id: 'evaluate', label: '평가', tabs: [['pyeongeo', '교과 평어'], ['cc', '창의적 체험활동'], ['hk', '행동특성'], ['gr', '평가지 채점'], ['unit', '단원평가'], ['activity', '활동지']] },
   { id: 'training', label: '연수', tabs: [['mine', '내 필수연수'], ['board', '연수 현황판']] },
   { id: 'plan', label: '계획', tabs: [['year', '연간계획'], ['event', '행사계획'], ['class', '학급운영계획'], ['report', '결과 보고']] },
@@ -16,7 +19,9 @@ export const MENUS = [
   { id: 'settings', label: '설정', tabs: [['roster', '학급 명단'], ['ai', 'AI'], ['screen', '화면'], ['school', '학교 정보'], ['years', '학년도'], ['purchase', '품의 기준']] }
 ].map(m => ({ ...m, icon: m.id, tabs: m.tabs.map(([id, label]) => ({ id, label })) }));
 
-const NAV_KEY = 'ssam:nav';
+const NAV_KEY = 'ssam:nav'; // 마지막 메뉴·탭(채팅 도우미가 「보고 있는 화면」으로 읽음). 켤 때는 쓰지 않음 — 늘 「오늘」
+/* 휴대폰 아래 탭: 이 넷 + 더보기(MORE — 아래 탭에 없는 메뉴, 시트에 이 차례로) */
+const BOTTOM = ['home', 'evaluate', 'class', 'purchase'], MORE = ['plan', 'training', 'etc', 'settings'];
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SSAM = () => window.SSAM || {};
@@ -32,13 +37,6 @@ export function onEnter(menu, fn) {
 const section = menu => document.querySelector(`section[data-menu="${menu}"]`);
 const find = id => MENUS.find(m => m.id === id);
 
-function readNav() {
-  try {
-    const v = JSON.parse(localStorage.getItem(NAV_KEY));
-    if (v && find(v.menu)) return v;
-  } catch (e) {}
-  return null;
-}
 /* 메뉴마다 마지막으로 연 탭 (nav-tabs.js) */
 function readTabs() {
   try { return parseTabs(localStorage.getItem(TABS_KEY)); } catch (e) { return {}; }
@@ -55,11 +53,19 @@ function keepTab(menu, tab) {
 const TASK_MENU = { grade: 'evaluate', writing: 'evaluate', letter: 'etc', message: 'etc', reply: 'etc', gongmun: 'etc', purchase: 'purchase', plan: 'plan', report: 'plan' };
 const working = {};
 function drawWork() {
-  document.querySelectorAll('.side-btn[data-menu-go]').forEach(b => {
-    const on = !!working[b.dataset.menuGo] && !(cur && cur.menu === b.dataset.menuGo);
+  const busy = id => !!working[id] && !(cur && cur.menu === id);
+  document.querySelectorAll('.side-btn[data-menu-go], .bt-btn[data-menu-go]').forEach(b => {
+    const on = busy(b.dataset.menuGo);
     b.classList.toggle('working', on);
     if (on) b.title = `${b.textContent.trim()}에서 AI가 일하는 중이에요`; else b.removeAttribute('title');
   });
+  // 휴대폰 더보기: 그 안 메뉴 가운데 하나라도 일하는 중이면 점
+  const more = $('#moreBtn');
+  if (more) {
+    const on = MORE.some(busy);
+    more.classList.toggle('working', on);
+    if (on) more.title = '더보기 안 메뉴에서 AI가 일하는 중이에요'; else more.removeAttribute('title');
+  }
 }
 if (typeof window !== 'undefined') window.SSAM_WORK = (task, work) => {
   if (work === 'none') return () => {};
@@ -85,11 +91,16 @@ export function go(menuId, tabId) {
   const m = find(menuId) || MENUS[0];
   setActions('');
   const tab = pickTab(m, tabId, readTabs(), m.id === 'evaluate' ? { legacy: LEGACY, mode: SSAM().getMode && SSAM().getMode() } : {});
+  // 다른 메뉴로 가면 본문을 맨 위부터 (본문 칸 하나를 메뉴가 같이 써서, 아래로 내린 채 다른 메뉴가 열리지 않게)
+  if (cur && cur.menu !== m.id && $('#app')) $('#app').scrollTop = 0;
   cur = { menu: m.id, tab };
   document.querySelectorAll('section[data-menu]').forEach(s => { s.hidden = s.dataset.menu !== m.id; });
   document.querySelectorAll('[data-menu-go]').forEach(b => {
     if (b.dataset.menuGo === m.id) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
+  // 휴대폰: 지금 메뉴가 더보기 안 것이면 더보기 칸이 켜짐
+  const more = $('#moreBtn');
+  if (more) { if (BOTTOM.includes(m.id)) more.removeAttribute('aria-current'); else more.setAttribute('aria-current', 'page'); }
   drawWork();
   $('#menuTitle').textContent = m.label;
   drawTabs(m);
@@ -100,7 +111,7 @@ export function go(menuId, tabId) {
     if (LEGACY.includes(tab) && SSAM().getMode && SSAM().getMode() !== tab) SSAM().setMode(tab);
   }
   try { localStorage.setItem(NAV_KEY, JSON.stringify(cur)); } catch (e) {}
-  keepTab(m.id, tab);
+  if (tab) keepTab(m.id, tab);
   drawAi();
   document.dispatchEvent(new CustomEvent('menu:go', { detail: { menu: m.id, tab } }));
   const fns = hooks[m.id];
@@ -112,14 +123,62 @@ export function go(menuId, tabId) {
 }
 
 function drawTabs(m) {
-  $('#menuTabs').setAttribute('aria-label', `${m.label} 메뉴`);
-  $('#menuTabs').innerHTML = m.tabs.map(t => `<button type="button" data-tab="${t.id}"${t.id === cur.tab ? ' aria-current="page"' : ''}>${esc(t.label)}</button>`).join('');
+  const el = $('#menuTabs');
+  el.setAttribute('aria-label', `${m.label} 메뉴`);
+  el.hidden = !m.tabs.length; // 오늘은 탭 없음
+  el.innerHTML = m.tabs.map(t => `<button type="button" data-tab="${t.id}"${t.id === cur.tab ? ' aria-current="page"' : ''}>${esc(t.label)}</button>`).join('');
+  // 휴대폰의 가로 스크롤 칩: 지금 탭이 보이게 (넘칠 때만 — 페이지는 움직이지 않음)
+  const b = el.querySelector('[aria-current="page"]');
+  if (b && el.scrollWidth > el.clientWidth) el.scrollLeft = Math.max(0, b.offsetLeft - (el.clientWidth - b.offsetWidth) / 2);
 }
 
 function drawSide() {
   const btn = m => `<button type="button" class="side-btn" data-menu-go="${m.id}">${icon(m.icon)}<span>${esc(m.label)}</span></button>`;
   $('#sideMenus').innerHTML = MENUS.filter(m => m.id !== 'settings').map(btn).join('');
   $('#sideSettings').innerHTML = btn(find('settings'));
+}
+
+/* 휴대폰 아래 탭 5칸: 오늘·평가·학급·품의(바로 감) + 더보기(시트) */
+function drawBottom() {
+  const el = $('#bottomTabs');
+  if (!el) return;
+  el.innerHTML = BOTTOM.map(find).map(m => `<button type="button" class="bt-btn" data-menu-go="${m.id}">${icon(m.icon, 22)}<span>${esc(m.label)}</span></button>`).join('')
+    + `<button type="button" class="bt-btn" id="moreBtn" aria-haspopup="dialog" aria-expanded="false">${icon('more', 22)}<span>더보기</span></button>`;
+}
+const yearText = () => { let ls = null; try { ls = window.localStorage; } catch (e) {} return `${ensureYears(ls).current}학년도`; };
+const aiText = () => (SSAM().ai && SSAM().ai.engineReady && SSAM().ai.engineReady() ? SSAM().ai.engineName() : '') || 'AI를 정해 주세요';
+/* 더보기 시트: 아래 탭에 없는 메뉴(계획·연수·기타·설정) + 학년도·사용 중인 AI(누르면 설정 그 탭) */
+function openMore() {
+  if (!SSAM().openSheet) return;
+  const item = m => `<button type="button" class="more-go" data-more-go="${m.id}"${cur && cur.menu === m.id ? ' aria-current="page"' : ''}>${icon(m.icon, 22)}<span>${esc(m.label)}</span></button>`;
+  SSAM().openSheet(`<h3>더보기</h3>
+    <nav class="more-grid" aria-label="다른 메뉴">${MORE.map(find).map(item).join('')}</nav>
+    <div class="more-foot">
+      <button type="button" class="more-info" data-more-go="settings" data-more-tab="years"><small>학년도</small><b>${esc(yearText())}</b></button>
+      <button type="button" class="more-info" data-more-go="settings" data-more-tab="ai"><small>사용 중인 AI</small><b>${esc(aiText())}</b></button>
+    </div>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>닫기</button></div>`, sh => {
+    sh.classList.add('more-sheet');
+    sh.setAttribute('aria-label', '더보기');
+    sh.addEventListener('click', e => {
+      const b = e.target.closest('[data-more-go]');
+      if (!b) return;
+      SSAM().closeSheet();
+      go(b.dataset.moreGo, b.dataset.moreTab);
+    });
+  });
+  const f = document.querySelector('#sheetRoot .more-sheet [aria-current="page"]') || document.querySelector('#sheetRoot .more-sheet .more-go');
+  if (f) f.focus();
+  syncMore();
+}
+/* 더보기 버튼의 펼침 표시: 시트가 닫히면(바깥 누르기·Esc·닫기·메뉴 고르기) 되돌리고, 시트 안에 초점이 있었으면 버튼으로 */
+let moreOpen = false;
+function syncMore() {
+  const b = $('#moreBtn');
+  const open = !!document.querySelector('#sheetRoot .more-sheet');
+  if (b) b.setAttribute('aria-expanded', String(open));
+  if (moreOpen && !open && b && (!document.activeElement || document.activeElement === document.body) && getComputedStyle(b).display !== 'none') b.focus();
+  moreOpen = open;
 }
 
 /* 세로 메뉴 아래 「2026학년도」 (누르면 설정 › 학년도) */
@@ -134,15 +193,16 @@ function drawYear() {
 
 /* 세로 메뉴 아래 「사용 중인 AI」 */
 function drawAi() {
-  const name = SSAM().ai && SSAM().ai.engineReady && SSAM().ai.engineReady() ? SSAM().ai.engineName() : '';
-  $('#sideAiName').textContent = name || 'AI를 정해 주세요';
+  $('#sideAiName').textContent = aiText();
 }
 
 function init() {
   drawSide();
+  drawBottom();
   drawYear();
   document.addEventListener('click', e => {
     const g = e.target.closest('[data-menu-go]'); if (g) { go(g.dataset.menuGo); return; }
+    if (e.target.closest('#moreBtn')) { openMore(); return; }
     const t = e.target.closest('#menuTabs [data-tab]'); if (t) { go(cur.menu, t.dataset.tab); return; }
     if (e.target.closest('#sideAi')) { go('settings', 'ai'); return; }
     if (e.target.closest('#sideYear')) { go('settings', 'years'); return; }
@@ -183,10 +243,10 @@ function init() {
   });
   // 설정 시트를 닫으면 AI 이름을 다시 읽음
   const root = $('#sheetRoot');
-  if (root) new MutationObserver(drawAi).observe(root, { childList: true });
+  if (root) new MutationObserver(() => { drawAi(); syncMore(); }).observe(root, { childList: true });
   document.addEventListener('ssam:ai-changed', drawAi); // 시험용 업스테이지를 알게 됐을 때 등
-  const saved = readNav();
-  go(saved ? saved.menu : 'evaluate', saved && (saved.menu !== 'evaluate' || !LEGACY.includes(saved.tab)) ? saved.tab : undefined);
+  // 켜면 늘 「오늘」 (마지막 메뉴는 저장만 함, 메뉴마다 마지막 탭은 그 메뉴에 들어갈 때 씀)
+  go('home');
 }
 
 // 메뉴 모듈들이 onEnter를 등록한 뒤에 처음 화면을 그림.

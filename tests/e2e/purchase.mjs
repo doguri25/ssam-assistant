@@ -1,5 +1,5 @@
 // 새 품의: 종류 안내, 필수 칸, 초안(제목·사유·산출 내역), 확인 목록, 표 복사, 개인정보 막기, AI 답 못 읽음, 한글 파일, 저장, 좁은 화면
-import { open, run, assert, mockClaude } from './helpers.mjs';
+import { open, run, assert, mockClaude, enter } from './helpers.mjs';
 
 const t = await open();
 const { page, ctx, url, errors } = t;
@@ -98,6 +98,7 @@ await run('purchase', [
   }],
   ['새로고침해도 쓰던 입력과 초안이 남음', async () => {
     await page.reload(); await page.waitForTimeout(500);
+    await enter(page, 'purchase', 'new'); // 켜면 「오늘」이라 다시 들어감
     assert(await page.inputValue(`${P} #pcPurpose`) === '용해와 용액 모둠 실험', '목적');
     assert(await page.inputValue(`${P} [data-item="1"][data-f="name"]`) === '시험관', '품목');
     assert((await page.inputValue(`${P} #pcTitle`)).includes('용해와 용액'), '초안 제목');

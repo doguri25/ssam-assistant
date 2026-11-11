@@ -1,0 +1,104 @@
+/* 「오늘」 화면 (menus/home/home.js). 색은 테마 값만(--accent·--surface·--ink…, 상태색 --ok·--warn·--err), 뜻은 글·기호로도 */
+.hm-page{gap:18px}
+.hm-head{display:flex;align-items:flex-end;justify-content:space-between;gap:10px 16px;flex-wrap:wrap}
+.hm-head-t{display:flex;flex-direction:column;gap:4px;min-width:0}
+.hm-date{margin:0;font-size:13.5px;font-weight:600;color:var(--ink3)}
+.hm-head h2{margin:0;font:800 24px/1.3 var(--f-display);letter-spacing:-.5px;color:var(--ink)}
+.hm-ai{display:inline-flex;align-items:center;gap:8px;min-height:44px;max-width:100%;padding:0 16px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink2);font:600 13.5px/1.2 var(--f-body);white-space:nowrap}
+.hm-ai span:last-child{overflow:hidden;text-overflow:ellipsis}
+.hm-ai:hover{background:var(--surface2)}
+.hm-ai-dot{display:grid;place-items:center;flex:none;width:20px;height:20px;border-radius:50%;font-size:12px;font-weight:800}
+.hm-ai.ok .hm-ai-dot{background:var(--ok-soft);color:var(--ok)}
+.hm-ai.need{border-color:var(--warn);background:var(--warn-soft);color:var(--warn)}
+.hm-ai.need .hm-ai-dot{background:var(--warn);color:var(--surface)}
+
+/* 파일 놓는 칸 */
+.hm-drop{display:flex;align-items:center;gap:14px 18px;flex-wrap:wrap;padding:20px 22px;border:2px dashed color-mix(in srgb,var(--accent) 45%,var(--line));border-radius:var(--r-l);background:var(--surface)}
+.hm-drop.over{border-style:solid;border-color:var(--accent);background:var(--accent-soft)}
+.hm-drop-ic{display:grid;place-items:center;flex:none;width:52px;height:52px;border-radius:14px;background:var(--accent-soft);color:var(--accent)}
+.hm-drop.over .hm-drop-ic{background:var(--accent);color:var(--on-accent)}
+.hm-drop-t{display:flex;flex-direction:column;gap:3px;flex:1 1 220px;min-width:0}
+.hm-drop-t b{font:800 17px/1.35 var(--f-display);color:var(--ink)}
+.hm-drop-t span{font-size:13px;color:var(--ink3)}
+.hm-drop .btn{min-height:44px;padding:0 20px;font-size:14px}
+
+/* 카드 3개: 넓으면 나란히, 좁으면 아래로(캠프 카드가 없으면 두 카드가 넓어짐) */
+.hm-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:14px;align-items:start}
+.hm-card{display:flex;flex-direction:column;gap:10px;min-width:0;padding:16px 18px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface)}
+.hm-card-h{display:flex;align-items:baseline;justify-content:space-between;gap:4px 10px;flex-wrap:wrap}
+.hm-card-h h3{margin:0;font:700 16px/1.3 var(--f-display);color:var(--ink)}
+.hm-card-h .muted{font-size:12.5px;color:var(--ink3)}
+.hm-card-f{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:auto}
+.hm-card-f .btn{min-height:44px}
+.hm-none{margin:0;font-size:13.5px;color:var(--ink3)}
+.hm-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+/* 공문 기한 */
+.hm-line{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:6px 8px;border:0;border-radius:8px;background:transparent;color:var(--ink);font:inherit;font-size:14px;text-align:left}
+.hm-line:hover{background:var(--surface2)}
+.hm-line-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hm-badge{display:inline-flex;align-items:center;justify-content:center;gap:2px;flex:none;min-width:48px;padding:3px 8px;border-radius:999px;border:1px solid transparent;font-size:12px;font-weight:800;font-variant-numeric:tabular-nums}
+.hm-badge.t-err{background:var(--err-soft);color:var(--err);border-color:var(--err)}
+.hm-badge.t-warn{background:var(--warn-soft);color:var(--warn)}
+.hm-badge.t-info{background:var(--surface2);color:var(--ink2)}
+/* 오늘 수업 */
+.hm-ls{display:flex;align-items:center;gap:10px;min-height:44px;padding:6px 8px;border-radius:8px;border-left:3px solid transparent}
+.hm-ls.is-now{background:var(--accent-soft);border-left-color:var(--accent)}
+.hm-ls.is-next{border-left-color:var(--line)}
+.hm-ls-p{flex:none;width:40px;font-size:12.5px;font-weight:700;color:var(--ink3)}
+.hm-ls-main{display:flex;flex-direction:column;flex:1;min-width:0}
+.hm-ls-main b{font-size:14px;color:var(--ink)}
+.hm-ls-l{font-size:12.5px;color:var(--ink3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hm-now{flex:none;padding:2px 8px;border-radius:999px;background:var(--accent);color:var(--on-accent);font-size:11.5px;font-weight:800}
+.hm-ls.is-next .hm-now{background:var(--surface2);color:var(--ink2)}
+.hm-st{display:inline-flex;align-items:center;gap:3px;flex:none;font-size:12.5px;font-weight:700}
+.hm-st.s-done{color:var(--ok)}
+.hm-st.s-part{color:var(--warn)}
+.hm-st.s-skip{color:var(--err)}
+.hm-st.s-left{color:var(--ink3)}
+/* 교과캠프 출석: 학생마다 큰 버튼(누를 때마다 ○ → / → 빈칸) */
+.hm-camp-pick{display:flex;gap:6px;flex-wrap:wrap}
+.hm-chip{min-height:36px;padding:4px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-size:13px;cursor:pointer}
+.hm-chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-ink);font-weight:700}
+.hm-att{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
+.hm-att-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-height:72px;min-width:0;padding:6px 4px;border:2px solid var(--line);border-radius:var(--r-m);background:var(--surface);color:var(--ink);font:inherit}
+.hm-att-m{font-size:20px;line-height:1;font-weight:800}
+.hm-att-n{max-width:100%;font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hm-att-w{font-size:11.5px;font-weight:600}
+.hm-att-btn.m-O{border-color:var(--accent);background:var(--accent);color:var(--on-accent)}
+.hm-att-btn.m-X{border-color:var(--warn);background:var(--warn-soft);color:var(--warn);font-weight:800}
+.hm-att-btn.m-none{border-style:dashed;color:var(--ink3)}
+.hm-att-btn.m-none .hm-att-n{color:var(--ink)}
+.hm-att-btn.m-mixed{border-color:var(--ink3)}
+.hm-att-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.hm-att-btn.m-O:focus-visible{outline-color:var(--ink)}
+
+/* 이어서 하기 */
+.hm-cont{display:flex;flex-direction:column;gap:8px}
+.hm-cont h3,.hm-start h3{margin:0;font:700 16px/1.3 var(--f-display);color:var(--ink)}
+.hm-rows{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface);overflow:hidden}
+.hm-rows li+li{border-top:1px solid var(--line2)}
+.hm-row{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:8px 16px;border:0;background:transparent;color:var(--ink);font:inherit;font-size:14px;text-align:left}
+.hm-row:hover{background:var(--surface2)}
+.hm-row:focus-visible{outline-offset:-3px}
+.hm-row-t{flex:1;min-width:0}
+.hm-when{flex:none;font-size:12.5px;font-weight:700;color:var(--ink3)}
+.hm-when.hot{color:var(--err)}
+.hm-row-go{flex:none;font-size:18px;color:var(--ink3)}
+
+/* 처음 쓰는 선생님: 시작 안내 3단계 */
+.hm-start{display:flex;flex-direction:column;gap:10px;padding:18px 20px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface)}
+.hm-steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.hm-steps li{display:flex;align-items:flex-start;gap:12px}
+.hm-step-n{display:grid;place-items:center;flex:none;width:30px;height:30px;border-radius:50%;background:var(--accent-soft);color:var(--accent-ink);font-weight:800}
+.hm-steps li.done .hm-step-n{background:var(--ok-soft);color:var(--ok)}
+.hm-step-t{display:flex;flex-direction:column;flex:1 1 220px;min-width:0}
+.hm-step-t b{font-size:14.5px}
+.hm-step-t .muted{font-size:13px;color:var(--ink3)}
+.hm-steps .btn{align-self:flex-start;min-height:44px;margin:2px 0 0 -14px}
+
+@media (max-width:760px){
+  .hm-head h2{font-size:21px}
+  .hm-drop{padding:16px}
+  .hm-drop .btn{flex:1 1 100%}
+}
+@media (prefers-reduced-motion:reduce){.hm-drop,.hm-att-btn{transition:none}}

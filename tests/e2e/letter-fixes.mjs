@@ -3,7 +3,7 @@
 // AI를 기다리는 동안 다른(최근) 가정통신문을 열어도 그 글의 손으로 고친 기안을 덮지 않음
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { open, run, assert, mockClaude, ROOT } from './helpers.mjs';
+import { open, run, assert, mockClaude, ROOT, enter } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -106,11 +106,13 @@ await run('letter-fixes', [
     });
     await page.evaluate(() => sessionStorage.setItem('t:formsDown', '1'));
     await page.reload(); await page.waitForTimeout(400);
+    await enter(page, 'etc', 'letter'); // 켜면 「오늘」이라 다시 들어감
     await page.waitForSelector(`${P} #lfForm`);
     await page.waitForTimeout(400);
     assert((await fid()) === id, '고른 양식이 지워짐: ' + JSON.stringify(await fid()));
     await page.evaluate(() => sessionStorage.removeItem('t:formsDown'));
     await page.reload(); await page.waitForTimeout(400);
+    await enter(page, 'etc', 'letter');
     await page.waitForFunction(([s, v]) => (document.querySelector(`${s} #lfForm`) || {}).value === v, [P, id]);
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]

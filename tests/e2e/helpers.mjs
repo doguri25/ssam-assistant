@@ -45,6 +45,14 @@ export async function open({ width = 1280, height = 860 } = {}) {
   return { page, ctx, browser, url: srv.url, errors, close };
 }
 
+/* 메뉴(·탭)로 들어가기: 앱은 켜면(새로 고침도) 「오늘」부터 보여서(스펙 2026-11-11 §1), 다른 메뉴를 시험하려면 먼저 들어감.
+   세로 메뉴 버튼을 누름 — 휴대폰 폭(아래 탭)에서도 되게 화면에서가 아니라 버튼을 바로 누름. 탭을 주면 그 탭도 */
+export async function enter(page, menu, tab) {
+  await page.waitForFunction(m => !!document.querySelector(`nav.app-side [data-menu-go="${m}"]`), menu);
+  await page.evaluate(m => document.querySelector(`nav.app-side [data-menu-go="${m}"]`).click(), menu);
+  if (tab) await page.evaluate(t => { const b = document.querySelector(`#menuTabs [data-tab="${t}"]`); if (!b) throw new Error('탭 없음: ' + t); b.click(); }, tab);
+}
+
 /* Claude API 가짜 응답. handler({ prompt(글 조각을 모두 이음), images(그림 수), content, body }) → 돌려줄 글,
    또는 { text, usage: { input_tokens, cache_read_input_tokens, cache_creation_input_tokens, output_tokens }, status }(status 429면 한도) */
 export async function mockClaude(page, handler) {

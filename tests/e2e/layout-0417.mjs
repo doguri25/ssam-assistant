@@ -1,6 +1,6 @@
 // 화면 줄이기(0.17): 새 품의는 종류(물품 구입 …)와 [템플릿으로 저장]·[새로 쓰기]가 한 줄,
 // 쪽지 작성·가정통신문·공문 처리는 AI 줄이 머리의 [새 …] 버튼 옆(따로 한 줄을 쓰지 않음), 좁은 창에서도 가로로 넘치지 않음
-import { open, run, assert } from './helpers.mjs';
+import { open, run, assert, enter } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -35,7 +35,8 @@ await run('layout-0417', [
   ['390px 폭에서 가로로 넘치지 않음(새 품의·쪽지)', async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     for (const [m, tb] of [['purchase', 'new'], ['etc', 'message']]) {
-      await page.click(`nav.app-side [data-menu-go="${m}"]`).catch(() => {}); await page.click(`#menuTabs [data-tab="${tb}"]`).catch(() => {});
+      await enter(page, m, tb); // 390px는 아래 탭이라 세로 메뉴 버튼을 바로 누름
+      assert(await page.isVisible(`section[data-menu="${m}"]`), `${m} 화면이 안 열림`);
       await page.waitForTimeout(200);
       const w = await page.evaluate(() => [document.querySelector('#app').scrollWidth, document.querySelector('#app').clientWidth]);
       assert(w[0] <= w[1], `${m} 넘침: ${w}`);

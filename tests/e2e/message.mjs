@@ -3,7 +3,7 @@
 // 붙임 파일: 웹판은 안내만, Windows 앱은 [붙임 파일 복사](저장 → 클립보드 파일)·[폴더 열기]
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { open, run, assert, mockClaude, ROOT } from './helpers.mjs';
+import { open, run, assert, mockClaude, ROOT, enter } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -53,6 +53,7 @@ await run('message', [
     await page.fill(`${P} #msgSender`, '교무부 ○○○(내선 123)');
     await page.waitForFunction(s => document.querySelector(`${s} #msgBody`).value.includes('문의: 교무부 ○○○(내선 123)'), P);
     await page.reload(); await page.waitForTimeout(500);
+    await enter(page, 'etc', 'message'); // 켜면 「오늘」이라 다시 들어감
     await page.waitForSelector(`${P} #msgBody`);
     assert((await page.inputValue(`${P} #msgSender`)) === '교무부 ○○○(내선 123)' && (await page.inputValue(`${P} #msgBody`)).includes('문의: 교무부'), '남음');
   }],

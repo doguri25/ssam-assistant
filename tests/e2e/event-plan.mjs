@@ -72,7 +72,7 @@ await run('event-plan', [
     await page.click(`${V} [data-pick="1"]`);
     assert(await page.locator(`${V} .ev-opt[data-opt="1"].picked`).count() === 1, '고른 표시');
     await page.fill(`${V} [data-tt="0"][data-f="activity"]`, '가족 릴레이(학년별)');
-    await page.reload(); await page.waitForTimeout(500);
+    await page.reload(); await page.waitForTimeout(500); await go(); // 켜면 「오늘」이라 다시 들어감
     assert(await page.inputValue(`${V} [data-tt="0"][data-f="activity"]`) === '가족 릴레이(학년별)', '시간표가 사라짐');
   }],
   ['작년 설문 없이 만든 행사는 보완안을 만들지 않게 함', async () => {

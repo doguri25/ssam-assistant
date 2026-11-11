@@ -1,6 +1,6 @@
 // 계획 › 학급운영계획 예시: [예시로 채우기] → 4단계까지(가짜 AI), 390px 폭, samples/ 한글 파일 읽기
 import { join } from 'node:path';
-import { open, run, assert, mockClaude, ROOT } from './helpers.mjs';
+import { open, run, assert, mockClaude, ROOT, enter } from './helpers.mjs';
 
 const t = await open({ width: 390, height: 844 });
 const { page, url, errors } = t;
@@ -30,8 +30,7 @@ const fits = async label => {
 };
 await page.goto(url);
 await page.waitForTimeout(400);
-await page.click('nav.app-side [data-menu-go="plan"]');
-await page.click('#menuTabs [data-tab="class"]');
+await enter(page, 'plan', 'class'); // 390px(아래 탭)에서도
 
 await run('class-plan-sample', [
   ['[예시로 채우기]: 작년 계획서·올해 지침·첨부 2개, 담임 명단·연락 줄은 빼고 알림', async () => {

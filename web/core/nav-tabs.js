@@ -12,8 +12,9 @@ export function parseTabs(text) {
 
 /* 열 탭: 부른 쪽이 정한 탭 → 그 메뉴에서 마지막으로 연 탭 → 첫 탭. 이제 없는 탭은 버림.
    평가는 기존 앱 화면(legacy: 교과 평어·창체·행특·채점)이 마지막이면 기존 앱이 지금 보이는 화면(mode)을 따름
-   (기존 앱이 스스로 화면을 바꿨을 수 있어서). menu = { id, tabs: [{ id }] } */
+   (기존 앱이 스스로 화면을 바꿨을 수 있어서). menu = { id, tabs: [{ id }] }. 탭이 없는 메뉴(오늘)는 '' */
 export function pickTab(menu, asked, last, { legacy = [], mode } = {}) {
+  if (!menu.tabs.length) return '';
   const has = id => typeof id === 'string' && menu.tabs.some(t => t.id === id);
   if (has(asked)) return asked;
   const r = last && typeof last === 'object' ? last[menu.id] : null;

@@ -305,7 +305,7 @@ await run('unit-grade', [
   }],
   ['업스테이지면 손글씨 안내', async () => {
     await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'upstage', keys: { upstage: 'up-test' }, remember: true })));
-    await page.reload(); await page.waitForTimeout(500);
+    await page.reload(); await page.waitForTimeout(500); await go(); // 켜면 「오늘」이라 다시 들어감
     await page.click(`${V} [data-un-open="${A}"]`);
     await page.click(`${V} .steps [data-step="3"]`);
     assert((await page.textContent(V)).includes('업스테이지는 이미지를 글자로 바꿔 보내요'), '안내 없음');

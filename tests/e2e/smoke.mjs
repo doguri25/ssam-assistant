@@ -1,10 +1,11 @@
 // 앱이 열리고 평가 화면들이 바뀌는지 (가장 기본)
-import { open, run, assert } from './helpers.mjs';
+import { open, run, assert, enter } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
 await page.goto(url);
 await page.waitForTimeout(600);
+await enter(page, 'evaluate'); // 켜면 「오늘」이라 평가로 들어감
 
 await run('smoke', [
   ['페이지 오류 없이 열림', async () => { assert(errors.length === 0, '페이지 오류: ' + errors.join(' | ')); }],

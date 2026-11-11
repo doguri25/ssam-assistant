@@ -1,7 +1,7 @@
 // AI 채점 정확도 (스펙 2026-11-06 C): AI가 처음 매긴 값(ai0)을 칸마다 기억, 선생님이 고치면 지금 값만 바뀜.
 // 채점·확인 요약 줄·결과 화면·평가 목록에 「AI가 맞힌 칸 ○% (유형별) · 선생님이 고친 칸 n개」, 마치기 전 「확인 중」, 옛 평가 「기록 없음」,
 // 목록 위 「올해 n개 평가 · AI가 맞힌 칸 평균 ○%」 — 단원평가·활동지
-import { open, run, assert } from './helpers.mjs';
+import { open, run, assert, enter } from './helpers.mjs';
 import { SAMPLE_ITEMS } from '../../web/menus/evaluate/unit/unit-sample.js';
 import { autoJudge } from '../../web/menus/evaluate/unit/unit-grade.js';
 
@@ -38,7 +38,7 @@ const E = 'section[data-menu="evaluate"]', V = `${E} .unit-box`;
 const T = id => page.evaluate(id => JSON.parse(localStorage.getItem('ssam:unit:t:' + id)), id);
 const act = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:activity:a:acT1')));
 const until = async (fn, ms = 10000) => { const end = Date.now() + ms; while (!(await fn())) { if (Date.now() > end) throw new Error('시간 초과'); await new Promise(r => setTimeout(r, 50)); } };
-const tab = async name => { await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click(`#menuTabs [data-tab="${name}"]`); };
+const tab = name => enter(page, 'evaluate', name); // 360px(아래 탭)에서도
 const pngs = n => page.evaluate(async n => {
   const out = [];
   for (let i = 0; i < n; i++) { const c = document.createElement('canvas'); c.width = 300; c.height = 420; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 300, 420); g.fillStyle = '#123'; g.fillRect(30 + i * 7, 90, 140, 30); out.push(c.toDataURL('image/png').split(',')[1]); }
