@@ -117,5 +117,20 @@ test('[남은 칸 모두 출석]: 빈칸만 ○, 표시한 /는 그대로, 다�
   assert.deepEqual(c1.att.s2, { a: 'O', b: 'O' });
   assert.equal(c1.att.s3, undefined, '다른 날');
   assert.deepEqual(c.att, { s1: { a: 'X' } }, '순수 함수');
-  assert.deepEqual(markAll(c, '2027-01-08').att.s1, { a: 'O', b: 'O' }, 'markAll(오늘 화면)은 그대로 모두 ○');
+  assert.deepEqual(markAll(c, '2027-01-08').att.s1, { a: 'O', b: 'O' }, 'markAll은 그대로 모두 ○(오늘 화면은 markRest)');
+});
+
+test('날마다 캠프: 출석 체크·문서 준비는 날짜로 셈(한 날에 줄이 둘이어도 날짜마다 한 번 체크면 다 됨)', async () => {
+  const { campSteps, docReadiness } = await import('../../web/menus/class/camp-steps.js');
+  const c = newCamp({ unit: 'day', students: [{ id: 'a', name: '김하늘' }],
+    sessions: [{ id: 'd1', date: '2027-01-08', start: '09:00', end: '12:00', subject: '국어', content: '읽기' }, { id: 'd1b', date: '2027-01-08', start: '13:00', end: '14:00', subject: '수학', content: '셈' },
+      { id: 'd2', date: '2027-01-11', start: '09:00', end: '12:00', subject: '국어', content: '쓰기' }],
+    att: { d1: { a: 'O' }, d2: { a: 'X' } } });
+  const att = campSteps(c).find(s => s.id === 'att');
+  assert.equal(att.line, '2 / 2일 체크');
+  assert.equal(att.done, true);
+  assert.equal(docReadiness(c).find(d => d.id === 'attend').state, 'ready');
+  const c2 = { ...c, att: { d1: { a: 'O' } } };
+  assert.equal(campSteps(c2).find(s => s.id === 'att').line, '1 / 2일 체크');
+  assert.equal(docReadiness(c2).find(d => d.id === 'attend').note, '출석 1일 남음');
 });

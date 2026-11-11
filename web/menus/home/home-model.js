@@ -4,7 +4,7 @@ import { isDate, weekday } from '../../core/calendar.js';
 import { unitPos } from '../class/class-model.js';
 import { dueSoon } from '../etc/gongmun-ai.js';
 import { sessionsOn, nextMark, setMark, fmtTime } from '../class/camp-model.js';
-import { totalScore } from '../etc/multi-quant.js';
+import { totalScore, missingItems } from '../etc/multi-quant.js';
 import { missingCount } from '../etc/multi-qual.js';
 import { EMPTY } from '../../core/briefing.js';
 
@@ -99,15 +99,21 @@ export function campCard(camp, date) {
 
 /* ---------- 이어서 하기 ---------- */
 const filled = e => isObj(e) && ['v', 'count', 'deduct'].some(k => str(e[k]).trim());
-/* 다면평가: 시작한 경우만(정량 값을 하나라도 넣었거나 정성 보고서가 있음) 「다면평가 정량 63/100점 · 입력 필요 2곳」(입력 필요: 정성 보고서의 빈 칸) */
+/* 다면평가: 시작한 경우만(정량 값을 하나라도 넣었거나 정성 보고서가 있음)
+   「다면평가 정량 63/100점 · 빈 항목 3곳 · 정성 입력 필요 2곳」 — 빈 항목은 정량 화면 「입력 필요」와 같은 셈(missingItems), 정성은 보고서의 빈 칸 */
 export function multiLine(m) {
   if (!isObj(m) || !isObj(m.quant)) return null;
   const values = isObj(m.quant.values) ? m.quant.values : {}, report = m.qual && m.qual.report;
-  if (!Object.values(values).some(filled) && !isObj(report)) return null;
-  const c = m.quant.criteria, groups = c && Array.isArray(c.groups) ? c.groups : [];
+  const quant = Object.values(values).some(filled);
+  if (!quant && !isObj(report)) return null;
+  const c = m.quant.criteria, groups = c && Array.isArray(c.groups) ? c.groups : [], short = !!(m.info && m.info.short);
   const max = groups.length && groups.every(g => Number.isFinite(g.max)) ? groups.reduce((s, g) => s + g.max, 0) : 100;
-  const total = totalScore(c, values, !!(m.info && m.info.short)) || 0, missing = isObj(report) ? missingCount(report) : 0;
-  return { kind: 'multi', total, max, missing, text: `다면평가 정량 ${total}/${max}점${missing ? ` · 입력 필요 ${missing}곳` : ''}`, when: '', route: { to: 'multi' } };
+  const total = totalScore(c, values, short) || 0;
+  let missing = 0;
+  try { missing = quant && c ? missingItems(c, values, short).length : 0; } catch (e) { missing = 0; }
+  const qual = isObj(report) ? missingCount(report) : 0;
+  const parts = [quant ? `정량 ${total}/${max}점${missing ? ` · 빈 항목 ${missing}곳` : ''}` : '', qual ? `정성 입력 필요 ${qual}곳` : ''].filter(Boolean);
+  return { kind: 'multi', total, max, missing, qual, text: `다면평가 ${parts.join(' · ') || '정성평가 이어서 쓰기'}`, when: '', route: { to: 'multi' } };
 }
 const RECENT_DAYS = 14; // 이보다 오래된 품의 초안은 이어서 하기에 넣지 않음
 /* brief: briefing.js 줄(공문은 카드에 있어 뺌), recent: 품의 최근 작성(library.js listRecent), multi: multiLine 결과. 5줄까지 — 품의·다면평가 자리를 남김 */

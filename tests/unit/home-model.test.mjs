@@ -161,12 +161,13 @@ test('다면평가 줄: 시작한 경우만 정량 총점 n/100 · 입력 필요
   const m = multiLine(multi({ values: v }));
   assert.equal(m.max, 100);
   assert.ok(Number.isFinite(m.total) && m.total >= 0, String(m.total));
-  assert.equal(m.missing, 0);
-  assert.equal(m.text, `다면평가 정량 ${m.total}/100점`);
+  assert.equal(m.missing, items.length - 1, '정량 빈 항목 수(정량 화면 「입력 필요」와 같음)');
+  assert.equal(m.text, `다면평가 정량 ${m.total}/100점 · 빈 항목 ${items.length - 1}곳`);
   assert.deepEqual(m.route, { to: 'multi' });
   const q = multiLine(multi({ report: { missing: [{ path: 'basics.a' }, { path: 'self.b' }] } }));
-  assert.equal(q.missing, 2);
-  assert.equal(q.text, '다면평가 정량 0/100점 · 입력 필요 2곳');
+  assert.equal(q.text, '다면평가 정성 입력 필요 2곳', '정량을 시작하지 않았으면 정성만');
+  const both = multiLine(multi({ values: v, report: { missing: [{ path: 'basics.a' }] } }));
+  assert.equal(both.text, `다면평가 정량 ${both.total}/100점 · 빈 항목 ${items.length - 1}곳 · 정성 입력 필요 1곳`);
   assert.equal(multiLine(multi({ values: { [first.id]: { v: '', count: '', deduct: '' } } })), null, '빈 값만 있으면 시작 전');
 });
 

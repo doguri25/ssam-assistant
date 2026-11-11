@@ -678,7 +678,13 @@ function onClick(e) {
   else if (a === 'attAll') {
     const n = M.remainingOn(c, attDate);
     if (!n) { toast('이날은 남은 칸이 없어요'); return; }
-    if (save(M.markRest(c, attDate))) { render(); toast(`${M.fmtDate(attDate)} 남은 ${n}칸을 출석으로 표시했어요`); }
+    if (save(M.markRest(c, attDate))) {
+      render();
+      // 다 채우면 단추가 꺼져 초점이 사라지므로, 고른 날짜 칩에 초점을 둠(키보드로 누른 선생님이 자리를 잃지 않게)
+      const f = box.querySelector('[data-cp="attAll"]:not([disabled])') || box.querySelector('.cp-day[aria-pressed="true"]');
+      if (f) f.focus();
+      toast(`${M.fmtDate(attDate)} 남은 ${n}칸을 출석으로 표시했어요`);
+    }
   }
   else if (a === 'obsAi') obsAi();
   else if (a === 'reportAi') reportAi();
@@ -724,6 +730,7 @@ onEnter('class', (tab, section) => {
   curTab = tab;
   box.hidden = tab !== 'camp';
   if (box.hidden) return;
+  attFor = ''; // 탭에 들어올 때마다 출석 날짜는 오늘(없으면 가까운 수업 날)부터 — 학급 › 오늘 수업과 같이
   render();
   const sig = sigOf();
   loadForms().then(() => { if (sigOf() !== sig) redraw(); }).catch(() => {});

@@ -115,9 +115,14 @@ await run('home', [
     await page.click(btn);
     a = await att();
     assert(!(a.x1 && a.x1.a) && !(a.x2 && a.x2.a), '빈칸: ' + JSON.stringify(a));
+    await page.click(btn); await page.click(btn); // 김하늘 / 결석
     await page.click(`${card} [data-hm="attAll"]`);
     a = await att();
-    assert(['a', 'b'].every(s => a.x1[s] === 'O' && a.x2[s] === 'O'), '모두 출석: ' + JSON.stringify(a));
+    assert(a.x1.a === 'X' && a.x2.a === 'X' && a.x1.b === 'O' && a.x2.b === 'O', '남은 칸만 출석(결석은 그대로): ' + JSON.stringify(a));
+    assert((await page.textContent('#toast')).includes('남은 칸'), await page.textContent('#toast'));
+    await page.click(btn); await page.click(btn); // / → 빈칸 → ○
+    a = await att();
+    assert(a.x1.a === 'O' && a.x2.a === 'O', '다시 ○: ' + JSON.stringify(a));
     assert((await page.textContent(`${H} .hm-head h2`)) === '오늘 챙길 일 6가지', '출석을 다 하면 할 일이 줄어듦: ' + await page.textContent(`${H} .hm-head h2`));
     await page.click(`${card} [data-hm-go="camp"]`);
     await waitTitle('학급');

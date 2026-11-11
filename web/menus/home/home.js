@@ -11,7 +11,7 @@ import { gather, goRoute, today } from '../../core/brief-data.js';
 import { ensureYears } from '../../core/years.js';
 import { listDocs } from '../etc/gongmun-model.js';
 import { makeCtx, dayView, hasTimetable } from '../class/class-model.js';
-import { listCamps, getCamp, saveCamp, currentCampId, setCurrentCamp, markAll, fmtDate } from '../class/camp-model.js';
+import { listCamps, getCamp, saveCamp, currentCampId, setCurrentCamp, markRest, fmtDate } from '../class/camp-model.js';
 import { listRecent } from '../purchase/library.js';
 import { getMulti } from '../etc/multi-model.js';
 import * as H from './home-model.js';
@@ -100,7 +100,7 @@ function campHTML(d) {
   return `<section class="hm-card hm-camp" aria-labelledby="hmCampH"><div class="hm-card-h"><h3 id="hmCampH">교과캠프 출석</h3>
       <span class="muted">${esc(k.name)} · 오늘 ${k.count}번${k.time ? ` · ${esc(k.time)}` : ''}</span></div>
     ${pick}${sts}
-    <div class="hm-card-f">${k.students.length ? '<button type="button" class="btn tonal" data-hm="attAll">모두 출석</button>' : ''}<button type="button" class="btn text" data-hm-go="camp">캠프 열기</button></div></section>`;
+    <div class="hm-card-f">${k.students.length ? '<button type="button" class="btn tonal" data-hm="attAll">남은 칸 모두 출석</button>' : ''}<button type="button" class="btn text" data-hm-go="camp">캠프 열기</button></div></section>`;
 }
 function contHTML(d) {
   if (brief === null) return '<section class="hm-cont" aria-labelledby="hmContH"><h3 id="hmContH">이어서 하기</h3><p class="muted hm-none"><span class="spin"></span>세는 중…</p></section>';
@@ -131,7 +131,7 @@ function draw() {
 }
 /* 다시 그린 뒤에도 누르던 단추에 초점이 남게 */
 function keyOf(el) {
-  for (const a of ['data-hm-mark', 'data-hm-camp', 'data-hm', 'data-hm-row']) if (el.hasAttribute(a)) return `[${a}="${CSS.escape(el.getAttribute(a))}"]`;
+  for (const a of ['data-hm-mark', 'data-hm-camp', 'data-hm', 'data-hm-row', 'data-hm-go']) if (el.hasAttribute(a)) return `[${a}="${CSS.escape(el.getAttribute(a))}"]`;
   return '';
 }
 async function refresh() {
@@ -176,9 +176,10 @@ function onClick(e) {
   else if (b.dataset.hm === 'attAll') {
     const c = camp();
     if (!c) return;
-    if (!saveCamp(markAll(c, today()))) { toast(FULL_MSG, 7000); return; }
+    // 남은 칸만 ○(이미 적은 / 결석은 그대로 — 출석부에 그대로 나감)
+    if (!saveCamp(markRest(c, today()))) { toast(FULL_MSG, 7000); return; }
     draw();
-    toast(`${fmtDate(today())} ${c.name || '캠프'} 수업을 모두 출석으로 표시했어요`);
+    toast(`${fmtDate(today())} ${c.name || '캠프'} 남은 칸을 출석으로 표시했어요(결석은 그대로)`);
   }
 }
 
