@@ -76,13 +76,13 @@ function gridOf(xml, tb) {
 }
 const gridRows = g => g.slot.map((r, ri) => r.map((c, ci) => (c && c.row === ri && c.col === ci ? c.text : '')));
 
-/* u8 → { tables: [{ index, rows: string[][](rowCnt×colCnt), rowCnt, colCnt }], texts: [표 밖 문단 글(빈 문단은 뺌)] }
+/* u8 → { tables: [{ index, rows: string[][](rowCnt×colCnt), rowCnt, colCnt, cells: [{ row, col, rowSpan, colSpan, text }](합친 칸 하나씩) }], texts: [표 밖 문단 글(빈 문단은 뺌)] }
    깨진 파일·구역 XML이 없으면 Error code 'NOT_HWPX' */
 export async function readTables(u8) {
   const { secs } = await load(u8);
   const tables = tablesOf(secs).map(({ si, node }, index) => {
     const g = gridOf(secs[si].xml, node);
-    return { index, rows: gridRows(g), rowCnt: g.rowCnt, colCnt: g.colCnt };
+    return { index, rows: gridRows(g), rowCnt: g.rowCnt, colCnt: g.colCnt, cells: g.cells.map(c => ({ row: c.row, col: c.col, rowSpan: c.rowSpan, colSpan: c.colSpan, text: c.text })) };
   });
   const texts = [];
   for (const { xml, root } of secs) for (const n of walk(root)) if (local(n) === 'p' && !inCell(n)) { const t = paraText(xml, n); if (t.trim()) texts.push(t); }
@@ -104,6 +104,24 @@ export function pickTable(tables, words) {
 
 /* ---------- 채우기 ---------- */
 const NUM = /^(\d{1,3}|[①-⑳])\s*[.)]?$/;
+/* 머리 줄 수(cells: [{ row, col, rowSpan, colSpan, text }], R 줄 수, h 직접 준 수):
+   주지 않으면 「1」로 시작하는 줄이나, 첫 칸이 비었거나 번호이고 반 넘게 빈 줄 앞까지(첫 칸이 「순」 같은 이름이면 날짜 칸이 비어 있어도 머리 — 날짜형 출석부), 모르면 1.
+   머리 칸이 아래로 이어지면(rowSpan) 그 줄까지 머리 */
+function headOf(cells, R, h) {
+  if (!(Number.isInteger(h) && h >= 0)) {
+    h = -1;
+    for (let r = 0; r < R && h < 0; r++) {
+      const cs = cells.filter(c => c.row === r), f = cells.find(c => c.col <= 0 && c.col + c.colSpan > 0 && c.row <= r && c.row + c.rowSpan > r);
+      if (!cs.length || !f || f.row !== r) continue;
+      if (/^(1|①)\s*[.)]?$/.test(f.text) || ((!f.text || NUM.test(f.text)) && cs.filter(c => !c.text).length * 2 > cs.length)) h = r;
+    }
+    if (h < 0) h = 1;
+  }
+  for (let moved = true; moved;) { moved = false; for (const c of cells) if (c.row < h && c.row + c.rowSpan > h) { h = c.row + c.rowSpan; moved = true; } }
+  return h;
+}
+/* readTables 표 하나 → 머리 줄 수(fillTable이 headRows 없이 쓰는 것과 같음) */
+export const headRows = t => headOf((t && t.cells) || [], (t && t.rowCnt) || 0);
 /* 줄 높이(칸 크기에서): 합친 칸은 아는 줄을 뺀 나머지를 나눔, 모르면 평균 */
 function rowHeights(g) {
   const R = g.trs.length, h = Array(R).fill(0);
@@ -129,20 +147,7 @@ function planOf(xml, tb, o) {
   const findFoot = from => { if (fm) for (let r = from; r < R; r++) if (isFoot(r)) return r; return -1; };
   let t = R, end = R, data = [], foot;
   if (Array.isArray(o.rows)) {
-    // 머리 줄 수: 주지 않으면 「1」로 시작하는 줄이나, 첫 칸이 비었거나 번호이고 반 넘게 빈 줄 앞까지
-    // (첫 칸이 「순」 같은 이름이면 날짜 칸이 비어 있어도 머리 — 날짜형 출석부)
-    let h = o.headRows;
-    if (!(Number.isInteger(h) && h >= 0)) {
-      h = -1;
-      for (let r = 0; r < R && h < 0; r++) {
-        const cs = own(r), f = at(r, 0);
-        if (!cs.length || !f || f.row !== r) continue;
-        if (/^(1|①)\s*[.)]?$/.test(f.text) || ((!f.text || NUM.test(f.text)) && cs.filter(c => !c.text).length * 2 > cs.length)) h = r;
-      }
-      if (h < 0) h = 1;
-    }
-    // 머리 칸이 아래로 이어지면(rowSpan) 그 줄까지 머리
-    for (let moved = true; moved;) { moved = false; for (const c of g.cells) if (c.row < h && c.row + c.rowSpan > h) { h = c.row + c.rowSpan; moved = true; } }
+    const h = headOf(g.cells, R, o.headRows);
     if (h >= R || isFoot(h)) throw fail('NO_ROW');
     t = h;
     // 데이터 줄: 본 줄(과 그 합친 칸이 묶은 줄들)부터, 첫 칸이 비었거나(같은 칸 배치·모두 빔) 번호이거나 본 줄과 같은 모양인 줄까지

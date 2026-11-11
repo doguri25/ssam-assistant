@@ -1,7 +1,7 @@
 /* 문서 내보내기: 같은 문서 꼴(core/hwpx.js의 { title, blocks })을 한글(hwpx)·워드(docx)·PDF(인쇄 창의 「PDF로 저장」)로.
    고른 형식은 기억해(학년도와 상관없이) 모든 메뉴의 [○○로 내려받기] 단추가 같이 씀. ▾로 형식을 바꾸면 바로 그 형식으로 내려받음.
    메뉴는 exportButton(속성)으로 단추를 그리고, 그 단추를 누르면 exportDoc(doc, 파일 이름)을 부르면 됨 */
-import { makeHwpx, photoList, fitBox } from './hwpx.js';
+import { makeHwpx, photoList, fitBox, colWidths } from './hwpx.js';
 import { zipStore } from './zip.js';
 import { get, set } from './store.js';
 import { saveFile, toast } from './ui.js';
@@ -63,14 +63,14 @@ function docxBody(doc, photos = photoList(doc)) {
     else if (b.type === 'table') {
       const rows = rowsOf(b);
       if (!rows.length) { brk = pb; continue; }
-      const cols = Math.max(1, ...rows.map(r => r.length)), cw = Math.floor(TEXT_W / cols);
+      const cols = Math.max(1, ...rows.map(r => r.length)), cw = colWidths(b.widths, cols, TEXT_W);
       if (pb) out += '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
       out += '<w:tbl><w:tblPr><w:tblStyle w:val="Grid"/><w:tblW w:w="5000" w:type="pct"/><w:tblLayout w:type="fixed"/></w:tblPr>'
-        + `<w:tblGrid>${Array.from({ length: cols }, () => `<w:gridCol w:w="${cw}"/>`).join('')}</w:tblGrid>`
+        + `<w:tblGrid>${cw.map(w => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>`
         + rows.map((r, ri) => {
           const head = !!b.head && ri === 0;
           return `<w:tr>${head ? '<w:trPr><w:tblHeader/></w:trPr>' : ''}` + Array.from({ length: cols }, (_, ci) =>
-            `<w:tc><w:tcPr><w:tcW w:w="${cw}" w:type="dxa"/>${head ? '<w:shd w:val="clear" w:color="auto" w:fill="E6E6E6"/>' : ''}</w:tcPr>`
+            `<w:tc><w:tcPr><w:tcW w:w="${cw[ci]}" w:type="dxa"/>${head ? '<w:shd w:val="clear" w:color="auto" w:fill="E6E6E6"/>' : ''}</w:tcPr>`
             + linesOf(r[ci]).map(l => para(l, { bold: head })).join('') + '</w:tc>').join('') + '</w:tr>';
         }).join('') + '</w:tbl><w:p/>';
     } else if (b.type === 'photos') {
@@ -137,7 +137,9 @@ export function docHtml(doc) {
       const cols = Math.max(1, ...rows.map(r => r.length));
       // 칸 글이 모두 짧은 열(교시·월·구분 등)은 줄을 바꾸지 않음 (좁은 열에서 「1교/시」처럼 잘리지 않게)
       const short = Array.from({ length: cols }, (_, ci) => rows.every(r => linesOf(r[ci]).every(l => l.length <= 6)));
-      out += '<table>' + rows.map((r, ri) => '<tr>' + Array.from({ length: cols }, (_, ci) => {
+      const ws = colWidths(b.widths, cols, 10000), sized = ws.some(w => w !== ws[0]);
+      const cg = sized ? `<colgroup>${ws.map(w => `<col style="width:${Math.round(w / 100)}%">`).join('')}</colgroup>` : '';
+      out += '<table>' + cg + rows.map((r, ri) => '<tr>' + Array.from({ length: cols }, (_, ci) => {
         const tag = b.head && ri === 0 ? 'th' : 'td';
         return `<${tag}${short[ci] ? ' class="nw"' : ''}>${linesOf(r[ci]).map(hesc).join('<br>')}</${tag}>`;
       }).join('') + '</tr>').join('') + '</table>';

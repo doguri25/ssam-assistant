@@ -62,8 +62,31 @@ test('출석부 교시형: 수업 줄 × 학생(○·/·빈칸), 날짜는 그�
   assert.equal(d.title, '3-(1) 교과캠프 학생 출석 및 관찰 기록부');
   assert.ok(texts(d).includes(ATTEND_NOTE) && ATTEND_NOTE === '※ 출석 : ○ , 결석 : /');
   assert.ok(texts(d).includes('지도교사: 한가람'));
-  const main = tables(d).at(-1);
+  const main = tables(d)[0];
   assert.deepEqual(main.rows.at(-1), t.footer);
+});
+
+test('출석 및 관찰 기록부(교시형): 출석표 다음 쪽에 관찰 표(한 쪽 5명, 이름 줄 + 관찰 및 지도 결과 줄) — 견본처럼, 날짜형 출석부에는 없음', () => {
+  const c = camp({ obs: { a: '받아쓰기에 자신감이 붙음.' } });
+  const d = attendDoc(c);
+  const i = d.blocks.findIndex(b => b.type === 'table');
+  assert.equal(d.blocks[i + 1].type, 'break', '관찰은 새 쪽');
+  const ob = tables(d)[1];
+  assert.deepEqual(ob.rows, [['이름', '김하늘', '이바다', '', '', ''], ['관찰 및 지도 결과', '받아쓰기에 자신감이 붙음.', '', '', '', '']]);
+  assert.equal(tables(attendDoc(camp({ unit: 'day' }))).length, 1);
+});
+
+test('칸 너비: 수업 확인서는 「지도 내용」이 가장 넓고 「순」이 가장 좁게, 출석부·관찰 표도 칸 수만큼 너비', () => {
+  const m = tables(confirmDoc(camp())).at(-1);
+  assert.equal(m.widths.length, 6);
+  assert.equal(Math.max(...m.widths), m.widths[4], '지도 내용');
+  assert.equal(Math.min(...m.widths), m.widths[0], '순');
+  const a = tables(attendDoc(camp()));
+  assert.ok(a.every(t => Array.isArray(t.widths) && t.widths.length === t.rows[0].length), JSON.stringify(a.map(t => t.widths)));
+  const dd = tables(attendDoc(camp({ unit: 'day' })))[0];
+  assert.equal(dd.widths.length, dd.rows[0].length);
+  const o = tables(observeDoc(camp()))[0];
+  assert.equal(o.widths.length, 6);
 });
 
 test('출석부 날짜형: 학생 × 날짜, 계 칸', () => {
@@ -121,7 +144,7 @@ test('넣은 양식 모양 따르기: 제목·칸 이름·차례·안내 글(모
   assert.deepEqual(mapColumns(['순', '일시(날짜)', '시간', '교과', '지도내용', '확인(서명)'], 'confirm'), ['seq', 'date', 'time', 'subject', 'content', 'sign']);
   // 출석부 교시형: 학생 칸(학생1·학생2 …)은 학생 수만큼
   const a = attendDoc(c, { title: '학생 출석 및 관찰 기록부', columns: ['순', '일시(날짜)', '시간', '학생1', '학생2', '학생3', '비고'] });
-  assert.deepEqual(tables(a).at(-1).rows[0], ['순', '일시(날짜)', '시간', '김하늘', '이바다', '비고']);
+  assert.deepEqual(tables(a)[0].rows[0], ['순', '일시(날짜)', '시간', '김하늘', '이바다', '비고']);
   assert.ok(texts(a).includes('※ 출석 : ○ , 결석 : /'), '안내가 없으면 기본 안내');
   // 관찰 기록부: 줄 이름
   const o = observeDoc(c, { title: '관찰 기록부', columns: ['성명', '관찰 내용'] });

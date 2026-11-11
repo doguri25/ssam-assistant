@@ -1,11 +1,12 @@
 // 학급 › 기초학력 캠프(스펙 2026-11-11): 탭(주간학습안내 다음) → 캠프 만들기 → 학생 2명 → 일정 AI(가짜, 날짜는 앱이 셈·다른 메뉴에 가도 이어짐)
-// → 출석 체크(○·/·빈칸, 모두 출석, 학생별 계) → 관찰 AI(고친 칸은 묻고 둠) → 보고서 AI → 문서 내보내기 4종 → hwpx 양식(준비 중 → 기본 양식)
+// → 출석 체크(○·/·빈칸, 모두 출석, 학생별 계) → 관찰 AI(고친 칸은 묻고 둠) → 보고서 AI → 문서 내보내기 4종 → hwpx 양식 표에 채우기(결재란 그대로)
 // → 사진 양식(AI가 모양을 읽음) → 새로 고침 뒤 그대로 → 390px 폭. AI로 간 글에는 학생·지도교사 이름이 없음
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { open, run, assert, mockClaude, FIXTURES } from './helpers.mjs';
 import { unzip } from '../../web/core/zip.js';
 import { makeHwpx } from '../../web/core/hwpx.js';
+import { readTables } from '../../web/core/hwpx-table.js';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -50,7 +51,9 @@ const noNames = (s, what) => { for (const n of NAMES) assert(!s.includes(n), `${
 const dec = u => new TextDecoder().decode(u);
 const hwpxText = async dl => [...(await unzip(new Uint8Array(readFileSync(await dl.path())))).entries()].filter(([k]) => /section\d*\.xml$/.test(k)).map(([, v]) => dec(v)).join('');
 const download = async doc => { const [dl] = await Promise.all([page.waitForEvent('download'), page.click(`${P} [data-cp="export"][data-doc="${doc}"]`)]); return dl; };
-const FORM = Buffer.from(makeHwpx({ title: '교과캠프 수업 확인서', blocks: [{ type: 'table', head: true, rows: [['순', '날짜', '시간', '교과', '지도 내용', '확인(서명)'], ['', '', '', '', '', '']] }] }));
+const FORM = Buffer.from(makeHwpx({ title: '교과캠프 수업 확인서', blocks: [
+  { type: 'table', head: true, rows: [['계(담당자)', '교감', '교장'], ['', '', '']] }, { type: 'p', text: '지도교사 :        (인)' },
+  { type: 'table', head: true, rows: [['순', '날짜', '시간', '교과', '지도 내용', '확인(서명)'], ['', '', '', '', '', ''], ['계', '지도 시간: 총 (    )시간', '', '', '', '']] }] }));
 
 await page.goto(url);
 await page.waitForTimeout(400);
@@ -193,13 +196,19 @@ await run('camp', [
     await page.click(`${P} .cp-doc[data-doc="observe"] [data-exp-menu]`);
     await Promise.all([page.waitForEvent('download'), page.click('#expMenu [data-exp-fmt="hwpx"]')]);
   }],
-  ['수업 확인서에 학교 한글 양식(.hwpx) → 준비 중이라 알리고 기본 양식으로 내려받음', async () => {
+  ['수업 확인서에 학교 한글 양식(.hwpx) → 그 양식의 표에 수업 줄·총 시간·지도교사를 채워 내려받음(결재란 그대로)', async () => {
     await page.setInputFiles(`${P} #cpFile-confirm`, { name: '교과캠프 수업 확인서 양식.hwpx', mimeType: 'application/octet-stream', buffer: FORM });
     await page.waitForFunction(() => [...document.querySelectorAll('.cls-camp [data-form-pick="confirm"] option')].some(o => o.selected && o.textContent.includes('교과캠프 수업 확인서 양식')));
     assert((await camp()).forms.confirm, '캠프에 고른 양식');
+    assert((await page.textContent(`${P} .cp-doc[data-doc="confirm"] .cp-form-note`)).includes('표에 채워요'), '양식 안내');
     const dl = await download('confirm');
-    await waitToast('학교 한글 양식 채우기는 준비 중이에요. 기본 양식으로 내려받아 주세요');
-    assert((await hwpxText(dl)).includes('지도 시간: 총 ( 55 )시간'), '기본 양식');
+    await waitToast('양식에 채워 내려받았어요');
+    const { tables, texts } = await readTables(new Uint8Array(readFileSync(await dl.path())));
+    assert(tables.length === 2 && JSON.stringify(tables[0].rows) === JSON.stringify([['계(담당자)', '교감', '교장'], ['', '', '']]), '결재란 그대로');
+    const t = tables[1].rows;
+    assert(t.length === 57 && t[0][4] === '지도 내용' && t[1][0] === '1' && t[1][3] && t[1][4] && t[1][5] === '', '수업 55줄: ' + JSON.stringify(t.slice(0, 2)));
+    assert(t[56][0] === '계' && t[56][1] === '지도 시간: 총 ( 55 )시간', '계 줄: ' + JSON.stringify(t[56]));
+    assert(texts.includes('지도교사 : 한가람 (인)'), JSON.stringify(texts));
     assert(!reqs.some(r => r.prompt.includes('[기초학력 캠프 양식 읽기]')), '한글 양식(수업 확인서)은 AI로 읽지 않음');
   }],
   ['출석부에 양식 사진 → AI가 모양을 읽고(그림), 내보낸 문서가 그 제목·칸을 따름, 빈 양식 안내', async () => {

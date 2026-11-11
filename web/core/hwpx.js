@@ -112,6 +112,13 @@ export function photoList(doc) {
   return out;
 }
 /* 상자(maxW×maxH) 안에 가로세로 비율 그대로 */
+/* 표 칸 너비: widths(비율, 칸 수만큼·모두 0보다 큼)면 그 비율로, 아니면 똑같이 → 정수 배열(합은 total 이하) */
+export function colWidths(widths, cols, total) {
+  const ok = Array.isArray(widths) && widths.length === cols && widths.every(x => Number.isFinite(+x) && +x > 0);
+  if (!ok) return Array(cols).fill(Math.floor(total / cols));
+  const sum = widths.reduce((a, x) => a + +x, 0);
+  return widths.map(x => Math.floor(total * +x / sum));
+}
 export function fitBox(w, h, maxW, maxH) {
   const W = Math.max(1, +w || 4), H = Math.max(1, +h || 3), k = Math.min(maxW / W, maxH / H);
   return [Math.round(W * k), Math.round(H * k)];
@@ -125,19 +132,19 @@ function sectionXml(doc, photos = photoList(doc)) {
   // pb: 첫 줄을 새 쪽에서 시작
   const lines = (pr, cpr, text, pb) => String(text == null ? '' : text).split('\n').map((l, i) => para(pr, run(cpr, l), pb && !i)).join('');
 
-  function table(rows, head, pb) {
+  function table(rows, head, pb, widths) {
     const cols = Math.max(1, ...rows.map(r => r.length));
-    const w = Math.floor(TEXT_W / cols), rowH = 1000;
+    const ws = colWidths(widths, cols, TEXT_W), rowH = 1000;
     const tr = (r, ri) => '<hp:tr>' + Array.from({ length: cols }, (_, ci) => {
       const isHead = head && ri === 0;
       return `<hp:tc name="" header="${isHead ? 1 : 0}" hasMargin="0" protect="0" editable="0" dirty="0" borderFillIDRef="${isHead ? 4 : 3}">`
         + '<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="CENTER" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0">'
         + lines(isHead ? 1 : 0, isHead ? 1 : 0, r[ci] == null ? '' : r[ci])
         + '</hp:subList>'
-        + `<hp:cellAddr colAddr="${ci}" rowAddr="${ri}"/><hp:cellSpan colSpan="1" rowSpan="1"/><hp:cellSz width="${w}" height="${rowH}"/><hp:cellMargin left="510" right="510" top="141" bottom="141"/></hp:tc>`;
+        + `<hp:cellAddr colAddr="${ci}" rowAddr="${ri}"/><hp:cellSpan colSpan="1" rowSpan="1"/><hp:cellSz width="${ws[ci]}" height="${rowH}"/><hp:cellMargin left="510" right="510" top="141" bottom="141"/></hp:tc>`;
     }).join('') + '</hp:tr>';
     const tbl = `<hp:tbl id="${1000 + tid++}" zOrder="0" numberingType="TABLE" textWrap="TOP_AND_BOTTOM" textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" pageBreak="CELL" repeatHeader="${head ? 1 : 0}" rowCnt="${rows.length}" colCnt="${cols}" cellSpacing="0" borderFillIDRef="3" noAdjust="0">`
-      + `<hp:sz width="${w * cols}" widthRelTo="ABSOLUTE" height="${rowH * rows.length}" heightRelTo="ABSOLUTE" protect="0"/>`
+      + `<hp:sz width="${ws.reduce((x, y) => x + y, 0)}" widthRelTo="ABSOLUTE" height="${rowH * rows.length}" heightRelTo="ABSOLUTE" protect="0"/>`
       + '<hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="0" holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="COLUMN" vertAlign="TOP" horzAlign="LEFT" vertOffset="0" horzOffset="0"/>'
       + '<hp:outMargin left="0" right="0" top="0" bottom="0"/><hp:inMargin left="510" right="510" top="141" bottom="141"/>'
       + rows.map(tr).join('') + '</hp:tbl>';
@@ -190,7 +197,7 @@ function sectionXml(doc, photos = photoList(doc)) {
     if (b.type === 'break') { brk = true; continue; }
     const pb = brk; brk = false;
     if (b.type === 'h') body += lines(2, 3, b.text, pb);
-    else if (b.type === 'table') { const rows = (b.rows || []).filter(Array.isArray); if (rows.length) body += table(rows, !!b.head, pb); else brk = pb; }
+    else if (b.type === 'table') { const rows = (b.rows || []).filter(Array.isArray); if (rows.length) body += table(rows, !!b.head, pb, b.widths); else brk = pb; }
     else if (b.type === 'c') body += lines(1, b.bold ? 1 : 0, b.text, pb); // 가운데 줄(굵게 고를 수 있음)
     else if (b.type === 'photos') { const x = photosTable((b.items || []).filter(it => it && it.bytes && it.bytes.length), pb); if (x) body += x; else brk = pb; }
     else if (b.type === 'small') body += lines(0, 4, b.text, pb); // 작은 글(결과지 맨 아래 정답 등)

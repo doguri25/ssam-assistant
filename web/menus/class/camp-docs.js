@@ -30,11 +30,14 @@ export function mapColumns(cols, kind) {
   const rules = FIELD[kind] || [];
   return (cols || []).map(c => { const t = String(c || '').replace(/\s+/g, ' ').trim(); const r = rules.find(([, re]) => re.test(t)); return r ? r[0] : ''; });
 }
+/* 칸 너비 비율(칸 뜻마다) — 「지도 내용」은 넓게, 「순」·「계」는 좁게 */
+const WEIGHT = { seq: 0.7, date: 1.6, time: 1.9, subject: 1.1, content: 5, sign: 1.5, student: 1.2, gradeClass: 1.1, name: 1.5, total: 0.8 };
+const widthsOf = (keys, dflt = 1.3) => keys.map(k => WEIGHT[k] || dflt);
 const colsOf = layout => (layoutOk(layout) && Array.isArray(layout.columns) ? layout.columns.map(c => String(c || '').trim()).filter(Boolean) : []);
 
 /* ---------- 수업 확인서 ---------- */
 /* 수업 줄(날짜·시작 차례) → 칸 값 { seq, date(그날 첫 줄에만), time, subject, content, sign } */
-function confirmCells(camp) {
+export function confirmCells(camp) {
   let prev = null;
   return sortSessions(camp.sessions).map((s, i) => {
     const first = s.date !== prev; prev = s.date;
@@ -51,7 +54,7 @@ export function confirmTable(camp, layout) {
   const rows = confirmCells(camp).map(c => k.map(f => (f ? c[f] : '')));
   const at = Math.max(0, k.indexOf('seq'));
   const footer = head.map((_, i) => (i === at ? '계' : i === at + 1 ? hoursText(camp) : ''));
-  return { head, rows, footer };
+  return { head, rows, footer, widths: widthsOf(k) };
 }
 export function confirmDoc(camp, layout) {
   const t = confirmTable(camp, layout);
@@ -62,20 +65,20 @@ export function confirmDoc(camp, layout) {
       // 결재란: 칸 이름 줄 + 도장 찍을 빈 줄(빈 줄 둘로 높이를 줌)
       ...(ap.length ? [{ type: 'table', head: true, rows: [ap, ap.map(() => SIGN_CELL)] }] : []),
       ...teacherLine(camp),
-      { type: 'table', head: true, rows: [t.head, ...t.rows, t.footer] },
+      { type: 'table', head: true, rows: [t.head, ...t.rows, t.footer], widths: t.widths },
       ...noteBlocks(notesOf(layout, [CONFIRM_NOTE]))
     ]
   };
 }
 
 /* ---------- 출석부 ---------- */
-const markOf = (camp, sessionId, sid) => MARK[camp.att[sessionId] && camp.att[sessionId][sid]] || '';
+export const markOf = (camp, sessionId, sid) => MARK[camp.att[sessionId] && camp.att[sessionId][sid]] || '';
 /* 날짜형: 그날 수업 중 ○가 있으면 ○, /만 있으면 /, 없으면 빈칸 */
-function dayMark(camp, date, sid) {
+export function dayMark(camp, date, sid) {
   const ms = camp.sessions.filter(s => s.date === date).map(s => camp.att[s.id] && camp.att[s.id][sid]);
   return ms.includes('O') ? '○' : ms.includes('X') ? '/' : '';
 }
-const gradeClass = st => (st.grade && st.cls ? `${st.grade}-${st.cls}` : st.grade ? String(st.grade) : '');
+export const gradeClass = st => (st.grade && st.cls ? `${st.grade}-${st.cls}` : st.grade ? String(st.grade) : '');
 /* 교시형 { head, rows, footer }: 수업 줄 × 학생, 끝 줄 「계」 학생별 출석 수. 날짜형 { head, rows, footer: null }: 학생 × 날짜, 끝 칸 「계」 */
 export function attendTable(camp, layout) {
   const cols = colsOf(layout);
@@ -95,7 +98,7 @@ export function attendTable(camp, layout) {
       const present = dates.filter(d => dayMark(camp, d, st.id) === '○').length;
       return k.map(f => (f === 'seq' ? String(n + 1) : f === 'gradeClass' ? gradeClass(st) : f === 'name' ? st.name : f === 'date' ? dayMark(camp, dates[di++], st.id) : f === 'total' ? String(present) : ''));
     });
-    return { head, rows, footer: null };
+    return { head, rows, footer: null, widths: k.map(f => (f === 'date' ? 0.8 : WEIGHT[f] || 1.3)) };
   }
   const keys = mapColumns(cols, 'attendPeriod');
   const use = keys.includes('date') && keys.includes('student');
@@ -110,7 +113,7 @@ export function attendTable(camp, layout) {
   const at = Math.max(0, k.indexOf('seq'));
   let si = 0;
   const footer = k.map((f, i) => (f === 'student' ? String(attCount(camp, camp.students[si++].id)) : i === at ? '계' : ''));
-  return { head, rows, footer };
+  return { head, rows, footer, widths: widthsOf(k) };
 }
 export function attendDoc(camp, layout) {
   const t = attendTable(camp, layout);
@@ -120,7 +123,9 @@ export function attendDoc(camp, layout) {
     blocks: [
       ...teacherLine(camp),
       ...noteBlocks(notes.some(n => /○/.test(n)) ? notes : [ATTEND_NOTE, ...notes]),
-      { type: 'table', head: true, rows: [t.head, ...t.rows, ...(t.footer ? [t.footer] : [])] }
+      { type: 'table', head: true, rows: [t.head, ...t.rows, ...(t.footer ? [t.footer] : [])], widths: t.widths },
+      // 교시형은 견본처럼 다음 쪽에 관찰 표(「학생 출석 및 관찰 기록부」)
+      ...(camp.unit === 'day' ? [] : observeTables(camp, null).flatMap(tb => [{ type: 'break' }, tb]))
     ]
   };
 }
@@ -139,14 +144,15 @@ function observeLabels(layout) {
   const result = cols.find(c => c !== name && /관찰|지도|결과|내용/.test(c));
   return [name || '이름', result || '관찰 및 지도 결과'];
 }
-export function observeDoc(camp, layout) {
+/* 쪽마다 관찰 표 하나(이름 줄 + 관찰 및 지도 결과 줄, 모자란 칸은 비움) */
+function observeTables(camp, layout) {
   const [nl, rl] = observeLabels(layout);
+  const pad = a => [...a, ...Array(Math.max(0, OBSERVE_PER_PAGE - a.length)).fill('')];
+  return observePages(camp).map(pg => ({ type: 'table', head: true, rows: [[nl, ...pad(pg.map(p => p.name))], [rl, ...pad(pg.map(p => p.text))]], widths: [1.4, ...Array(OBSERVE_PER_PAGE).fill(2)] }));
+}
+export function observeDoc(camp, layout) {
   const blocks = [...teacherLine(camp)];
-  observePages(camp).forEach((pg, i) => {
-    if (i) blocks.push({ type: 'break' });
-    const pad = a => [...a, ...Array(Math.max(0, OBSERVE_PER_PAGE - a.length)).fill('')];
-    blocks.push({ type: 'table', head: true, rows: [[nl, ...pad(pg.map(p => p.name))], [rl, ...pad(pg.map(p => p.text))]] });
-  });
+  observeTables(camp, layout).forEach((tb, i) => { if (i) blocks.push({ type: 'break' }); blocks.push(tb); });
   if (layoutOk(layout) && Array.isArray(layout.notes) && layout.notes.length) blocks.push(...noteBlocks(layout.notes));
   return { title: titleOf('observe', camp, layout), blocks };
 }

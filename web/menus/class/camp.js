@@ -16,7 +16,7 @@ import { currentYear } from '../../core/years.js';
 import * as M from './camp-model.js';
 import { campDoc, docTitle, docLabel } from './camp-docs.js';
 import { schedulePrompt, normSchedule, buildSessions, obsPrompt, normObs, reportHeads, reportPrompt, normCampReport, layoutPrompt, normLayout } from './camp-ai.js';
-import { fillCampForm } from './camp-form.js';
+import { fillCampForm, REPORT_DEFAULT_MSG, NO_MATCH_MSG } from './camp-form.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad = n => String(n).padStart(2, '0');
@@ -25,7 +25,6 @@ const SS = () => window.SSAM || {};
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const NS = 'camp';
 const SECS = [['info', '캠프 정보'], ['sched', '수업 일정'], ['att', '출석 체크'], ['obs', '관찰 기록'], ['report', '결과 보고서'], ['docs', '문서 내보내기']];
-export const NOT_READY_MSG = '학교 한글 양식 채우기는 준비 중이에요. 기본 양식으로 내려받아 주세요';
 const BLANK_FORM = '학생 이름이 적힌 양식은 빈 양식으로 넣어 주세요(사진·스캔은 이름을 가리지 못하고 AI로 가요).';
 const MARK_TEXT = { O: '○', X: '/' }, MARK_WORD = { O: '출석', X: '결석' };
 
@@ -166,7 +165,8 @@ const docSummary = (d, c) => (d === 'confirm' ? `수업 ${c.sessions.length}줄 
   : d === 'observe' ? `학생 ${c.students.length}명 · 한 쪽에 5명` : `${c.report.sections.length}칸`);
 function formNote(d, f) {
   if (!f) return '';
-  if (f.kind === 'hwpx') return `「${f.name}」 양식(.hwpx)의 표에 채워요. 학교 한글 양식 채우기는 준비 중이라 지금은 기본 양식으로 내려받아요.`;
+  if (f.kind === 'hwpx') return d === 'report' ? `「${f.name}」 양식(.hwpx)의 글 머리를 따라요. 결과 보고서는 쓴 글을 기본 양식으로 내려받아요.`
+    : `「${f.name}」 양식(.hwpx)의 표에 채워요(한글로 내려받을 때). 결재란·확인(서명) 칸은 그대로 둬요.`;
   const l = f.layout || {};
   return `「${f.name}」 양식의 모양을 따라요${l.title ? `: 제목 「${l.title}」` : ''}${l.columns && l.columns.length ? ` · 칸 ${l.columns.join(', ')}` : ''}${d === 'report' && l.heads && l.heads.length ? ` · 글 머리 ${l.heads.join(', ')}` : ''}`;
 }
@@ -446,7 +446,7 @@ async function addForm(doc, file) {
     if (!F.store.persistent) toast('이 브라우저는 양식을 저장할 수 없어 이번에만 써요.', 6000);
     const c = M.getCamp(c0.id);
     if (c) { c.forms[doc] = rec.id; save(c); }
-    toast(isHwpx ? `「${rec.name}」 양식을 넣었어요. ${doc === 'report' ? '' : '학교 한글 양식 채우기는 준비 중이라 지금은 기본 양식으로 내려받아요.'}`
+    toast(isHwpx ? `「${rec.name}」 양식을 넣었어요. ${doc === 'report' ? '결과 보고서는 글 머리만 따라요.' : '한글로 내려받으면 이 양식의 표에 채워요.'}`
       : `「${rec.name}」 양식의 모양을 읽었어요${rec.layout.title ? `: 「${rec.layout.title}」` : ''}. 미리 보기로 확인해 주세요.`, 7000);
   } catch (e) {
     const code = e && e.code;
@@ -477,10 +477,15 @@ async function exportCampDoc(doc) {
         const out = await fillCampForm(doc, c, rec.bytes);
         const bytes = out instanceof Uint8Array ? out : out && out.bytes;
         if (!(bytes instanceof Uint8Array)) throw { code: 'BAD_FILL' };
+        const warn = (out && Array.isArray(out.warn) ? out.warn : []).join(' ');
         const where = await saveFile(fileName(name, 'hwpx'), bytes, 'application/hwp+zip');
-        toast(window.__TAURI__ ? `다운로드 폴더에 저장했어요: ${String(where).split(/[\\/]/).pop()}` : `「${f.name}」 양식에 채워 내려받았어요. 확인(서명) 칸은 직접 날인해 주세요.`, 7000);
+        const done = window.__TAURI__ ? `다운로드 폴더에 저장했어요: ${String(where).split(/[\\/]/).pop()}` : `「${f.name}」 양식에 채워 내려받았어요. 확인(서명) 칸은 직접 날인해 주세요.`;
+        toast(warn ? `${done} ${warn}` : done, warn ? 12000 : 7000);
         return;
-      } catch (e) { fall = e && e.code === 'NOT_READY' ? NOT_READY_MSG : '학교 양식에 채우지 못해 기본 양식으로 내려받았어요.'; }
+      } catch (e) {
+        const code = e && e.code;
+        fall = code === 'REPORT_DEFAULT' ? REPORT_DEFAULT_MSG : code === 'NO_MATCH' ? NO_MATCH_MSG : code === 'NOT_HWPX' ? '양식 파일을 읽지 못해 기본 양식으로 내려받았어요. 한글에서 .hwpx로 다시 저장해 넣어 주세요.' : '학교 양식에 채우지 못해 기본 양식으로 내려받았어요.';
+      }
     } else fall = '양식 파일을 읽지 못해 기본 양식으로 내려받았어요.';
   }
   const d = campDoc(doc, c, (f && f.layout) || null);

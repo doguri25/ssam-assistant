@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { makeHwpx } from '../../web/core/hwpx.js';
 import { unzip, zipStore } from '../../web/core/zip.js';
 import { scanXml, checkXml } from '../../web/core/hwpx-form.js';
-import { readTables, pickTable, fillTable } from '../../web/core/hwpx-table.js';
+import { readTables, pickTable, fillTable, headRows } from '../../web/core/hwpx-table.js';
+import { RUN, PARA, TBL, TPARA, handForm, D } from './hwpx-hand.mjs';
 
 const dec = u8 => new TextDecoder().decode(u8);
 const secOf = async (bytes, n = 0) => dec((await unzip(bytes)).get(`Contents/section${n}.xml`));
@@ -134,34 +135,6 @@ test('머리 줄 수: 자동(빈 줄이 반 넘게 비거나 「1」로 시작�
 });
 
 /* ---------- 손으로 쓴 양식: 결재란 + 날짜 칸 rowSpan=3 + 「계」 줄 colSpan ---------- */
-const LSA = '<hp:linesegarray><hp:lineseg textpos="0" vertpos="0" vertsize="1000" textheight="1000" baseline="850" spacing="600" horzpos="0" horzsize="7000" flags="393216"/></hp:linesegarray>';
-const xesc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-let pid = 100;
-const RUN = (cp, text) => (text === '' ? `<hp:run charPrIDRef="${cp}"/>` : `<hp:run charPrIDRef="${cp}"><hp:t>${xesc(text)}</hp:t></hp:run>`);
-const PARA = (runs, pr = 0) => `<hp:p id="${pid++}" paraPrIDRef="${pr}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">${runs}${LSA}</hp:p>`;
-/* 칸: { t 글, c colAddr, cs colSpan, rs rowSpan, h 높이, cp 글자 모양, head } (rowAddr는 줄 차례) */
-const TC = (x, r) => `<hp:tc name="" header="${x.head ? 1 : 0}" hasMargin="0" protect="0" editable="0" dirty="0" borderFillIDRef="${x.head ? 4 : 3}">`
-  + '<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="CENTER" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0">'
-  + PARA(RUN(x.cp == null ? (x.head ? 1 : 4) : x.cp, x.t || ''), x.head ? 1 : 0) + '</hp:subList>'
-  + `<hp:cellAddr colAddr="${x.c}" rowAddr="${r}"/><hp:cellSpan colSpan="${x.cs || 1}" rowSpan="${x.rs || 1}"/><hp:cellSz width="${7000 * (x.cs || 1)}" height="${x.h}"/><hp:cellMargin left="510" right="510" top="141" bottom="141"/></hp:tc>`;
-const TBL = (rows, colCnt, height) => `<hp:tbl id="${pid++}" zOrder="0" numberingType="TABLE" textWrap="TOP_AND_BOTTOM" textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" pageBreak="CELL" repeatHeader="1" rowCnt="${rows.length}" colCnt="${colCnt}" cellSpacing="0" borderFillIDRef="3" noAdjust="0">`
-  + `<hp:sz width="${7000 * colCnt}" widthRelTo="ABSOLUTE" height="${height}" heightRelTo="ABSOLUTE" protect="0"/>`
-  + '<hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="0" holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="COLUMN" vertAlign="TOP" horzAlign="LEFT" vertOffset="0" horzOffset="0"/>'
-  + '<hp:outMargin left="0" right="0" top="0" bottom="0"/><hp:inMargin left="510" right="510" top="141" bottom="141"/>'
-  + rows.map((r, ri) => `<hp:tr>${r.map(x => TC(x, ri)).join('')}</hp:tr>`).join('') + '</hp:tbl>';
-const TPARA = tbl => PARA(`<hp:run charPrIDRef="0">${tbl}<hp:t/></hp:run>`);
-
-async function handForm(body) {
-  pid = 100;
-  const base = await unzip(makeHwpx({ title: 'x', blocks: [] }));
-  const sec0 = dec(base.get('Contents/section0.xml'));
-  const NS = sec0.slice(0, sec0.indexOf('>', sec0.indexOf('<hs:sec')) + 1);
-  const secPr = /<hp:secPr[\s\S]*?<\/hp:secPr><hp:ctrl>[\s\S]*?<\/hp:ctrl>/.exec(sec0)[0];
-  const section = `${NS}${body(secPr)}</hs:sec>`;
-  checkXml(section);
-  return zipStore([...base].map(([name, data]) => ({ name, data: name === 'Contents/section0.xml' ? section : data })));
-}
-const D = (t, c, extra = {}) => ({ t, c, h: 1200, ...extra });
 const TAIL = ' :' + ' '.repeat(10);
 /* 수업 확인서: 제목(두 조각) · 결재란 표 · 지도교사 줄(두 조각) · 본 표(머리 + 날짜 칸이 세 교시를 묶은 1~3 + 빈 4 + 계) · 안내 줄 */
 const CONFIRM = secPr => PARA(`<hp:run charPrIDRef="2">${secPr}</hp:run>${RUN(2, '3-(1) ')}${RUN(3, '교과캠프 수업 확인서')}`, 1)
@@ -329,4 +302,18 @@ test('깨진 파일·없는 표: code NOT_HWPX · NO_TABLE · NO_ROW', async () 
   const noRow = makeHwpx({ title: 't', blocks: [{ type: 'table', rows: [HEAD, ['계', '', '', '', '', '']] }] });
   await assert.rejects(fillTable(noRow, { table: 0, headRows: 1, rows: [ROWS[0]], footer: { match: /^계/ } }), code('NO_ROW'));
   assert.deepEqual((await readTables(makeHwpx({ title: 't', blocks: [] }))).tables, []);
+});
+
+test('표 읽기: 칸 목록(cells — 줄·칸·합친 수·글)과 머리 줄 수(headRows — 채우기와 같은 규칙)', async () => {
+  const { tables } = await readTables(await handForm(ATTEND));
+  const t = tables[0];
+  assert.deepEqual(t.cells.slice(0, 5), [
+    { row: 0, col: 0, rowSpan: 2, colSpan: 1, text: '순' }, { row: 0, col: 1, rowSpan: 2, colSpan: 1, text: '일시' }, { row: 0, col: 2, rowSpan: 1, colSpan: 2, text: '학생' },
+    { row: 1, col: 2, rowSpan: 1, colSpan: 1, text: '학생1' }, { row: 1, col: 3, rowSpan: 1, colSpan: 1, text: '학생2' }]);
+  assert.equal(headRows(t), 2, '두 줄 머리');
+  const c = (await readTables(await handForm(CONFIRM))).tables[1];
+  assert.equal(headRows(c), 1, '「1」로 시작하는 줄 앞까지');
+  const m = (await readTables(makeHwpx({ title: 'x', blocks: [{ type: 'table', head: true, rows: [['순', '학년-반', '이름', '', '계'], ['', '', '', '', '']] }] }))).tables[0];
+  assert.equal(headRows(m), 1, '첫 칸이 「순」이면 날짜 칸이 비어도 머리');
+  assert.equal(headRows({ rows: [['a'], ['b']], cells: [{ row: 0, col: 0, rowSpan: 1, colSpan: 1, text: 'a' }, { row: 1, col: 0, rowSpan: 1, colSpan: 1, text: 'b' }], rowCnt: 2, colCnt: 1 }), 1, '모르면 1');
 });

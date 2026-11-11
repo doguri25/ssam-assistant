@@ -65,3 +65,21 @@ test('파일 이름: 확장자를 형식에 맞게 바꾸고 쓸 수 없는 글�
   assert.equal(fileName('독서 운영 계획', 'hwpx'), '독서 운영 계획.hwpx');
   assert.equal(fileName('a/b:c', 'docx'), 'a_b_c.docx');
 });
+
+test('표 칸 너비(widths, 비율): 한글·워드는 칸마다 비율대로, 맞지 않으면 똑같이, 화면·PDF는 colgroup', async () => {
+  const { makeHwpx } = await import('../../web/core/hwpx.js');
+  const doc = w => ({ title: 't', blocks: [{ type: 'table', head: true, rows: [['순', '지도 내용'], ['1', '낱말 읽기']], widths: w }] });
+  const hw = async d => [...dec((await unzip(makeHwpx(d))).get('Contents/section0.xml')).matchAll(/<hp:cellSz width="(\d+)"/g)].slice(0, 2).map(m => +m[1]);
+  const [a, b] = await hw(doc([1, 3]));
+  assert.ok(Math.abs(b / a - 3) < 0.01, `한글 1:3 (${a}, ${b})`);
+  const [c, d] = await hw(doc([1]));
+  assert.equal(c, d, '칸 수와 다르면 똑같이');
+  const [e, f] = await hw(doc([0, 2]));
+  assert.equal(e, f, '0이나 음수가 있으면 똑같이');
+  const wx = dec((await unzip(await makeDocx(doc([1, 3])))).get('word/document.xml'));
+  const g = [...wx.matchAll(/<w:gridCol w:w="(\d+)"\/>/g)].map(m => +m[1]);
+  assert.ok(g.length === 2 && Math.abs(g[1] / g[0] - 3) < 0.01, `워드 1:3 (${g})`);
+  assert.ok(wx.includes(`<w:tcW w:w="${g[1]}" w:type="dxa"/>`), '워드 칸 너비도');
+  assert.ok(docHtml(doc([1, 3])).includes('<colgroup><col style="width:25%"><col style="width:75%"></colgroup>'), docHtml(doc([1, 3])));
+  assert.ok(!docHtml(doc(null)).includes('colgroup'));
+});
