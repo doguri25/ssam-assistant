@@ -178,10 +178,20 @@ await run('camp', [
       assert(x1.includes(s), '수업 확인서에 ' + s);
     const x2 = await hwpxText(await download('attend'));
     for (const s of ['학생 출석 및 관찰 기록부', '※ 출석 : ○ , 결석 : /', '김하늘', '이바다', '○']) assert(x2.includes(s), '출석부에 ' + s);
+    const foot = await page.evaluate(async () => { const v = JSON.parse(localStorage.getItem('ssam:camp')); const c = v.camps.find(x => x.id === v.current); return (await import('./menus/class/camp-docs.js')).attendTable(c).footer; });
+    assert(foot.join('|') === '계|||5|4', '계 줄(학생별 출석 수): ' + foot.join('|'));
     const x3 = await hwpxText(await download('observe'));
     for (const s of ['관찰 기록부', '관찰 및 지도 결과', '받아쓰기에 자신감', '선생님이 쓴 글']) assert(x3.includes(s), '관찰 기록부에 ' + s);
     const x4 = await hwpxText(await download('report'));
     for (const s of ['겨울 교과캠프 운영 보고서', '1. 필요성 및 목적', '- 고친 필요성', '4. 일반화 방안', '(학생A)']) assert(x4.includes(s), '보고서에 ' + s);
+    // ▾에서 워드를 고르면 그 문서를 바로 워드로
+    await page.click(`${P} .cp-doc[data-doc="observe"] [data-exp-menu]`);
+    const [dw] = await Promise.all([page.waitForEvent('download'), page.click('#expMenu [data-exp-fmt="docx"]')]);
+    assert(dw.suggestedFilename() === '겨울 교과캠프 관찰 기록부.docx', dw.suggestedFilename());
+    const dx = dec((await unzip(new Uint8Array(readFileSync(await dw.path())))).get('word/document.xml'));
+    assert(dx.includes('관찰 및 지도 결과') && dx.includes('받아쓰기에 자신감'), '워드 내용');
+    await page.click(`${P} .cp-doc[data-doc="observe"] [data-exp-menu]`);
+    await Promise.all([page.waitForEvent('download'), page.click('#expMenu [data-exp-fmt="hwpx"]')]);
   }],
   ['수업 확인서에 학교 한글 양식(.hwpx) → 준비 중이라 알리고 기본 양식으로 내려받음', async () => {
     await page.setInputFiles(`${P} #cpFile-confirm`, { name: '교과캠프 수업 확인서 양식.hwpx', mimeType: 'application/octet-stream', buffer: FORM });
