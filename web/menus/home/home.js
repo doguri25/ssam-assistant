@@ -25,7 +25,7 @@ const TRAY = '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke
 const MARK = { O: ['○', '출석'], X: ['/', '결석'], '': ['—', '아직'], mixed: ['◐', '일부'] };
 const NEXT_WORD = { O: '결석', X: '빈칸', '': '출석', mixed: '출석' };
 
-let box = null, brief = null, campPick = '', sig = '', tok = 0;
+let box = null, view = null, picker = null, brief = null, campPick = '', sig = '', tok = 0;
 const visible = () => !!(box && box.isConnected && !box.closest('[hidden]'));
 function year() { let ls = null; try { ls = window.localStorage; } catch (e) {} return ensureYears(ls).current; }
 function aiState() {
@@ -64,7 +64,6 @@ const dropHTML = () => `<div class="hm-drop" id="hmDrop" data-hm-drop>
     <span class="hm-drop-ic">${TRAY}</span>
     <div class="hm-drop-t"><b>무엇이든 여기에 놓으세요</b><span>공문·평가계획·진도표·명단·견적서 — 쌤비서가 알아보고 그 메뉴에서 해요.</span></div>
     <button class="btn primary" type="button" data-hm="pick">파일 고르기</button>
-    <input type="file" id="hmFile" multiple hidden>
   </div>`;
 
 function gmHTML(d) {
@@ -126,7 +125,7 @@ function draw() {
   const d = data();
   sig = sigOf(d);
   const keep = document.activeElement && box.contains(document.activeElement) ? keyOf(document.activeElement) : '';
-  box.innerHTML = `<div class="m-page hm-page">${headHTML(d)}${dropHTML()}
+  view.innerHTML = `<div class="m-page hm-page">${headHTML(d)}${dropHTML()}
     ${d.blank ? startHTML() : `<div class="hm-cards">${gmHTML(d)}${lessonHTML(d)}${campHTML(d)}</div>${contHTML(d)}`}</div>`;
   if (keep) { const el = box.querySelector(keep); if (el) el.focus(); }
 }
@@ -173,7 +172,7 @@ function onClick(e) {
   if (p) { campPick = p.dataset.hmCamp; draw(); return; }
   const b = t.closest('[data-hm]');
   if (!b) return;
-  if (b.dataset.hm === 'pick') { const f = box.querySelector('#hmFile'); if (f) f.click(); }
+  if (b.dataset.hm === 'pick') picker.click();
   else if (b.dataset.hm === 'attAll') {
     const c = camp();
     if (!c) return;
@@ -186,12 +185,15 @@ function onClick(e) {
 function mount(section) {
   box = document.createElement('div');
   box.className = 'hm-box';
+  // 파일 고르기 칸은 다시 그리는 곳 밖에 둠(고르는 창이 닫힐 때 창이 앞에 와 다시 그려도 고른 파일이 사라지지 않게)
+  view = document.createElement('div');
+  picker = Object.assign(document.createElement('input'), { type: 'file', id: 'hmFile', multiple: true, hidden: true });
+  box.append(view, picker);
   section.append(box);
   box.addEventListener('click', onClick);
-  box.addEventListener('change', e => {
-    if (e.target.id !== 'hmFile') return;
-    const fs = [...(e.target.files || [])];
-    e.target.value = '';
+  picker.addEventListener('change', () => {
+    const fs = [...(picker.files || [])];
+    picker.value = '';
     if (fs.length) receive(fs);
   });
   // 놓는 칸: 자기에게 온 끌어 놓기만 받고 더 퍼뜨리지 않음(쌤 버튼의 놓기 판·다른 메뉴의 칸과 겹치지 않게)
