@@ -11,7 +11,7 @@ import './file-drop.js'; // 파일 고르기 단추(data-drop-pick)가 있는 �
 
 export const MENUS = [
   { id: 'home', label: '오늘', tabs: [] },
-  { id: 'evaluate', label: '평가', tabs: [['pyeongeo', '교과 평어'], ['cc', '창의적 체험활동'], ['hk', '행동특성'], ['gr', '평가지 채점'], ['unit', '단원평가'], ['activity', '활동지']] },
+  { id: 'evaluate', label: '평가', tabs: [['pyeongeo', '교과 평어'], ['cc', '창의적 체험활동'], ['hk', '행동특성'], ['gr', '평가지 채점'], ['unit', '단원평가'], ['activity', '활동지'], ['check', '기재 점검']] },
   { id: 'training', label: '연수', tabs: [['mine', '내 필수연수'], ['board', '연수 현황판']] },
   { id: 'plan', label: '계획', tabs: [['year', '연간계획'], ['event', '행사계획'], ['class', '학급운영계획'], ['report', '결과 보고']] },
   { id: 'class', label: '학급', tabs: [['today', '오늘 수업'], ['progress', '진도표·시수'], ['weekly', '주간학습안내'], ['camp', '기초학력']] },

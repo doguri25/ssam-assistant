@@ -133,6 +133,14 @@ function hit(tok, prev, next, { memo = false, first = false } = {}) {
 /* 줄 안의 사람 이름을 ○○○로(조사·호칭은 남김) → { text, masked }. memo: 행특 메모(더 넓게 가림) */
 export function maskPersons(text, { memo = false } = {}) {
   const s = String(text == null ? '' : text);
+  const cuts = personCuts(s, memo);
+  let out = s;
+  for (const [at, len] of cuts.reverse()) out = out.slice(0, at) + MASK + out.slice(at + len);
+  return { text: out, masked: cuts.length };
+}
+/* 이름이 있는 곳 [{ start, end }] (평가 › 기재 점검이 글에 표시함) */
+export const personSpans = (text, { memo = false } = {}) => personCuts(String(text == null ? '' : text), memo).map(([at, len]) => ({ start: at, end: at + len }));
+function personCuts(s, memo) {
   const toks = [...s.matchAll(/[가-힣]+/g)].map(m => ({ w: m[0], i: m.index }));
   const cuts = [];
   toks.forEach((t, k) => {
@@ -147,9 +155,7 @@ export function maskPersons(text, { memo = false } = {}) {
     const len = hit(w, prev, next, { memo, first: k === 0 });
     if (len) cuts.push([at, len]);
   });
-  let out = s;
-  for (const [at, len] of cuts.reverse()) out = out.slice(0, at) + MASK + out.slice(at + len);
-  return { text: out, masked: cuts.length };
+  return cuts;
 }
 
 /* 명단 줄인지: 이름(○○○·성 + 이름 글자 두 글자·목록의 이름)만 셋 넘게 늘어선 줄(「김민수 이서연 박지훈」「김다빈, 최윤슬, 조예담」).

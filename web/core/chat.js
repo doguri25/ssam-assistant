@@ -296,6 +296,7 @@ const NAV = {
   unit: ['evaluate', 'unit', '평가 › 단원평가로 왔어요. 채점할 평가를 골라 주세요.'], activity: ['evaluate', 'activity', '평가 › 활동지로 왔어요.'],
   gr: ['evaluate', 'gr', '평가 › 평가지 채점으로 왔어요. 수행평가 평가지를 넣어 주세요.'], pyeongeo: ['evaluate', 'pyeongeo', '평가 › 교과 평어로 왔어요.'],
   hk: ['evaluate', 'hk', '평가 › 행동특성으로 왔어요. 「3번 …」처럼 쓰면 메모에 바로 넣어요.'], cc: ['evaluate', 'cc', '평가 › 창의적 체험활동으로 왔어요.'],
+  check: ['evaluate', 'check', '평가 › 기재 점검으로 왔어요. 고칠 곳을 확인해 주세요.'],
   weekly: ['class', 'weekly', '학급 › 주간학습안내로 왔어요.'], today: ['class', 'today', '학급 › 오늘 수업으로 왔어요.'], progress: ['class', 'progress', '학급 › 진도표·시수로 왔어요.'],
   camp: ['class', 'camp', '학급 › 기초학력으로 왔어요. 출석 체크·관찰 기록·문서 내보내기를 여기서 해요.'],
   aikey: ['settings', 'ai', '설정 › AI로 왔어요. 키를 넣어 주세요.']

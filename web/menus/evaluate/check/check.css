@@ -1,0 +1,32 @@
+/* 평가 › 기재 점검 (check.js): 고칠 곳은 노란 바탕 + 밑줄 + 번호 기호(색만이 아님), 누르는 칸 44px, 390px에서 가로로 넘치지 않음 */
+.chk-box[hidden]{display:none !important}
+.chk-box{min-width:0}
+.chk-page{gap:14px}
+.chk-box .m-head h2:focus{outline:none}
+.chk-sum{margin:0;font-weight:600;font-size:15px}
+.chk-tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;min-width:0}
+.chk-box .seg button,.chk-box .btn,.chk-box select.field{min-height:44px}
+.chk-kinds{min-width:0}
+.chk-kinds b{font-weight:700}
+.chk-src-l{display:flex;align-items:center;gap:6px;min-width:0;max-width:100%}
+.chk-src-l .field{min-width:0;flex:1 1 auto;max-width:100%}
+.chk-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.chk-row{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m);padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.chk-src{font-size:13.5px;color:var(--ink2);overflow-wrap:anywhere}
+.chk-text,.chk-col p{margin:0;line-height:1.75;overflow-wrap:anywhere;word-break:keep-all}
+.chk-hit{background:#fff1a8;color:inherit;border-bottom:2px solid var(--warn);border-radius:2px;padding:0 1px}
+.chk-n{font-size:11px;font-weight:700;color:var(--warn);margin:0 1px;line-height:0}
+.chk-why{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.chk-why .chip{white-space:normal;font-size:12.5px;gap:4px;max-width:100%}
+.chk-acts{flex-wrap:wrap;gap:6px}
+.chk-hint,.chk-busy,.chk-err,.chk-left{margin:0}
+.chk-err{color:var(--err)}
+.chk-fix{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.chk-col{border:1px solid var(--line);border-radius:var(--r-s);padding:10px 12px;min-width:0;display:flex;flex-direction:column;gap:4px}
+.chk-col .lab{font-weight:600;color:var(--ink3)}
+.chk-new{border-color:var(--accent);border-width:2px}
+.chk-empty{background:var(--surface);border:1px dashed var(--line);border-radius:var(--r-m);padding:16px}
+.chk-empty p{margin:0}
+/* 각 화면의 [기재 점검] 단추 */
+[data-eval-check]{min-height:44px}
+@media (max-width:600px){ .chk-fix{grid-template-columns:minmax(0,1fr)} .chk-row{padding:12px} }
