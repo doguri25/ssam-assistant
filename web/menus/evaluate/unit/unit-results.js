@@ -13,6 +13,7 @@ import { tableDoc, tableCsv } from './unit-docs.js';
 import { pyeongeoPrompt, normPyeongeo } from './unit-ai.js';
 import { unitAccuracy, accuracyText } from '../grade-accuracy.js';
 import { U, esc, AI_KEY, registerResults, visible, render, refresh, later, editing, getBox } from './unit.js';
+import { gapHTML } from './unit-gap-card.js'; // 「도달하지 못한 학생」 카드(스펙 2026-11-13 §2-1): 그 파일이 그리고 듣기도 함
 
 const R = { rv: 'table', subject: '', term: 0, stuNo: null, weakId: null, pySubject: null, pyRun: null };
 const pct = r => `${Math.round(r * 100)}%`;
@@ -170,11 +171,11 @@ function refreshView() {
 
 function html() {
   const all = doneTests(), list = filterTests(all, { subject: R.subject, term: R.term }), tests = loaded(list);
-  const seg = `<div class="seg un-rseg" role="group" aria-label="결과 보기">${[['table', '성적 일람표'], ['student', '학생별 누적'], ['weak', '반 약한 부분'], ['pyeongeo', '교과 평어로 넘기기']].map(([k, l]) => `<button type="button" data-rv="${k}" aria-pressed="${R.rv === k}">${l}</button>`).join('')}</div>`;
+  const seg = `<div class="seg un-rseg" role="group" aria-label="결과 보기">${[['table', '성적 일람표'], ['student', '학생별 누적'], ['weak', '반 약한 부분'], ['gap', '도달하지 못한 학생'], ['pyeongeo', '교과 평어로 넘기기']].map(([k, l]) => `<button type="button" data-rv="${k}" aria-pressed="${R.rv === k}">${l}</button>`).join('')}</div>`;
   let body;
   if (R.rv === 'pyeongeo') body = all.length ? pyHTML(loaded(all)) : '';
   else if (!tests.length) body = '';
-  else body = R.rv === 'student' ? studentHTML(tests) : R.rv === 'weak' ? weakHTML(tests) : tableHTML(tests);
+  else body = R.rv === 'student' ? studentHTML(tests) : R.rv === 'weak' ? weakHTML(tests) : R.rv === 'gap' ? gapHTML(tests, { subject: R.subject }) : tableHTML(tests);
   if (!body) body = '<div class="yp-card"><p class="muted" style="margin:0">마친 단원평가가 없어요. 평가 목록에서 채점을 마치면 여기에 모여요. 바로 보려면 [예시로 채우기].</p></div>';
   return `<div class="un-results">${R.rv === 'pyeongeo' ? '' : filtersHTML(all)}${seg}${body}</div>`;
 }

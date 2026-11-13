@@ -43,8 +43,9 @@ function areasOf(t, s) {
 /* → [{ no, areas: [{ name, subject, pct, tests: [평가 id] }](기준 아래만, 낮은 차례), worst(가장 낮은 점수율), n(본 평가 수) }], 번호 차례 */
 export function gapStudents(tests, { cut } = {}) {
   const c = normCut(cut), by = new Map();
-  for (const t of tests || []) {
-    if (!okTest(t)) continue;
+  // 날짜 차례로 모음(영역마다 평가 id도 본 차례로)
+  const ts = (tests || []).filter(okTest).map((t, i) => [t, i]).sort((a, b) => String(a[0].meta.date || '').localeCompare(String(b[0].meta.date || '')) || a[1] - b[1]).map(x => x[0]);
+  for (const t of ts) {
     for (const s of graded(t)) {
       const list = areasOf(t, s);
       if (!list.length) continue;
