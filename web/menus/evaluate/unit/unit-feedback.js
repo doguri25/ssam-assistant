@@ -12,6 +12,7 @@ import { feedbackPrompt, normFeedback, redoPrompt, normRedo } from './unit-ai.js
 import { ITEM_TYPES } from './unit-grade.js';
 import { redoFor, redoWant, redoFit, redoTargets, redoBlocks, redoText, redoKind, normAnswer, redoIssues } from './unit-redo.js';
 import { unitAccuracy, accuracyText } from '../grade-accuracy.js';
+import { aiNoteHTML, foldHTML } from '../../../core/ui-parts.js';
 import { missHTML } from './unit-miss-card.js'; // 「틀린 까닭」 카드(스펙 2026-11-13-miss-tour-check §1): 그 파일이 그리고 듣기도 함
 import { esc, AI_KEY, registerStep, inStep, cur, curId, saveOrWarn, refresh, getBox } from './unit.js';
 
@@ -48,6 +49,8 @@ function card(t, s) {
   </div>`;
 }
 const SLIP_NOTE = one => (one ? '결과지는 번호마다 한 장씩이라 자르지 않고 나눠 주면 돼요.' : '결과지는 한 쪽에 2명이라 가운데를 잘라 나눠 주면 돼요.');
+/* 결과지 모양(자주 안 바꿈): 접힌 요약 한 줄, [바꾸기]로 「번호별로 한 장씩」 */
+const SLIP_SUM = one => (one ? '결과지: 번호마다 한 장씩' : '결과지: 한 쪽에 2명(가운데를 잘라요)');
 /* 인쇄 틀의 복습 문제: 결과지 문서와 같은 블록으로, 정답(작은 글씨)은 학생 칸 맨 아래 */
 function redoPrint(list) {
   const b = redoBlocks(list), ans = b.filter(x => x.type === 'small'), rest = b.filter(x => x.type !== 'small');
@@ -89,7 +92,8 @@ function redoHTML(t) {
       <div class="row"><button class="btn" type="button" data-un="redoAI"${run ? ' disabled' : ''}>${run ? '<span class="spin"></span>만드는 중…' : '복습 문제 만들기'}</button>
         <label class="switch"><input type="checkbox" data-redo-on${t.redo && t.redo.on ? ' checked' : ''}${n ? '' : ' disabled'}>결과지에 복습 문제 넣기</label>
         <span class="muted" id="unRedoFit">${esc(fitText(t))}</span></div>
-      <p class="muted cls-note">틀린 문항마다 비슷한 문제를 하나씩 만들어, 학생마다 칸에 남는 자리만큼 최대 3개 넣어요(정답은 칸 맨 아래 작게). AI에는 문항 번호·평가 내용·영역·유형·정답·교과서 쪽만 보내요.</p>
+      <p class="muted cls-note">틀린 문항마다 비슷한 문제를 만들어 결과지에 학생마다 최대 3개 넣어요.</p>
+      ${aiNoteHTML('AI에는 문항 번호·평가 내용·영역·유형·정답·교과서 쪽만 보내요. 학생 번호·이름·답은 보내지 않아요.')}
       <details class="un-redo-ed"${redoOpen ? ' open' : ''}><summary>${esc(edSummary(t))}</summary>${targets.map(it => redoItemHTML(it, items[it.no])).join('')}</details>
     </div>`;
 }
@@ -109,8 +113,10 @@ function step4HTML(t) {
   return `${aiRowHTML('notes')}${rs === 'busy' ? '<p class="muted rv-busy"><span class="spin"></span> 검토 AI가 잘한 점·격려를 살펴보고 있어요…</p>' : rs === 'fail' ? `<p class="rv-fail" role="status">${REVIEW_FAIL} 쓴 글은 그대로 쓸 수 있어요.</p>` : ''}${reviewBar(nRv, 'data-un="fbNextRv"')}<div class="yp-card">
       ${acc ? `<p class="muted un-acc" id="unAcc4" style="margin:0 0 8px">${esc(acc)}</p>` : ''}
       <div class="row"><button class="btn primary" type="button" data-un="fbAI"${run ? ' disabled' : ''}>${run ? '<span class="spin"></span>쓰는 중…' : '잘한 점·격려 쓰기'}</button>
-        ${exportButton('data-un="fbHwpx"', { prefix: '결과지 · ' })}${downloadsButton()}<button class="btn" type="button" data-un="fbPrint">인쇄</button><button class="btn" type="button" data-un="fbCopyAll">모두 복사</button><label class="switch"><input type="checkbox" data-one-page${onePerPage() ? ' checked' : ''}>번호별로 한 장씩</label></div>
-      <p class="muted cls-note">AI에는 번호·점수·평가 내용만 보내요. 학생이 쓴 답과 이름은 보내지 않아요. <span id="unSlipNote">${SLIP_NOTE(onePerPage())}</span></p>
+        ${exportButton('data-un="fbHwpx"', { prefix: '결과지 · ' })}${downloadsButton()}<button class="btn" type="button" data-un="fbPrint">인쇄</button><button class="btn" type="button" data-un="fbCopyAll">모두 복사</button></div>
+      ${aiNoteHTML('AI에는 번호·점수·평가 내용만 보내요. 학생이 쓴 답과 이름은 보내지 않아요.')}
+      ${foldHTML({ key: 'unit-slip', summary: SLIP_SUM(onePerPage()), body: `<label class="switch"><input type="checkbox" data-one-page${onePerPage() ? ' checked' : ''}>번호별로 한 장씩</label>
+        <p class="muted cls-note" id="unSlipNote">${SLIP_NOTE(onePerPage())}</p>` })}
     </div>
     ${redoHTML(t)}${missHTML(t)}
     <div class="un-fbs">${list.map(s => card(t, s)).join('')}</div>
@@ -258,6 +264,7 @@ document.addEventListener('change', e => {
     const one = e.target.checked;
     setOnePerPage(one);
     const n = box.querySelector('#unSlipNote'); if (n) n.textContent = SLIP_NOTE(one);
+    const sum = box.querySelector('[data-fold="unit-slip"] .fold-text'); if (sum) sum.textContent = SLIP_SUM(one);
     syncRedo(box, cur());
     return;
   }

@@ -18,6 +18,9 @@ await page.route('https://api.anthropic.com/**', async route => {
   await route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body: ev.map(e => 'data: ' + JSON.stringify(e) + '\n\n').join('') });
 });
 const V = 'section[data-menu="evaluate"] .unit-box';
+
+// 자주 안 바꾸는 설정은 접힌 요약 한 줄(스펙 2026-11-14-ui-tidy §2): 펼친 뒤 칸을 누름(펼침은 이 실행 동안 그대로)
+const unfold = async key => { const f = `${V} [data-fold="${key}"]`; if (await page.getAttribute(f, 'open') == null) await page.click(`${f} > summary`); };
 await page.goto(url);
 await page.waitForTimeout(400);
 const id = await page.evaluate(async () => {
@@ -68,6 +71,8 @@ await run('unit-twoup', [
     await page.waitForFunction(() => document.querySelectorAll('.unit-box [data-st]').length === 1);
   }],
   ['모아찍기·뒷면 거꾸로를 켜면 올린 스캔을 다시 나눔: 8쪽 → 학생 2명', async () => {
+    assert((await page.textContent(`${V} [data-fold="unit-scan"] .fold-text`)).includes('한 면에 1쪽'), '접힌 요약');
+    await unfold('unit-scan');
     await page.check(`${V} #unTwoUp`);
     await page.waitForFunction(() => document.querySelectorAll('.unit-box [data-st]').length === 2);
     await page.check(`${V} #unFlipBack`);
@@ -141,6 +146,7 @@ await run('unit-twoup', [
     // 그림 읽기를 느리게 해서 다시 나누는 동안 채점을 누름
     await page.evaluate(() => { const real = window.createImageBitmap; window.createImageBitmap = async (...a) => { await new Promise(r => setTimeout(r, 300)); return real.apply(window, a); }; window.__realCIB = real; });
     const n0 = sent.length;
+    await unfold('unit-scan'); // 다시 켠 뒤라 접혀 있음
     await page.uncheck(`${V} #unFlipBack`);
     const t3 = await page.evaluate(id => JSON.parse(localStorage.getItem('ssam:unit:t:' + id)), id3);
     assert(!(t3.mask && t3.mask.length), '이름 칸이 남음: ' + JSON.stringify(t3.mask));

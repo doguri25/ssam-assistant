@@ -16,6 +16,7 @@ import { getActivity, getSet, saveSet, listActivities } from './activity-model.j
 import { gradeParts, validGrade, normGrade, mergeMarks, reviewParts, normReview, MARK, LEVEL } from './activity-ai.js';
 import { A, registerStep, curAct, commitAct, refresh, render, goStep, esc, SS, getBox, visible, openActivity } from './activity.js';
 import { activityAccuracy, accuracyText } from '../grade-accuracy.js';
+import { aiNoteHTML, foldHTML } from '../../../core/ui-parts.js';
 
 /* 세션 상태: 올린 학생 쪽은 한 활동지에만 붙음. idx[i] = i번째 학생의 쪽 번호들. 채점은 한 번에 한 활동지만 */
 /* raw: 올린 학생 쪽(정리 전), pages: 모아찍기·뒷면을 정리한 쪽 */
@@ -172,15 +173,18 @@ async function matchNos(a, then) {
   } });
 }
 
+/* 스캔 설정(자주 안 바꿈) 요약 한 줄 */
+const scanSum = set => `스캔: 학생당 ${Math.max(1, set.pagesPer | 0)}쪽 · 한 면에 ${set.twoUp ? '2쪽(모아찍기)' : '1쪽'} · 뒷면 ${set.flipBack ? '거꾸로' : '그대로'}`;
 function step3HTML(a) {
   const set = getSet(), m = maskOf(a), mine = G.id === a.id && G.pages.length;
   const n = a.students.filter(s => !s.skip).length;
   return `<div class="yp-card"><h3>학생 활동지</h3>
       ${bundleBoxHTML('act3', '반 전체 스캔 PDF·사진을 넣어요. 정답·교사용·빈 활동지 쪽이 섞여 있으면 알아서 나눠요')}
-      <div class="act-set">
+      ${foldHTML({ key: 'act-scan', summary: scanSum(set), body: `<div class="act-set">
         <label class="yp-f"><span class="lab">학생당 쪽 수</span><input class="field" type="number" id="acPer" min="1" max="6" value="${Math.max(1, set.pagesPer | 0)}"></label>
         <label class="switch"><input type="checkbox" id="acTwoUp"${set.twoUp ? ' checked' : ''}>모아찍기(한 면에 2쪽)</label>
-        <label class="switch"><input type="checkbox" id="acFlipBack"${set.flipBack ? ' checked' : ''}>양면 스캔 뒷면이 거꾸로</label>
+        <label class="switch"><input type="checkbox" id="acFlipBack"${set.flipBack ? ' checked' : ''}>양면 스캔 뒷면이 거꾸로</label></div>` })}
+      <div class="act-set">
         <label class="switch"><input type="checkbox" id="acMaskOn"${m.on ? ' checked' : ''}>이름 칸 가리기</label>
         <button class="btn text" type="button" data-ac="mask">이름 칸 정하기</button><span class="muted">${m.mask.length ? '정해 둠' : (set.mask || []).length ? '아직 정하지 않음(지난 칸을 먼저 보여 드려요)' : '아직 정하지 않음'}</span>
         <label class="switch"><input type="checkbox" id="acByNo"${a.byNo ? ' checked' : ''}>적힌 번호로 학생 맞추기</label>
@@ -306,6 +310,7 @@ function step4HTML(a) {
       <div class="row"><button class="btn primary" type="button" data-ac="grade"${running || !ready ? ' disabled' : ''}>${done ? `남은 학생·다시 채점 (${todo}명)` : '채점 시작'}</button>${running ? `<button class="btn" type="button" data-ac="stop">멈추기</button><span class="muted"><span class="spin"></span> 채점하는 중…</span>${G.run && G.run.id === a.id && G.run.wait ? '<b class="warn">AI 한도에 걸려 잠깐 쉬어요</b>' : ''}` : ''}</div>
       ${a.aiUse && useText(a.aiUse) ? `<p class="muted" id="acAiUse">${G.usedNow.has(a.id) ? '' : '지난 채점 '}${esc(useText(a.aiUse))}</p>` : ''}
       ${!ready ? '<p class="muted">스캔이 이 화면에 없어요. 3단계에서 학생 활동지를 올리면 채점할 수 있어요. 채점한 결과는 그대로 고칠 수 있어요.</p>' : ''}
+      ${aiNoteHTML('채점 AI에는 학생 활동지 그림(정한 이름 칸은 가려요)과 문항·기준만 보내요. 학생 번호·이름은 보내지 않아요.')}
       ${chk ? `<p class="muted">노란 칸 ${chk}개는 AI가 확신하지 못했거나 앱 판정과 달라요. 눌러서 확인해 주세요.</p>` : ''}
       ${done ? `<p class="muted act-acc" id="acAcc">${esc(accuracyText(activityAccuracy(a), { finished: a.done, graded: true }))}</p>` : ''}
       <div class="ac-grid-wrap"><table class="ac-grid" id="acGrid"><thead><tr><th>번호</th>${a.items.map(it => `<th title="${esc(it.ask)}">${it.no}</th>`).join('')}<th>수준</th><th>잘한 점</th><th>더 해 볼 점</th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -370,6 +375,7 @@ document.addEventListener('change', e => {
   if (el.id === 'acPer') {
     const prev = getSet().pagesPer;
     saveSet({ ...getSet(), pagesPer: Math.max(1, Math.min(6, Number(el.value) || 1)) });
+    const sm = getBox().querySelector('[data-fold="act-scan"] .fold-text'); if (sm) sm.textContent = scanSum(getSet()); // 다시 그리지 않을 때도 요약 줄은 맞게
     // 학생 수가 달라져 묻는 창을 닫으면 쪽 수도 그대로
     if (G.id === a.id && G.pages.length) loadPages(a.id, G.pages, G.raw, () => { saveSet({ ...getSet(), pagesPer: prev }); render(); });
   }

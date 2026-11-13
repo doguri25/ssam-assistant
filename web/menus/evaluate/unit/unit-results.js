@@ -15,6 +15,7 @@ import { evidenceHTML } from '../../../core/evidence.js';
 import { itemName } from './unit-model.js';
 import { unitAccuracy, accuracyText } from '../grade-accuracy.js';
 import { U, esc, AI_KEY, registerResults, visible, render, refresh, later, editing, getBox } from './unit.js';
+import { aiNoteHTML, foldHTML } from '../../../core/ui-parts.js';
 import { gapHTML } from './unit-gap-card.js'; // 「도달하지 못한 학생」 카드(스펙 2026-11-13 §2-1): 그 파일이 그리고 듣기도 함
 
 const R = { rv: 'table', subject: '', term: 0, stuNo: null, weakId: null, pySubject: null, pyRun: null };
@@ -107,6 +108,8 @@ function savePy(st, patch = {}) {
 }
 /* 고치는 칸 아래 근거 표시(근거가 없는 옛 평어는 그대로 아무것도 없음) */
 const pyEvHTML = s => (s.ev && s.text ? evidenceHTML({ ...s.ev, text: s.text, key: `py:${R.pySubject}:${s.no}` }) : '');
+/* 수준 기준(자주 안 바꿈) 요약 한 줄 */
+const cutSum = c => `수준 기준(평균 점수): 최상 ${c.top} · 상 ${c.high} · 중 ${c.mid}점 이상`;
 function pyHTML(all) {
   const st = pyState(all);
   if (!st.subs.length) return '';
@@ -115,13 +118,13 @@ function pyHTML(all) {
   return `<div class="yp-card">
     <div class="row"><label class="cls-inline">교과 <select class="field" id="unPySubject">${st.subs.map(s => `<option value="${esc(s)}"${s === R.pySubject ? ' selected' : ''}>${esc(s)}</option>`).join('')}</select></label></div>
     <div class="un-pytests">${st.mine.map(t => `<label class="cls-inline"><input type="checkbox" data-pytest="${esc(t.id)}"${st.ids.includes(t.id) ? ' checked' : ''}>${esc(makeTitle(t.meta))}</label>`).join('')}</div>
-    <div class="row"><span class="muted">수준 기준(평균 점수)</span>
+    ${foldHTML({ key: 'unit-cuts', summary: cutSum(c), body: `<div class="row"><span class="muted">수준 기준(평균 점수)</span>
       <label class="cls-inline">최상 <input class="field num" type="number" id="unCutTop" min="0" max="100" value="${c.top}"></label>
       <label class="cls-inline">상 <input class="field num" type="number" id="unCutHigh" min="0" max="100" value="${c.high}"></label>
-      <label class="cls-inline">중 <input class="field num" type="number" id="unCutMid" min="0" max="100" value="${c.mid}"></label><span class="muted">이상</span></div>
+      <label class="cls-inline">중 <input class="field num" type="number" id="unCutMid" min="0" max="100" value="${c.mid}"></label><span class="muted">이상</span></div>` })}
     ${aiRowHTML('writing')}
-    <div class="row"><button class="btn primary" type="button" data-un="pyAI"${R.pyRun ? ' disabled' : ''}>${R.pyRun ? '<span class="spin"></span>쓰는 중…' : '평어 쓰기'}</button><button class="btn" type="button" data-un="pyCopyAll">모두 복사</button><button class="btn text" type="button" data-eval-check="unit">기재 점검</button>
-      <span class="muted">AI에는 번호·수준·평가 내용만 보내요. 점수와 이름은 보내지 않아요.</span></div>
+    <div class="row"><button class="btn primary" type="button" data-un="pyAI"${R.pyRun ? ' disabled' : ''}>${R.pyRun ? '<span class="spin"></span>쓰는 중…' : '평어 쓰기'}</button><button class="btn" type="button" data-un="pyCopyAll">모두 복사</button><button class="btn text" type="button" data-eval-check="unit">기재 점검</button></div>
+    ${aiNoteHTML('AI에는 번호·수준·평가 내용만 보내요. 점수와 이름은 보내지 않아요.')}
     <ul class="un-pys">${st.students.map(s => `<li class="un-py"><div class="row"><b>${s.no}번</b><span class="muted">평균 ${s.avg}점</span>${lvSel(s)}<span class="grow"></span><button class="btn text" type="button" data-un="pyCopy" data-no="${s.no}">복사</button></div>
       <textarea class="field" data-py="${s.no}" rows="2" placeholder="[평어 쓰기]를 누르거나 직접 써요">${esc(s.text)}</textarea><div class="un-pyev" data-pyev="${s.no}">${pyEvHTML(s)}</div></li>`).join('')}</ul>
   </div>`;
@@ -249,6 +252,7 @@ document.addEventListener('change', e => {
       savePy({ ...st, students }, { cuts });
       // 학생 수준 칸만 바로 바꾸고, 다시 그리기는 옮겨 간 칸을 떠날 때까지 미룸(Tab으로 기준 세 칸을 차례로 고침)
       for (const s of students) { const sel = box.querySelector(`select[data-pylv="${s.no}"]`); if (sel) sel.value = s.level; }
+      const sum = box.querySelector('[data-fold="unit-cuts"] .fold-text'); if (sum) sum.textContent = cutSum(cuts);
       later();
     } else if (el.dataset.pylv) {
       const s = st.students.find(x => x.no === Number(el.dataset.pylv)); if (s) { s.level = el.value; s.manual = true; savePy(st); }

@@ -94,10 +94,14 @@ await run('unit-feedback', [
     assert(await page.locator(`${V} .un-print .un-ps`).count() === 6, '인쇄 틀');
   }],
   ['「번호별로 한 장씩」 켜면 결과지 한글 파일이 번호마다 새 쪽(자르는 줄 없음), 인쇄 틀도 한 명씩 쪽 나눔, 끄면 2명씩', async () => {
-    const chk = `${V} [data-one-page]`;
+    const chk = `${V} [data-one-page]`, fold = `${V} [data-fold="unit-slip"]`;
     assert(!(await page.isChecked(chk)), '처음부터 켜짐');
+    // 결과지 모양은 자주 안 바꾸는 설정이라 접힌 요약 한 줄(스펙 2026-11-14-ui-tidy §2) — [바꾸기]로 펼침
+    assert(!(await page.getAttribute(fold, 'open') != null) && (await page.textContent(`${fold} .fold-text`)).includes('한 쪽에 2명'), '접힌 요약');
+    await page.click(`${fold} > summary`);
     await page.check(chk);
     assert((await page.textContent(`${V} #unSlipNote`)).includes('번호마다 한 장씩'), '안내');
+    assert((await page.textContent(`${fold} .fold-text`)).includes('번호마다 한 장씩'), '요약 줄도 바뀜');
     assert(await page.locator(`${V} .un-print.one`).count() === 1, '인쇄 틀 표시');
     const [dl] = await Promise.all([page.waitForEvent('download'), page.click(`${V} [data-un="fbHwpx"]`)]);
     const sec = new TextDecoder().decode((await unzip(new Uint8Array(readFileSync(await dl.path())))).get('Contents/section0.xml'));

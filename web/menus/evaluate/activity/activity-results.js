@@ -9,6 +9,7 @@ import { onePerPage, setOnePerPage } from '../../../core/slip-layout.js';
 import { SUBJECTS } from './activity-read.js';
 import { A, registerStep, registerView, curAct, commitAct, render, esc, getBox, visible } from './activity.js';
 import { activityAccuracy, accuracyText } from '../grade-accuracy.js';
+import { foldHTML } from '../../../core/ui-parts.js';
 
 const TYPE_NAME = Object.fromEntries(TYPES);
 
@@ -18,6 +19,8 @@ export function statsOrder(a) {
   return a.items.map(it => ({ it, ...c[it.no] })).sort((p, q) => (q.x - p.x) || (q.n - p.n) || (q.t - p.t) || (p.it.no - q.it.no));
 }
 const SLIP_NOTE = one => (one ? '피드백 쪽지는 번호마다 한 장씩, 번호만 적혀요. 자르지 않고 나눠 주면 돼요.' : '피드백 쪽지는 한 쪽에 4명, 번호만 적혀요.');
+/* 쪽지 모양(자주 안 바꿈): 접힌 요약 한 줄, [바꾸기]로 「번호별로 한 장씩」 */
+const SLIP_SUM = one => (one ? '피드백 쪽지: 번호마다 한 장씩' : '피드백 쪽지: 한 쪽에 4명');
 function step5HTML(a) {
   const g = graded(a);
   const stats = statsOrder(a).map(r => `<li><b>${r.it.no}번</b> ${esc(TYPE_NAME[r.it.type] || '')} · ${esc(r.it.ask)}: ○ ${r.o} · △ ${r.t} · × ${r.x} · 안 함 ${r.n}</li>`).join('');
@@ -26,8 +29,9 @@ function step5HTML(a) {
   return `<div class="yp-card"><h3>문항별</h3><p class="muted" style="margin:0">× · 안 함이 많은 문항 먼저예요.</p><ul class="ac-stats" id="acStats">${stats}</ul></div>
     <div class="yp-card"><h3>반 표 · 학생 ${g.length}명</h3>${g.length ? `<p class="muted act-acc" id="acAcc5">${esc(accuracyText(activityAccuracy(a), { finished: a.done, graded: true }))}</p>` : ''}
       <div class="ac-grid-wrap"><table class="ac-grid" id="acTable"><thead>${head}</thead><tbody>${rows}</tbody></table></div>
-      <div class="row">${exportButton('data-ac="exportTable"', { prefix: '반 표 · ' })}<button class="btn text" type="button" data-ac="copyTable">표 복사</button>${exportButton('data-ac="exportSlips"', { prefix: '피드백 쪽지 · ' })}<label class="switch"><input type="checkbox" data-one-page${onePerPage() ? ' checked' : ''}>번호별로 한 장씩</label>${downloadsButton()}</div>
-      <p class="muted" id="acSlipNote" style="margin:0">${SLIP_NOTE(onePerPage())}</p></div>
+      <div class="row">${exportButton('data-ac="exportTable"', { prefix: '반 표 · ' })}<button class="btn text" type="button" data-ac="copyTable">표 복사</button>${exportButton('data-ac="exportSlips"', { prefix: '피드백 쪽지 · ' })}${downloadsButton()}</div>
+      ${foldHTML({ key: 'act-slip', summary: SLIP_SUM(onePerPage()), body: `<label class="switch"><input type="checkbox" data-one-page${onePerPage() ? ' checked' : ''}>번호별로 한 장씩</label>
+        <p class="muted" id="acSlipNote" style="margin:0">${SLIP_NOTE(onePerPage())}</p>` })}</div>
     <div class="yp-card"><h3>교과 평어</h3>${linkHTML(a.link, a.meta.subject, 'data-ac')}${a.link && !a.done ? '<p class="muted" id="acLinkWait" style="margin:0">[확정]하면 평가지 채점의 참고 목록에 나와요.</p>' : ''}</div>
     <div class="row act-next">${a.done ? '<span class="chip ok">확정함 · 학생별 모아 보기에 남아요</span><button class="btn text" type="button" data-ac="undone">확정 풀기</button>' : `<button class="btn primary" type="button" data-ac="done"${g.length ? '' : ' disabled'}>확정</button>`}</div>`;
 }
@@ -86,6 +90,7 @@ document.addEventListener('change', e => {
     // 화면은 다시 그리지 않고 안내 글만 바꿈
     setOnePerPage(el.checked);
     const n = getBox().querySelector('#acSlipNote'); if (n) n.textContent = SLIP_NOTE(el.checked);
+    const sum = getBox().querySelector('[data-fold="act-slip"] .fold-text'); if (sum) sum.textContent = SLIP_SUM(el.checked);
     return;
   }
   if (el.id === 'recNo') { R.no = Number(el.value); render(); return; }

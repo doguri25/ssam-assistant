@@ -14,6 +14,9 @@ await mockClaude(page, async ({ prompt, images }) => { const head = prompt.split
 await page.goto(url);
 await page.waitForTimeout(300);
 const P = 'section[data-menu="evaluate"]', V = `${P} .unit-box`;
+
+// 자주 안 바꾸는 설정은 접힌 요약 한 줄(스펙 2026-11-14-ui-tidy §2): 펼친 뒤 칸을 누름(펼침은 이 실행 동안 그대로)
+const unfold = async key => { const f = `${V} [data-fold="${key}"]`; if (await page.getAttribute(f, 'open') == null) await page.click(`${f} > summary`); };
 const until = async (fn, ms = 15000) => { const end = Date.now() + ms; while (!(await fn())) { if (Date.now() > end) throw new Error('시간 초과'); await new Promise(r => setTimeout(r, 50)); } };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const toastText = () => page.evaluate(() => (document.querySelector('#toast') || {}).textContent || '');
@@ -74,6 +77,7 @@ await run('fix1105-evalnew', only([
     await page.click(`${V} [data-un="grade"]`);
     await sleep(2000); // 첫 학생들 끝, 다음 학생 보내는 중
     await page.click(`${V} .steps [data-step="2"]`);
+    await unfold('unit-scan');
     await page.click(`${V} label:has(#unFlipBack)`);
     await sleep(300);
     assert((await toastText()).includes('채점하는 중에는 바꿀 수 없어요'), await toastText());
@@ -87,6 +91,7 @@ await run('fix1105-evalnew', only([
   ['[unit-twoup-mask-1] 다 채점한 뒤 쪽 모양을 바꿔 이름 칸이 지워지면 [모두 다시 채점]도 이름 칸부터 물음(AI 안 부름)', async () => {
     const id = (await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:unit:list'))))[0].id;
     assert((await step()).startsWith('2'), await step());
+    await unfold('unit-scan');
     await page.click(`${V} label:has(#unFlipBack)`);
     await sleep(300);
     assert(!(await unitTest(id)).mask, '이름 칸이 남음');
@@ -192,6 +197,7 @@ await run('fix1105-evalnew', only([
     await page.click(`${V} [data-unv="results"]`);
     await page.click(`${V} [data-rv="pyeongeo"]`);
     const lv0 = await page.$$eval(`${V} select[data-pylv]`, els => els.map(e => e.value));
+    await unfold('unit-cuts');
     await page.click(`${V} #unCutTop`); await page.keyboard.press('Control+A'); await page.keyboard.type('10');
     await page.keyboard.press('Tab');
     assert(await active() === 'unCutHigh', '초점: ' + await active());

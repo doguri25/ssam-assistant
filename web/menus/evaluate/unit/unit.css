@@ -13,9 +13,17 @@ section[data-menu="evaluate"].ev-new > :not(.unit-box):not(.act-box):not(.chk-bo
 .un-top{display:flex;align-items:center;gap:8px;margin:0 0 8px;flex-wrap:wrap}
 .un-title{font:700 17px/1.3 var(--f-display)}
 .un-body{display:flex;flex-direction:column;gap:12px;margin-top:12px}
-/* 평가 한 바퀴 띠(unit-flow-card.js): 4단계 탭 위 한 줄, 좁으면 제 칸 안에서 줄을 바꿔 감쌈. 다 된 마디는 ✓ 글자, 지금 할 차례는 「지금」 글자(색만으로 나르지 않음) */
-.un-flow{margin:0;min-width:0}
-.un-flow-l{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px 0;min-width:0}
+/* 평가 한 바퀴 띠(unit-flow-card.js): 4단계 탭 위. 기본은 한 줄 단추(「평가 한 바퀴 2/6 · 다음: …」), 누르면 여섯 마디 — 좁으면 제 칸 안에서 줄을 바꿔 감쌈.
+   다 된 마디는 ✓ 글자, 지금 할 차례는 「지금」 글자(색만으로 나르지 않음) */
+.un-flow{margin:0;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.un-flow-sum{display:inline-flex;align-items:center;gap:8px;max-width:100%;min-height:44px;padding:6px 14px;box-sizing:border-box;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink2);font:600 14px/1.3 var(--f-body);text-align:left;cursor:pointer}
+.un-flow-sum:hover{border-color:var(--accent)}
+.un-flow-sum:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.un-flow-sum-t{min-width:0;overflow-wrap:anywhere}
+.un-flow-chev{flex:none;font-size:12px;color:var(--ink3)}
+.un-flow-l[hidden]{display:none}
+.un-page > .un-flow{margin-bottom:-10px} /* 띠와 단계 탭은 한 묶음으로 가깝게 */
+.un-flow-l{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px 0;min-width:0;align-self:stretch}
 .un-flow-i{display:flex;align-items:stretch;flex:1 1 100px;min-width:0}
 .un-flow-b{flex:1;min-width:44px;min-height:44px;display:flex;flex-direction:column;justify-content:center;gap:2px;padding:6px 10px;box-sizing:border-box;border:1px solid var(--line);border-radius:var(--r-s);background:var(--surface);color:var(--ink2);font:inherit;text-align:left;cursor:pointer;transition:border-color .15s,background .15s}
 .un-flow-b:hover{border-color:var(--accent)}
@@ -26,6 +34,12 @@ section[data-menu="evaluate"].ev-new > :not(.unit-box):not(.act-box):not(.chk-bo
 .un-flow-b[aria-current="step"]{border:2px solid var(--accent);padding:5px 9px;background:var(--accent-soft)}
 .un-flow-now{display:inline-block;margin-left:2px;padding:0 6px;border-radius:999px;background:var(--accent);color:var(--on-accent);font:700 11.5px/1.6 var(--f-body);vertical-align:1px}
 .un-flow-a{flex:none;align-self:center;width:16px;text-align:center;color:var(--ink3);font-size:13px}
+/* 단계 탭(단원평가·활동지): 휴대폰에서는 두 줄로 감싸지 않고 한 줄로 밀어 넘김 — 지금 단계는 그릴 때 보이게 밀어 둠(unit.js·activity.js stepsInView) */
+@media (max-width:760px){
+  .unit-box .steps,.act-box .steps{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;-webkit-overflow-scrolling:touch;padding:2px 0 6px}
+  .unit-box .steps li,.act-box .steps li{flex:none}
+  .unit-box .steps-in,.act-box .steps-in{min-height:44px;white-space:nowrap}
+}
 .un-meta{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px 12px}
 .un-meta .field{width:100%;box-sizing:border-box;min-width:0}
 .un-key-wrap{overflow-x:auto;max-width:100%}

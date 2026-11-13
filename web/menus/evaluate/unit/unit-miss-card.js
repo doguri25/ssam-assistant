@@ -10,6 +10,7 @@ import { ITEM_TYPES } from './unit-grade.js';
 import { missView, missRequest, normMiss, missGot, mergeItem, missSig, setAct, groupId, missText, missHead, nosText, PENDING } from './unit-miss.js';
 import { missPrompt } from './unit-ai.js';
 import { missDoc } from './unit-docs.js';
+import { aiNoteHTML } from '../../../core/ui-parts.js';
 import { esc, AI_KEY, inStep, cur, curId, saveOrWarn, refresh, getBox } from './unit.js';
 
 let run = null, open = true; // 묶는 중인 평가 id, 묶음 목록을 펼쳤는지(이 화면에만)
@@ -41,7 +42,8 @@ export function missHTML(t) {
       <div class="cls-card-h"><h3>틀린 까닭</h3><span class="muted">틀린 학생이 있는 문항 ${view.length}개</span></div>
       <div class="row"><button class="btn" type="button" data-un="missAI"${busy ? ' disabled' : ''}>${busy ? '<span class="spin"></span>묶는 중…' : '틀린 까닭 묶기'}</button>
         <button class="btn" type="button" data-un="missCopy">복사</button>${exportButton('data-un="missDoc"', { prefix: '틀린 까닭 · ' })}</div>
-      <p class="muted cls-note">고른 답·빈 답은 앱이, 단답·서술형은 AI가 틀린 까닭으로 묶고 묶음마다 5분 보충 활동을 써요. ${NOTE}</p>
+      <p class="muted cls-note">틀린 답을 까닭으로 묶고 묶음마다 5분 보충 활동을 써요. 고른 답·빈 답은 앱이 묶어요.</p>
+      ${aiNoteHTML(NOTE)}
       ${ai.ready() ? '' : '<p class="muted un-miss-key">AI 키가 없어 고른 답·빈 답으로만 묶었어요. 활동 칸은 직접 써도 돼요.</p>'}
       <details class="un-miss-ed"${open ? ' open' : ''}><summary>문항 ${view.length}개 · 묶음 ${nG}개</summary>
         <div class="un-miss-list">${view.map(v => itemHTML(v, busy)).join('')}</div></details>

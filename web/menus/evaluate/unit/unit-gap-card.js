@@ -10,6 +10,7 @@ import { gapStudents, normCut } from './unit-gap.js';
 import { getInfo } from '../../class/class-model.js';
 import { listCamps, getCamp, newCamp, saveCamp, currentCampId, setCurrentCamp } from '../../class/camp-model.js';
 import { addGapStudents } from '../../class/camp-growth.js';
+import { foldHTML } from '../../../core/ui-parts.js';
 import { U, esc, SS, visible, getBox } from './unit.js';
 
 /* sel: 고른 번호(이 화면에만), tests·subject: 마지막으로 그린 카드의 평가(보이는 것을 넣음) */
@@ -32,6 +33,8 @@ function listHTML(list, cut) {
     <p class="muted" style="margin:0">기초학력에는 번호만 넣고 이름 칸은 비워 둬요. 가장 낮은 영역의 점수를 사전 점수로 적어 둬요.</p>`;
 }
 
+/* 기준(자주 안 바꿈) 요약 한 줄 */
+const cutSum = cut => `기준: 영역 점수율 ${cut}% 아래`;
 /* tests: 결과 화면에서 고른 교과·학기의 다 채점한 평가, subject: 고른 교과(전체면 '') */
 export function gapHTML(tests, { subject = '' } = {}) {
   G.tests = tests; G.subject = subject;
@@ -39,8 +42,8 @@ export function gapHTML(tests, { subject = '' } = {}) {
   for (const no of [...G.sel]) if (!nos.has(no)) G.sel.delete(no);
   return `<div class="yp-card un-gap">
     <div class="row"><b>도달하지 못한 학생</b><span class="muted">평가 ${tests.length}개의 영역별 점수율로 찾아요</span></div>
-    <div class="row"><label class="cls-inline">기준 <input class="field num" type="number" id="unGapCut" min="40" max="90" step="1" value="${cut}" inputmode="numeric">% 아래</label>
-      <span class="muted">40~90 사이로 바꿀 수 있어요.</span></div>
+    ${foldHTML({ key: 'unit-gapcut', summary: cutSum(cut), body: `<div class="row"><label class="cls-inline">기준 <input class="field num" type="number" id="unGapCut" min="40" max="90" step="1" value="${cut}" inputmode="numeric">% 아래</label>
+      <span class="muted">40~90 사이로 바꿀 수 있어요.</span></div>` })}
     <div class="un-gap-list" id="unGapList">${listHTML(list, cut)}</div>
   </div>`;
 }
@@ -127,6 +130,7 @@ document.addEventListener('change', e => {
     const cut = normCut(el.value);
     el.value = cut;
     if (cut !== cutNow()) saveSet({ ...getSet(), gapCut: cut });
+    const sum = getBox().querySelector('[data-fold="unit-gapcut"] .fold-text'); if (sum) sum.textContent = cutSum(cut);
     paintList(); // 기준 칸은 그대로(초점·Tab 차례를 지킴), 줄만 바꿈
   } else if (el.dataset.gapno) {
     const no = Number(el.dataset.gapno);

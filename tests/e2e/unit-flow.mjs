@@ -1,6 +1,7 @@
 // 평가 한 바퀴 띠 (스펙 2026-11-13-crop-log-flow §3): 평가를 연 화면 4단계 탭 위 한 줄 —
 // 채점 → 틀린 까닭 → 복습 문제 → 도달하지 못한 학생 → 기초학력 → 사전·사후, 상태 글·✓·「지금」, 누르면 그곳으로,
 // [채점 마치기]·[틀린 까닭 묶기]·복습 문제 칸·[기초학력에 넣기]·뒤 단원평가 뒤 상태가 바뀜, 예시 평가, 390px·44px. 이름·학교는 모두 지어낸 것
+// 띠는 기본이 접힌 한 줄 「평가 한 바퀴 n/6 · 다음: …」(스펙 2026-11-14-ui-tidy §3) — 처음에 한 번 펼치면 이 실행 동안 펼친 채로
 import { open, run, assert, enter, mockClaude } from './helpers.mjs';
 
 const t = await open();
@@ -25,6 +26,7 @@ const statuses = () => page.$$eval(`${B} [data-flow]`, a => Object.fromEntries(a
 const nowId = () => page.$$eval(`${B} [data-flow][aria-current="step"]`, a => a.map(b => b.dataset.flow).join());
 const inView = sel => page.evaluate(s => { const el = document.querySelector(s); if (!el) return false; const r = el.getBoundingClientRect(); return r.top >= -1 && r.top < window.innerHeight - 20; }, sel);
 const curStep = () => page.textContent(`${V} .steps li.cur`).then(s => s.trim());
+const SUM = `${B} .un-flow-sum`, sumText = () => page.textContent(`${SUM} .un-flow-sum-t`).then(s => s.replace(/\s+/g, ' ').trim());
 const camps = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:camp') || 'null'));
 /* 단원평가 하나 저장: items [[번호, 영역, 유형, 정답, 배점]], rows { 번호: [[점수, 읽은 답]…] }, extra: 그대로 넣을 학생 */
 const seed = spec => page.evaluate(async ({ id, meta, items, rows, done, extra }) => {
@@ -58,6 +60,13 @@ await page.click(`${V} [data-un-open="f1"]`);
 await page.waitForSelector(B);
 
 await run('unit-flow', [
+  ['평가를 열면 띠는 접힌 한 줄 단추 「평가 한 바퀴 0/6 · 다음: 채점」, 누르면 여섯 마디가 펼쳐짐', async () => {
+    assert(await page.getAttribute(SUM, 'aria-expanded') === 'false', '처음엔 접힘');
+    assert(!(await page.isVisible(`${B} .un-flow-l`)), '마디는 숨김');
+    assert(await sumText() === '평가 한 바퀴 0/6 · 다음: 채점', await sumText());
+    await page.click(SUM);
+    assert(await page.getAttribute(SUM, 'aria-expanded') === 'true' && await page.isVisible(node('grade')), '펼침');
+  }],
   ['평가를 열면 4단계 탭 위 한 줄: 여섯 마디·상태 글, 지금 할 차례(「지금」 글자), 화살표는 읽지 않음', async () => {
     const order = await page.evaluate(() => {
       const b = document.querySelector('.unit-box .un-flow'), s = document.querySelector('.unit-box .steps'), top = document.querySelector('.unit-box .un-top');
@@ -95,6 +104,7 @@ await run('unit-flow', [
     assert(await status('gap') === '✓ 3명', await status('gap'));
     assert(await status('camp') === '아직' && await status('post') === '아직', `${await status('camp')} ${await status('post')}`);
     assert(await nowId() === 'miss', '지금: ' + await nowId());
+    assert(await sumText() === '평가 한 바퀴 2/6 · 다음: 틀린 까닭', '접힌 줄 글도 바뀜: ' + await sumText());
   }],
   ['틀린 까닭 마디 → 4단계 「틀린 까닭」 카드가 보이게', async () => {
     await page.evaluate(() => { document.querySelector('#app') && (document.querySelector('#app').scrollTop = 0); window.scrollTo(0, 0); });

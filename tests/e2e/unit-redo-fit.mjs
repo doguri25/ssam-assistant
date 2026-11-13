@@ -10,6 +10,9 @@ await page.addInitScript(() => {
   if (!localStorage.getItem('ssam:engine')) localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true }));
 });
 const V = 'section[data-menu="evaluate"] .unit-box';
+
+// 자주 안 바꾸는 설정은 접힌 요약 한 줄(스펙 2026-11-14-ui-tidy §2): 펼친 뒤 칸을 누름(펼침은 이 실행 동안 그대로)
+const unfold = async key => { const f = `${V} [data-fold="${key}"]`; if (await page.getAttribute(f, 'open') == null) await page.click(`${f} > summary`); };
 const open1 = async id => { await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="unit"]'); if (await page.locator(`${V} [data-un="back"]`).count()) await page.click(`${V} [data-un="back"]`); await page.click(`${V} [data-un-open="${id}"]`); await page.waitForSelector(`${V} .un-print`, { state: 'attached' }); };
 const pagesOf = buf => (buf.toString('latin1').match(/\/Type\s*\/Page(?!s)/g) || []).length;
 /* [인쇄] 틀: 쪽 안 크기(A4 - 여백)로 인쇄 화면을 그려 칸(.un-ps, 2명이면 반 쪽 이상) 높이를 잼 → 넘친 쪽 [번호들] */
@@ -34,7 +37,7 @@ async function pdfPages() {
   await page.evaluate(() => { document.body.classList.remove('printing-doc'); localStorage.setItem('ssam:export', JSON.stringify({ format: 'hwpx' })); });
   return n;
 }
-const setOne = async one => { if (await page.isChecked(`${V} [data-one-page]`) !== one) await page[one ? 'check' : 'uncheck'](`${V} [data-one-page]`); };
+const setOne = async one => { if (await page.isChecked(`${V} [data-one-page]`) !== one) { await unfold('unit-slip'); await page[one ? 'check' : 'uncheck'](`${V} [data-one-page]`); } };
 const counts = () => page.$$eval(`${V} .un-print .un-ps`, els => els.map(e => (e.querySelector('.un-rq') ? e.querySelectorAll('.un-rq p').length : 0)));
 
 await page.goto(url);
