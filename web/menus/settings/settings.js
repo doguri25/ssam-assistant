@@ -7,7 +7,7 @@ import { readTable } from '../../core/sheet.js';
 import { parseRoster } from '../../core/roster.js';
 import { saveFile } from '../../core/ui.js';
 import { keepFiles } from '../../core/keep-files.js';
-import { getYears, snapshot, carryOver, makeBackup, parseBackup, prepYear } from '../../core/years.js';
+import { getYears, snapshot, carryOver, makeBackup, parseBackup, prepYear, demoOf, isDemoYear, DEMO_WAIT } from '../../core/years.js';
 import { switchYear, switchError, getArchive, safeLS } from '../../core/year-switch.js';
 import { FULL_MSG, usage, get as sget, set as sset } from '../../core/store.js';
 import { getInboxSettings, setInboxSettings, registerInbox } from '../../core/inbox.js';
@@ -42,6 +42,9 @@ let yrList = null; // 보관한 학년도 [{ year, savedAt, size }] (null = 불�
 const kb = n => `${Math.max(1, Math.round(n / 1024)).toLocaleString('ko-KR')}KB`;
 const ymd = t => { const d = new Date(t); return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}.`; };
 const curYear = () => getYears(safeLS()).current;
+/* 3분 둘러보기 중(core/tour.js): 백업 만들기·불러오기, 새 학년도 시작, 학년도 옮기기·지우기는 막음(선생님 자료는 보관함에 있음) */
+const inDemo = () => !!demoOf(safeLS()) || isDemoYear(curYear());
+const blocked = () => { if (!inDemo()) return false; toast(DEMO_WAIT, 5000); return true; };
 const snapSize = snap => Object.entries(snap).reduce((n, [k, v]) => n + k.length + String(v).length, 0);
 
 function page(title, desc, body) {
@@ -119,21 +122,25 @@ const VIEWS = {
       `${msg ? `<p class="set-msg err" role="alert">${esc(msg)}</p>` : ''}<div class="row"><button class="btn primary" type="button" data-set="saveSchool">저장</button></div>`);
   },
   years: () => {
-    const cur = curYear();
+    const cur = curYear(), demo = inDemo(), from = (demoOf(safeLS()) || {}).from;
+    // 체험용 학년도(3분 둘러보기)는 목록에 넣지 않음. 체험 중에는 선생님 자료(원래 학년도)가 보관함에 있음
     const rows = yrList === null ? '<li class="muted">보관한 학년도를 불러오는 중…</li>'
-      : yrList.filter(x => x.year !== cur).map(x => `<li class="yr-row" data-yr="${x.year}"><b>${x.year}학년도</b><span class="muted">보관됨 · ${ymd(x.savedAt)} · ${kb(x.size)}</span><span class="grow"></span>
+      : yrList.filter(x => x.year !== cur && !isDemoYear(x.year)).map(x => `<li class="yr-row" data-yr="${x.year}"><b>${x.year}학년도</b><span class="muted">보관됨${demo && x.year === from ? ' · 선생님 자료' : ''} · ${ymd(x.savedAt)} · ${kb(x.size)}</span><span class="grow"></span>
           <button class="btn" type="button" data-set="goYear" data-y="${x.year}">이 학년도로 가기</button><button class="btn text" type="button" data-set="delYear" data-y="${x.year}">지우기</button></li>`).join('');
+    const curName = demo ? '체험용 자료' : `${cur}학년도`;
     return page('학년도', '학년도마다 자료를 따로 두고 오갈 수 있어요. AI 키와 화면 테마는 모든 학년도가 같이 써요.',
-      card('지금 학년도', `<p class="set-big">${cur}학년도</p><p class="muted" style="margin:0">자료 ${kb(snapSize(snapshot(safeLS())))} · ${usageLine()}</p>${usageWarn()}`) +
+      (demo ? `<p class="banner warn yr-demo" style="margin:0 0 8px"><span class="grow">3분 둘러보기 중이에요. 선생님 자료${Number.isInteger(from) ? `(${from}학년도)` : ''}는 보관함에 그대로 있어요. 백업·불러오기·새 학년도·학년도 옮기기는 체험을 끝낸 뒤에 해 주세요.</span>
+        <button class="btn primary" type="button" data-tour="exit">체험 끝내기</button></p>` : '') +
+      card('지금 학년도', `<p class="set-big">${curName}</p><p class="muted" style="margin:0">자료 ${kb(snapSize(snapshot(safeLS())))} · ${usageLine()}</p>${usageWarn()}`) +
       card('백업 파일', `<p class="muted" style="margin:0">지금 학년도와 보관한 학년도 자료를 파일 하나로 저장해요(AI 키는 넣지 않아요). 앱 안의 보관함은 이 컴퓨터에만 있어서, 컴퓨터를 바꾸거나 프로그램을 지우면 사라져요. 백업 파일을 만들어 두세요.</p>
         <p class="muted" style="margin:0">${backupLine()}</p>
         <div class="row"><button class="btn primary" type="button" data-set="backup">백업 파일 만들기</button><button class="btn" type="button" data-set="restore" data-drop-pick>백업 파일 불러오기</button></div>
         <input type="file" id="backupFile" accept=".json,application/json" hidden>`) +
-      card('학년도 목록', `<ul class="yr-list"><li class="yr-row" data-yr="${cur}"><b>${cur}학년도</b><span class="muted">지금</span></li>${rows}</ul>`) +
+      card('학년도 목록', `<ul class="yr-list"><li class="yr-row" data-yr="${cur}"><b>${curName}</b><span class="muted">지금</span></li>${rows}</ul>`) +
       card('업무 인수인계서', `<p class="muted" style="margin:0">올해 연간계획·행사·품의·공문을 모아 다음 담당자에게 넘길 문서를 기타 › 인수인계서에서 만들어요. 학생 자료·이름·전화번호는 넣지 않아요.</p>
         <div class="row"><button class="btn" type="button" data-set="handover">업무 인수인계서 만들기</button></div>`) +
       card('새 학년도', `<p class="muted" style="margin:0">학년도가 끝나면 새 학년도를 시작해요. 지금 자료는 보관함에 남고, 연간계획·행사계획은 새 학년도로 가져가요.</p>
-        <div class="row"><button class="btn" type="button" data-set="newYear">${(yrList || []).some(x => x.year === cur + 1) ? `${cur + 1}학년도 자료가 이미 있어요 · 그 학년도로 가기` : `${cur + 1}학년도 시작하기`}</button></div>`));
+        <div class="row"><button class="btn" type="button" data-set="newYear">${demo ? '새 학년도 시작하기' : (yrList || []).some(x => x.year === cur + 1) ? `${cur + 1}학년도 자료가 이미 있어요 · 그 학년도로 가기` : `${cur + 1}학년도 시작하기`}</button></div>`));
   },
   purchase: () => page('품의 기준', '',
     card('넣는 방식', `<div class="set-radios" role="radiogroup" aria-label="품의 넣는 방식">
@@ -213,11 +220,12 @@ const onOk = (id, fn) => sh => {
   const b = sh.querySelector('[data-sheet="backup"]'); if (b) b.addEventListener('click', makeBackupFile);
 };
 async function makeBackupFile() {
+  if (blocked()) return;
   try {
     const cur = curYear(), archives = {};
     // 보관함을 못 열어도(시크릿 창 등) 지금 학년도는 백업함
     let partial = false;
-    try { for (const x of await getArchive().list()) if (x.year !== cur) archives[x.year] = await getArchive().get(x.year); }
+    try { for (const x of await getArchive().list()) if (x.year !== cur && !isDemoYear(x.year)) archives[x.year] = await getArchive().get(x.year); } // 지우지 못한 체험용 자료는 빼고
     catch (e) { partial = true; }
     const b = makeBackup({ current: cur, snap: snapshot(safeLS()), archives });
     const d = new Date(), pad = n => String(n).padStart(2, '0');
@@ -233,11 +241,13 @@ async function makeBackupFile() {
   } catch (e) { toast('백업 파일을 만들지 못했어요', 5000); }
 }
 async function go(target, data) {
+  if (blocked()) return;
   toast('학년도를 옮기는 중이에요…', 8000);
   const r = await switchYear(target, data);
   if (!r.ok) toast(switchError(r.code), 7000);
 }
 async function askNewYear() {
+  if (blocked()) return;
   const cur = curYear(), next = cur + 1;
   // 목록을 아직 못 불러왔어도 보관함을 직접 봄 (보관한 그 학년도를 새로 시작해 덮어쓰지 않게)
   let exists = (yrList || []).some(x => x.year === next);
@@ -260,10 +270,12 @@ async function askNewYear() {
   })(sh));
 }
 function askGo(y) {
+  if (blocked()) return;
   SSAM().openSheet(`<h3>${y}학년도로 갈까요?</h3><p class="muted" style="margin:0">지금(${curYear()}학년도) 자료는 보관함에 남아요. 앱을 다시 열어요.</p>${keyNote()}${sheetBtns('yrGoOk', `${y}학년도로 가기`)}`,
     onOk('yrGoOk', () => { SSAM().closeSheet(); go(y); }));
 }
 function askDel(y) {
+  if (blocked()) return;
   SSAM().openSheet(`<h3>${y}학년도 보관 자료를 지울까요?</h3><p class="muted" style="margin:0">지우면 되돌릴 수 없어요. 먼저 백업 파일을 만들어 두세요.</p>
     ${sheetBtns('yrDelOk', '지우기', '<button class="btn" type="button" data-sheet="backup">백업 파일 만들기</button>')}`,
   onOk('yrDelOk', async () => {
@@ -273,9 +285,10 @@ function askDel(y) {
   }));
 }
 async function restoreFile(file) {
+  if (blocked()) return;
   let r;
   try { r = parseBackup(await file.text()); } catch (e) { toast('쌤비서 백업 파일이 아니에요', 6000); return; }
-  const cur = curYear(), years = Object.keys(r.years).map(Number).sort((a, b) => b - a);
+  const cur = curYear(), years = Object.keys(r.years).map(Number).filter(y => !isDemoYear(y)).sort((a, b) => b - a);
   // 지금 학년도에 자료가 있으면 미리 체크하지 않음 (더 새로운 지금 자료를 실수로 덮어쓰지 않게)
   const liveEmpty = !Object.keys(snapshot(safeLS())).length;
   if (!years.length) { toast('백업 파일에 학년도 자료가 없어요', 5000); return; }
@@ -342,7 +355,7 @@ document.addEventListener('click', e => {
     else if (a === 'resetRoles') { const ok = resetRoles(); again(); toast(ok ? '업무별 AI를 기본으로 되돌렸어요' : FULL_MSG, ok ? undefined : 8000); }
     else if (a === 'rosterFile') box.querySelector('#rosterFile').click();
     else if (a === 'backup') makeBackupFile();
-    else if (a === 'restore') box.querySelector('#backupFile').click();
+    else if (a === 'restore') { if (!blocked()) box.querySelector('#backupFile').click(); }
     else if (a === 'newYear') askNewYear();
     else if (a === 'goYear') askGo(+b.dataset.y);
     else if (a === 'delYear') askDel(+b.dataset.y);

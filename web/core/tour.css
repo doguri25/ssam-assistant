@@ -1,0 +1,35 @@
+/* 3분 둘러보기 (core/tour.js): 위 띠(체험 중), 가리키는 테두리, 안내 말풍선. 색은 테마 값만, 뜻은 글로도(「체험 중」·「2 / 6」).
+   띠는 body 맨 앞(창 틀 위)이라 메뉴·아래 탭과 겹치지 않음. 말풍선은 휴대폰에서 아래 탭 위에 붙음(--bottom-h, core/shell.css) */
+.tour-band{flex:none;position:relative;z-index:46;display:flex;align-items:center;justify-content:space-between;gap:4px 12px;flex-wrap:wrap;
+  box-sizing:border-box;padding:6px 16px;border-bottom:2px solid var(--warn);background:var(--warn-soft);color:var(--ink);font-size:13.5px;line-height:1.4}
+.tour-band-t{display:flex;align-items:center;gap:6px;flex:1 1 220px;min-width:0;margin:0}
+.tour-band-t b{flex:none;font-weight:800;color:var(--warn)}
+.tour-band-ic{flex:none;font-size:11px;color:var(--warn)}
+.tour-band-s{min-width:0;color:var(--ink2)}
+.tour-band-b{display:flex;gap:6px;flex-wrap:wrap}
+.tour-band .btn{min-height:44px;padding:0 14px}
+
+.tour-ring{position:fixed;z-index:64;pointer-events:none;box-sizing:border-box;border:3px solid var(--accent);border-radius:12px;
+  box-shadow:0 0 0 3px var(--surface),0 0 0 9999px rgba(0,0,0,.16);transition:top .18s,left .18s,width .18s,height .18s}
+.tour-ring[hidden]{display:none}
+.tour-pop{position:fixed;z-index:66;box-sizing:border-box;display:grid;gap:8px;width:min(360px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;
+  padding:16px 18px;border:1px solid var(--line);border-radius:var(--r-l);background:var(--surface);color:var(--ink);box-shadow:0 12px 32px rgba(0,0,0,.22)}
+.tour-pop.dock{top:auto;left:12px;right:12px;bottom:calc(var(--bottom-h,0px) + 12px);width:auto;max-height:min(46vh,calc(100vh - var(--bottom-h,0px) - 24px))}
+@media (min-width:761px){ .tour-pop.dock{left:50%;right:auto;width:min(420px,calc(100vw - 24px));transform:translateX(-50%)} }
+.tour-pop-n{margin:0;font-size:12.5px;font-weight:700;color:var(--ink3)}
+.tour-pop-h{margin:0;font:800 17px/1.35 var(--f-display);color:var(--ink)}
+.tour-pop-d{margin:0;font-size:14px;line-height:1.6;color:var(--ink2)}
+.tour-pop-b{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:4px}
+.tour-pop-b .btn{min-height:44px;padding:0 16px}
+.tour-pop :focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+/* 들어가기 묻는 창 */
+.tour-sum{display:grid;gap:4px;margin:0;padding-left:20px;font-size:13.5px;color:var(--ink2)}
+.tour-ask .btn{min-height:44px;padding:0 16px}
+
+@media (max-width:760px){
+  .tour-band{padding:4px 12px}
+  .tour-band-s{display:none} /* 좁으면 「체험 중」과 단추만 */
+  .tour-band-t{flex:1 1 auto}
+}
+@media (prefers-reduced-motion:reduce){.tour-ring{transition:none}}
+@media print{.tour-band,.tour-ring,.tour-pop{display:none}}

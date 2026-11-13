@@ -255,3 +255,11 @@ document.addEventListener('change', e => {
     }
   }
 });
+
+/* 결과 모아 보기의 한 보기(rv: table·student·weak·gap·pyeongeo)를 바로 엶 — 3분 둘러보기(core/tour-steps.js)가 부름. 교과·학기 거르기는 전체로 */
+export function showResults(rv) {
+  U.view = 'results';
+  if (rv) R.rv = rv;
+  R.subject = ''; R.term = 0;
+  render();
+}
