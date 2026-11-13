@@ -136,7 +136,6 @@ function drawTabs(m) {
       ? `${prev ? '<span class="tab-sep" aria-hidden="true"></span>' : ''}<span class="tab-grp">${esc(t.group)}</span>` : '';
     return `${head}<button type="button" data-tab="${t.id}"${t.id === cur.tab ? ' aria-current="page"' : ''}>${esc(t.label)}</button>`;
   }).join('');
-  el.classList.toggle('grouped', m.tabs.some(t => t.group));
   // 휴대폰의 가로 스크롤 칩: 지금 탭이 보이게 (넘칠 때만 — 페이지는 움직이지 않음)
   const b = el.querySelector('[aria-current="page"]');
   if (b && el.scrollWidth > el.clientWidth) el.scrollLeft = Math.max(0, b.offsetLeft - (el.clientWidth - b.offsetWidth) / 2);

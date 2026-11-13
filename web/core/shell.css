@@ -65,7 +65,7 @@ section[data-menu="evaluate"][hidden]{display:none}
 /* 데스크톱: 「쌤」 버튼(오른쪽 아래 떠 있음 — 오른쪽 22px·아래 22px·58px, core/inbox.css)이 화면 끝·오른쪽 끝 단추를 가리지 않게(스펙 2026-11-14 §1).
    모든 화면 끝에 버튼만큼 여백(옛 평가 화면은 따로 스크롤되는 오른쪽 칸), 새 메뉴 화면은 넓지 않은 창(본문이 버튼 밑까지 닿을 때)에서 오른쪽도 버튼 자리만큼 비움 */
 @media (min-width:761px){
-  body:has(#inboxFab:not([hidden])) .m-page{padding-bottom:104px;padding-right:max(32px,calc(96px - (100vw - var(--side-w) - 1120px) / 2))}
+  body:has(#inboxFab:not([hidden])) .m-page{padding-bottom:104px;padding-right:max(32px,calc(96px - max(0px,(100vw - var(--side-w) - 1120px) / 2)))}
   body:has(#inboxFab:not([hidden])) section[data-menu="evaluate"] :is(.pane,.hk-right,.gr-res){padding-bottom:104px}
 }
 /* 휴대폰: 세로 메뉴 → 아래 탭 5칸(오늘·평가·학급·품의·더보기), 로고 마크만 머리 줄 왼쪽 */
