@@ -2,6 +2,7 @@
    실제 호출·키·모델은 평가 메뉴(window.SSAM.ai)가 맡음 — Claude·Gemini·GPT·업스테이지 */
 import * as wire from './ai-wire.js';
 import './write-style.js'; // 글쓰기 원칙(window.SSAM_STYLE) — 평가 메뉴의 AI 부르기에서 씀
+import './ai-log.js'; // AI로 보낸 글(window.SSAM.aiLog) — 평가 메뉴의 AI 부르기가 보낸 것을 적고 설정 › AI가 보여 줌
 const A = () => (window.SSAM && window.SSAM.ai) || null;
 // 평가 메뉴(옛 IIFE)의 AI 부르기가 요청 모양·사용량 읽기에 씀
 if (typeof window !== 'undefined') window.SSAM_WIRE = wire;
@@ -13,12 +14,13 @@ export const busyCount = () => inflight;
 /* images: [{ mime, b64, blob }] → { text, truncated, usage }. 실패하면 { code, message }를 던짐.
    task: 업무(grade·writing·plan·notes)면 그 업무에 정한 AI로, role: 'main'|'review', use: { engine, model } 이 AI로
    shared: { text, images } 학생마다 같은 공통 부분(앞에 두어 캐시), meter: 사용량을 모을 곳(ai-wire newMeter),
-   work: 'none'이면 세로 메뉴에 「AI가 일하는 중」 점을 띄우지 않음(쌤 채팅처럼 메뉴 일이 아닐 때 — core/shell.js) */
-export function generate(prompt, { signal, images, careful, task, role, use, shared, meter, work } = {}) {
+   work: 'none'이면 세로 메뉴에 「AI가 일하는 중」 점을 띄우지 않음(쌤 채팅처럼 메뉴 일이 아닐 때 — core/shell.js),
+   logAs: 「AI로 보낸 글」(core/ai-log.js)에 적을 업무 이름만(검토 AI처럼 use로 부를 때 — 글쓰기 원칙·점은 task로만) */
+export function generate(prompt, { signal, images, careful, task, role, use, shared, meter, work, logAs } = {}) {
   const a = A();
   if (!a) return Promise.reject({ code: 'no_engine' });
   inflight++;
-  return Promise.resolve(a.generate(prompt, { signal, images, careful, fresh: true, task, role, use, shared, meter, work })).finally(() => { inflight--; });
+  return Promise.resolve(a.generate(prompt, { signal, images, careful, fresh: true, task, role, use, shared, meter, work, logAs })).finally(() => { inflight--; });
 }
 
 export const ready = () => !!(A() && A().engineReady());

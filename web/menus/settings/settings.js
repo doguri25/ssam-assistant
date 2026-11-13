@@ -12,6 +12,7 @@ import { switchYear, switchError, getArchive, safeLS } from '../../core/year-swi
 import { FULL_MSG, usage, get as sget, set as sset } from '../../core/store.js';
 import { getInboxSettings, setInboxSettings, registerInbox } from '../../core/inbox.js';
 import { TASKS, getRoles, setDefaultReview, resetRoles, rowText, aiOptions, aiValue, aiFromValue, providerEnv } from '../../core/ai-roles.js';
+import * as aiLog from '../../core/ai-log.js';
 
 const SSAM = () => window.SSAM || {};
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -63,6 +64,63 @@ function rolesCards() {
       <p class="muted">업무마다 바꾸는 곳은 각 메뉴 위쪽의 AI 줄 [바꾸기]예요.</p>
       <div class="row"><button class="btn" type="button" data-set="resetRoles">기본으로 되돌리기</button></div>`);
 }
+/* ---------- AI로 보낸 글 (스펙 2026-11-13 §2, core/ai-log.js) ----------
+   줄: 「11:02 · 채점 · Gemini 3.8 Flash · 글 1,240자 · 그림 2장」, 누르면 보낸 글 전체(줄바꿈 그대로, 칸 안에서 스크롤)와 작은 그림.
+   이 화면을 연 채 새 요청이 가면 그 줄만 앞에 더함(펼친 줄·스크롤은 그대로) */
+const logOpen = new Set(); // 펼친 줄 id
+const LOG_NOTE = '이 창을 켠 뒤 보낸 것만 이 기기에 잠깐 둬요. 이름은 가린 채로 보내요.';
+function logThumbs(e) {
+  if (!e.images) return '';
+  const imgs = e.thumbs.map((src, i) => `<img src="${esc(src)}" alt="보낸 그림 ${i + 1}">`).join('');
+  const more = e.images > e.thumbs.length ? `<p class="muted ai-log-imgs">${e.thumbs.length ? `그림 ${e.images}장 중 ${e.thumbs.length}장만 작게 보여요.` : `그림 ${e.images}장을 보냈어요.`}</p>` : '';
+  return imgs + more;
+}
+// <pre> 바로 뒤 줄바꿈 하나는 HTML이 버리므로 하나 더 둠(보낸 글이 줄바꿈으로 시작해도 그대로)
+const logRow = e => `<li class="ai-log-row" data-log-id="${e.id}" data-thumbs="${e.thumbs.length}"><details data-log="${e.id}"${logOpen.has(e.id) ? ' open' : ''}>
+    <summary class="ai-log-sum"><span class="ai-log-mark" aria-hidden="true"></span><span class="ai-log-line">${esc(aiLog.rowText(e))}</span></summary>
+    <div class="ai-log-body"><p class="muted ai-log-to">보낸 곳: ${esc([e.provider, e.model].filter(Boolean).join(' · ') || 'AI')}</p>
+      <pre class="ai-log-text" tabindex="0" aria-label="보낸 글">\n${esc(e.text)}</pre>
+      <div class="ai-log-thumbs">${logThumbs(e)}</div></div></details></li>`;
+function logInner() {
+  const l = aiLog.list();
+  if (!l.length) return '<p class="muted ai-log-empty">아직 보낸 글이 없어요</p>';
+  return `<div class="row ai-log-head"><span class="muted" id="aiLogCount">최근 ${l.length}개</span><span class="grow"></span><button class="btn" type="button" data-set="aiLogClear">비우기</button></div>
+    <ul class="ai-log" aria-label="AI로 보낸 글">${l.map(logRow).join('')}</ul>`;
+}
+const logCard = () => `<section class="set-card" id="setAiLog" tabindex="-1" aria-labelledby="setAiLogH"><h3 id="setAiLogH">AI로 보낸 글</h3>
+  <p class="muted" style="margin:0">${LOG_NOTE}</p><div id="aiLogBox">${logInner()}</div></section>`;
+function patchLog() {
+  const lb = box && box.querySelector('#aiLogBox');
+  if (!lb) return;
+  const l = aiLog.list(), ids = new Set(l.map(e => e.id));
+  for (const id of [...logOpen]) if (!ids.has(id)) logOpen.delete(id);
+  const ul = lb.querySelector('ul.ai-log');
+  if (!l.length || !ul) { lb.innerHTML = logInner(); return; }
+  const have = new Map([...ul.children].map(li => [+li.dataset.logId, li]));
+  for (const [id, li] of have) if (!ids.has(id)) li.remove();
+  let at = ul.firstElementChild;
+  for (const e of l) {
+    const li = have.get(e.id);
+    if (li && li.isConnected) {
+      if (+li.dataset.thumbs !== e.thumbs.length) { li.dataset.thumbs = e.thumbs.length; li.querySelector('.ai-log-thumbs').innerHTML = logThumbs(e); }
+      at = li.nextElementSibling;
+      continue;
+    }
+    const t = document.createElement('template'); t.innerHTML = logRow(e).trim();
+    ul.insertBefore(t.content.firstElementChild, at);
+  }
+  const c = lb.querySelector('#aiLogCount'); if (c) c.textContent = `최근 ${l.length}개`;
+}
+// 몰려 오면 한 번에(요청 쪽은 기다리지 않음)
+let logT = 0;
+aiLog.onChange(() => { if (!logT) logT = setTimeout(() => { logT = 0; patchLog(); }, 60); });
+// 펼침은 다시 그려도 그대로(toggle은 거품이 없어 잡는 단계에서)
+document.addEventListener('toggle', e => {
+  const d = e.target, id = d && d.dataset && +d.dataset.log;
+  if (!id || !box || !box.contains(d)) return;
+  if (d.open) logOpen.add(id); else logOpen.delete(id);
+}, true);
+
 /* 떠 있는 버튼: 아무 파일이나 넣으면 쌤비서가 알아서 */
 function inboxCard() {
   const s = getInboxSettings();
@@ -88,7 +146,7 @@ const VIEWS = {
       card('지금 쓰는 AI', `${sharedNote()}${testKeyNote()}<p class="set-big">${esc(ready ? SSAM().ai.engineName() : '아직 정하지 않았어요')}</p>
         <div class="row"><button class="btn primary" type="button" data-set="openAi">AI 바꾸기</button>
           <button class="btn" type="button" data-set="testAi" ${ready && !(aiMsg && aiMsg.busy) ? '' : 'disabled'}>연결 확인</button></div>
-        ${aiMsg ? `<p class="set-msg ${aiMsg.busy ? '' : aiMsg.ok ? 'ok' : 'err'}" role="status">${aiMsg.busy ? '확인하는 중…' : esc(aiMsg.text)}</p>` : ''}`) + rolesCards());
+        ${aiMsg ? `<p class="set-msg ${aiMsg.busy ? '' : aiMsg.ok ? 'ok' : 'err'}" role="status">${aiMsg.busy ? '확인하는 중…' : esc(aiMsg.text)}</p>` : ''}`) + rolesCards() + logCard());
   },
   screen: () => {
     const cur = getTheme();
@@ -173,7 +231,7 @@ const again = () => box && render(curTab, box.parentElement);
 async function testAi() {
   aiMsg = { busy: true }; again();
   try {
-    await ai.generate('연결 확인입니다. "확인"이라고만 답하세요.');
+    await ai.generate('연결 확인입니다. "확인"이라고만 답하세요.', { logAs: 'test' });
     aiMsg = { ok: true, text: `연결됐어요 · ${ai.providerName()}` };
   } catch (e) {
     aiMsg = { ok: false, text: ai.errorMessage(e && e.code, e) };
@@ -352,6 +410,7 @@ document.addEventListener('click', e => {
     const a = b.dataset.set;
     if (a === 'openAi') { aiMsg = null; SSAM().ai.openSettings(); }
     else if (a === 'testAi') testAi();
+    else if (a === 'aiLogClear') { aiLog.clear(); logOpen.clear(); patchLog(); const c = box.querySelector('#setAiLog'); if (c) c.focus(); toast('AI로 보낸 글을 비웠어요'); }
     else if (a === 'resetRoles') { const ok = resetRoles(); again(); toast(ok ? '업무별 AI를 기본으로 되돌렸어요' : FULL_MSG, ok ? undefined : 8000); }
     else if (a === 'rosterFile') box.querySelector('#rosterFile').click();
     else if (a === 'backup') makeBackupFile();
