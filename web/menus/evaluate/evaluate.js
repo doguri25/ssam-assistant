@@ -1162,8 +1162,8 @@ async function generateRaw(prompt, { onText, signal, fresh, images, careful, use
   const prov = picked ? pickd.engine : E.engine === 'account' ? 'account' : E.engine && PROVIDERS[E.engine] ? E.engine : null;
   if (!prov) throw { code: 'no_engine' };
   const model = picked ? pickd.model : prov === 'account' ? '' : E.models[prov];
-  // 이 기기를 떠나는 그림: 공통 그림 → 요청 그림(업스테이지는 글자 읽기로 보냄)
-  const sentImages = [...((shared && shared.images) || []), ...(images || [])];
+  // 이 기기를 떠나는 그림: 요청 그림(학생 문제지 등) → 공통 그림(정답표 등) — 작은 그림 3장에 이름 가린 학생 그림이 먼저 보이게(업스테이지는 글자 읽기로 보냄)
+  const sentImages = [...(images || []), ...((shared && shared.images) || [])];
   const before = sentText(prompt, shared);
   try {
     let opts = null, ocrErr = null;

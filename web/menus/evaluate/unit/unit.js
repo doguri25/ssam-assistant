@@ -80,7 +80,7 @@ export function refresh(id) {
    초점이 옮겨 간 뒤에 보아, 칸에 쓰는 중이면 그 칸을 떠날 때까지, 단추를 누르는 중이면 뗄 때까지 다시 그리지 않음(옮겨 간 칸·한글 조합·누른 단추를 지킴) */
 export const later = id => setTimeout(() => refresh(id), 0);
 
-const reach = t => (!t || !t.key.items.length ? 1 : !t.students.length ? 2 : graded(t).length ? 4 : 3);
+export const reach = t => (!t || !t.key.items.length ? 1 : !t.students.length ? 2 : graded(t).length ? 4 : 3);
 export function openTest(id, step) {
   const t = getTest(id);
   if (!t) return;

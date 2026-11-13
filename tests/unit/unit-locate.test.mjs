@@ -1,7 +1,7 @@
 // 단원평가 확인 창: 그 문항 전체 보기 (스펙 2026-11-13-crop-log-flow §1) — 문항 자리 찾기 프롬프트, AI 답 정리, 여유를 더한 자르기 상자
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { locatePrompt, validLocate, normBoxes, cropRect, boxesOf } from '../../web/menus/evaluate/unit/unit-locate.js';
+import { locatePrompt, validLocate, normBoxes, cropRect, boxesOf, nextRef } from '../../web/menus/evaluate/unit/unit-locate.js';
 
 const ITEMS = [
   { no: 1, content: '글의 내용 파악하기', domain: '이해', type: 'choice', answer: '③', points: 4, criteria: '', pages: '<국어> 36쪽' },
@@ -98,4 +98,22 @@ test('boxesOf: 저장한 자리(같은 쪽 모양일 때만), 예전 평가(자�
   assert.equal(boxesOf({ items: ITEMS }, '2:10'), null);
   assert.equal(boxesOf({ items: ITEMS, boxes: { at: 1, items: 'x' } }, '2:10'), null);
   assert.equal(boxesOf(null, '2:10'), null);
+});
+
+test('상자는 이름 붙은 칸 {x0,y0,x1,y1}로 받음(Gemini가 [y,x,…] 차례로 답해 세로 띠가 되던 것, 검토 #4)', () => {
+  const p = locatePrompt([{ no: 1, content: '덧셈', type: 'short' }], 1);
+  assert.ok(p.includes('"x0"') && p.includes('"y1"'), p.slice(-200));
+  const items = [{ no: 1 }, { no: 2 }];
+  assert.deepEqual(normBoxes({ items: [{ no: 1, page: 0, box: { x0: 40, y0: 120, x1: 960, y1: 330 } }, { no: 2, page: 0, x0: 40, y0: 340, x1: 960, y1: 600 }] }, items, 1),
+    { 1: { page: 0, box: [40, 120, 960, 330] }, 2: { page: 0, box: [40, 340, 960, 600] } });
+  assert.deepEqual(normBoxes({ items: [{ no: 1, page: 0, box: [40, 120, 960, 330] }] }, items, 1)[1].box, [40, 120, 960, 330], '예전 배열 답도');
+});
+
+test('기준 학생: 처음엔 쪽이 가장 많은 첫 학생, [다시 찾기]면 다음 학생으로 돌아감(검토 #5)', () => {
+  const c = [{ i: 0, n: 2 }, { i: 1, n: 3 }, { i: 2, n: 3 }, { i: 3, n: 3 }];
+  assert.equal(nextRef(c), 1);
+  assert.equal(nextRef(c, 1), 2);
+  assert.equal(nextRef(c, 3), 1, '끝이면 처음으로');
+  assert.equal(nextRef(c, 9), 1, '모르는 학생이면 처음 학생');
+  assert.equal(nextRef([]), -1);
 });

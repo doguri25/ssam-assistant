@@ -18,11 +18,11 @@ export function locatePrompt(items, pageCount = 0) {
     ...(items || []).map(it => `- ${it.no} | ${oneLine(it.content) || `${it.no}번 문항`} | ${TYPE_NAME[it.type] || '단답'}`),
     '', '[할 일]',
     '1. 문항마다 그 문항이 있는 쪽(page, 0부터)과 그 문항 전체를 감싸는 상자(box)를 찾습니다. 상자에는 문항 번호·물음·보기·그림·답 쓰는 칸을 모두 넣습니다.',
-    '2. box는 [x0, y0, x1, y1]입니다. 그 쪽 그림의 왼쪽 위가 [0, 0], 오른쪽 아래가 [1000, 1000]인 정수로 적습니다.',
+    '2. box는 {"x0":왼쪽,"y0":위,"x1":오른쪽,"y1":아래}입니다. x는 가로, y는 세로이고 그 쪽 그림의 왼쪽 위가 0, 오른쪽·아래 끝이 1000인 정수로 적습니다.',
     '3. 한 문항이 두 쪽에 걸치면 물음이 시작하는 쪽만 적습니다. 찾지 못한 문항은 뺍니다.',
     '4. 학생이 쓴 답이나 학생 이름은 읽거나 적지 않습니다.',
     '', '[출력] JSON 하나만 출력합니다.',
-    '{"items":[{"no":1,"page":0,"box":[40,120,960,330]}]}'
+    '{"items":[{"no":1,"page":0,"box":{"x0":40,"y0":120,"x1":960,"y1":330}}]}'
   ].join('\n');
 }
 
@@ -30,6 +30,8 @@ export const validLocate = v => Array.isArray(v) || !!(v && Array.isArray(v.item
 
 /* 상자 [x0, y0, x1, y1] → 0~1000 정수, 모서리 차례 바로잡음. 0~1 비율로 답하면 1000배. 모양이 틀리거나 너무 작거나 쪽 거의 전체면 null */
 function normBox(b) {
+  // 이름 붙은 칸 {x0,y0,x1,y1}(지금 묻는 꼴 — 차례를 헷갈리지 않게)도, 예전 배열 [x0,y0,x1,y1]도
+  if (b && !Array.isArray(b) && typeof b === 'object') b = [b.x0, b.y0, b.x1, b.y1];
   if (!Array.isArray(b) || b.length !== 4) return null;
   let v = b.map(x => (x === '' || x == null ? NaN : Number(x)));
   if (!v.every(Number.isFinite)) return null;
@@ -48,7 +50,7 @@ export function normBoxes(v, items, pageCount) {
     if (!x || typeof x !== 'object') continue;
     const no = Number(x.no), page = x.page === '' || x.page == null ? NaN : Number(x.page);
     if (!nos.has(no) || out[no] || !Number.isInteger(page) || page < 0 || page >= n) continue;
-    const box = normBox(x.box);
+    const box = normBox(x.box != null ? x.box : ('x0' in x ? { x0: x.x0, y0: x.y0, x1: x.x1, y1: x.y1 } : null));
     if (box) out[no] = { page, box };
   }
   return out;
@@ -70,4 +72,15 @@ export function boxesOf(key, lay) {
   if (!b || typeof b !== 'object' || !b.items || typeof b.items !== 'object' || Array.isArray(b.items)) return null;
   if (b.lay != null && lay != null && b.lay !== lay) return null;
   return b.items;
+}
+
+/* 기준 학생: cands [{ i(학생 차례), n(쪽 수) }] 가운데 쪽이 가장 많은 학생들. 처음엔 그 첫 학생,
+   last(지난번 기준 학생)를 주면 그다음 학생(끝이면 처음) — [문항 자리 다시 찾기]가 비뚤게 스캔된 같은 학생으로 되풀이하지 않게. 없으면 -1 */
+export function nextRef(cands, last) {
+  const xs = (Array.isArray(cands) ? cands : []).filter(x => x && x.n > 0);
+  if (!xs.length) return -1;
+  const max = Math.max(...xs.map(x => x.n)), top = xs.filter(x => x.n === max);
+  if (last == null) return top[0].i;
+  const k = top.findIndex(x => x.i === last);
+  return k < 0 ? top[0].i : top[(k + 1) % top.length].i;
 }

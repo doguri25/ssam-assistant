@@ -12,7 +12,7 @@ import { getTest, getSet, saveSet, numbersFor, parseNos, renumber, maskOf, listT
 import { registerInbox } from '../../../core/inbox.js';
 import { go } from '../../../core/shell.js';
 import { gradeParts, normGrade, validGrade } from './unit-ai.js';
-import { locatePrompt, validLocate, normBoxes, cropRect, boxesOf } from './unit-locate.js';
+import { locatePrompt, validLocate, normBoxes, cropRect, boxesOf, nextRef } from './unit-locate.js';
 import { unitAccuracy, accuracyText } from '../grade-accuracy.js';
 import { arrangePages } from './unit-pages.js';
 import { readNos, openNoCheck, openNoWait, rosterAllowed, byNoOrder } from '../../../core/student-no.js';
@@ -424,31 +424,37 @@ const stuIndex = (t, no) => { const i = t.students.findIndex(s => s.no === no &&
    화면에서만 잘라 보여 줌(잘린 그림은 저장하지 않음). 자리가 없으면(그 쪽이 없음·못 찾음·AI 키 없음) 지금처럼 쪽 전체 */
 // busy: 자리를 찾는 중인 평가, failed: 이 화면을 켠 뒤 찾지 못한 평가(칸을 열 때마다 다시 부르지 않음 — [문항 자리 다시 찾기]로),
 // whole: [쪽 전체 보기]를 골랐는지(이 화면에서만 기억), view: 열린 칸 확인 창(찾으면 바로 바꿈)
-const L = { busy: new Set(), failed: new Set(), whole: false, view: null };
+const L = { busy: new Set(), failed: new Set(), whole: false, view: null, ref: new Map() }; // ref: 평가마다 지난번 기준 학생
 function layOf(per) { const s = getSet(); return `${per}:${s.twoUp ? 1 : 0}${s.flipBack ? 1 : 0}`; }
 // 지금 스캔(그 쪽 모양)에 맞는 적어 둔 자리 { [no]: { page, box } }, 없으면 null
 const boxesNow = t => (hasPages(t.id) ? boxesOf(t.key, G.lay || null) : null);
 // 채점 AI가 그림을 보는지: 업스테이지는 그림을 글자로 바꿔 보내 자리를 알 수 없음
 const seesImages = () => { const g = pickAI('grade', 'main'); return (g ? g.engine : providerEnv().engine) !== 'upstage'; };
+// Claude 계정은 그림을 한 장으로 이어 붙여 보낼 수 있어(쪽이 여럿이면) 쪽마다 자리를 알 수 없음
+const oneImage = (t, i) => ai.isAccount() && i >= 0 && pagesOf(t.id, i).length > 1;
 // 이름 칸: 채점과 같은 조건(가리고 보내기를 껐거나, 이 평가에 이름 칸을 정했거나, 「가리지 않고 채점」을 고름)일 때만 그림을 보냄
 const maskReady = t => { const m = maskOf(t); return !getSet().maskOn || !!(m && m.mask.length) || G.noMaskFor === t.id; };
 /* 기준 학생: 채점을 마친 학생 중 쪽이 가장 많은 첫 학생(마지막 학생은 쪽이 모자랄 수 있음). 없으면 -1 */
-function refStudent(t) {
+function refStudent(t, last) {
   const xs = t.students.map((s, i) => ({ s, i, n: pagesOf(t.id, i).length })).filter(x => !x.s.skip && x.s.status === 'done' && x.n);
-  const max = Math.max(0, ...xs.map(x => x.n)), x = xs.find(y => y.n === max);
-  return x ? x.i : -1;
+  return nextRef(xs, last);
 }
-const canLocate = t => !!t && ai.ready() && seesImages() && hasPages(t.id) && !noStale(t) && maskReady(t) && refStudent(t) >= 0;
+// 저절로 찾기: 그 평가를 채점하는 중이면 기다림(그림 여러 장 요청이 채점과 겹쳐 한도에 걸리지 않게)
+const canLocate = t => !!t && ai.ready() && seesImages() && hasPages(t.id) && !noStale(t) && maskReady(t) && !busy(t.id) && refStudent(t) >= 0 && !oneImage(t, refStudent(t));
 const redrawView = id => { if (L.view && L.view.id === id && L.view.el.isConnected) L.view.draw(); };
 /* 문항 자리 찾기: 한 평가에 한 번에 하나. 끝나면 그 평가를 다시 읽어 자리만 넣음. say: [문항 자리 다시 찾기]로 부름(까닭을 알림) */
 async function locate(id, say = false) {
   const t = getTest(id);
   if (!t || L.busy.has(id)) return;
-  const i = refStudent(t);
+  // [다시 찾기]면 지난번과 다른 학생 문제지로(그 학생 스캔이 비뚤었을 수 있음)
+  const i = refStudent(t, say && L.ref.has(id) ? L.ref.get(id) : undefined);
   if (!ai.ready()) { if (say) toast(AI_KEY, 5000); return; }
+  if (busy(id)) { if (say) toast('채점하는 중이에요. 끝난 뒤에 눌러 주세요.', 5000); return; }
   if (!seesImages()) { if (say) toast('업스테이지는 그림을 글자로 바꿔 보내서 문항 자리를 찾을 수 없어요.', 6000); return; }
   if (!hasPages(id) || noStale(t) || i < 0) { if (say) toast('채점한 학생의 문제지 스캔이 있어야 찾을 수 있어요.', 5000); return; }
   if (!maskReady(t)) { if (say) toast('이름 칸을 먼저 정해 주세요(2단계 [이름 칸 정하기]).', 6000); return; }
+  if (oneImage(t, i)) { if (say) toast('Claude 계정은 여러 쪽을 한 장으로 이어 보내서 문항 자리를 찾을 수 없어요. 칸에서는 쪽 전체를 보여 줘요.', 7000); return; }
+  L.ref.set(id, i);
   const pages0 = G.pages, lay = G.lay;
   L.busy.add(id); L.failed.delete(id); refresh(id); redrawView(id);
   try {

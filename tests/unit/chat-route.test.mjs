@@ -96,3 +96,12 @@ test('AI로 보낸 글: 다른 일의 「보낸」·「AI」 글은 그 일', ()
   for (const t of ['email 보낸 글 정리해 줘', '학부모님께 보낸 안내장 내용으로 가정통신문 써 줘', '선생님들께 보낸 쪽지 다시', '3번 학생이 보낸 글을 칭찬함'])
     assert.notEqual(R(t).intent, 'aiLog', t);
 });
+
+test('AI로 보낸 글: 「AI로 보낸 가정통신문 다시 써 줘」처럼 보낸 뒤에 일 이름이 오면 그 일(검토 #7)', () => {
+  for (const x of ['AI로 보낸 가정통신문 다시 써 줘', 'gpt로 보낸 공문 회신 써줘', 'AI로 보낸 평어 고쳐 줘']) {
+    const r = routeText(x);
+    assert.notEqual(r && r.intent, 'aiLog', x + ' → ' + JSON.stringify(r));
+  }
+  assert.equal(routeText('AI한테 뭐 보냈어?').intent, 'aiLog');
+  assert.equal(routeText('AI로 보낸 글 보여 줘').intent, 'aiLog');
+});

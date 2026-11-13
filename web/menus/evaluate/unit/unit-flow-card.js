@@ -14,7 +14,7 @@ import { showResults } from './unit-results.js';
 import { listCamps, currentCampId, setCurrentCamp } from '../../class/camp-model.js';
 import { getInfo } from '../../class/class-model.js';
 import { openCamp } from '../../class/camp.js';
-import { U, esc, registerBand, cur, goStep, visible, getBox } from './unit.js';
+import { U, esc, registerBand, cur, goStep, visible, getBox, reach } from './unit.js';
 
 const stepsOf = t => flowSteps(t, {
   tests: loadTests(listTests().filter(s => s.done)), camps: listCamps(), cut: normCut(getSet().gapCut),
@@ -56,7 +56,8 @@ function reveal(el) {
 function go(g) {
   if (!g) return;
   if (g.to === 'step') {
-    goStep(g.step);
+    // 아직 열리지 않은 단계로는 가지 않음(답안이 없는 새 평가에서 [채점]이 빈 3단계를 열던 것) — 갈 수 있는 데까지
+    goStep(Math.min(g.step, reach(cur())));
     const box = getBox(), card = g.card === 'miss' ? box.querySelector('.un-miss') : g.card === 'redo' ? box.querySelector('.un-redo') : null;
     if (card) reveal(card);
     else { const b = box.querySelector(`#unFlow [data-flow="${g.card || 'grade'}"]`); if (b) b.focus({ preventScroll: true }); box.querySelector('.steps').scrollIntoView({ block: 'nearest' }); }

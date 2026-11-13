@@ -68,7 +68,7 @@ function rolesCards() {
    줄: 「11:02 · 채점 · Gemini 3.8 Flash · 글 1,240자 · 그림 2장」, 누르면 보낸 글 전체(줄바꿈 그대로, 칸 안에서 스크롤)와 작은 그림.
    이 화면을 연 채 새 요청이 가면 그 줄만 앞에 더함(펼친 줄·스크롤은 그대로) */
 const logOpen = new Set(); // 펼친 줄 id
-const LOG_NOTE = '이 창을 켠 뒤 보낸 것만 이 기기에 잠깐 둬요. 이름은 가린 채로 보내요.';
+const LOG_NOTE = '이 창을 켠 뒤 보낸 것만 이 기기에 잠깐 둬요. 이름 칸을 정한 문제지는 가려서, 글 속 이름은 ○○○로 바꿔 보내요(가리지 않고 보내기로 고른 것은 그대로 가요).';
 function logThumbs(e) {
   if (!e.images) return '';
   const imgs = e.thumbs.map((src, i) => `<img src="${esc(src)}" alt="보낸 그림 ${i + 1}">`).join('');

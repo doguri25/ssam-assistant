@@ -46,7 +46,7 @@ await run('ai-log', [
     await toAi();
     const txt = await page.textContent(CARD);
     assert(txt.includes('AI로 보낸 글') && txt.includes('아직 보낸 글이 없어요'), txt);
-    assert(txt.includes('이 창을 켠 뒤 보낸 것만 이 기기에 잠깐 둬요. 이름은 가린 채로 보내요.'), '안내 글: ' + txt);
+    assert(txt.includes('이 창을 켠 뒤 보낸 것만 이 기기에 잠깐 둬요.') && txt.includes('가리지 않고 보내기로 고른 것은 그대로 가요') && !txt.includes('이름은 가린 채로 보내요'), '안내 글(가리지 않고 보내기로 고른 것도 있음을 알림): ' + txt);
     assert(!(await page.locator(`${CARD} [data-set="aiLogClear"]`).count()), '빈데 [비우기]');
   }],
   ['행특 쓰기(실제 AI 일) → 줄: 「11:02 · 평어·행특·창체 · Claude Sonnet 5.5 · 글 n자」(그림 없음)', async () => {
