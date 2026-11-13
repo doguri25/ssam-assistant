@@ -11,6 +11,7 @@ import { docToLetter } from '../../core/body-table.js';
 import { currentYear } from '../../core/years.js';
 import { readText, fileMessage } from '../../core/files.js';
 import { aiRowHTML } from '../../core/ai-roles.js';
+import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
 import { canQueue, openQueue } from '../../core/queue-paste.js';
 import { keepFiles } from '../../core/keep-files.js';
@@ -176,11 +177,11 @@ function reportCardHTML(x) {
     <div class="row rp-out">${rpOutHTML()}</div>`;
 }
 const rpOutHTML = () => `${formSelHTML()}${R.formId ? '<button class="btn primary" type="button" data-rp="formExport">학교 양식으로 한글 내려받기</button>' : exportButton('data-rp="export"', { cls: 'primary' })}`;
-/* 학교 양식(기타 › 가정통신문에서 넣은 .hwpx 양식, 같은 저장소) */
+/* 학교 양식(문서·소통 › 가정통신문에서 넣은 .hwpx 양식, 같은 저장소) */
 const FORM_KEY = 'report:form';
 function formSelHTML() {
   if (!R.forms) { loadReportForms(); return ''; }
-  if (!R.forms.length) return '<span class="muted">학교 양식(.hwpx)은 기타 › 가정통신문에서 넣어 두면 여기서도 골라 써요.</span>';
+  if (!R.forms.length) return '<span class="muted">학교 양식(.hwpx)은 문서·소통 › 가정통신문에서 넣어 두면 여기서도 골라 써요.</span>';
   return `<label class="yp-f"><span class="lab">양식</span><select class="field" id="rpForm"><option value="">쌤비서 기본 문서</option>
     ${R.forms.map(f => `<option value="${esc(f.id)}"${f.id === R.formId ? ' selected' : ''}>${esc(f.name)}</option>`).join('')}</select></label>`;
 }
@@ -199,7 +200,7 @@ async function formExport(x) {
   let rec = null;
   try { rec = await (await forms()).get(R.formId); } catch (e) { rec = null; }
   if (!rec || rec.kind !== 'hwpx') { toast('양식을 찾지 못했어요. 기본 문서로 내려받아 주세요.', 5000); R.forms = null; render(); return; }
-  if (!rolesValid(rec.roles, { date: false })) { toast('이 양식의 제목·본문 자리를 기타 › 가정통신문 › [양식 맞추기]에서 정해 주세요.', 7000); return; }
+  if (!rolesValid(rec.roles, { date: false })) { toast('이 양식의 제목·본문 자리를 문서·소통 › 가정통신문 › [양식 맞추기]에서 정해 주세요.', 7000); return; }
   const doc = reportDoc(x.r, R.photos, x.captions), name = (doc.title || '결과 보고서').replace(/[\\/:*?"<>|]/g, '_');
   try {
     const parsed = await readForm(rec.bytes);
@@ -223,20 +224,21 @@ export function render() {
 function pageHTML() {
   const x = c(), l = x.letter;
   return `<div class="m-page rp-page">
-    <div class="m-head"><div><h2>결과 보고</h2><p class="muted">계획서·공문·작년 보고서와 한 일·사진을 넣으면 결과 보고 공문과 결과 보고서(사진 포함)를 써요.</p></div>
+    <div class="m-head"><div><h2>결과 보고</h2>${introHTML('report', '계획서·공문과 한 일·사진으로 결과 보고 공문과 보고서를 써요.')}</div>
       <div class="row"><button class="btn text" type="button" data-rp="new">새 결과 보고</button></div></div>
     ${aiRowHTML('report')}
+    ${aiNoteHTML('넣은 문서 글·한 일·사진을 보내요. 명단·전화번호가 적힌 줄은 빼고 보내요.')}
     <div class="msg-grid">
       <section class="pc-card"><h3>넣기</h3>
         <div class="msg-drop rp-drop" data-rp-drop>
-          <p class="muted" style="margin:0">계획서·공문·작년 보고서(한글·PDF·워드)와 사진을 여기에 끌어 놓거나 고르세요.</p>
+          <p class="muted" style="margin:0">계획서·공문·작년 보고서(한글·PDF·워드)와 사진을 끌어 놓아도 돼요.</p>
           <div class="row"><button class="btn" type="button" data-rp="pick">파일·사진 고르기</button>${R.adding ? '<span class="muted"><span class="spin"></span>읽는 중…</span>' : ''}
             <input type="file" id="rpFile" multiple hidden accept=".hwp,.hwpx,.pdf,.docx,.txt,.png,.jpg,.jpeg,.webp,.heic"></div></div>
         ${srcHTML(x)}
         <label class="yp-f"><span class="lab">한 일 <span class="muted">(무엇을 했는지·참여 인원·잘된 점·아쉬운 점, 줄글이면 돼요)</span></span>
           <textarea class="field" id="rpMemo" rows="6" placeholder="예) 4월 21일 강당에서 전교생 320명 참여. 1~2학년 비눗방울 실험, 3~6학년 발명품 만들기. 발표 시간이 모자랐음.">${esc(x.memo)}</textarea></label>
         <h3>사진</h3>${photosHTML(x)}
-        <p class="muted" style="margin:0">사진은 AI가 보고 설명을 써요. 원본 파일과 사진은 저장하지 않아요.</p>
+        <p class="muted" style="margin:0">원본 파일과 사진은 저장하지 않아요.</p>
         <div class="row"><button class="btn primary" type="button" data-rp="write"${R.busy ? ' disabled' : ''}>${R.busy ? `<span class="spin"></span>${esc(R.msg || '쓰는 중…')}` : x.r ? '결과 보고 다시 쓰기' : '결과 보고 쓰기'}</button></div>
       </section>
       <section class="pc-card"><h3>결과 보고 공문</h3>

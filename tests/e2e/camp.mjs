@@ -53,6 +53,8 @@ const waitToast = s => page.waitForFunction(s => (document.querySelector('#toast
 const tab = async () => { await page.click('nav.app-side [data-menu-go="class"]'); await page.click('#menuTabs [data-tab="camp"]'); await page.waitForSelector(`${P} .cp-page`); };
 const secGo = async k => { await page.click(`${P} [data-sec="${k}"]`); };
 const attDay = () => page.getAttribute(`${P} .cp-day[aria-pressed="true"]`, 'data-att-date'); // 고른 수업 날(날짜 칩)
+// 결재란·출석 단위는 접혀 있음(스펙 2026-11-14 §2 「자주 안 바꾸는 설정 접기」) — 누르기 전에 펼침
+const openFold = k => page.evaluate(([sel, k]) => { const d = document.querySelector(`${sel} [data-fold="${k}"]`); if (d && !d.open) d.querySelector('summary').click(); }, [P, k]);
 const stepLine = k => page.textContent(`${P} .cp-step[data-sec="${k}"] .cp-step-line`);
 const box = sel => page.$eval(sel, e => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, r: r.right, b: r.bottom }; });
 const camp = () => page.evaluate(() => { const v = JSON.parse(localStorage.getItem('ssam:camp') || 'null'); return v && v.camps.find(c => c.id === v.current) || (v && v.camps[0]); });
@@ -290,12 +292,14 @@ await run('camp', [
   }],
   ['날마다 캠프: 출석부는 학생 × 날짜(계 칸)', async () => {
     await secGo('info');
+    await openFold('camp-info');
     await page.click(`${P} [data-unit="day"]`);
     await secGo('docs');
     await page.selectOption(`${P} [data-form-pick="attend"]`, '');
     const x = await hwpxText(await download('attend'));
     assert(x.includes('학생 출석부') && x.includes('1/8') && x.includes('학년-반') && x.includes('3-2'), '날짜형');
     await secGo('info');
+    await openFold('camp-info');
     await page.click(`${P} [data-unit="period"]`);
   }],
   ['[남은 칸 모두 출석]: 빈칸만 ○, 표시한 /는 그대로 · 문서 준비 상자(출석 옆): 준비됨 ✓·할 일 남음(까닭)·그 단계로', async () => {

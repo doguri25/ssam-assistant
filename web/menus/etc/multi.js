@@ -1,10 +1,11 @@
-/* 기타 › 다면평가 (스펙 2026-11-11): 내 정보 → [정량평가]·[정성평가] 두 쪽(누른 쪽 기억).
+/* 문서·소통 › 다면평가 (스펙 2026-11-11): 내 정보 → [정량평가]·[정성평가] 두 쪽(누른 쪽 기억).
    정량: 학교 기준 양식 넣기(규칙으로 읽고, 못 읽거나 사진·스캔이면 AI, 둘 다 못 하면 예시 기준) → 항목마다 숫자·고르기·횟수·감점 → 점수·소계·총점
          (위에 고정한 점수 요약 줄: 총점·묶음 막대·입력 필요 n곳·내려받기 — 스펙 2026-11-11-ui-refresh §4),
          항목마다 근거자료(이 기기 IndexedDB forms('multi'))와 비고(「문서 제목 [번호, 날짜.]」), 기준 고치기, 양식 모양대로 한글·워드·PDF.
    정성: 기준 양식(정성 기준 + 자기실적평가서) 넣기 → 줄글 → [AI로 넣기](AI가 없으면 [넣기] — 낱말로 나눔) → 입력 필요 칸 채우기 → 교사 자기실적평가서.
    자료는 학년도 키 multi(multi-model.js). 학교·성명은 문서에만, AI로 가는 글은 가림(multi-ai.js maskFor). AI 일은 다른 메뉴로 가도 이어짐 */
 import { onEnter, go } from '../../core/shell.js';
+import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import * as ai from '../../core/ai.js';
 import { aiRowHTML } from '../../core/ai-roles.js';
 import { toast, saveFile } from '../../core/ui.js';
@@ -73,7 +74,7 @@ function infoHTML() {
       ${f('duty', '담당 업무', '예) 정보부장')}${sel('head', '보직교사 여부', HEAD)}
       <div class="yp-f mv-period"><span class="lab">평가 기간</span><div class="row"><input class="field" type="date" data-mi="from" value="${esc(i.from)}" aria-label="평가 기간 시작"><span class="muted">~</span><input class="field" type="date" data-mi="to" value="${esc(i.to)}" aria-label="평가 기간 끝"></div></div>
       <label class="mv-check"><input type="checkbox" data-mi="short"${i.short ? ' checked' : ''}> 근무 6개월 이하(지표에 「6개월 이하 n점」이 있으면 그 점수)</label></div>
-    <p class="muted" style="margin:0">이 기기에만 저장해요. 학교·성명은 문서에만 넣고 AI로 보내지 않아요.</p></details>`;
+    <p class="muted" style="margin:0">이 기기에만 저장해요. 학교·성명은 문서에만 넣어요.</p></details>`;
 }
 
 /* ---------- 그리기: 정량 ---------- */
@@ -175,9 +176,9 @@ function quantHTML() {
       <div class="row"><button class="btn" type="button" data-mv="quantForm" data-drop-pick${busy.quantForm ? ' disabled' : ''}>${busy.quantForm ? '<span class="spin"></span>읽는 중…' : '기준 양식 넣기'}</button>
         ${q.formName ? '<button class="btn text" type="button" data-mv="quantFormDel">기준 양식 지우기</button>' : ''}
         <input type="file" id="mvQuantFile" hidden accept="${FORM_ACCEPT}"></div>
-      <p class="muted" style="margin:0">한글(.hwp·.hwpx)·PDF·워드 기준 양식은 AI 없이 읽어요. 사진·스캔이거나 규칙으로 못 읽으면 AI가 읽어요(글은 학교·이름을 가려 보내고, 사진·스캔은 그림 그대로 가요).</p>
       <p class="muted" style="margin:0">항목마다 [+ 근거자료]로 공문·이수증 PDF·사진·한글 파일(5MB까지)을 넣으면 비고 칸에 「문서 제목 [번호, 날짜.]」가 들어가요. ${NO_KID}</p>
       ${aiRowHTML('plan')}
+      ${aiNoteHTML('한글·PDF·워드 기준 양식은 앱이 읽고, 못 읽으면(사진·스캔 등) AI로 보내요. 글은 학교·이름을 가려 보내고 사진·스캔은 그림 그대로 가요. 내 정보의 학교·성명은 보내지 않아요.')}
     </section>
     ${c.groups.map(groupHTML).join('')}
     ${editHTML()}
@@ -225,15 +226,15 @@ function qualHTML() {
     <section class="yp-card">
       <label class="yp-f"><span class="lab">올해 한 일을 편하게 적어 주세요</span><textarea class="field" id="mvDraft" rows="7" placeholder="${esc(DRAFT_PH)}">${esc(q.draft)}</textarea></label>
       <div class="row"><button class="btn tonal" type="button" data-mv="fill"${busy.fill ? ' disabled' : ''}>${busy.fill ? '<span class="spin"></span>넣는 중…' : ready ? 'AI로 넣기' : '넣기'}</button>
-        <span class="muted">${ready ? '학교·이름은 가려서 보내요. 쓴 사실만 칸에 넣고, 모르는 칸은 「입력 필요」로 남겨요.' : 'AI 없이 문장마다 낱말로 영역(학습지도·생활지도·전문성개발·담당 업무)을 나눠요.'}</span></div>
-      ${aiRowHTML('writing')}
+        <span class="muted">${ready ? '쓴 사실만 칸에 넣고, 모르는 칸은 「입력 필요」로 남겨요.' : 'AI 없이 문장마다 낱말로 영역(학습지도·생활지도·전문성개발·담당 업무)을 나눠요.'}</span></div>
+      ${aiRowHTML('writing')}${ready ? aiNoteHTML('적은 줄글만 보내요. 학교·이름은 가려서 보내요(내 정보는 보내지 않아요).') : ''}
     </section>
     ${q.report ? reportHTML(q.report, p) : ''}`;
 }
 
 function pageHTML() {
   return `<div class="m-page mv-page">
-    <div class="m-head"><h2>교사 다면평가</h2><p class="muted">정량평가는 항목마다 숫자를 넣으면 점수가 바로 계산되고, 정성평가는 줄글로 쓰면 자기실적평가서 칸에 나눠 넣어요. 학교 기준 양식을 넣으면 그 항목·칸 그대로 문서를 만들어요.</p></div>
+    <div class="m-head"><h2>교사 다면평가</h2>${introHTML('multi', '정량평가는 점수를 바로 계산하고, 정성평가는 줄글을 칸에 나눠 넣어요.')}</div>
     ${infoHTML()}
     <div class="seg mv-views" role="group" aria-label="평가 고르기">${VIEWS.map(v => `<button type="button" data-mv-view="${v}" aria-pressed="${st.view === v}">${v === 'quant' ? '정량평가' : '정성평가'}</button>`).join('')}</div>
     <div class="mv-view">${st.view === 'quant' ? quantHTML() : qualHTML()}</div>
@@ -547,7 +548,7 @@ async function runFill(keep) {
     const v = await ai.generateJSON(qualPrompt({ parsed: p, draft, facts, basics: prefill }, st.info), { task: 'writing', valid: o => isObj(o) && (isObj(o.basics) || Array.isArray(o.sections)) });
     next = normQualAI(v, p, { prefill, facts });
     apply(next, keep, p);
-    toast(visible() ? 'AI가 칸에 나눠 넣었어요. 내용을 확인하고 「입력 필요」 칸을 채워 주세요.' : '다면평가 정성평가 칸을 AI가 채워 두었어요. 기타 › 다면평가에서 확인해 주세요.', 7000);
+    toast(visible() ? 'AI가 칸에 나눠 넣었어요. 내용을 확인하고 「입력 필요」 칸을 채워 주세요.' : '다면평가 정성평가 칸을 AI가 채워 두었어요. 문서·소통 › 다면평가에서 확인해 주세요.', 7000);
   } catch (e) { toast(errText(e), 6000); }
   finally { busy.fill = false; redraw(); }
 }

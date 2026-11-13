@@ -32,13 +32,13 @@ await page.goto(url);
 await page.waitForTimeout(400);
 
 await run('keep-files', [
-  ['기타 › 쪽지 작성: 파일을 고르는 동안 다시 그려도 붙임에 들어감', async () => {
+  ['문서·소통 › 쪽지 작성: 파일을 고르는 동안 다시 그려도 붙임에 들어감', async () => {
     const B = 'section[data-menu="etc"] .msg-box';
     await goTab('etc', 'message');
     await pickAfterRedraw(`${B} [data-msg="pick"]`, txt('가을 연수 안내문.txt', '11월 20일 연수 안내'));
     await until(async () => (await textOf(B)).includes('가을 연수 안내문'), '붙임');
   }],
-  ['기타 › 공문 처리: 다시 그려도 공문 목록에 들어감', async () => {
+  ['문서·소통 › 공문 처리: 다시 그려도 공문 목록에 들어감', async () => {
     const B = 'section[data-menu="etc"] .gm-box';
     await goTab('etc', 'gongmun');
     await pickAfterRedraw(`${B} [data-gm="pick"]`, txt('체험학습 공문.txt', '현장체험학습 계획 제출 11월 30일까지'));

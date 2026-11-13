@@ -10,6 +10,7 @@ import { listEvents, addDays } from '../../core/calendar.js';
 import {
   makeCtx, getInfo, getWeekly, saveWeekly, weekView, defaultWeek, weeklyTitle, weekCell, weeklyDoc, weekPeriods, normNotes, NOTE_ROWS, fmtDay, today, migrateWeeklyEvents, hasTimetable } from './class-model.js';
 import { askSample } from './setup.js';
+import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const WD = '월화수목금';
@@ -56,7 +57,7 @@ function render() {
   if (!box) return;
   stale = false;
   const ctx = makeCtx();
-  const head = '<div class="m-head"><h2>주간학습안내</h2><p class="muted">진도표대로 이어지는 다음 주 학습 내용과 요일별 알림을 한 장으로 만들어요. 칸은 모두 고칠 수 있어요.</p></div>';
+  const head = `<div class="m-head"><h2>주간학습안내</h2>${introHTML('weekly', '진도표대로 다음 주 학습 내용과 요일별 알림을 한 장으로 만들어요.')}</div>`;
   if (!hasTimetable(ctx.tt)) {
     box.innerHTML = `<div class="m-page cls-page">${head}<div class="yp-card"><p style="margin:0">먼저 진도표·시수 › 준비에서 시간표를 넣어 주세요.</p>
       <div class="row"><button class="btn primary" type="button" data-w="setup">준비로 가기</button><button class="btn" type="button" data-w="sample">예시로 채우기</button></div></div></div>`;
@@ -81,7 +82,7 @@ function render() {
       <button class="btn" type="button" data-w="print">인쇄</button>
       ${exportButton('data-w="hwpx"', { cls: 'primary' })}
     </div>
-    ${aiRowHTML('notes')}<div id="clsRvBox">${rvBoxHTML(monday)}</div>
+    ${aiRowHTML('notes')}${aiNoteHTML('요일별 교과·차시 제목과 학사일정만 보내요. 학생 자료는 보내지 않아요.')}<div id="clsRvBox">${rvBoxHTML(monday)}</div>
     <div class="yp-card cls-sheet">
       <input class="field cls-w-title" id="clsWTitle" value="${esc(title)}" aria-label="제목">
       <p class="muted cls-w-range">${fmtDay(days[0].date)} ~ ${fmtDay(days[4].date)}</p>

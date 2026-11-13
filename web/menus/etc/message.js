@@ -1,8 +1,9 @@
-/* 기타 › 쪽지 작성 (스펙 2026-11-02 4장): 공문·연수 계획·행사 계획 파일이나 글 → 선생님들께 보낼 안내 쪽지.
+/* 문서·소통 › 쪽지 작성 (스펙 2026-11-02 4장): 공문·연수 계획·행사 계획 파일이나 글 → 선생님들께 보낼 안내 쪽지.
    AI는 칸만 뽑고(message-ai.js), 쪽지 글은 앱이 맞춤. 넣은 파일은 이 화면에만 두고(붙임 후보) 이름만 저장.
    AI로 보내기 전 명단 줄·전화번호 줄·주민번호 줄은 빼고 「이름: ○○○」은 이름을 지움(글만 — 스캔·사진은 가릴 수 없어 그림 그대로 가고, 넣기 칸·알림에 그렇게 알림).
    보내는 사람은 AI로 보내지 않음 */
 import { onEnter, go } from '../../core/shell.js';
+import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import * as ai from '../../core/ai.js';
 import { toast, copyText } from '../../core/ui.js';
 import { readText } from '../../core/files.js';
@@ -131,7 +132,7 @@ export function render() {
   if (!box || box.hidden) return;
   const x = cur();
   const html = `<div class="m-page msg-page">
-    <div class="m-head m-head-row"><div><h2>쪽지 작성</h2><p class="muted">공문·연수 계획·행사 계획을 넣으면 선생님들께 보낼 안내 쪽지를 써요. 이음 쪽지 창에 붙여 넣으세요.</p></div>
+    <div class="m-head m-head-row"><div><h2>쪽지 작성</h2>${introHTML('message', '공문·연수 계획·행사 계획을 넣으면 선생님들께 보낼 안내 쪽지를 써요.')}</div>
       <div class="m-head-act">${aiRowHTML('message')}<button class="btn text" type="button" data-msg="new">새 쪽지</button></div></div>
     <div class="msg-grid">
       <section class="pc-card"><h3>넣기</h3>
@@ -140,7 +141,7 @@ export function render() {
           <div class="row"><button class="btn primary" type="button" data-msg="read"${M.busy ? ' disabled' : ''}>${M.busy ? '<span class="spin"></span>읽는 중…' : '쪽지 쓰기'}</button>
             <button class="btn text" type="button" data-msg="pick">파일 고르기</button>
             <input type="file" id="msgFile" multiple hidden accept=".hwp,.hwpx,.pdf,.txt,.png,.jpg,.jpeg,.webp"><span class="muted" id="msgState" role="status">${esc(M.msg)}</span></div>
-          <p class="muted" style="margin:0">글은 명단·전화번호가 적힌 줄을 빼고 AI로 보내요. 스캔·사진은 가릴 수 없어 그림 그대로 AI로 가요.</p></div>
+          ${aiNoteHTML('글은 명단·전화번호가 적힌 줄을 빼고 보내요. 스캔·사진은 가릴 수 없어 그림 그대로 AI로 가요. 보내는 사람은 보내지 않아요.')}</div>
         <h3>붙임</h3>${attachHTML(x)}${filesHTML()}
         <h3>칸</h3>${fieldsHTML(x.m)}
       </section>
@@ -151,7 +152,7 @@ export function render() {
         <div id="msgResync">${x.edited ? '<p class="muted pc-resync">본문을 고쳤어요 <button class="btn text tiny" type="button" data-msg="resync">칸으로 다시 맞추기</button></p>' : ''}</div>
         <div class="row"><button class="btn primary" type="button" data-msg="copyAll">복사</button></div>
         <label class="yp-f"><span class="lab">보내는 사람(문의)</span><input class="field" id="msgSender" value="${esc(getSender())}" placeholder="예) 교무부 ○○○(내선 123)" autocomplete="off"></label>
-        <p class="muted" style="margin:0">보내는 사람은 한 번 적어 두면 늘 끝에 붙어요. AI로 보내지 않아요.</p>
+        <p class="muted" style="margin:0">한 번 적어 두면 늘 끝에 붙어요.</p>
       </section>
     </div>
     <section class="pc-card"><h3>최근 쪽지</h3>${recentHTML()}</section></div>`;
@@ -249,7 +250,7 @@ async function readJob(x, tok, paste, files) {
   }
   live();
 }
-/* 떠 있는 버튼 등: 기타 › 쪽지 작성으로 가서 새 쪽지로 넣고 바로 읽기(읽던 쪽지가 있어도 — 그 쪽지는 다 읽으면 최근 쪽지에) → readAll 상태 */
+/* 떠 있는 버튼 등: 문서·소통 › 쪽지 작성으로 가서 새 쪽지로 넣고 바로 읽기(읽던 쪽지가 있어도 — 그 쪽지는 다 읽으면 최근 쪽지에) → readAll 상태 */
 export async function putMessageFiles(files, { text = '' } = {}) {
   go('etc', 'message');
   switchDraft(blankDraft()); M.files = []; M.paste = String(text || ''); saveDraft(d);

@@ -13,6 +13,7 @@ import { exportButton, exportDoc } from '../../core/doc-export.js';
 import { listEvents, setEvents, removeEvents, dayIssues, suggestDates, weekday } from '../../core/calendar.js';
 import { stepsHTML } from '../../core/steps.js';
 import { keepFiles } from '../../core/keep-files.js';
+import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import { rvBoxHTML, runPlanReview, onRvClick, markDone, dropOpen, hasOpen, clearState } from './plan-review.js';
 import { SECTIONS, TEXT_SECTIONS, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent, normReview, normGuide, normDraft, overlap, guideStatus, insertSentence, planDoc, planText, textForAI, ownerForAI, fitSchedule } from './year-model.js';
 
@@ -86,7 +87,7 @@ function unconfirm(p = plan) {
 function render() {
   if (!box) return;
   const html = `<div class="m-page yp-page">
-    <div class="m-head"><h2>연간계획</h2><p class="muted">작년 자료와 올해 지침으로 올해 계획서 초안과 월별 일정을 만들어요.</p></div>
+    <div class="m-head"><h2>연간계획</h2>${introHTML('year', '작년 자료와 올해 지침으로 올해 계획서 초안과 월별 일정을 만들어요.')}</div>
     <div class="yp-grid">
       <aside class="yp-side" aria-labelledby="ypListH">
         <div class="yp-side-h"><b id="ypListH">지난 계획</b><button class="btn text" type="button" data-y="new">+ 새 계획</button></div>
@@ -117,7 +118,7 @@ function renderMain() {
   const step = plan.step;
   const body = step === 1 ? step1() : step === 2 ? step2() : step === 3 ? step3() : step === 4 ? step4() : step5();
   main.innerHTML = stepsHTML(STEPS, step, plan.maxStep)
-    + (step >= 2 && step <= 4 ? aiRowHTML('plan') : '')
+    + (step >= 2 && step <= 4 ? aiRowHTML('plan') + aiNoteHTML('넣은 자료와 업무 칸을 보내요. 교직원 이름·전화번호는 ○○○로 가려서 보내요.') : '')
     + (errs[plan.id] ? `<div class="banner err" role="alert"><span class="grow">${esc(errs[plan.id])}</span></div>` : '')
     + body
     + `<div class="row yp-nav">${step > 1 ? '<button class="btn" type="button" data-y="prev">이전</button>' : ''}<span class="grow"></span>${step < 5 ? '<button class="btn primary" type="button" data-y="next">다음</button>' : ''}</div>`
@@ -207,7 +208,7 @@ function overlapHTML() {
 function step4() {
   if (busy[plan.id] === 'draft') return `<div class="yp-card"><p class="muted"><span class="spin"></span> 초안을 쓰고 있어요. 다른 메뉴로 가도 계속 써요…</p></div>`;
   const d = plan.draft;
-  if (!d) return `<div class="yp-card"><h3>초안</h3><p class="muted">목적 → 방침 → 세부 추진 계획 → 월별 추진 일정 → 예산 → 평가 계획 순서로 써요. 작년 문장은 그대로 옮기지 않고 올해 목표·지침 표현으로 새로 써요(법령·근거 문장은 그대로).</p>
+  if (!d) return `<div class="yp-card"><h3>초안</h3><p class="muted">작년 문장은 옮기지 않고 올해 목표·지침에 맞게 새로 써요(법령·근거는 그대로).</p>
     <div class="row"><button class="btn primary" type="button" data-y="draft">초안 만들기</button></div></div>`;
   const copy = k => `<button class="btn text" type="button" data-copy="${k}">복사</button>`;
   const sum = d.budget.reduce((s, b) => s + b.amount, 0);
@@ -245,14 +246,14 @@ function step5() {
   const fin = plan.status === 'final';
   return `<div class="yp-card">
       <h3>월별 추진 일정</h3>
-      <p class="muted">주말·공휴일·설정의 방학·재량휴업일·다른 계획 일정과 겹치면 빨갛게 보이고, 가까운 가능한 날짜 2개를 추천해요.</p>
+      <p class="muted">주말·공휴일·방학·다른 일정과 겹치면 알려 주고 가까운 날짜 2개를 추천해요.</p>
       <div id="ypDaysSum">${daysSumHTML(bad, d.schedule.length)}</div>
       <div class="yp-tbl-wrap"><table class="yp-tbl yp-days" id="ypDays"><thead><tr><th>날짜</th><th>내용</th><th>확인</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="muted">일정이 없어요.</td></tr>'}</tbody></table></div>
       <div class="row"><button class="btn text" type="button" data-y="schedAdd">+ 일정 더하기</button></div>
     </div>
     <div class="yp-card">
       <h3>내보내기와 확정</h3>
-      <p class="muted">확정하면 계획서와 일정을 저장하고, 일정은 이 컴퓨터의 학사일정에 넣어요. 확정한 계획은 다음 해 「작년 계획서」로 불러올 수 있어요.</p>
+      <p class="muted">확정하면 일정이 학사일정에 들어가고, 다음 해 「작년 계획서」로 불러올 수 있어요.</p>
       ${fin ? '<p class="banner ok"><span class="grow">확정한 계획이에요. 고치면 다시 「작성 중」이 돼요.</span></p>' : ''}
       <div class="row yp-out">${exportButton('data-y="hwpx"')}<button class="btn" type="button" data-copy="schedule">일정 복사</button><span class="grow"></span>
         <button class="btn primary" type="button" data-y="final">${fin ? '다시 확정' : '확정'}</button></div>

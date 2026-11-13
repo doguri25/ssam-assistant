@@ -48,6 +48,9 @@ body{background:var(--page)}
 .app-top .app-tabs button{flex:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:transparent;padding:0 14px;font:500 14.5px/1.2 var(--f-body);color:var(--ink3);white-space:nowrap}
 .app-top .app-tabs button:hover{color:var(--ink)}
 .app-top .app-tabs button[aria-current="page"]{color:var(--ink);font-weight:700;border-bottom-color:var(--accent)}
+/* 탭 묶음(평가: 채점 | 생활기록부, core/shell.js drawTabs): 묶음 이름은 작은 글(누르는 칸이 아님), 묶음 사이 세로 구분선 */
+.app-top .app-tabs .tab-grp{flex:none;align-self:center;padding:2px 6px 0 2px;font:700 11.5px/1.2 var(--f-body);letter-spacing:.2px;color:var(--ink3);white-space:nowrap;user-select:none}
+.app-top .app-tabs .tab-sep{flex:none;align-self:center;width:1px;height:24px;margin:0 10px;background:var(--line)}
 .top-actions{margin-left:auto;align-self:center;display:flex;align-items:center;gap:8px;flex:none}
 .app-top .menu{top:calc(var(--top-h) - 6px);right:16px}
 #app{flex:1;min-height:0;overflow:auto}
@@ -59,8 +62,12 @@ section[data-menu="evaluate"][hidden]{display:none}
 .m-head p{margin:0}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .app-bottom{display:none}
-/* 데스크톱: 쌤 버튼이 새 메뉴 화면의 마지막 글을 가리지 않게 끝에 여백 */
-@media (min-width:761px){ body:has(#inboxFab:not([hidden])) .m-page{padding-bottom:104px} }
+/* 데스크톱: 「쌤」 버튼(오른쪽 아래 떠 있음 — 오른쪽 22px·아래 22px·58px, core/inbox.css)이 화면 끝·오른쪽 끝 단추를 가리지 않게(스펙 2026-11-14 §1).
+   모든 화면 끝에 버튼만큼 여백(옛 평가 화면은 따로 스크롤되는 오른쪽 칸), 새 메뉴 화면은 넓지 않은 창(본문이 버튼 밑까지 닿을 때)에서 오른쪽도 버튼 자리만큼 비움 */
+@media (min-width:761px){
+  body:has(#inboxFab:not([hidden])) .m-page{padding-bottom:104px;padding-right:max(32px,calc(96px - (100vw - var(--side-w) - 1120px) / 2))}
+  body:has(#inboxFab:not([hidden])) section[data-menu="evaluate"] :is(.pane,.hk-right,.gr-res){padding-bottom:104px}
+}
 /* 휴대폰: 세로 메뉴 → 아래 탭 5칸(오늘·평가·학급·품의·더보기), 로고 마크만 머리 줄 왼쪽 */
 @media (max-width:760px){
   :root{--bottom-h:calc(60px + env(safe-area-inset-bottom,0px))}
@@ -78,6 +85,8 @@ section[data-menu="evaluate"][hidden]{display:none}
   .app-top .app-tabs button::before{content:'';position:absolute;inset:5px 0;z-index:-1;border:1px solid var(--line);border-radius:999px;background:var(--surface)}
   .app-top .app-tabs button[aria-current="page"]{color:var(--accent-ink);font-weight:700}
   .app-top .app-tabs button[aria-current="page"]::before{border-color:var(--accent);background:var(--accent-soft)}
+  .app-top .app-tabs .tab-grp{padding:0 0 0 2px;font-size:11.5px}
+  .app-top .app-tabs .tab-sep{height:26px;margin:0 2px}
   .app-top .menu{top:52px}
   /* 아래 탭: 아이콘 + 글, 칸 높이 52px 이상, 아래 안전 영역 여백. 지금 메뉴는 위 막대·굵은 글·테마 색 */
   .app-bottom{display:flex;flex:none;position:relative;z-index:45;height:var(--bottom-h);box-sizing:border-box;padding:0 4px env(safe-area-inset-bottom,0px);
@@ -90,8 +99,8 @@ section[data-menu="evaluate"][hidden]{display:none}
   .bt-btn[aria-current="page"]::before{content:'';position:absolute;top:0;left:24%;right:24%;height:3px;border-radius:0 0 3px 3px;background:var(--accent)}
   .bt-btn:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
   .bt-btn.working::after{content:'';position:absolute;top:6px;left:calc(50% + 9px);width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--surface);animation:side-work 1.4s ease-in-out infinite}
-  /* 내용 아래 여백: 쌤 버튼(아래 탭 위에 떠 있음)이 마지막 글을 가리지 않게 */
-  body:has(#inboxFab:not([hidden])) #app{padding-bottom:84px}
+  /* 내용 아래 여백: 쌤 버튼(아래 탭 위 12px·58px로 떠 있음)이 마지막 글·단추를 가리지 않게(옛 평가 화면도 — 본문 #app이 스크롤됨) */
+  body:has(#inboxFab:not([hidden])) #app{padding-bottom:88px}
   .m-page{padding:20px 16px}
   /* 알림은 아래 탭·쌤 버튼 위로 */
   .toast{bottom:calc(var(--bottom-h) + 80px);transform:translate(-50%,calc(100% + var(--bottom-h) + 100px))}
@@ -158,7 +167,7 @@ section[data-menu="evaluate"][hidden]{display:none}
 /* ---------- 화면 정리 공통 부품(core/ui-parts.js, 스펙 2026-11-14-ui-tidy) ---------- */
 /* 머리말 설명: 처음 몇 번은 펼침, 그 뒤엔 작은 「화면 설명」 */
 .intro{margin:0;font-size:13.5px;line-height:1.6;color:var(--ink3)}
-.intro-sum{display:inline-flex;align-items:center;gap:6px;min-height:32px;cursor:pointer;list-style:none;color:var(--ink3);font-size:12.5px;font-weight:600;border-radius:var(--r-s)}
+.intro-sum{display:inline-flex;align-items:center;gap:6px;min-height:44px;margin:-6px 0;cursor:pointer;list-style:none;color:var(--ink3);font-size:12.5px;font-weight:600;border-radius:var(--r-s)}
 .intro-sum::-webkit-details-marker{display:none}
 .intro[open] .intro-sum{display:none}
 .intro-text{margin:0;max-width:72ch}

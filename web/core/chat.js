@@ -322,15 +322,15 @@ async function run(intent, p = {}) {
     afterGo(); return;
   }
   if (intent === 'message') {
-    if (!p.text) { go('etc', 'message'); say('기타 › 쪽지 작성으로 왔어요. 공문·계획 파일을 넣거나 내용을 붙여 넣어 주세요.'); afterGo(); return; }
+    if (!p.text) { go('etc', 'message'); say('문서·소통 › 쪽지 작성으로 왔어요. 공문·계획 파일을 넣거나 내용을 붙여 넣어 주세요.'); afterGo(); return; }
     const st = await (await import('../menus/etc/message.js')).putMessageFiles([], { text: p.text }).catch(() => 'error');
     tell(st, { started: '쪽지 작성에 넣고 쪽지를 쓰고 있어요. 다 되면 칸과 본문을 확인해 주세요. 보내기는 직접 해 주세요.',
       'no-ai': `쪽지 작성에 글을 넣었어요. ${NO_AI}`, busy: '이미 쪽지를 쓰는 중이에요. 다 되면 다시 말해 주세요.',
-      empty: '쪽지에 넣을 내용이 없어요(명단·전화번호 줄을 빼니 남은 글이 없어요). 기타 › 쪽지 작성에 안내할 내용을 붙여 넣어 주세요.' });
+      empty: '쪽지에 넣을 내용이 없어요(명단·전화번호 줄을 빼니 남은 글이 없어요). 문서·소통 › 쪽지 작성에 안내할 내용을 붙여 넣어 주세요.' });
     afterGo(); return;
   }
   if (intent === 'letter') {
-    if (!p.text) { go('etc', 'letter'); say('기타 › 가정통신문으로 왔어요. 넣을 내용을 적어 주세요.'); afterGo(); return; }
+    if (!p.text) { go('etc', 'letter'); say('문서·소통 › 가정통신문으로 왔어요. 넣을 내용을 적어 주세요.'); afterGo(); return; }
     const m = await import('../menus/etc/letter.js');
     // 쓰던 가정통신문(넣을 내용·공문)이 있으면 바꾸지 않고 끝에 덧붙임 — 두 내용이 섞여 써지지 않게 바로 쓰지 않음
     if (m.putLetterSources({ memo: p.text }) === 'added') {
@@ -353,19 +353,19 @@ async function run(intent, p = {}) {
       const st = await Promise.resolve().then(() => fn(p.lang)).catch(() => 'error'), L = langLabel(p.lang);
       tell(st, { started: `가정통신문을 ${L}로 번역하고 있어요. AI 번역이라 보내기 전에 꼭 확인해 주세요.`,
         saved: `저장해 둔 ${L} 번역본을 열었어요. AI 번역이라 보내기 전에 꼭 확인해 주세요.`,
-        empty: `먼저 가정통신문을 써 주세요. 기타 › 가정통신문으로 왔어요. 다 쓰면 「가정통신문 ${L}로」라고 다시 말해 주세요.`,
+        empty: `먼저 가정통신문을 써 주세요. 문서·소통 › 가정통신문으로 왔어요. 다 쓰면 「가정통신문 ${L}로」라고 다시 말해 주세요.`,
         writing: `가정통신문을 쓰는 중이에요. 다 쓰면 「가정통신문 ${L}로」라고 다시 말해 주세요.`,
         busy: `이미 번역하는 중이에요. 다 되면 「가정통신문 ${L}로」라고 다시 말해 주세요.`,
         'no-ai': `${L} 번역본 칸을 열었어요. ${NO_AI}`, 'no-lang': '어느 말로 번역할지 번역본 칸에서 골라 주세요.' });
     }
-    else { go('etc', 'letter'); say('가정통신문 번역은 아직 준비 중이에요. 기타 › 가정통신문으로 왔어요.'); }
+    else { go('etc', 'letter'); say('가정통신문 번역은 아직 준비 중이에요. 문서·소통 › 가정통신문으로 왔어요.'); }
     afterGo(); return;
   }
   if (intent === 'gongmun') {
-    if (!p.text) { go('etc', 'gongmun'); say('기타 › 공문 처리로 왔어요. 공문 파일을 끌어 놓거나 글을 붙여 넣어 주세요.'); afterGo(); return; }
+    if (!p.text) { go('etc', 'gongmun'); say('문서·소통 › 공문 처리로 왔어요. 공문 파일을 끌어 놓거나 글을 붙여 넣어 주세요.'); afterGo(); return; }
     const st = await (await import('../menus/etc/gongmun.js')).putGongmunText(p.text).catch(() => 'error');
     tell(st, { started: '공문 처리에 넣고 기한·할 일을 뽑고 있어요.', 'no-ai': '공문 처리에 글만 넣었어요. AI가 준비되지 않아 기한·할 일은 뽑지 못했어요. 설정 › AI에서 키를 넣거나 시험용 AI를 써 주세요.',
-      empty: '기타 › 공문 처리로 왔어요. 명단·전화번호 줄을 빼니 넣을 공문 글이 없어요. 공문 파일을 끌어 놓거나 글을 붙여 넣어 주세요.' });
+      empty: '문서·소통 › 공문 처리로 왔어요. 명단·전화번호 줄을 빼니 넣을 공문 글이 없어요. 공문 파일을 끌어 놓거나 글을 붙여 넣어 주세요.' });
     afterGo(); return;
   }
   if (intent === 'report') {
@@ -385,15 +385,15 @@ async function run(intent, p = {}) {
   }
   if (intent === 'handover') {
     const fn = await optional('../menus/etc/handover.js', 'openHandover');
-    if (fn) { Promise.resolve().then(() => fn()).catch(() => {}); say('기타 › 인수인계서를 열었어요. 넣을 것과 몇 쪽으로 할지 골라 주세요.'); }
-    else { go('etc', 'handover'); say('기타 › 인수인계서로 왔어요.'); }
+    if (fn) { Promise.resolve().then(() => fn()).catch(() => {}); say('문서·소통 › 인수인계서를 열었어요. 넣을 것과 몇 쪽으로 할지 골라 주세요.'); }
+    else { go('etc', 'handover'); say('문서·소통 › 인수인계서로 왔어요.'); }
     afterGo(); return;
   }
   if (intent === 'multi') {
     const fn = await optional('../menus/etc/multi.js', 'openMulti');
     if (fn) Promise.resolve().then(() => fn(p.view)).catch(() => {}); else go('etc', 'multi');
-    say(p.view === 'qual' ? '기타 › 다면평가(정성평가)로 왔어요. 올해 한 일을 줄글로 적어 주세요.'
-      : p.view === 'quant' ? '기타 › 다면평가(정량평가)로 왔어요. 항목마다 숫자를 넣으면 점수가 계산돼요.' : '기타 › 다면평가로 왔어요. 정량평가·정성평가 가운데 골라 주세요.');
+    say(p.view === 'qual' ? '문서·소통 › 다면평가(정성평가)로 왔어요. 올해 한 일을 줄글로 적어 주세요.'
+      : p.view === 'quant' ? '문서·소통 › 다면평가(정량평가)로 왔어요. 항목마다 숫자를 넣으면 점수가 계산돼요.' : '문서·소통 › 다면평가로 왔어요. 정량평가·정성평가 가운데 골라 주세요.');
     afterGo(); return;
   }
   if (intent === 'tour') {

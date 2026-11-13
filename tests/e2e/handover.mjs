@@ -1,4 +1,4 @@
-// 기타 › 인수인계서(2026-11-10, 설정 › 학년도의 창에서 옮김): 탭(공문 처리 다음) → 지금 학년도 자료 고르기(처음엔 모두, 작년 것은 빼고) → 미리 보기 1~6(월별 3월~2월),
+// 문서·소통 › 인수인계서(2026-11-10, 설정 › 학년도의 창에서 옮김): 탭(공문 처리 다음) → 지금 학년도 자료 고르기(처음엔 모두, 작년 것은 빼고) → 미리 보기 1~6(월별 3월~2월),
 // 이름·전화번호 없음, 고르기를 빼면 문서에서도 빠짐, [AI로 정리](1~5만 보냄) → 고쳐 쓰기, 「몇 쪽으로」(알림·줄인 미리 보기·AI 줄 수·학년도 자료에 저장),
 // 인수인계서 양식(.hwpx) 넣기(가정통신문 양식과 따로 저장, .hwp는 안내) → [한글로 내려받기]는 그 양식에(결재란·서명 줄 그대로), 워드는 기본 양식,
 // 다시 들어오면·새로 고치면 남음, 양식 지우기, openHandover()·설정 › 학년도 단추·AI 키 없음
@@ -213,7 +213,7 @@ await run('handover', [
     assert(!(await prev()).includes('독서 교육'), '고른 것');
     assert((await page.inputValue(`${P} #hoPages`)) === '1', '쪽 수');
     await page.reload(); await page.waitForTimeout(400);
-    await tab(); // 켜면 「오늘」 — 기타 › 인수인계서로 다시 들어가도 남음
+    await tab(); // 켜면 「오늘」 — 문서·소통 › 인수인계서로 다시 들어가도 남음
     await page.waitForFunction(([s, v]) => document.querySelector(`${s} #hoForm`).value === v, [P, id]);
     assert((await page.inputValue(`${P} #hoPages`)) === '1' && (await fit()).startsWith('1쪽'), '쪽 수·알림');
   }],
@@ -256,14 +256,14 @@ await run('handover', [
     await page.waitForFunction(() => document.querySelector('.ho-box #hoFit').textContent.includes('제한 없이'));
     assert(!(await prev()).includes('외 '), '제한 없음인데 줄임');
   }],
-  ['다른 메뉴에서 openHandover()·설정 › 학년도 [업무 인수인계서 만들기] → 기타 › 인수인계서', async () => {
+  ['다른 메뉴에서 openHandover()·설정 › 학년도 [업무 인수인계서 만들기] → 문서·소통 › 인수인계서', async () => {
     await page.click('nav.app-side [data-menu-go="plan"]');
     await page.evaluate(() => import('./menus/etc/handover.js').then(m => m.openHandover()));
     await page.waitForSelector(`${P} #hoPrev h1`);
-    assert(await page.isVisible(E) && await page.getAttribute('#menuTabs [data-tab="handover"]', 'aria-current') === 'page', '기타 › 인수인계서가 아님');
+    assert(await page.isVisible(E) && await page.getAttribute('#menuTabs [data-tab="handover"]', 'aria-current') === 'page', '문서·소통 › 인수인계서가 아님');
     await page.click('nav.app-side [data-menu-go="settings"]'); await page.click('#menuTabs [data-tab="years"]');
     await page.waitForSelector(`${S} [data-set="handover"]`);
-    assert((await page.textContent(S)).includes('기타 › 인수인계서'), '학년도 카드 안내');
+    assert((await page.textContent(S)).includes('문서·소통 › 인수인계서'), '학년도 카드 안내');
     await page.click(`${S} [data-set="handover"]`);
     await page.waitForSelector(`${P} #hoPrev h1`);
     assert(await page.getAttribute('#menuTabs [data-tab="handover"]', 'aria-current') === 'page', '단추로 가지 않음');

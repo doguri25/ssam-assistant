@@ -1,5 +1,6 @@
 /* 설정 메뉴: 학급 명단 · AI · 화면 · 학교 정보 · 학년도 · 품의 기준 */
 import { onEnter, go as goMenu } from '../../core/shell.js';
+import { introHTML } from '../../core/ui-parts.js';
 import { THEMES, getTheme, setTheme } from '../../core/theme.js';
 import { getSchool, setSchool, defaultYear, getPurchaseLimit, setPurchaseLimit, getMeetCap, setMeetCap, getPurchaseFlow, setPurchaseFlow } from '../../core/settings.js';
 import * as ai from '../../core/ai.js';
@@ -48,8 +49,9 @@ const inDemo = () => !!demoOf(safeLS()) || isDemoYear(curYear());
 const blocked = () => { if (!inDemo()) return false; toast(DEMO_WAIT, 5000); return true; };
 const snapSize = snap => Object.entries(snap).reduce((n, [k, v]) => n + k.length + String(v).length, 0);
 
+/* 화면 설명은 처음 3번만 펼쳐 보임(core/ui-parts.js introHTML — 이름은 「set-학급 명단」처럼 제목으로) */
 function page(title, desc, body) {
-  return `<div class="m-page set-page"><div class="m-head"><h2>${title}</h2>${desc ? `<p class="muted">${desc}</p>` : ''}</div>${body}</div>`;
+  return `<div class="m-page set-page"><div class="m-head"><h2>${title}</h2>${introHTML('set-' + title, desc)}</div>${body}</div>`;
 }
 const card = (title, body) => `<section class="set-card"><h3>${title}</h3>${body}</section>`;
 /* 기본 검토 AI와 업무별 설정 한눈에 (업무마다 정하는 곳은 각 메뉴의 AI 줄) */
@@ -58,7 +60,7 @@ function rolesCards() {
   if (env.engine === 'account') return card('업무별 AI', '<p class="muted" style="margin:0">Claude 계정을 쓰는 동안에는 AI 하나로 모든 업무를 해요. 업무별 AI와 검토 AI는 API 키를 넣으면 쓸 수 있어요.</p>');
   const r = getRoles(), cur = r.review && env.keys[r.review.engine] ? aiValue(r.review) : '';
   const opts = aiOptions(env).map(o => `<option value="${esc(o.value)}"${o.value === cur ? ' selected' : ''}>${esc(o.label)}</option>`).join('');
-  return card('기본 검토 AI', `<p class="muted" style="margin-top:0">업무 메뉴의 AI 줄에서 「검토 AI로 한 번 더 보기」를 켜면, 따로 고르지 않은 업무는 이 AI가 검토해요. 키를 넣은 회사만 고를 수 있어요.</p>
+  return card('기본 검토 AI', `<p class="muted" style="margin-top:0">「검토 AI로 한 번 더 보기」를 켠 업무 가운데 따로 고르지 않은 것은 이 AI가 검토해요. 키를 넣은 회사만 골라요.</p>
       <label class="set-f"><span class="lab">기본 검토 AI</span><select class="field" id="setReviewAi"><option value="">검토 안 함</option>${opts}</select></label>`)
     + card('업무별 설정 한눈에', `<ul class="set-roles" id="setRoleList">${TASKS.map(([t, name]) => `<li><b>${esc(name)}</b><span class="muted">${esc(rowText(t, env))}</span></li>`).join('')}</ul>
       <p class="muted">업무마다 바꾸는 곳은 각 메뉴 위쪽의 AI 줄 [바꾸기]예요.</p>
@@ -142,7 +144,7 @@ const VIEWS = {
         <input type="file" id="rosterFile" accept=".xlsx,.csv,.xls" hidden>`)),
   ai: () => {
     const ready = SSAM().ai && SSAM().ai.engineReady();
-    return page('AI', 'Claude·Gemini·GPT·업스테이지 중 하나의 키를 넣어 써요. 키는 이 컴퓨터에만 저장돼요.',
+    return page('AI', 'Claude·Gemini·GPT·업스테이지 중 하나의 키를 넣어 써요. 키는 이 컴퓨터에만 둬요.',
       card('지금 쓰는 AI', `${sharedNote()}${testKeyNote()}<p class="set-big">${esc(ready ? SSAM().ai.engineName() : '아직 정하지 않았어요')}</p>
         <div class="row"><button class="btn primary" type="button" data-set="openAi">AI 바꾸기</button>
           <button class="btn" type="button" data-set="testAi" ${ready && !(aiMsg && aiMsg.busy) ? '' : 'disabled'}>연결 확인</button></div>
@@ -169,7 +171,7 @@ const VIEWS = {
           <label class="set-f"><span class="lab">학급 수</span><input class="field" id="schClasses" type="number" min="0" value="${s.classes || ''}"></label>
           <label class="set-f"><span class="lab">학생 수</span><input class="field" id="schStudents" type="number" min="0" value="${s.students || ''}"></label>
         </div>
-        <p class="muted" id="schYearNote" style="margin:0">계획 학년도는 연간계획을 세울 학년도예요. 1월부터는 3월에 시작할 다음 학년도로 잡혀요. 자료를 나누는 학년도는 설정 › 학년도에서 바꿔요.</p>`) +
+        <p class="muted" id="schYearNote" style="margin:0">연간계획을 세울 학년도예요(1월부터는 3월에 시작할 다음 학년도). 자료를 나누는 학년도는 설정 › 학년도에서 바꿔요.</p>`) +
       card('방학·재량휴업일', `<div class="break-list">${s.breaks.map((b, i) => `<div class="break-row">
           <input class="field" data-break="${i}" data-f="label" value="${esc(b.label)}" placeholder="예) 여름방학" aria-label="이름">
           <input class="field" type="date" data-break="${i}" data-f="from" value="${esc(b.from)}" aria-label="시작일">
@@ -186,7 +188,7 @@ const VIEWS = {
       : yrList.filter(x => x.year !== cur && !isDemoYear(x.year)).map(x => `<li class="yr-row" data-yr="${x.year}"><b>${x.year}학년도</b><span class="muted">보관됨${demo && x.year === from ? ' · 선생님 자료' : ''} · ${ymd(x.savedAt)} · ${kb(x.size)}</span><span class="grow"></span>
           <button class="btn" type="button" data-set="goYear" data-y="${x.year}">이 학년도로 가기</button><button class="btn text" type="button" data-set="delYear" data-y="${x.year}">지우기</button></li>`).join('');
     const curName = demo ? '체험용 자료' : `${cur}학년도`;
-    return page('학년도', '학년도마다 자료를 따로 두고 오갈 수 있어요. AI 키와 화면 테마는 모든 학년도가 같이 써요.',
+    return page('학년도', '학년도마다 자료를 따로 두고 오가요. AI 키·화면 테마는 모든 학년도가 같이 써요.',
       (demo ? `<p class="banner warn yr-demo" style="margin:0 0 8px"><span class="grow">3분 둘러보기 중이에요. 선생님 자료${Number.isInteger(from) ? `(${from}학년도)` : ''}는 보관함에 그대로 있어요. 백업·불러오기·새 학년도·학년도 옮기기는 체험을 끝낸 뒤에 해 주세요.</span>
         <button class="btn primary" type="button" data-tour="exit">체험 끝내기</button></p>` : '') +
       card('지금 학년도', `<p class="set-big">${curName}</p><p class="muted" style="margin:0">자료 ${kb(snapSize(snapshot(safeLS())))} · ${usageLine()}</p>${usageWarn()}`) +
@@ -195,7 +197,7 @@ const VIEWS = {
         <div class="row"><button class="btn primary" type="button" data-set="backup">백업 파일 만들기</button><button class="btn" type="button" data-set="restore" data-drop-pick>백업 파일 불러오기</button></div>
         <input type="file" id="backupFile" accept=".json,application/json" hidden>`) +
       card('학년도 목록', `<ul class="yr-list"><li class="yr-row" data-yr="${cur}"><b>${curName}</b><span class="muted">지금</span></li>${rows}</ul>`) +
-      card('업무 인수인계서', `<p class="muted" style="margin:0">올해 연간계획·행사·품의·공문을 모아 다음 담당자에게 넘길 문서를 기타 › 인수인계서에서 만들어요. 학생 자료·이름·전화번호는 넣지 않아요.</p>
+      card('업무 인수인계서', `<p class="muted" style="margin:0">올해 연간계획·행사·품의·공문을 모아 다음 담당자에게 넘길 문서를 문서·소통 › 인수인계서에서 만들어요. 학생 자료·이름·전화번호는 넣지 않아요.</p>
         <div class="row"><button class="btn" type="button" data-set="handover">업무 인수인계서 만들기</button></div>`) +
       card('새 학년도', `<p class="muted" style="margin:0">학년도가 끝나면 새 학년도를 시작해요. 지금 자료는 보관함에 남고, 연간계획·행사계획은 새 학년도로 가져가요.</p>
         <div class="row"><button class="btn" type="button" data-set="newYear">${demo ? '새 학년도 시작하기' : (yrList || []).some(x => x.year === cur + 1) ? `${cur + 1}학년도 자료가 이미 있어요 · 그 학년도로 가기` : `${cur + 1}학년도 시작하기`}</button></div>`));
@@ -418,7 +420,7 @@ document.addEventListener('click', e => {
     else if (a === 'newYear') askNewYear();
     else if (a === 'goYear') askGo(+b.dataset.y);
     else if (a === 'delYear') askDel(+b.dataset.y);
-    else if (a === 'handover') goMenu('etc', 'handover'); // 기타 › 인수인계서
+    else if (a === 'handover') goMenu('etc', 'handover'); // 문서·소통 › 인수인계서
     else if (a === 'addBreak') { school = { ...readSchool(), breaks: [...readBreaks(), { label: '', from: '', to: '' }] }; again(); }
     else if (a === 'delBreak') { const br = readBreaks(); br.splice(+b.dataset.i, 1); school = { ...readSchool(), breaks: br }; again(); }
     else if (a === 'saveSchool') {

@@ -6,9 +6,9 @@ import { assistPrompt, assistGuide, stateLines, parseAssist, replyHTML, mentione
 import { GUIDE, guideText, searchGuide, offlineAnswer } from '../../web/core/chat-knowledge.js';
 import { routeText, isSure, isQuestion, INTENT_IDS } from '../../web/core/chat-route.js';
 // core/shell.js MENUS와 같은 메뉴·탭(shell.js는 화면이 있어야 읽힘)
-const MENUS = [['평가', ['교과 평어', '창의적 체험활동', '행동특성', '평가지 채점', '단원평가', '활동지', '기재 점검']], ['연수', ['내 필수연수', '연수 현황판']],
+const MENUS = [['평가', ['단원평가', '활동지', '평가지 채점', '교과 평어', '창의적 체험활동', '행동특성', '기재 점검']], ['연수', ['내 필수연수', '연수 현황판']],
   ['계획', ['연간계획', '행사계획', '학급운영계획', '결과 보고']], ['학급', ['오늘 수업', '진도표·시수', '주간학습안내', '기초학력']], ['품의', ['새 품의', '저장한 템플릿', '최근 작성']],
-  ['기타', ['쪽지 작성', '가정통신문', '공문 처리', '인수인계서', '다면평가']], ['설정', ['학급 명단', 'AI', '화면', '학교 정보', '학년도', '품의 기준']]];
+  ['문서·소통', ['쪽지 작성', '가정통신문', '공문 처리', '인수인계서', '다면평가']], ['설정', ['학급 명단', 'AI', '화면', '학교 정보', '학년도', '품의 기준']]];
 
 const NAMES = ['김민수', '박지훈', '이서연', '최하은', '김철수', '민준', '김솔'];
 const PHONE = /0\d{1,2}-?\d{3,4}-?\d{4}|@/;
@@ -37,7 +37,7 @@ test('AI에 주는 글: 공통 안내(캐시) + 상태·대화·선생님 글, �
   const p = assistPrompt({
     text: '박지훈 결석계 가정통신문 어떻게 써? 어머니 010-1234-5678',
     history: [{ who: 'me', text: '김민수 엄마한테 쪽지' }, { who: 'bot', text: '쪽지 작성에 넣었어요.' }, { who: 'me', text: '담임 김철수 ssam@school.kr' }],
-    state: { place: '기타 › 가정통신문', brief: [{ text: '공문 「과학의 날 참가 신청」 제출', when: 'D-3' }, { text: '이서연 상담', when: '11/10(화)' }],
+    state: { place: '문서·소통 › 가정통신문', brief: [{ text: '공문 「과학의 날 참가 신청」 제출', when: 'D-3' }, { text: '이서연 상담', when: '11/10(화)' }],
       ai: { ready: true, name: 'Claude' }, letter: { title: '최하은 표창 안내' }, purchase: { title: '', items: 2 }, classCount: 25, app: 'web' },
     hints: ['letter', 'zzz'], today: '2026-11-10'
   });
@@ -47,7 +47,7 @@ test('AI에 주는 글: 공통 안내(캐시) + 상태·대화·선생님 글, �
   for (const id of INTENT_IDS) assert.ok(p.shared.includes(`- ${id}:`), `할 일 ${id}`);
   for (const s of ['해요체', '저장·결재·상신·나이스 저장', '지어내지 않아요', '일반 안내', '"reply"', '"actions"']) assert.ok((p.shared + p.own).includes(s), s);
   clean(p.shared + p.own, '프롬프트');
-  for (const s of ['[지금 앱 상태]', '기타 › 가정통신문', '공문 「과학의 날 참가 신청」 제출(D-3)', '○○○ 상담', 'AI: Claude', '가정통신문: 쓰던 것 있음', '품의: 쓰던 초안 있음 · 품목 2개', '학급 명단: 25명',
+  for (const s of ['[지금 앱 상태]', '문서·소통 › 가정통신문', '공문 「과학의 날 참가 신청」 제출(D-3)', '○○○ 상담', 'AI: Claude', '가정통신문: 쓰던 것 있음', '품의: 쓰던 초안 있음 · 품목 2개', '학급 명단: 25명',
     '[최근 대화]', '선생님: ○○○ 엄마한테 쪽지', '쌤비서: 쪽지 작성에 넣었어요.', '[앱 규칙이 짐작한 할 일] letter', '[선생님 글]', '○○○ 결석계 가정통신문 어떻게 써?', '오늘: 2026-11-10'])
     assert.ok(p.own.includes(s), `${s} 없음:\n${p.own}`);
   assert.ok(!p.own.includes('zzz'), '모르는 할 일 짐작');

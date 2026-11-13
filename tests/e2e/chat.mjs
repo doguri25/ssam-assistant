@@ -253,7 +253,7 @@ await run('chat', [
     const b = await sendWait('이번 주 할 일 정리해줘');
     assert(b.includes('이번 주 할 일이에요') && b.includes('과학의 날 참가 신청'), b);
     const p = askOf('이번 주 할 일').at(-1);
-    for (const s of ['[지금 앱 상태]', '보고 있는 화면: 기타 › 가정통신문', '공문 「과학의 날 참가 신청」 제출(D-3)', '교직원 회의', '○○○ 어머니 상담', 'AI: Claude', '가정통신문: 쓰던 것 있음', '쓰는 곳: 웹판'])
+    for (const s of ['[지금 앱 상태]', '보고 있는 화면: 문서·소통 › 가정통신문', '공문 「과학의 날 참가 신청」 제출(D-3)', '교직원 회의', '○○○ 어머니 상담', 'AI: Claude', '가정통신문: 쓰던 것 있음', '쓰는 곳: 웹판'])
       assert(p.includes(s), `${s} 없음: ${p.split('[지금 앱 상태]')[1].slice(0, 500)}`);
     assert(!p.includes('김민수'), '상태에 이름');
     // 할 일 4개(하나는 모르는 것) → 아는 것 2개만(주간학습안내 → 오늘 수업), 진도표는 하지 않음
@@ -313,8 +313,8 @@ await run('chat', [
     await page.waitForSelector(`${C} .chat-msg.bot:last-child .chat-chip`);
     assert(JSON.stringify(await page.$$eval(`${C} .chat-msg.bot:last-child .chat-chip`, l => l.map(x => x.textContent))) === JSON.stringify(['베트남어', '중국어(간체)', '러시아어', '영어']), '언어');
     await send('인수인계서 만들어 줘');
-    await waitBot('기타 › 인수인계서를 열었어요');
-    assert(JSON.stringify(await cur()) === JSON.stringify({ menu: 'etc', tab: 'handover' }), '기타 › 인수인계서');
+    await waitBot('문서·소통 › 인수인계서를 열었어요');
+    assert(JSON.stringify(await cur()) === JSON.stringify({ menu: 'etc', tab: 'handover' }), '문서·소통 › 인수인계서');
     await page.waitForSelector('section[data-menu="etc"] .ho-box #hoPrev h1');
     assert((await page.textContent('section[data-menu="etc"] .ho-box h2')).includes('업무 인수인계서'), '인수인계서 탭');
   }],

@@ -73,7 +73,8 @@ await run('eval-check', [
     await page.waitForSelector('nav.app-side [data-menu-go="evaluate"]');
     await page.click('nav.app-side [data-menu-go="evaluate"]');
     const tabs = await page.$$eval('#menuTabs [data-tab]', bs => bs.map(b => b.textContent.trim()));
-    assert(tabs.at(-1) === '기재 점검' && tabs.at(-2) === '활동지', tabs.join(','));
+    // 탭 두 묶음(스펙 2026-11-14 §4): 채점(단원평가·활동지·평가지 채점) | 생활기록부(교과 평어·창체·행특·기재 점검)
+    assert(tabs.at(-1) === '기재 점검' && tabs.at(-2) === '행동특성', tabs.join(','));
     await goCheck();
     assert((await sum()).trim() === '점검한 글 11개 · 고칠 곳 9곳', await sum());
     const kinds = await page.$$eval(`${B} [data-chk-kind]`, bs => bs.map(b => b.textContent.replace(/\s+/g, ' ').trim()));

@@ -29,8 +29,8 @@ await page.goto(url);
 await page.waitForTimeout(400);
 
 await run('message', [
-  ['세로 메뉴에 「기타」 → 가로 메뉴 「쪽지 작성」', async () => {
-    assert((await page.textContent('nav.app-side [data-menu-go="etc"]')).includes('기타'), '기타');
+  ['세로 메뉴에 「문서·소통」(전 「기타」) → 가로 메뉴 「쪽지 작성」', async () => {
+    assert((await page.textContent('nav.app-side [data-menu-go="etc"]')).includes('문서·소통'), '문서·소통');
     await page.click('nav.app-side [data-menu-go="etc"]');
     assert((await page.textContent('#menuTabs')).includes('쪽지 작성'), '쪽지 작성 탭');
     await page.waitForSelector(`${P} #msgFile`, { state: 'attached' });

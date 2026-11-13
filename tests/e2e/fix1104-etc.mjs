@@ -70,7 +70,9 @@ await run('fix1104-etc', [
   }],
   ['[msg-privacy-1] 넣기 칸은 스캔·사진은 그림 그대로 AI로 간다고 알리고, 사진을 넣으면 알림에도', async () => {
     await page.click(`${P} [data-msg="new"]`);
-    const note = await page.textContent(`${P} .msg-drop p.muted`);
+    // 「AI로 가는 것」(스펙 2026-11-14 §4)에 있음 — 펼치면 보임
+    await page.click(`${P} .msg-drop .ai-note summary`);
+    const note = await page.locator(`${P} .msg-drop .ai-note-body p`).innerText();
     assert(note.includes('스캔·사진') && note.includes('그림 그대로 AI로'), note);
     await page.setInputFiles(`${P} #msgFile`, [{ name: '수상자 명단 공문(스캔).png', mimeType: 'image/png', buffer: readFileSync(join(FIXTURES, 'sheet-1.png')) }]);
     await page.waitForFunction(s => ((document.querySelector(`${s} #msgBody`) || {}).value || '').startsWith('[연수 안내] 스캔 연수'), P, { timeout: 15000 });

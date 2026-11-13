@@ -265,7 +265,7 @@ await run('background-jobs', [
     await until(() => n('letter') >= 1, 4000, '쓰기 시작');
     await goTo('etc', 'message');
     await goTo('purchase');
-    assert(await dots() === 'etc', '세로 메뉴 「기타」에 점이 없음: ' + await dots());
+    assert(await dots() === 'etc', '세로 메뉴 「문서·소통」에 점이 없음: ' + await dots());
     await goTo('etc', 'letter');
     assert((await page.textContent(`${E} [data-lf="write"]`)).includes('쓰는 중'), '돌아왔는데 「쓰는 중」이 없음');
     await goTo('class', 'today');
@@ -376,7 +376,7 @@ await run('background-jobs', [
     await until(() => n('handover') >= 1, 4000, '정리 시작');
     await goTo('etc', 'gongmun');
     await goTo('purchase');
-    assert(await dots() === 'etc', '세로 메뉴 「기타」에 점이 없음: ' + await dots());
+    assert(await dots() === 'etc', '세로 메뉴 「문서·소통」에 점이 없음: ' + await dots());
     await goTo('etc', 'handover');
     await page.waitForSelector(`${H} #hoAi`);
     assert(await page.isDisabled(`${H} #hoAi`) && (await page.textContent(`${H} #hoAi`)).includes('정리하는 중'), '다시 들어온 탭에 「정리하는 중」이 없음');

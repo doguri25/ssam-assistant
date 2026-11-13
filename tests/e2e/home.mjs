@@ -74,14 +74,14 @@ await run('home', [
     assert(p.length === 1 && p[0] === '파일 고르기', JSON.stringify(p));
     assert((await page.textContent(`${H} .hm-drop`)).includes('무엇이든 여기에 놓으세요'), '놓는 칸 글');
   }],
-  ['공문 기한: 지남·D-2·D-5(다 한 것 빼고), 배지에 글, [공문 처리] → 기타 › 공문 처리', async () => {
+  ['공문 기한: 지남·D-2·D-5(다 한 것 빼고), 배지에 글, [공문 처리] → 문서·소통 › 공문 처리', async () => {
     const rows = await page.locator(`${H} .hm-gm .hm-line`).allInnerTexts();
     assert(rows.length === 3, JSON.stringify(rows));
     const badges = await page.locator(`${H} .hm-gm .hm-badge`).evaluateAll(bs => bs.map(b => b.childNodes.length && [...b.childNodes].filter(n => !(n.classList && n.classList.contains('sr-only'))).map(n => n.textContent).join('')));
     assert(JSON.stringify(badges) === JSON.stringify(['!지남', 'D-2', 'D-5']), JSON.stringify(badges));
     assert(rows[0].includes('안전 점검 결과 보고') && !rows.join('').includes('다 한 공문'), JSON.stringify(rows));
     await page.click(`${H} .hm-gm .hm-card-f [data-hm-go="gongmun"]`);
-    assert(await title() === '기타' && await tabNow() === '공문 처리', `${await title()} › ${await tabNow()}`);
+    assert(await title() === '문서·소통' && await tabNow() === '공문 처리', `${await title()} › ${await tabNow()}`);
     await page.click('nav.app-side [data-menu-go="home"]');
   }],
   ['오늘 수업: 교시마다 교과·차시·상태, 2교시가 「지금」, [오늘 수업 열기] → 학급 › 오늘 수업', async () => {
@@ -139,8 +139,8 @@ await run('home', [
     assert(await title() === '품의' && await tabNow() === '최근 작성', `${await title()} › ${await tabNow()}`);
     await page.click('nav.app-side [data-menu-go="home"]');
     await page.locator(`${H} .hm-row`, { hasText: '다면평가' }).click();
-    await waitTitle('기타');
-    assert(await title() === '기타' && await tabNow() === '다면평가', `${await title()} › ${await tabNow()}`);
+    await waitTitle('문서·소통');
+    assert(await title() === '문서·소통' && await tabNow() === '다면평가', `${await title()} › ${await tabNow()}`);
     await page.click('nav.app-side [data-menu-go="home"]');
   }],
   ['파일 놓는 칸: 끌어 놓기·[파일 고르기] 모두 받는 곳(쌤 버튼과 같은 확인 카드)으로', async () => {
@@ -221,12 +221,12 @@ await run('home', [
     await page.click('#bottomTabs [data-menu-go="class"]');
     assert(await title() === '학급', await title());
   }],
-  ['390px: 더보기 → 시트(계획·연수·기타·설정, 학년도·사용 중인 AI), 고르면 그 메뉴 + 더보기 칸이 켜짐', async () => {
+  ['390px: 더보기 → 시트(계획·연수·문서·소통·설정, 학년도·사용 중인 AI), 고르면 그 메뉴 + 더보기 칸이 켜짐', async () => {
     await page.click('#moreBtn');
     await page.waitForSelector('#sheetRoot .more-sheet');
     assert(await page.getAttribute('#moreBtn', 'aria-expanded') === 'true', '펼침 표시');
     const labels = await page.locator('#sheetRoot .more-go').allInnerTexts();
-    assert(labels.join('|') === '계획|연수|기타|설정', labels.join('|'));
+    assert(labels.join('|') === '계획|연수|문서·소통|설정', labels.join('|'));
     const info = await page.textContent('#sheetRoot .more-foot');
     assert(info.includes('2026학년도') && info.includes('사용 중인 AI'), info);
     const sb = await page.locator('#sheetRoot .more-sheet').boundingBox();

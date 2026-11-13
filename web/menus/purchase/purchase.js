@@ -1,6 +1,7 @@
 /* 품의 메뉴 › 새 품의: 왼쪽 「메모」(입력) → 오른쪽 「에듀파인에 붙여넣을 초안」.
    AI는 제목과 사유 첫 문장만 쓰고, 가~라 줄·금액·합계는 앱이 만든다 (PRD 5.2) */
 import { onEnter, go } from '../../core/shell.js';
+import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import { get, set } from '../../core/store.js';
 import * as ai from '../../core/ai.js';
 import { copyText, toast } from '../../core/ui.js';
@@ -172,7 +173,7 @@ function render() {
   const ta0 = box.querySelector('#pcIntake'), intake = ta0 ? ta0.value : '', typing = focusOf();
   const t = typeOf(st.form.type), ex = t.example;
   const html = `<div class="m-page pc-page">
-    <div class="m-head m-head-row"><div><h2>새 품의</h2><p class="muted">사려는 것·견적서를 넣고 [초안 만들기]를 누르면 에듀파인에 붙여넣을 제목·품의 사유·산출 내역을 써요.</p></div>
+    <div class="m-head m-head-row"><div><h2>새 품의</h2>${introHTML('purchase', '사려는 것·견적서를 넣으면 에듀파인에 붙여넣을 초안을 써요.')}</div>
       <div class="m-head-act">${aiRowHTML('purchase')}</div></div>
     <div class="pc-type-row"><div class="seg pc-types" role="radiogroup" aria-label="품의 종류">${TYPES.map(x => `<button type="button" role="radio" data-pctype="${x.id}" aria-pressed="${x.id === t.id}" aria-checked="${x.id === t.id}">${x.label}</button>`).join('')}</div>
       <div class="row pc-head-act"><button class="btn" type="button" data-pc="saveTpl">템플릿으로 저장</button><button class="btn text" type="button" data-pc="fresh">새로 쓰기</button></div></div>
@@ -186,7 +187,8 @@ function render() {
           <div class="row"><button class="btn primary" type="button" data-pc="go" ${busy ? 'disabled' : ''}>${busy ? '<span class="spin"></span>쓰는 중…' : '초안 만들기'}</button>
             <button class="btn text" type="button" data-pc="intake">칸에만 넣기</button><button class="btn text" type="button" data-pc="intakeFile">파일 고르기</button>
             <input type="file" id="pcIntakeFile" accept=".xlsx,.csv,.hwp,.hwpx,.txt,.pdf,.png,.jpg,.jpeg,.webp" hidden><span class="muted" id="pcIntakeMsg" role="status">${intakeBusy ? INTAKE_BUSY : ''}</span></div>
-          <p class="muted pc-intake-note">${st.form.type === 'lecturer' ? '강사 수당은 강사 이름이 AI로 가지 않게 앱이 글만 읽어요(캡처·사진은 읽지 않아요).' : '[초안 만들기]를 누르면 넣은 것을 읽어 칸을 채우고 바로 초안을 써요. 목적·일시·장소도 글에 있으면 채워요.'} 이미 쓴 칸은 덮지 않아요.</p>
+          <p class="muted pc-intake-note">${st.form.type === 'lecturer' ? '강사 수당은 강사 이름이 AI로 가지 않게 앱이 글만 읽어요(캡처·사진은 읽지 않아요).' : '목적·일시·장소도 글에 있으면 채워요.'} 이미 쓴 칸은 덮지 않아요.</p>
+          ${aiNoteHTML(st.form.type === 'lecturer' ? '품의 칸의 글만 보내요. 강사 이름·전화번호는 가려서 보내요.' : '넣은 글·견적서·캡처와 품의 칸을 보내요. 글 속 사람 이름·전화번호는 가려서 보내요(캡처는 그대로 가요).')}
         </div>
         <details class="pc-more" id="pcMore"${viewFull() ? ' open' : ''}><summary>자세히 고치기 <span class="muted">관련·사업명·목적·일시·대상·장소·예산 과목·품목·붙임</span></summary>
         <div class="pc-fields">
@@ -909,7 +911,7 @@ function renderOther(tab) {
     : listRecent().map(r => `<li class="pc-lib-row"><div class="grow"><b>${esc((r.draft && r.draft.title) || r.form.project || '제목 없는 품의')}</b><span class="muted">${esc(typeName(r.form))} · ${sumOf(r.form)}원 · ${r.draft ? '초안 있음' : '초안 없음'} · ${dayOf(r.at)}</span></div>
         <span class="row"><button class="btn primary" type="button" data-recent-open="${esc(r.id)}">열기</button><button class="btn text" type="button" data-recent-del="${esc(r.id)}">지우기</button></span></li>`);
   box.innerHTML = `<div class="m-page pc-lib"><div class="m-head"><h2>${tpl ? '저장한 템플릿' : '최근 작성'}</h2>
-      <p class="muted">${tpl ? '자주 쓰는 품의를 저장해 두고 불러와요. 불러오면 일시만 고치면 돼요. 새 학년도에도 가져가요.' : '초안을 만든 품의가 최근 20개까지 남아요. 구입처별로 나눈 품의도 여기에 있어요.'}</p></div>
+      ${tpl ? introHTML('pc-templates', '자주 쓰는 품의를 저장해 두고 불러와요. 새 학년도에도 가져가요.') : introHTML('pc-recent', '초안을 만든 품의가 최근 20개까지 남아요(구입처별로 나눈 것도).')}</div>
     ${rows.length ? `<ul class="pc-lib-list">${rows.join('')}</ul>` : `<div class="empty"><h3>아직 없어요</h3><p>${tpl ? '새 품의에서 [템플릿으로 저장]을 누르면 여기에 남아요.' : '새 품의에서 [초안 만들기]를 누르면 여기에 남아요.'}</p></div>`}</div>`;
 }
 document.addEventListener('click', e => {

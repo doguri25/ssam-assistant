@@ -5,6 +5,9 @@
 .set-fields{display:flex;flex-wrap:wrap;gap:14px}
 .set-f{flex:1 1 200px;min-width:0;display:flex;flex-direction:column;gap:6px}
 .set-f .field,.break-row .field{width:100%;box-sizing:border-box}
+/* 카드 안에 바로 둔 칸(기본 검토 AI·계약 기준 금액 등): .set-f의 200px 기준이 세로(카드는 세로 flex)로 먹고, 공통 .field{flex:1}이 그만큼 늘어나던 것을 막음 */
+.set-card > .set-f{flex:none}
+.set-f > .field{flex:none}
 .break-list{display:flex;flex-direction:column;gap:8px}
 .break-row{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto minmax(0,1fr) auto;gap:8px;align-items:center}
 .set-msg{margin:0;font-weight:700}

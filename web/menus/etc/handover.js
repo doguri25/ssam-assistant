@@ -1,9 +1,10 @@
-/* 기타 › 인수인계서 (스펙 2026-11-06 L, 2026-11-10 설정 › 학년도의 창에서 기타 탭으로): 지금 학년도 자료에서 넣을 업무·항목을 고르고(처음엔 모두),
+/* 문서·소통 › 인수인계서 (스펙 2026-11-06 L, 2026-11-10 설정 › 학년도의 창에서 기타 탭으로): 지금 학년도 자료에서 넣을 업무·항목을 고르고(처음엔 모두),
    「다음 담당자에게」를 쓰거나 [AI로 정리](위 내용만 보냄, 이름·전화번호 없이), 「몇 쪽으로」에 맞춰 줄이고(handover-fit.js) → 한글·워드·PDF.
    학교 인수인계서 양식(.hwpx)을 [양식 넣기]로 넣어 두면 [한글로 내려받기]는 그 양식의 제목·본문 자리에 채움(워드·PDF는 기본 양식).
    양식은 IndexedDB(form-store.js 「handover」 — 가정통신문 양식과 따로), 고른 것·글·쪽 수·고른 양식은 학년도 자료(handover-model.js).
    다른 곳(채팅 「인수인계서」·설정 › 학년도 [업무 인수인계서 만들기])은 openHandover()로 엶 */
 import { onEnter, go } from '../../core/shell.js';
+import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import * as ai from '../../core/ai.js';
 import { toast, saveFile } from '../../core/ui.js';
 import { exportButton, exportDoc, docHtml, getFormat } from '../../core/doc-export.js';
@@ -35,7 +36,7 @@ let aiBusy = false;
 /* 양식(화면에만): store, list(저장한 양식), form({ rec, parsed, temp }), adding(읽는 중), mapOpen·mapSel(양식 맞추기) */
 const F = { store: null, list: [], form: null, adding: 0, mapOpen: false, mapSel: -1 };
 
-/* 기타 › 인수인계서로 감(설정 › 학년도 단추·채팅 「인수인계서」) */
+/* 문서·소통 › 인수인계서로 감(설정 › 학년도 단추·채팅 「인수인계서」) */
 export function openHandover() {
   go('etc', 'handover');
 }
@@ -179,14 +180,15 @@ const aiLabel = () => (aiBusy ? '정리하는 중…' : 'AI로 정리');
 function pageHTML() {
   const empty = GROUPS.every(([g]) => !(st.data[g] || []).length), [lo, hi] = noteRange(st.pages);
   return `<div class="m-page ho-page">
-    <div class="m-head m-head-row"><div><h2>업무 인수인계서</h2><p class="muted">${st.data.year}학년도 연간계획·행사·품의·공문·결과 보고를 모아 다음 담당자에게 넘길 문서를 만들어요. 학생 자료·교직원 이름·전화번호는 넣지 않아요.</p></div>
+    <div class="m-head m-head-row"><div><h2>업무 인수인계서</h2>${introHTML('handover', `${st.data.year}학년도 업무 자료를 모아 다음 담당자에게 넘길 문서를 만들어요.`)}</div>
       <div class="m-head-act">${aiRowHTML('plan')}</div></div>
     <div class="msg-grid">
       <section class="pc-card"><h3>넣을 것</h3>
         ${empty ? '<p class="banner info" style="margin:0"><span class="grow">아직 모을 자료가 없어요. 연간계획·행사계획·품의·공문 처리·결과 보고에 자료가 있으면 여기에 모여요.</span></p>'
-    : `<p class="muted" style="margin:0">넣을 것만 골라 주세요. 처음엔 이번 학년도 것을 모두 골라 두어요.</p><div class="ho-groups">${GROUPS.map(groupHTML).join('')}</div>`}
+    : `<p class="muted" style="margin:0">넣을 것만 골라 주세요(처음엔 모두 골라 둬요). 학생 자료·교직원 이름·전화번호는 넣지 않아요.</p><div class="ho-groups">${GROUPS.map(groupHTML).join('')}</div>`}
         <label class="ho-note"><span class="lab">다음 담당자에게</span><textarea class="field" id="hoNote" rows="5" placeholder="예) 3월 첫 주에 학부모 총회 자료부터 챙겨요.">${esc(st.note)}</textarea></label>
-        <div class="row"><button class="btn" type="button" data-ho="ai" id="hoAi"${aiBusy ? ' disabled' : ''}>${aiLabel()}</button><span class="muted ho-hint" id="hoAiHint">고른 내용만 보내요(이름·전화번호 없이). ${lo}~${hi}줄로 써 주고, 고쳐 써도 돼요.</span></div>
+        <div class="row"><button class="btn" type="button" data-ho="ai" id="hoAi"${aiBusy ? ' disabled' : ''}>${aiLabel()}</button><span class="muted ho-hint" id="hoAiHint">${lo}~${hi}줄로 써 줘요. 고쳐 써도 돼요.</span></div>
+        ${aiNoteHTML('고른 내용만 보내요. 교직원 이름·전화번호는 빼고 보내요.')}
       </section>
       <section class="pc-card"><h3>양식·쪽 수</h3>
         <div id="hoFormBox">${formsHTML()}</div>
@@ -222,7 +224,7 @@ function refresh({ counts = true } = {}) {
   const fit = box.querySelector('#hoFit');
   if (fit) { fit.querySelector('.grow').textContent = fitNotice(f.cut); fit.classList.toggle('warn', f.cut.over); fit.classList.toggle('info', !f.cut.over); }
   const [lo, hi] = noteRange(st.pages), hint = box.querySelector('#hoAiHint');
-  if (hint) hint.textContent = `고른 내용만 보내요(이름·전화번호 없이). ${lo}~${hi}줄로 써 주고, 고쳐 써도 돼요.`;
+  if (hint) hint.textContent = `${lo}~${hi}줄로 써 줘요. 고쳐 써도 돼요.`;
 }
 
 /* ---------- AI로 정리 ---------- */
@@ -244,7 +246,7 @@ async function runAi() {
     const ta = box && box.querySelector('#hoNote');
     if (ta) { ta.value = st.note; refresh({ counts: false }); }
     const shown = !!ta && !box.hidden && !box.closest('[hidden]');
-    toast(shown ? 'AI가 정리했어요. 고쳐 써도 돼요.' : '인수인계서의 「다음 담당자에게」를 AI가 정리해 두었어요. 기타 › 인수인계서에서 열어 보세요.', shown ? undefined : 6000);
+    toast(shown ? 'AI가 정리했어요. 고쳐 써도 돼요.' : '인수인계서의 「다음 담당자에게」를 AI가 정리해 두었어요. 문서·소통 › 인수인계서에서 열어 보세요.', shown ? undefined : 6000);
   } catch (e) {
     toast(e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 눌러 주세요.' : ai.errorMessage(e && e.code, e), 6000);
   }
