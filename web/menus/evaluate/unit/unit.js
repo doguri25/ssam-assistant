@@ -137,12 +137,12 @@ function keyHTML(t) {
       <h3>학생 문제지·답안</h3>
       <p class="muted cls-note">학생이 푼 문제지를 반 전체 스캔(PDF·사진)으로 넣고, 선생님 답안(정답·이원 분류표)을 넣어요. 「문항 이원 분류 및 모범 답안」 한글 파일은 AI 없이 바로 읽고, 사진이나 스캔 PDF는 AI가 읽어요.</p>
       ${papers ? papers.html(t) : ''}
-      <div class="row"><button class="btn primary" type="button" data-un="keyFile">답안 넣기</button><span class="muted" id="unKeyMsg" role="status">${esc(m.key)}</span></div>
+      <div class="row"><button class="btn primary" type="button" data-un="keyFile" data-drop-pick>답안 넣기</button><span class="muted" id="unKeyMsg" role="status">${esc(m.key)}</span></div>
       <input type="file" id="unKeyFile" accept=".hwp,.hwpx,.pdf,.txt,.png,.jpg,.jpeg,.webp" hidden>
       ${bundleBoxHTML('unit', '학생 문제지 스캔·답안·빈 문제지를 한꺼번에 넣으면 알아서 나눠요')}
       <details class="un-more" data-more="${esc(t.id)}"${moreOpen.get(t.id) ? ' open' : ''}><summary>빈 문제지도 있으면 (선택)${hasPaper ? ' · 넣었어요' : ''}</summary>
         <p class="muted cls-note">학생이 풀기 전의 빈 문제지(한글·PDF)를 넣으면 채점 AI가 문제를 보고 채점해요. 없어도 돼요.</p>
-        <div class="row"><button class="btn" type="button" data-un="paperFile">빈 문제지 넣기</button><span class="muted" id="unPaperMsg" role="status">${esc(m.paper)}</span></div>
+        <div class="row"><button class="btn" type="button" data-un="paperFile" data-drop-pick>빈 문제지 넣기</button><span class="muted" id="unPaperMsg" role="status">${esc(m.paper)}</span></div>
         <input type="file" id="unPaperFile" accept=".hwp,.hwpx,.pdf,.txt" hidden>
       </details>
     </div>

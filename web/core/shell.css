@@ -126,3 +126,9 @@ section[data-menu="evaluate"][hidden]{display:none}
 .m-head.m-head-row{flex-direction:row;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px 16px}
 .m-head-act{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto;min-width:0}
 .m-head-act .ai-row{display:flex;align-items:center;gap:4px;font-size:.88rem;color:var(--muted);min-width:0}
+
+/* 파일 칸 끌어 놓기(core/file-drop.js): 놓을 칸은 점선 테, 그 칸의 단추는 진한 테, 오른쪽 위에 「놓으면 「양식 넣기」」 */
+.fd-over{outline:2px dashed var(--accent);outline-offset:3px;box-shadow:0 0 0 6px var(--accent-soft)}
+.btn.fd-pick{outline:2px solid var(--accent);outline-offset:2px}
+.fd-hint{position:fixed;z-index:9000;transform:translateX(-100%);pointer-events:none;padding:5px 10px;border-radius:999px;background:var(--accent);color:var(--on-accent);font-size:13px;font-weight:700;line-height:1.3;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.fd-hint.busy{background:var(--surface3);color:var(--ink)}

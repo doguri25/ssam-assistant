@@ -76,7 +76,7 @@ function inboxCard() {
 const VIEWS = {
   roster: () => page('학급 명단', '창의적 체험활동·행동특성·평가지 채점이 같은 명단을 써요.',
     card('학생 수와 예외 번호', prepNote() + (SSAM().rosterHTML ? SSAM().rosterHTML() : '')
-      + `<div class="row"><button class="btn" type="button" data-set="rosterFile">엑셀·CSV에서 가져오기</button>
+      + `<div class="row"><button class="btn" type="button" data-set="rosterFile" data-drop-pick>엑셀·CSV에서 가져오기</button>
         <span class="muted">나이스 학생 명렬표처럼 「번호」 칸이 있는 파일. 번호만 읽고 이름은 저장하지 않아요.</span></div>
         <input type="file" id="rosterFile" accept=".xlsx,.csv,.xls" hidden>`)),
   ai: () => {
@@ -127,7 +127,7 @@ const VIEWS = {
       card('지금 학년도', `<p class="set-big">${cur}학년도</p><p class="muted" style="margin:0">자료 ${kb(snapSize(snapshot(safeLS())))} · ${usageLine()}</p>${usageWarn()}`) +
       card('백업 파일', `<p class="muted" style="margin:0">지금 학년도와 보관한 학년도 자료를 파일 하나로 저장해요(AI 키는 넣지 않아요). 앱 안의 보관함은 이 컴퓨터에만 있어서, 컴퓨터를 바꾸거나 프로그램을 지우면 사라져요. 백업 파일을 만들어 두세요.</p>
         <p class="muted" style="margin:0">${backupLine()}</p>
-        <div class="row"><button class="btn primary" type="button" data-set="backup">백업 파일 만들기</button><button class="btn" type="button" data-set="restore">백업 파일 불러오기</button></div>
+        <div class="row"><button class="btn primary" type="button" data-set="backup">백업 파일 만들기</button><button class="btn" type="button" data-set="restore" data-drop-pick>백업 파일 불러오기</button></div>
         <input type="file" id="backupFile" accept=".json,application/json" hidden>`) +
       card('학년도 목록', `<ul class="yr-list"><li class="yr-row" data-yr="${cur}"><b>${cur}학년도</b><span class="muted">지금</span></li>${rows}</ul>`) +
       card('업무 인수인계서', `<p class="muted" style="margin:0">올해 연간계획·행사·품의·공문을 모아 다음 담당자에게 넘길 문서를 기타 › 인수인계서에서 만들어요. 학생 자료·이름·전화번호는 넣지 않아요.</p>

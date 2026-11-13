@@ -278,7 +278,7 @@ const formsHTML = () => {
       <option value="">기본 양식(쌤비서 · ${esc(getSchool().name || '학교 이름은 설정 › 학교 정보')})</option>
       ${F.list.map(f => `<option value="${esc(f.id)}"${f.id === id ? ' selected' : ''}>${esc(f.name)}${f.kind === 'plain' ? ' (.hwp · 짜임만)' : ''}</option>`).join('')}
       ${F.form && !F.list.some(f => f.id === id) ? `<option value="${esc(id)}" selected>${esc(F.form.rec.name)} (이번에만)</option>` : ''}</select></label>
-    <span class="row"><button class="btn" type="button" data-lf="pickForm">${F.adding ? '<span class="spin"></span>읽는 중…' : '양식 넣기'}</button>
+    <span class="row"><button class="btn" type="button" data-lf="pickForm" data-drop-pick>${F.adding ? '<span class="spin"></span>읽는 중…' : '양식 넣기'}</button>
       ${F.form && F.form.rec.kind === 'hwpx' ? '<button class="btn text" type="button" data-lf="map">양식 맞추기</button>' : ''}
       ${F.form ? '<button class="btn text" type="button" data-lf="delForm">양식 지우기</button>' : ''}
       <input type="file" id="lfFormFile" hidden accept=".hwpx,.hwp"></span></div>
@@ -315,7 +315,7 @@ function collectHTML(x) {
   return `<section class="pc-card" id="lfCollect"><h3>회신서 모으기</h3>
     <p class="muted" style="margin:0">걷은 회신서를 스캔(PDF·사진)해 넣고 이름 칸을 한 번 가리면, AI가 가린 그림에서 번호와 ☑만 읽어요(이름은 읽지도 저장하지도 않아요).</p>
     <p style="margin:0">읽을 칸: ${opts.map(o => `<b>${esc(o.name)}</b>(${o.options.map(esc).join(' / ')})`).join(', ')}</p>
-    <div class="row"><button class="btn" type="button" data-lf="rcPick">${RC.adding ? '<span class="spin"></span>읽는 중…' : '스캔 넣기'}</button><input type="file" id="lfRcFile" multiple hidden accept=".pdf,.png,.jpg,.jpeg,.webp">
+    <div class="row"><button class="btn" type="button" data-lf="rcPick" data-drop-pick>${RC.adding ? '<span class="spin"></span>읽는 중…' : '스캔 넣기'}</button><input type="file" id="lfRcFile" multiple hidden accept=".pdf,.png,.jpg,.jpeg,.webp">
       <span class="muted">${RC.pages.length}장</span>
       <button class="btn text" type="button" data-lf="rcMask"${RC.pages.length ? '' : ' disabled'}>이름 칸 가리기${col.mask.length ? ' (가림)' : ''}</button>
       <button class="btn primary" type="button" data-lf="rcRead"${RC.pages.length && !RC.busy ? '' : ' disabled'}>${RC.busy ? '<span class="spin"></span>읽는 중…' : '읽기'}</button></div>

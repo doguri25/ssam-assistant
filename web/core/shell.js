@@ -7,6 +7,7 @@ import { renderPlaceholder } from '../menus/placeholder.js';
 import { ensureYears } from './years.js';
 import { freeze, onFail, FULL_MSG, flushAll, usage } from './store.js';
 import { TABS_KEY, parseTabs, pickTab } from './nav-tabs.js';
+import './file-drop.js'; // 파일 고르기 단추(data-drop-pick)가 있는 칸에 끌어 놓기 — window에 먼저 걸어 둠(쌤 버튼의 막기보다 앞)
 
 export const MENUS = [
   { id: 'home', label: '오늘', tabs: [] },

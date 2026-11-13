@@ -132,7 +132,7 @@ function formsHTML() {
       <option value="">기본 양식(쌤비서)</option>
       ${F.list.map(x => `<option value="${esc(x.id)}"${x.id === id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}
       ${f && f.temp ? `<option value="${esc(f.rec.id)}" selected>${esc(f.rec.name)} (이번에만)</option>` : ''}</select></label>
-    <span class="row"><button class="btn" type="button" data-ho="pickForm"${F.adding ? ' disabled' : ''}>${F.adding ? '<span class="spin"></span>읽는 중…' : '양식 넣기'}</button>
+    <span class="row"><button class="btn" type="button" data-ho="pickForm" data-drop-pick${F.adding ? ' disabled' : ''}>${F.adding ? '<span class="spin"></span>읽는 중…' : '양식 넣기'}</button>
       ${f ? '<button class="btn text" type="button" data-ho="map">양식 맞추기</button><button class="btn text" type="button" data-ho="delForm">양식 지우기</button>' : ''}
       <input type="file" id="hoFormFile" hidden accept=".hwpx,.hwp"></span></div>
     <p class="muted" style="margin:0">${f ? `[한글로 내려받기]는 「${esc(f.rec.name)}」 양식의 제목·본문 자리에 채워요(결재란·서명 칸은 그대로). 워드·PDF는 기본 양식으로 만들어요.`

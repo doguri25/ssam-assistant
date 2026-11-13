@@ -79,7 +79,7 @@ function render() {
     <div class="yp-card">
       <div class="cls-card-h"><h3>시간표</h3>
         <div class="row"><label class="cls-inline">교시 수 <select class="field" id="clsPeriods">${[4, 5, 6, 7].map(n => `<option${tt.periods === n ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
-        <button class="btn" type="button" data-c="ttFile">시간표 파일에서 가져오기</button></div>
+        <button class="btn" type="button" data-c="ttFile" data-drop-pick>시간표 파일에서 가져오기</button></div>
       </div>
       <div id="clsTtMsg">${ttMsgHTML()}</div>
       ${ttHTML(tt)}
@@ -89,7 +89,7 @@ function render() {
     </div>
     <div class="yp-card">
       <div class="cls-card-h"><h3>교과 진도표</h3>
-        <div class="row"><button class="btn primary" type="button" data-c="jindoFile">진도표 파일 올리기</button>
+        <div class="row"><button class="btn primary" type="button" data-c="jindoFile" data-drop-pick>진도표 파일 올리기</button>
         <button class="btn" type="button" data-c="addSub">교과 추가</button>
         <button class="btn text" type="button" data-c="sample">예시로 채우기</button></div>
       </div>
@@ -186,7 +186,7 @@ function openAdd() {
   S().openSheet(`<h3 data-add-token="${token}">교과 추가</h3>
     <label class="yp-f"><span class="lab">교과 이름</span><input class="field" id="clsNewName" placeholder="예: 도덕"></label>
     <label class="yp-f"><span class="lab">진도표 글</span><textarea class="field" id="clsNewText" placeholder="진도표 파일을 올리거나 글을 붙여 넣어 주세요"></textarea></label>
-    <div class="row"><button class="btn" type="button" data-c="newFile">파일 올리기</button><span class="muted" id="clsNewFileName">${lastFile ? `방금 읽은 파일: ${esc(lastFile.name)} (글 칸이 비면 이 파일에서 뽑아요)` : ''}</span></div>
+    <div class="row"><button class="btn" type="button" data-c="newFile" data-drop-pick>파일 올리기</button><span class="muted" id="clsNewFileName">${lastFile ? `방금 읽은 파일: ${esc(lastFile.name)} (글 칸이 비면 이 파일에서 뽑아요)` : ''}</span></div>
     <input type="file" id="clsNewFile" accept=".hwp,.hwpx,.pdf,.csv,.xlsx,.txt" hidden>
     <div id="clsNewMsg" class="muted"></div>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button>

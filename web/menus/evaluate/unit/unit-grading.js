@@ -136,7 +136,7 @@ function stuRow(t, s, i) {
 /* [학생 문제지 넣기(스캔한 것)] 줄: 1단계(한글·글 파일을 고르면 답안·빈 문제지로 옮겨 넣음)와 2단계(다시 넣기) */
 function ansRowHTML(t, step) {
   const again = step === 2 && (hasPages(t.id) || t.students.length > 0);
-  return `<div class="row"><button class="btn primary" type="button" data-un="ansFile">${again ? '학생 문제지 다시 넣기' : '학생 문제지 넣기(스캔한 것)'}</button>
+  return `<div class="row"><button class="btn primary" type="button" data-un="ansFile" data-drop-pick>${again ? '학생 문제지 다시 넣기' : '학생 문제지 넣기(스캔한 것)'}</button>
         <label class="cls-inline">학생 한 명 <input class="field num" type="number" id="unPagesPer" min="1" max="8" value="${getSet().pagesPer}"> 쪽</label>
         <span class="muted" id="unAnsMsg" role="status">${esc(ansMsg(t, step === 1))}</span></div>
       <input type="file" id="unAnsFile" accept="${step === 1 ? '.pdf,.png,.jpg,.jpeg,.webp,.hwp,.hwpx,.txt' : '.pdf,.png,.jpg,.jpeg,.webp'}" multiple hidden>`;

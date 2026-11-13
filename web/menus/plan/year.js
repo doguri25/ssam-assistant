@@ -145,7 +145,7 @@ function step1() {
       <h3>자료</h3>
       ${reading[plan.id] ? `<p class="muted"><span class="spin"></span> ${esc(reading[plan.id])}</p>` : ''}
       ${SRC.map(([k, label, hint]) => `<div class="yp-src">
-        <div class="yp-src-h"><span class="lab">${label}</span><span class="row">${k === 'lastPlan' ? '<button class="btn text" type="button" data-y="importPrev">지난 계획에서 불러오기</button>' : ''}<button class="btn" type="button" data-file="${k}">파일 넣기</button></span></div>
+        <div class="yp-src-h"><span class="lab">${label}</span><span class="row">${k === 'lastPlan' ? '<button class="btn text" type="button" data-y="importPrev">지난 계획에서 불러오기</button>' : ''}<button class="btn" type="button" data-file="${k}" data-drop-pick>파일 넣기</button></span></div>
         ${k === 'lastPlan' && showPrev ? prevHTML() : ''}
         <p class="muted">${hint}</p>
         <div class="yp-files muted" data-for="${k}">${plan.sourceNames[k].length ? '넣은 파일: ' + plan.sourceNames[k].map(esc).join(', ') : ''}</div>

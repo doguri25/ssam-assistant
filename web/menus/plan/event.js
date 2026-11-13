@@ -167,7 +167,7 @@ function step1() {
       <div id="evDateBox">${dateWarnHTML()}</div>
     </div>
     <div class="yp-card">
-      <div class="yp-src-h"><h3>작년 설문 결과 <span class="muted">(선택)</span></h3><span class="row"><button class="btn text" type="button" data-e="importMemo">지난 행사 개선 메모 불러오기</button><button class="btn" type="button" data-e="lastFile">파일 넣기</button></span></div>
+      <div class="yp-src-h"><h3>작년 설문 결과 <span class="muted">(선택)</span></h3><span class="row"><button class="btn text" type="button" data-e="importMemo">지난 행사 개선 메모 불러오기</button><button class="btn" type="button" data-e="lastFile" data-drop-pick>파일 넣기</button></span></div>
       ${showMemos ? memosHTML() : ''}
       <p class="muted">있으면 아쉬운 점을 고친 「보완안」도 만들어요. CSV·엑셀·한글 파일이나 붙여넣기.</p>
       <textarea class="field" id="evLast" rows="4" placeholder="작년 설문 결과나 반성 메모" aria-label="작년 설문 결과">${esc(ev.lastSurvey)}</textarea>
@@ -179,7 +179,7 @@ function step1() {
 function refsCard() {
   return `<div class="yp-card" id="evRefs">
     <div class="yp-src-h"><h3>참고 자료 <span class="muted">(선택 · 상위 계획, 교육청 공문 등)</span></h3>
-      <span class="row"><button class="btn text" type="button" data-e="refPlan">연간계획에서 불러오기</button><button class="btn text" type="button" data-e="refPaste">붙여넣기</button><button class="btn" type="button" data-e="refFile">파일 넣기</button></span></div>
+      <span class="row"><button class="btn text" type="button" data-e="refPlan">연간계획에서 불러오기</button><button class="btn text" type="button" data-e="refPaste">붙여넣기</button><button class="btn" type="button" data-e="refFile" data-drop-pick>파일 넣기</button></span></div>
     ${showPlans ? plansHTML() : ''}
     <p class="muted">AI가 구성안과 문서를 만들 때 참고해요. 공문의 날짜·대상·필수 활동·안전 기준 같은 요구 사항을 지키게 해요. 원본 파일은 저장하지 않고 읽은 글만 저장해요.</p>
     ${ev.refs.length ? `<ul class="ev-refs">${ev.refs.map(r => `<li data-ref="${esc(r.id)}">
@@ -326,7 +326,7 @@ function resultCardHTML() {
   const sv = survey(), bz = busy[ev.id], r = sv.result;
   return `<div class="yp-card" id="evResultCard"><h3>설문 결과</h3>
       <p class="muted">구글 폼 응답을 CSV로 내려받아 올리면 문항별 결과·서술형 요약·결과 보고서 초안·내년 개선 메모를 만들어요.</p>
-      <div class="row"><button class="btn" type="button" data-e="csv">응답 CSV 올리기</button><button class="btn" type="button" data-e="toReport">결과 보고 공문·보고서 쓰기</button></div>
+      <div class="row"><button class="btn" type="button" data-e="csv" data-drop-pick>응답 CSV 올리기</button><button class="btn" type="button" data-e="toReport">결과 보고 공문·보고서 쓰기</button></div>
       ${bz === 'result' ? '<p class="muted"><span class="spin"></span> 결과 보고서를 쓰고 있어요…</p>' : ''}
       ${r ? resultHTML(r) : ''}
       ${r && bz !== 'result' ? `<label class="yp-f"><span class="lab">결과 보고서</span><textarea class="field ev-doc" id="evReport" rows="12">${esc(sv.report)}</textarea></label>

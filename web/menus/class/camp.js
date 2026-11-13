@@ -54,7 +54,7 @@ function redraw() { if (!visible()) return; if (typing()) stale = true; else ren
 const btnBusy = (k, idle, doing) => (busy[k] ? `<span class="spin"></span>${doing}` : idle);
 const PLAN_ACCEPT = '.hwp,.hwpx,.pdf,.docx,.txt,.png,.jpg,.jpeg,.webp,.heic';
 /* 계획 파일 넣기 줄(캠프 정보·수업 일정에 하나씩) */
-const planRow = (c, where) => `<div class="row cp-plan"><button class="btn tonal" type="button" data-cp="planFile" data-where="${where}"${busy[`${c.id}:plan`] ? ' disabled' : ''}>${btnBusy(`${c.id}:plan`, '계획 파일 넣기', '계획서 읽는 중…')}</button>
+const planRow = (c, where) => `<div class="row cp-plan"><button class="btn tonal" type="button" data-cp="planFile" data-drop-pick data-where="${where}"${busy[`${c.id}:plan`] ? ' disabled' : ''}>${btnBusy(`${c.id}:plan`, '계획 파일 넣기', '계획서 읽는 중…')}</button>
   <span class="muted">운영 계획서(한글·PDF·워드)를 넣으면 캠프 이름·대상·교과·지도교사(빈 칸만)와 수업 일정(기간·시간·교시${ai.ready() ? '·지도 내용' : ''})을 채워요.</span>
   <input type="file" id="cpPlanFile-${where}" hidden accept="${PLAN_ACCEPT}"></div>`;
 function pickHTML(camps, c) {
@@ -205,7 +205,7 @@ function docsHTML(c) {
       <div class="cls-card-h"><h3>${esc(docLabel(d, c))}</h3><span class="muted">${esc(docSummary(d, c))}</span></div>
       <div class="row cp-doc-row">
         <select class="field" data-form-pick="${d}" aria-label="${esc(docLabel(d, c))} 양식"><option value="">기본 양식(쌤비서)</option>${list.map(x => `<option value="${esc(x.id)}"${f && x.id === f.id ? ' selected' : ''}>${esc(x.name)}${x.kind === 'hwpx' ? ' (.hwpx)' : ' (모양만)'}</option>`).join('')}</select>
-        <button class="btn" type="button" data-cp="pickForm" data-doc="${d}"${n ? ' disabled' : ''}>${n ? '<span class="spin"></span>읽는 중…' : '양식 넣기'}</button>
+        <button class="btn" type="button" data-cp="pickForm" data-drop-pick data-doc="${d}"${n ? ' disabled' : ''}>${n ? '<span class="spin"></span>읽는 중…' : '양식 넣기'}</button>
         ${f ? `<button class="btn text" type="button" data-cp="delForm" data-doc="${d}">양식 지우기</button>` : ''}
         <input type="file" id="cpFile-${d}" hidden accept=".hwpx,.hwp,.pdf,.png,.jpg,.jpeg,.webp,.heic">
         <span class="grow"></span>${exportButton(`data-cp="export" data-doc="${d}"`, { cls: 'primary' })}</div>

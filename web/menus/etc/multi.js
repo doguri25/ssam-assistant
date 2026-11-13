@@ -105,7 +105,7 @@ function itemHTML(it) {
         <button class="mv-evchip-file" type="button" data-mv-evfile="${id}|${esc(x.id)}" title="「${esc(x.name)}」 내려받기" aria-label="「${esc(x.name)}」 파일 내려받기">${CLIP_SVG}</button>
         <input class="mv-evchip-label" data-mv-evlabel="${id}|${esc(x.id)}" value="${esc(x.label)}" size="${chipSize(x.label)}" aria-label="${esc(x.name)} 비고 글" title="${esc(x.label)}" autocomplete="off">
         <button class="mv-evchip-del" type="button" data-mv-evdel="${id}|${esc(x.id)}" aria-label="${esc(x.name)} 빼기">×</button></li>`).join('')}
-        <li class="mv-ev-addli"><button class="btn mv-ev-add" type="button" data-mv="evAdd" data-item="${id}" title="PDF·한글·워드·사진, 5MB까지. ${NO_KID}"${n ? ' disabled' : ''}>${n ? '<span class="spin"></span>읽는 중…' : '+ 근거자료'}</button>
+        <li class="mv-ev-addli"><button class="btn mv-ev-add" type="button" data-mv="evAdd" data-drop-pick data-item="${id}" title="PDF·한글·워드·사진, 5MB까지. ${NO_KID}"${n ? ' disabled' : ''}>${n ? '<span class="spin"></span>읽는 중…' : '+ 근거자료'}</button>
         <input type="file" id="mvEv-${id}" data-mv-evinput="${id}" hidden multiple accept="${EVIDENCE_ACCEPT}"></li></ul>
       <label class="yp-f"><span class="lab">비고${edited ? ' <span class="cls-tag">고친 글</span>' : ''}</span><textarea class="field" data-mv-note="${id}" rows="2" placeholder="근거자료를 넣으면 「• 문서 제목 [번호, 날짜.]」가 들어가요">${esc(st.quant.notes[it.id] || '')}</textarea></label>
       ${edited && ev.length ? `<button class="btn text" type="button" data-mv="noteAuto" data-item="${id}">근거자료로 다시 채우기</button>` : ''}
@@ -172,7 +172,7 @@ function quantHTML() {
     <section class="yp-card mv-form">
       <div class="cls-card-h"><h3>정량평가 기준</h3><span class="muted">${esc(q.formName ? `「${q.formName}」 · ` : '')}묶음 ${c.groups.length}개 · 항목 ${allItems(c).length}개</span></div>
       ${dflt ? '<p class="banner info"><span class="grow">예시 기준이에요. 학교 기준 양식을 넣어 주세요.</span></p>' : ''}
-      <div class="row"><button class="btn" type="button" data-mv="quantForm"${busy.quantForm ? ' disabled' : ''}>${busy.quantForm ? '<span class="spin"></span>읽는 중…' : '기준 양식 넣기'}</button>
+      <div class="row"><button class="btn" type="button" data-mv="quantForm" data-drop-pick${busy.quantForm ? ' disabled' : ''}>${busy.quantForm ? '<span class="spin"></span>읽는 중…' : '기준 양식 넣기'}</button>
         ${q.formName ? '<button class="btn text" type="button" data-mv="quantFormDel">기준 양식 지우기</button>' : ''}
         <input type="file" id="mvQuantFile" hidden accept="${FORM_ACCEPT}"></div>
       <p class="muted" style="margin:0">한글(.hwp·.hwpx)·PDF·워드 기준 양식은 AI 없이 읽어요. 사진·스캔이거나 규칙으로 못 읽으면 AI가 읽어요(글은 학교·이름을 가려 보내고, 사진·스캔은 그림 그대로 가요).</p>
@@ -216,7 +216,7 @@ function qualHTML() {
   return `<section class="yp-card mv-form">
       <div class="cls-card-h"><h3>정성평가 기준</h3><span class="muted">${esc(q.formName ? `「${q.formName}」` : '예시 서식(교사 자기실적평가서)')}</span></div>
       ${q.formName ? '' : '<p class="banner info"><span class="grow">예시 서식이에요. 학교 정성평가 기준·자기실적평가서 양식을 넣어 주세요.</span></p>'}
-      <div class="row"><button class="btn" type="button" data-mv="qualForm"${busy.qualForm ? ' disabled' : ''}>${busy.qualForm ? '<span class="spin"></span>읽는 중…' : '기준 양식 넣기'}</button>
+      <div class="row"><button class="btn" type="button" data-mv="qualForm" data-drop-pick${busy.qualForm ? ' disabled' : ''}>${busy.qualForm ? '<span class="spin"></span>읽는 중…' : '기준 양식 넣기'}</button>
         ${q.formName ? '<button class="btn text" type="button" data-mv="qualFormDel">기준 양식 지우기</button>' : ''}
         <input type="file" id="mvQualFile" hidden accept="${FORM_ACCEPT}"></div>
       <details class="mv-crit" data-mv-open="crit"${open.crit ? ' open' : ''}><summary>평가 지표 보기</summary>

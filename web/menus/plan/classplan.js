@@ -138,7 +138,7 @@ function step1() {
       <h3>자료</h3>
       ${reading[plan.id] ? `<p class="muted"><span class="spin"></span> ${esc(reading[plan.id])}</p>` : ''}
       ${SRC.map(([k, label, hint]) => `<div class="yp-src">
-        <div class="yp-src-h"><span class="lab">${label}</span><span class="row">${k === 'lastPlan' ? '<button class="btn text" type="button" data-c="importPrev">지난 학급운영계획에서 불러오기</button>' : ''}<button class="btn" type="button" data-file="${k}">파일 넣기</button></span></div>
+        <div class="yp-src-h"><span class="lab">${label}</span><span class="row">${k === 'lastPlan' ? '<button class="btn text" type="button" data-c="importPrev">지난 학급운영계획에서 불러오기</button>' : ''}<button class="btn" type="button" data-file="${k}" data-drop-pick>파일 넣기</button></span></div>
         ${k === 'lastPlan' && showPrev ? prevHTML() : ''}
         <p class="muted">${hint}</p>
         <div class="yp-files muted">${plan.sourceNames[k].length ? '넣은 파일: ' + plan.sourceNames[k].map(esc).join(', ') : ''}</div>
@@ -159,7 +159,7 @@ function attInfo(a) {
 }
 function attachHTML() {
   return `<div class="yp-card">
-      <div class="yp-src-h"><h3>첨부파일</h3><button class="btn" type="button" data-file="attach">첨부파일 넣기</button></div>
+      <div class="yp-src-h"><h3>첨부파일</h3><button class="btn" type="button" data-file="attach" data-drop-pick>첨부파일 넣기</button></div>
       <p class="muted">스쿨마스터 등에서 받은 진도표·평가계획을 넣으면 읽어서 시수표·평가 표로 넣고, 계획서 끝 붙임 목록에 적어요. 여러 개 넣을 수 있어요.</p>
       ${readingAtt[plan.id] ? `<p class="muted"><span class="spin"></span> ${esc(readingAtt[plan.id])}</p>` : ''}
       <ul class="cp-attach" id="cpAttach">${plan.attach.map(a => `<li data-att="${esc(a.id)}">
