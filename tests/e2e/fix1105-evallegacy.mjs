@@ -344,6 +344,8 @@ await run('fix1105-evallegacy', [
     await page.waitForTimeout(200);
     const after = await page.inputValue('#hkMemo');
     assert(after === (before.trim() ? before.trim().replace(/[,，\s]*$/, '') + ', 예의 바름' : '예의 바름'), after);
+    // 화면 정리: 묶음마다 접혀 있어(처음엔 생활만 펼침) 관계 묶음을 펼친 뒤 누름
+    await page.click('#hkEditor details[data-kwg="관계"] > summary');
     await page.click('#hkEditor [data-kw="새 친구와 잘 어울림"]');
     await page.waitForTimeout(700);
     const hk = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:hk')));

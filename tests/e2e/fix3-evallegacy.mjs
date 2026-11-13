@@ -67,6 +67,8 @@ const putBundle = async (files, card = true) => {
   await page.setInputFiles('#bundleFile-gr', files);
   if (card) { await page.waitForSelector('#sheetRoot #bundleOk', { timeout: 15000 }); await page.click('#sheetRoot #bundleOk'); }
 };
+// 화면 정리(스펙 2026-11-14-ui-tidy): 자주 안 바꾸는 설정은 접혀 있어 펼친 뒤 바꿈
+const openFold = async key => { await page.waitForSelector(`[data-fold="${key}"]`); if (!(await page.$eval(`[data-fold="${key}"]`, d => d.open))) await page.click(`[data-fold="${key}"] > summary`); };
 // 사람처럼 누르기(누름 → 80ms → 뗌)
 const press = async (sel, i = 0) => {
   const el = page.locator(sel).nth(i);
@@ -116,6 +118,7 @@ await run('fix3-evallegacy', [
     await setLS({}, ['ssam:hk', 'ssam:class:info']);
     await page.goto(url, { timeout: 30000 }); await page.waitForTimeout(500);
     await hkOpen();
+    await openFold('hk-set');
     await page.waitForSelector('#hkGrade');
     await page.selectOption('#hkGrade', '5'); await page.selectOption('#hkGrade', '3');
     await page.waitForTimeout(700);
@@ -183,6 +186,7 @@ await run('fix3-evallegacy', [
     const files = [];
     for (let i = 1; i <= 6; i++) files.push(await shot(300 + i * 10, `a${i}.png`));
     await upload(files);
+    await openFold('gr-pages');
     await page.fill('#grPer', '2'); await page.dispatchEvent('#grPer', 'change');
     await page.evaluate(() => document.querySelector('#grView').classList.add('show-pane'));
     await until(async () => (await rows()).length === 3, 3000);
