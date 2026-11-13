@@ -45,6 +45,9 @@ export function gapHTML(tests, { subject = '' } = {}) {
   </div>`;
 }
 
+/* 평가 한 바퀴 띠(unit-flow-card.js) 「도달하지 못한 학생」: 그 평가의 학생을 골라 둔 채로 엶(목록에 없는 번호는 그릴 때 빠짐) */
+export const pickGap = nos => { G.sel = new Set((nos || []).map(Number).filter(Number.isFinite)); };
+
 const mine = e => { const box = getBox(); return !!box && box.contains(e.target) && visible() && U.view === 'results' && !!e.target.closest('.un-gap'); };
 function paintList() {
   const el = getBox() && getBox().querySelector('#unGapList');
