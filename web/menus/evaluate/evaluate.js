@@ -6040,7 +6040,7 @@ async function checkItems() {
   for (const a of CC_AREAS) {
     const A = ccArea(a.k), acts = ccActs(a.k);
     for (const no of Object.keys(A.items).map(Number).filter(n => n > 0 && inClass(n)).sort((x, y) => x - y)) for (const act of acts) {
-      const pt = A.items[no].parts && A.items[no].parts[act.id];
+      const it = A.items[no], pt = it && it.parts && it.parts[act.id];
       if (pt && pt.t) out.push({ ref: ckRef('cc', a.k, no, act.id), src: 'cc', label: `창의적 체험활동 · ${a.name} · ${no}번${acts.length > 1 ? ' · ' + ((act.name || '').trim() || '활동') : ''}`, who: no, group: 'cc:' + a.k, text: pt.t });
     }
   }
