@@ -247,6 +247,9 @@ await run('eval-check', [
     try {
       await page.waitForTimeout(200);
       assert(await noOverflow(), '넘침');
+      // 숨긴 읽기 글(.sr-only)이 문서를 늘려 화면 전체가 밀리지 않음(아래 탭이 화면 아래에 붙어 있게)
+      const d = await page.evaluate(() => [document.documentElement.scrollHeight, innerHeight]);
+      assert(d[0] <= d[1] + 1, '문서 높이 ' + d);
       const hs = await page.$$eval(`${B} button, ${B} select`, bs => bs.filter(b => b.offsetParent).map(b => Math.round(b.getBoundingClientRect().height)));
       assert(hs.length && hs.every(h => h >= 44), '높이 ' + hs.join(','));
     } finally { await page.setViewportSize({ width: 1280, height: 860 }); }

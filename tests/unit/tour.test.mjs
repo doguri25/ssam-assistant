@@ -31,9 +31,9 @@ test('안내: 「둘러보기」를 물으면 둘러보기 안내, 버튼은 둘
   assert.equal(offlineAnswer('키 없이 무료로 써도 돼?').ids[0], 'trial');
 });
 
-test('단계: 오늘 → 단원평가 결과 → 도달하지 못한 학생 → 기초학력 사전·사후 → 근거 평어 → 끝(5~6단계, 글은 짧게)', () => {
+test('단계: 오늘 → 단원평가 결과 → 도달하지 못한 학생 → 기초학력 사전·사후 → 근거 평어 → 기재 점검 → 끝(글은 짧게)', () => {
   const ids = TOUR_STEPS.map(s => s.id);
-  assert.deepEqual(ids, ['home', 'unit', 'gap', 'growth', 'evidence', 'end']);
+  assert.deepEqual(ids, ['home', 'unit', 'gap', 'growth', 'evidence', 'check', 'end']);
   for (const s of TOUR_STEPS) {
     assert.ok(s.title && s.text && s.text.length <= 90, `${s.id}: ${s.text}`);
     assert.equal(typeof s.go, 'function', s.id);
@@ -44,12 +44,12 @@ test('단계: 오늘 → 단원평가 결과 → 도달하지 못한 학생 → 
 
 test('단계 늘리기: 끝 단계 앞에 끼워 넣음(같은 id는 바꿈)', () => {
   const before = tourSteps().map(s => s.id);
-  addTourStep({ id: 'check', title: '기재 점검', text: '기재하면 안 되는 말을 찾아 줘요.', target: '.x', go: () => {} });
+  addTourStep({ id: 'extra', title: '더', text: '더 보여 줘요.', target: '.x', go: () => {} });
   const after = tourSteps().map(s => s.id);
-  assert.deepEqual(after, [...before.slice(0, -1), 'check', 'end']);
-  addTourStep({ id: 'check', title: '기재 점검', text: '바꾼 글이에요.', target: '.y', go: () => {} });
-  assert.equal(tourSteps().filter(s => s.id === 'check').length, 1);
-  assert.equal(tourSteps().find(s => s.id === 'check').target, '.y');
+  assert.deepEqual(after, [...before.slice(0, -1), 'extra', 'end']);
+  addTourStep({ id: 'extra', title: '더', text: '바꾼 글이에요.', target: '.y', go: () => {} });
+  assert.equal(tourSteps().filter(s => s.id === 'extra').length, 1);
+  assert.equal(tourSteps().find(s => s.id === 'extra').target, '.y');
   addTourStep({ id: 'first', title: '처음', text: '앞에 넣어요.', target: '.z', go: () => {} }, { before: 'unit' });
   assert.deepEqual(tourSteps().map(s => s.id).slice(0, 3), ['home', 'first', 'unit']);
 });

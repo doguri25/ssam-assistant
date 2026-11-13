@@ -1,5 +1,5 @@
 // 3분 둘러보기(스펙 2026-11-13-miss-tour-check §3): 오늘 [3분 둘러보기] → 묻는 창 → 체험용 자료로 옮김(띠 「체험 중 · [체험 끝내기]」) →
-// 안내 6단계(그 화면으로 가서 테두리, [다음]·[건너뛰기], Esc, 말풍선으로 초점), 다시 열어도 띠·하던 단계, 체험 중 백업·불러오기·새 학년도·학년도 옮기기 막음,
+// 안내 7단계(그 화면으로 가서 테두리, [다음]·[건너뛰기], Esc, 말풍선으로 초점), 다시 열어도 띠·하던 단계, 체험 중 백업·불러오기·새 학년도·학년도 옮기기 막음,
 // 채팅 「둘러보기」「체험」, [체험 끝내기] → 원래 자료로(학년도 키가 글자 하나까지 같음, 체험용 보관 자료 지움), 390px(넘침 없음·말풍선은 아래 탭 위)
 import { open, run, assert } from './helpers.mjs';
 
@@ -80,7 +80,7 @@ await run('tour', [
     assert((await ls('camp')).includes('김하늘') && !(await ls('camp')).includes('5학년 수학 교실'), '체험 자료가 아님');
     assert(JSON.parse(await ls('class')).count === 12 && !String(await ls('hk')).includes('토론에서'), '체험 명단');
     assert(await archived().then(l => l.includes(2026)), '선생님 자료가 보관함에 없음');
-    assert(await step() === '안내 1 / 6' && (await popText()).includes('오늘'), await step());
+    assert(await step() === '안내 1 / 7' && (await popText()).includes('오늘'), await step());
     assert(await ringOn(`${H} .hm-cards`), '오늘 카드에 테두리');
     assert(await focusInPop(), '초점이 말풍선에');
     assert((await page.textContent(`${H} .hm-date`)).includes('체험용 자료') && (await page.textContent('#sideYear')).includes('체험용 자료'), '학년도 표시');
@@ -125,7 +125,7 @@ await run('tour', [
   }],
   ['끝 단계: [더 둘러보기]·[체험 끝내기], [체험 끝내기]를 가리킴', async () => {
     await page.click(`${BAND} [data-tour="steps"]`);
-    for (let n = 2; n <= 6; n++) await next(n);
+    for (let n = 2; n <= 7; n++) await next(n);
     assert(await page.locator(`${POP} [data-tour="next"]`).count() === 0 && await page.locator(`${POP} [data-tour="exit"]`).count() === 1 && (await popText()).includes('더 둘러보기'), await popText());
     assert(await ringOn(`${BAND} [data-tour="exit"]`), '끝내기 단추 테두리');
     await page.click(`${POP} [data-tour="skip"]`);
@@ -186,7 +186,7 @@ await run('tour', [
     await page.waitForSelector('#sheetRoot #tourGo');
     await reloadAfter('#sheetRoot #tourGo');
     await page.waitForSelector(POP);
-    for (let n = 1; n <= 6; n++) {
+    for (let n = 1; n <= 7; n++) {
       if (n > 1) await next(n);
       await page.waitForTimeout(150);
       const r = await page.evaluate(() => {

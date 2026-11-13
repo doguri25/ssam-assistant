@@ -156,3 +156,13 @@ test('체험용 학년도 번호는 진짜 학년도와 겹치지 않음', () =>
   assert.ok(Number.isInteger(DEMO_YEAR) && DEMO_YEAR > 2100 && DEMO_YEAR <= 9999, String(DEMO_YEAR));
   assert.deepEqual(DEMO_NAMES, ['김하늘', '이바다', '한가람']);
 });
+
+test('기재 점검에서 보일 글: 교과 평어 하나에 사교육(학원) 문장 — 근거도 없음', async () => {
+  const { checkText } = await import('../../web/menus/evaluate/check/check-rules.js');
+  const py = JSON.parse(demoSnapshot(T)['unit:pyeongeo:국어']);
+  const hits = Object.entries(py.students).filter(([, s]) => checkText(s.text).some(x => x.kind === 'ban'));
+  assert.equal(hits.length, 1, JSON.stringify(hits.map(([no]) => no)));
+  const [, s] = hits[0], bad = s.ev.sentences.find(x => /학원/.test(x.t));
+  assert.ok(bad && bad.src.length === 0, '근거 없는 문장');
+  assert.equal(s.text, s.ev.sentences.map(x => x.t).join(' '), '글과 문장이 같음(「고친 글」 아님)');
+});

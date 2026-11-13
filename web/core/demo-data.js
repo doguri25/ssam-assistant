@@ -84,6 +84,7 @@ const batchim = w => { const c = String(w).charCodeAt(String(w).length - 1) - 0x
 const GOOD = [n => `${n}에서 내용을 정확하게 이해하고 바르게 답함.`, n => `${n}${batchim(n) ? '을' : '를'} 꼼꼼하게 해내 좋은 결과를 보임.`];
 const WEAK = n => `${n}${batchim(n) ? '은' : '는'} 차근차근 다시 살펴보며 실력을 키워 가고 있음.`;
 const PLAIN = '수업 시간에 바른 자세로 참여하며 친구의 생각을 귀 기울여 들음.'; // 근거가 없는 문장(화면에 「근거 없음」)
+const ACADEMY = '방과 후 논술 학원에서 익힌 글쓰기 방법을 수업 시간에 활용함.'; // 근거 없음 + 기재 점검 「사교육」(둘러보기 기재 점검 단계)
 
 function pyeongeo(tests) {
   const nos = [...new Set(tests.flatMap(t => graded(t).map(s => s.no)))].sort((a, b) => a - b);
@@ -99,6 +100,7 @@ function pyeongeo(tests) {
     const id = r => (list[used.indexOf(r)] || {}).id;
     const sentences = [...good.map((r, i) => ({ t: GOOD[i](r.name), src: [id(r)] })), ...weak.map(r => ({ t: WEAK(r.name), src: [id(r)] }))].filter(s => s.src[0]);
     if (no % 3 === 1) sentences.push({ t: PLAIN, src: [] });
+    if (no === nos[1]) sentences.push({ t: ACADEMY, src: [] }); // 기재 점검이 찾을 글(사교육)
     students[no] = { level: levelOf(avg), text: joinSentences(sentences), manual: false, ev: { list, sentences } };
   }
   return { off: [], cuts: { top: 95, high: 80, mid: 60 }, students };
