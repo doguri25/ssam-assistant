@@ -35,3 +35,24 @@ section[data-menu="settings"] .credit{margin-top:8px}
 .yr-pick li{padding:6px 0}
 .yr-pick label{display:flex;flex-wrap:wrap;align-items:center;gap:8px;cursor:pointer}
 .sheet .row > .grow{flex:1}
+/* AI로 보낸 글: 펼침은 ▸·▾ 기호로(색만으로 나타내지 않음), 보낸 글은 줄바꿈 그대로 칸 안에서 스크롤 */
+.ai-log-head{align-items:center}
+.ai-log-head .grow{flex:1}
+.ai-log-head .btn{min-height:44px}
+.ai-log-empty{margin:0}
+.ai-log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;min-width:0}
+.ai-log-row{border-top:1px solid var(--line);min-width:0}
+.ai-log-row:first-child{border-top:0}
+.ai-log-sum{display:flex;align-items:center;gap:8px;min-height:44px;padding:6px 0;cursor:pointer;list-style:none;font-weight:600;font-size:14px}
+.ai-log-sum::-webkit-details-marker{display:none}
+.ai-log-mark{flex:none;width:1em;color:var(--ink2)}
+.ai-log-mark::before{content:'▸'}
+details[open] > .ai-log-sum .ai-log-mark::before{content:'▾'}
+.ai-log-line{min-width:0;overflow-wrap:anywhere}
+.ai-log-body{display:flex;flex-direction:column;gap:8px;padding:0 0 12px;min-width:0}
+.ai-log-to,.ai-log-imgs{margin:0}
+.ai-log-text{margin:0;max-height:320px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:400 13px/1.6 var(--f-body);color:var(--ink);background:var(--surface2);border:1px solid var(--line);border-radius:var(--r-s);padding:10px 12px}
+.ai-log-thumbs{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}
+.ai-log-thumbs:empty{display:none}
+.ai-log-thumbs img{display:block;width:160px;max-width:100%;height:auto;border:1px solid var(--line);border-radius:var(--r-s);background:#fff}
+.ai-log-thumbs .ai-log-imgs{flex-basis:100%}

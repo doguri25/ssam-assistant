@@ -15,7 +15,8 @@ const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&a
 export async function reviewJSON(task, prompt, { images, valid, signal, shared, meter } = {}) {
   const use = pick(task, 'review');
   if (!use) return null;
-  try { return await ai.generateJSON(prompt, { use, images, valid, signal, shared, meter }); }
+  // role·logAs는 「AI로 보낸 글」에 「… 검토」로 적으려고(task는 넘기지 않음 — 검토 글에 글쓰기 원칙이 붙지 않게)
+  try { return await ai.generateJSON(prompt, { use, role: 'review', logAs: task, images, valid, signal, shared, meter }); }
   catch (e) { return { error: (e && e.code) || 'upstream_error' }; }
 }
 

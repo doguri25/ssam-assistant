@@ -77,3 +77,22 @@ test('할 일 목록: 이름·설명이 있고 id는 겹치지 않음', () => {
   assert.equal(new Set(INTENT_IDS).size, INTENTS.length);
   assert.equal(intentLabel('zzz'), '');
 });
+
+// AI로 보낸 글(스펙 2026-11-13 §2): 「보낸 글」「AI로 뭐 보냈어」「AI에 보낸 내용」 → 설정 › AI 「AI로 보낸 글」. 쪽지·가정통신문·공문을 「보낸」 글은 그 일
+test('AI로 보낸 글: 「보낸 글」「AI로 뭐 보냈어」「AI에 보낸 내용」 → aiLog(묻는 꼴이어도)', () => {
+  assert.ok(INTENT_IDS.includes('aiLog'));
+  assert.equal(intentLabel('aiLog'), 'AI로 보낸 글');
+  for (const t of ['보낸 글', '보낸 글 보기', '보낸 글 보여 줘', '보낸 내용', 'AI로 보낸 글', 'AI로 보낸 글 보여 줘', 'AI에 보낸 내용', 'AI에 보낸 내용 보여 주세요',
+    'AI로 뭐 보냈어', 'AI로 뭐 보냈어?', 'ai한테 뭐 보냈어?', 'AI에 무엇을 보냈나요?', 'AI로 보낸 거 확인', '에이아이로 보낸 글', 'Gemini로 보낸 글'])
+    sure(t, 'aiLog');
+});
+
+test('AI로 보낸 글: 다른 일의 「보낸」·「AI」 글은 그 일', () => {
+  sure('쪽지 보낸 글', 'message');
+  sure('어제 보낸 가정통신문 다시 써 줘', 'letter');
+  sure('공문 보낸 내용 정리', 'gongmun');
+  sure('AI 키 넣기', 'aikey');
+  sure('AI 설정', 'aikey');
+  for (const t of ['email 보낸 글 정리해 줘', '학부모님께 보낸 안내장 내용으로 가정통신문 써 줘', '선생님들께 보낸 쪽지 다시', '3번 학생이 보낸 글을 칭찬함'])
+    assert.notEqual(R(t).intent, 'aiLog', t);
+});

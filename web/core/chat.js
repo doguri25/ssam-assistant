@@ -307,6 +307,14 @@ const tell = (st, words) => say(words[st] || words.error || '하지 못했어요
 /* 할 일 하기: 분명하면 그 메뉴로 가서 칸을 채우고 바로 시작(저장·결재·상신은 선생님이 직접) */
 async function run(intent, p = {}) {
   if (NAV[intent]) { const [m, t, msg] = NAV[intent]; go(m, t); say(msg); afterGo(); return; }
+  if (intent === 'aiLog') {
+    // 설정 › AI의 「AI로 보낸 글」 카드(menus/settings/settings.js)까지 내려 줌
+    go('settings', 'ai');
+    const card = document.getElementById('setAiLog');
+    if (card) card.scrollIntoView({ block: 'start' });
+    say('설정 › AI의 「AI로 보낸 글」로 왔어요. 이 창을 켠 뒤 AI에 보낸 글을 최근 20개까지 보여 줘요.');
+    afterGo(); return;
+  }
   if (intent === 'purchase') {
     if (!p.text) { go('purchase', 'new'); say('품의 › 새 품의로 왔어요. 사려는 것을 적어 주세요. 예) 알코올램프 10개 5,000원'); afterGo(); return; }
     (await import('../menus/purchase/purchase.js')).putPurchaseText(p.text);

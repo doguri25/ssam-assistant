@@ -1155,31 +1155,55 @@ async function generate(prompt, opts = {}) {
     return r;
   } finally { if (busy) busy(); }
 }
-async function generateRaw(prompt, { onText, signal, fresh, images, careful, use, task, role, shared, meter } = {}) {
+/* logAs: 「AI로 보낸 글」에 적을 업무(검토 AI처럼 use로 부르면 task가 없음 — 원칙·점은 그대로 두고 이름만) */
+async function generateRaw(prompt, { onText, signal, fresh, images, careful, use, task, role, shared, meter, logAs } = {}) {
   const pickd = E.engine === 'account' ? null : roleAI(use, task, role);
-  if (pickd && PROVIDERS[pickd.engine] && keyOf(pickd.engine)) {
-    const prov = pickd.engine;
-    try {
-      if (prov === 'upstage') { prompt = await upstageFlat(prompt, images, shared, signal); images = null; shared = null; }
-      return await callApi(prov, prompt, { onText, signal, images, careful, model: pickd.model, shared, meter });
-    } catch (e) { if (e && typeof e === 'object' && !e.provider) e.provider = prov; throw e; }
-  }
-  if (E.engine === 'account') {
-    // Claude 계정은 하나로 이어 붙여 보냄(공통 → 학생)
-    if (shared) { const f = (await wire()).flatten({ text: prompt, images: images || [], shared }); prompt = f.text; images = f.images.length ? f.images : null; }
-    const opts = { signal, onText, modelTier: careful || S.settings.tier === 'careful' ? 'default' : 'quick' };
-    if (fresh || (images && images.length)) opts.cache = false;
-    if (images && images.length) {
-      let lim = null;
-      try { lim = await cap.sample.limits(); } catch (e) {}
-      if (!lim || !lim.images) throw { code: 'images_unavailable' };
-      opts.images = await fitImages(images, lim.images.maxCount || 1);
+  const picked = !!(pickd && PROVIDERS[pickd.engine] && keyOf(pickd.engine));
+  const prov = picked ? pickd.engine : E.engine === 'account' ? 'account' : E.engine && PROVIDERS[E.engine] ? E.engine : null;
+  if (!prov) throw { code: 'no_engine' };
+  const model = picked ? pickd.model : prov === 'account' ? '' : E.models[prov];
+  // 이 기기를 떠나는 그림: 공통 그림 → 요청 그림(업스테이지는 글자 읽기로 보냄)
+  const sentImages = [...((shared && shared.images) || []), ...(images || [])];
+  const before = sentText(prompt, shared);
+  try {
+    let opts = null, ocrErr = null;
+    if (prov === 'upstage') {
+      // 글자 읽기에서 멈춰도 그림은 이미 보냈을 수 있어 적고 나서 그 오류를 냄
+      try { prompt = await upstageFlat(prompt, images, shared, signal); } catch (e) { ocrErr = e; prompt = before; }
+      images = null; shared = null;
+    } else if (prov === 'account') {
+      // Claude 계정은 하나로 이어 붙여 보냄(공통 → 학생)
+      if (shared) { const f = (await wire()).flatten({ text: prompt, images: images || [], shared }); prompt = f.text; images = f.images.length ? f.images : null; shared = null; }
+      opts = { signal, onText, modelTier: careful || S.settings.tier === 'careful' ? 'default' : 'quick' };
+      if (fresh || (images && images.length)) opts.cache = false;
+      if (images && images.length) {
+        let lim = null;
+        try { lim = await cap.sample.limits(); } catch (e) {}
+        if (!lim || !lim.images) throw { code: 'images_unavailable' };
+        opts.images = await fitImages(images, lim.images.maxCount || 1);
+      }
     }
-    return cap.sample(prompt, opts);
-  }
-  if (E.engine === 'upstage') { prompt = await upstageFlat(prompt, images, shared, signal); images = null; shared = null; }
-  if (E.engine && PROVIDERS[E.engine]) return callApi(E.engine, prompt, { onText, signal, images, careful, shared, meter });
-  throw { code: 'no_engine' };
+    // 마지막 글이 정해진 뒤 여기 한 곳에서 적음(설정 › AI 「AI로 보낸 글」 — 본문만, 키·머리말은 적지 않음)
+    noteSent({ prov, model, text: sentText(prompt, shared), images: sentImages, task: logAs || task, role });
+    if (ocrErr) throw ocrErr;
+    return prov === 'account' ? await cap.sample(prompt, opts) : await callApi(prov, prompt, { onText, signal, images, careful, model, shared, meter });
+  } catch (e) { if (picked && e && typeof e === 'object' && !e.provider) e.provider = prov; throw e; }
+}
+/* 보낸 글: 공통 부분(shared.text)이 앞에, 요청 글이 뒤에(Claude 계정의 이어 붙이기와 같은 차례) */
+const sentText = (prompt, shared) => { const st = shared && String(shared.text || '').trim() ? shared.text : ''; return st ? `${st}\n\n${prompt}` : String(prompt == null ? '' : prompt); };
+/* AI 이름은 설정 화면과 같게: 모델 이름표의 ' · ' 앞, 직접 넣은 모델이면 회사 이름 + 모델(core/ai-roles.js aiLabel) */
+function modelName(prov, id) {
+  if (prov === 'account') return 'Claude 계정';
+  const p = PROVIDERS[prov], m = p && p.models.find(x => x[0] === id);
+  return m ? m[1].split(' · ')[0] : `${p ? p.name : prov} ${id || ''}`.trim();
+}
+const providerLabel = prov => (prov === 'account' ? 'Claude 계정' : prov === 'upstage' && keyOf('upstage') === TEST_MARK ? '시험용 업스테이지 Solar(쌤비서 중계)' : PROVIDERS[prov] ? PROVIDERS[prov].name : '');
+/* 「AI로 보낸 글」(core/ai-log.js)에 적기. 모듈이 아직 없으면 불러와서 적음 — 요청은 기다리지 않음 */
+function noteSent({ prov, model, text, images, task, role }) {
+  const entry = { at: Date.now(), task: task || '', role: role || '', provider: providerLabel(prov), model: modelName(prov, model), text, images };
+  const L = window.SSAM && window.SSAM.aiLog;
+  if (L && L.add) { try { L.add(entry); } catch (e) {} return; }
+  import(new URL('core/ai-log.js', document.baseURI).href).then(m => m.add(entry)).catch(() => {});
 }
 /* 한 번에 보낼 수 있는 장수보다 많으면 위아래로 이어 붙임 */
 async function fitImages(images, max) {
@@ -2416,7 +2440,9 @@ function drawEngine(sh) {
     e.target.disabled = true;
     msg.innerHTML = '<span style="display:inline-flex;gap:6px;align-items:center"><span class="spin"></span>확인하는 중…</span>';
     try {
-      const r = await callApi(p, '다음 말만 그대로 답하세요: 연결 확인', {});
+      const probe = '다음 말만 그대로 답하세요: 연결 확인';
+      noteSent({ prov: p, model: E.models[p], text: probe, images: [], task: 'test' }); // 키 확인도 「AI로 보낸 글」에(generate를 거치지 않는 단 하나의 요청)
+      const r = await callApi(p, probe, {});
       msg.innerHTML = `<span style="color:var(--ok);font-weight:500">연결됐어요 · ${esc(E.models[p])}</span>`;
       if (S.paused === 'denied') { S.paused = null; S.lastMsg = ''; }
       engineChanged();
@@ -4115,7 +4141,7 @@ async function grReviewScores(signal) {
         const imgs = await grStudentImages(st);
         if (!imgs.length) continue;
         const parts = grGradeParts(st, crit.length);
-        const r = await generate(parts.own, { signal, images: imgs, shared: { text: parts.shared, images: crit }, fresh: true, careful: true, use, meter: GR.meter });
+        const r = await generate(parts.own, { signal, images: imgs, shared: { text: parts.shared, images: crit }, fresh: true, careful: true, use, role: 'review', logAs: 'grade', meter: GR.meter });
         const j = grJSON(r.text), sc = Math.round(Number(j && j.score));
         if (!Number.isFinite(sc)) continue;
         const v = Math.max(0, Math.min(100, sc));
