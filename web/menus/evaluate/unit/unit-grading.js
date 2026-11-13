@@ -2,7 +2,7 @@
    스캔 쪽은 이 화면에만 두고 저장하지 않음. 채점은 시작한 평가 id를 붙들고, 결과는 그 평가를 다시 읽어 넣음 */
 import { toast } from '../../../core/ui.js';
 import * as ai from '../../../core/ai.js';
-import { aiRowHTML } from '../../../core/ai-roles.js';
+import { aiRowHTML, pick as pickAI, providerEnv } from '../../../core/ai-roles.js';
 import { reviewJSON, gradeReviewParts, normGradeReview, gradeTargets, sameGrade, opinionHTML, reviewBar, REVIEW_FAIL } from '../../../core/ai-review.js';
 import { runPool } from '../../../core/ai-pool.js';
 import { newMeter, useText } from '../../../core/ai-wire.js';
@@ -12,6 +12,7 @@ import { getTest, getSet, saveSet, numbersFor, parseNos, renumber, maskOf, listT
 import { registerInbox } from '../../../core/inbox.js';
 import { go } from '../../../core/shell.js';
 import { gradeParts, normGrade, validGrade } from './unit-ai.js';
+import { locatePrompt, validLocate, normBoxes, cropRect, boxesOf } from './unit-locate.js';
 import { unitAccuracy, accuracyText } from '../grade-accuracy.js';
 import { arrangePages } from './unit-pages.js';
 import { readNos, openNoCheck, openNoWait, rosterAllowed, byNoOrder } from '../../../core/student-no.js';
@@ -32,6 +33,7 @@ const busyOther = id => !!G.run && G.run.id !== id && busy(G.run.id);
 function split(t, pageCount, per) {
   const n = Math.ceil(pageCount / per);
   G.idx = Array.from({ length: n }, (_, i) => Array.from({ length: Math.min(per, pageCount - i * per) }, (_, j) => i * per + j));
+  G.lay = layOf(per); // 이 쪽 모양(학생 한 명 쪽 수·모아찍기·뒷면)으로 찾은 문항 자리만 씀
   if (t.students.length === n) return; // 이미 나눈 학생에 차례대로 다시 붙임 (번호로 맞춘 평가는 번호를 다시 읽을 때 번호로 붙임)
   delete t.noOrdered;
   t.students = numbersFor(n, [...rosterExcept(), ...(t.absent || [])]).map(no => ({ no, skip: false, status: 'idle', items: {}, good: '', cheer: '' }));
@@ -409,11 +411,93 @@ function step3HTML(t) {
       <div class="row"><b id="unPending">확인할 칸 ${pending(t)}개</b><button class="btn text" type="button" data-un="nextChk">다음 확인할 칸</button><span class="grow"></span><button class="btn primary" type="button" data-un="finish">채점 마치기</button></div>
       ${done ? `<p class="muted cls-note un-acc" id="unAcc">${esc(accuracyText(unitAccuracy(t), { finished: t.done, graded: true }))}</p>` : ''}
       <p class="muted cls-note">노란 칸은 확인할 칸이에요: AI가 확신하지 못했거나, 앱과 AI의 판단이 다르거나, 단답이 정답과 글자가 다르거나, 서술형이에요. 문항 번호를 누르면 반 전체 답을 모아 봐요.</p>
+      ${locRowHTML(t)}
     </div>
     <div class="yp-card un-grid-card"><div class="un-grid-wrap"><table class="un-grid"><thead>${head}</thead><tbody>${rows}</tbody></table></div></div>`;
 }
 
 const stuIndex = (t, no) => { const i = t.students.findIndex(s => s.no === no && !s.skip); return i >= 0 ? i : t.students.findIndex(s => s.no === no); };
+
+/* ---------- 칸 확인 창: 그 문항 전체 보기 (스펙 2026-11-13-crop-log-flow §1) ----------
+   평가마다 AI 한 번: 채점을 마친 첫 학생의 쪽들(채점 AI에 보낸 것과 같은 이름 가린 그림)과 문항 목록(번호·평가 내용·유형)만 보내
+   문항마다 그 학생 쪽 차례·자리를 key.boxes에 적음(학생 번호·이름은 보내지 않음). 반 학생 모두의 같은 차례 쪽에 같은 자리를 써서
+   화면에서만 잘라 보여 줌(잘린 그림은 저장하지 않음). 자리가 없으면(그 쪽이 없음·못 찾음·AI 키 없음) 지금처럼 쪽 전체 */
+// busy: 자리를 찾는 중인 평가, failed: 이 화면을 켠 뒤 찾지 못한 평가(칸을 열 때마다 다시 부르지 않음 — [문항 자리 다시 찾기]로),
+// whole: [쪽 전체 보기]를 골랐는지(이 화면에서만 기억), view: 열린 칸 확인 창(찾으면 바로 바꿈)
+const L = { busy: new Set(), failed: new Set(), whole: false, view: null };
+function layOf(per) { const s = getSet(); return `${per}:${s.twoUp ? 1 : 0}${s.flipBack ? 1 : 0}`; }
+// 지금 스캔(그 쪽 모양)에 맞는 적어 둔 자리 { [no]: { page, box } }, 없으면 null
+const boxesNow = t => (hasPages(t.id) ? boxesOf(t.key, G.lay || null) : null);
+// 채점 AI가 그림을 보는지: 업스테이지는 그림을 글자로 바꿔 보내 자리를 알 수 없음
+const seesImages = () => { const g = pickAI('grade', 'main'); return (g ? g.engine : providerEnv().engine) !== 'upstage'; };
+// 이름 칸: 채점과 같은 조건(가리고 보내기를 껐거나, 이 평가에 이름 칸을 정했거나, 「가리지 않고 채점」을 고름)일 때만 그림을 보냄
+const maskReady = t => { const m = maskOf(t); return !getSet().maskOn || !!(m && m.mask.length) || G.noMaskFor === t.id; };
+/* 기준 학생: 채점을 마친 학생 중 쪽이 가장 많은 첫 학생(마지막 학생은 쪽이 모자랄 수 있음). 없으면 -1 */
+function refStudent(t) {
+  const xs = t.students.map((s, i) => ({ s, i, n: pagesOf(t.id, i).length })).filter(x => !x.s.skip && x.s.status === 'done' && x.n);
+  const max = Math.max(0, ...xs.map(x => x.n)), x = xs.find(y => y.n === max);
+  return x ? x.i : -1;
+}
+const canLocate = t => !!t && ai.ready() && seesImages() && hasPages(t.id) && !noStale(t) && maskReady(t) && refStudent(t) >= 0;
+const redrawView = id => { if (L.view && L.view.id === id && L.view.el.isConnected) L.view.draw(); };
+/* 문항 자리 찾기: 한 평가에 한 번에 하나. 끝나면 그 평가를 다시 읽어 자리만 넣음. say: [문항 자리 다시 찾기]로 부름(까닭을 알림) */
+async function locate(id, say = false) {
+  const t = getTest(id);
+  if (!t || L.busy.has(id)) return;
+  const i = refStudent(t);
+  if (!ai.ready()) { if (say) toast(AI_KEY, 5000); return; }
+  if (!seesImages()) { if (say) toast('업스테이지는 그림을 글자로 바꿔 보내서 문항 자리를 찾을 수 없어요.', 6000); return; }
+  if (!hasPages(id) || noStale(t) || i < 0) { if (say) toast('채점한 학생의 문제지 스캔이 있어야 찾을 수 있어요.', 5000); return; }
+  if (!maskReady(t)) { if (say) toast('이름 칸을 먼저 정해 주세요(2단계 [이름 칸 정하기]).', 6000); return; }
+  const pages0 = G.pages, lay = G.lay;
+  L.busy.add(id); L.failed.delete(id); refresh(id); redrawView(id);
+  try {
+    const images = await imagesFor(id, i);
+    const v = await ai.generateJSON(locatePrompt(t.key.items, images.length), { images, valid: validLocate, task: 'grade' });
+    const t2 = getTest(id);
+    // 찾는 동안 스캔이나 쪽 모양이 바뀌었으면 버림(다음에 칸을 열 때 다시 찾음)
+    if (!t2 || G.pages !== pages0 || G.lay !== lay) return;
+    const items = normBoxes(v, t2.key.items, images.length), n = Object.keys(items).length;
+    t2.key.boxes = { at: Date.now(), lay, items };
+    saveOrWarn(t2);
+    if (say) toast(n ? `문항 ${n}개 자리를 찾았어요` : '문항 자리를 찾지 못했어요. 칸에서는 쪽 전체를 보여 줘요', 5000);
+  } catch (e) {
+    L.failed.add(id);
+    if (say) toast(`문항 자리를 찾지 못했어요. ${e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요.' : ai.errorMessage(e && e.code, e)}`, 7000);
+  } finally { L.busy.delete(id); refresh(id); redrawView(id); }
+}
+/* 자른 그림: 쪽 그림(원래 크기) 그대로 두고 그 자리만 보이게 — 화면이 줄여 그리므로 또렷함. 너무 크게 늘리지 않음(원래 크기의 2배까지) */
+function cropHTML(p, r, alt) {
+  const pc = (a, b) => (a / b * 100).toFixed(3);
+  return `<div class="un-crop" style="--ar:${(r.w / r.h).toFixed(4)};max-width:${Math.round(r.w * 2)}px"><img src="${p.url}" alt="${esc(alt)}" style="width:${pc(p.w, r.w)}%;left:${pc(-r.x, r.w)}%;top:${pc(-r.y, r.h)}%"></div>`;
+}
+/* 칸 확인 창의 문제지 칸: 그 문항만(자리가 있으면) 또는 쪽 전체, 아래에 [이 문항만]↔[쪽 전체 보기], 위에 상태 글 */
+function drawView(el, id, no, itemNo) {
+  const t = getTest(id), si = t ? stuIndex(t, no) : -1, body = el.querySelector('#unCvBody'), say = el.querySelector('#unCvMsg');
+  if (!t || si < 0 || !body || !say) return;
+  const pg = pagesOf(id, si), whole = `<div class="un-pages">${pg.map(k => `<img src="${G.pages[k].url}" alt="${no}번 학생 문제지">`).join('')}</div>`;
+  const items = boxesNow(t), b = items && items[itemNo], k = b ? pg[b.page] : undefined, p = k != null ? G.pages[k] : null;
+  const r = p ? cropRect(b.box, p.w, p.h) : null;
+  let note = '';
+  if (r) {
+    body.innerHTML = `${L.whole ? whole : cropHTML(p, r, `${no}번 학생 · ${itemNo}번 문항`)}
+      <div class="seg un-cv-seg" role="group" aria-label="문제지 보기"><button type="button" data-cv="item" aria-pressed="${!L.whole}">이 문항만</button><button type="button" data-cv="page" aria-pressed="${L.whole}">쪽 전체 보기</button></div>`;
+  } else {
+    body.innerHTML = whole;
+    note = L.busy.has(id) ? '문항 자리를 찾는 중이에요' : b && !p ? '이 학생 문제지에는 그 쪽이 없어 쪽 전체를 보여 줘요'
+      : items || L.failed.has(id) ? '이 문항 자리를 찾지 못해 쪽 전체를 보여 줘요' : '';
+  }
+  say.innerHTML = note ? `${L.busy.has(id) ? '<span class="spin" aria-hidden="true"></span> ' : ''}${note}` : '';
+}
+/* 3단계 [문항 자리 다시 찾기] 줄: 채점한 학생의 스캔이 있고 채점 AI가 그림을 볼 때 */
+function locRowHTML(t) {
+  if (!hasPages(t.id) || noStale(t) || refStudent(t) < 0 || !seesImages()) return '';
+  const on = L.busy.has(t.id), items = boxesNow(t), again = !!items || L.failed.has(t.id);
+  const text = on ? '문항 자리를 찾는 중이에요' : items ? `칸을 누르면 그 문항만 크게 보여요 · 자리를 찾은 문항 ${Object.keys(items).length}/${t.key.items.length}개`
+    : L.failed.has(t.id) ? '문항 자리를 찾지 못했어요. 칸에서는 쪽 전체를 보여 줘요' : '칸을 처음 누르면 문항 자리를 찾아 그 문항만 크게 보여 줘요';
+  return `<div class="row un-loc"><span class="muted" id="unLocMsg" role="status">${on ? '<span class="spin" aria-hidden="true"></span> ' : ''}${text}</span>
+    <button class="btn" type="button" data-un="relocate"${on ? ' disabled' : ''}>${again ? '문항 자리 다시 찾기' : '문항 자리 찾기'}</button></div>`;
+}
 const FLAG = { low: 'AI가 확신하지 못했어요.', differ: '앱과 AI의 판단이 달라요. 앱은 정답표와 글자로 맞춰 봤어요.', similar: '정답과 글자가 달라 AI가 뜻을 보고 판단했어요.', essay: '서술형이라 AI가 점수를 제안했어요.' };
 function openCell(no, itemNo) {
   // 3단계 표는 「채점 안 함」이 아닌 학생만: 번호가 겹친 옛 자료여도 그 학생을 고름
@@ -425,7 +509,7 @@ function openCell(no, itemNo) {
   const pg = pagesOf(t.id, si);
   // 다시 올린 스캔의 번호를 읽기 전이면 다른 학생 답안이 보일 수 있어 그림 대신 [번호 읽기](번호만 맞추고 채점은 안 함)
   const imgs = noStale(t) ? '<div class="row"><span class="muted">다시 넣은 스캔은 걷은 차례라 번호를 다시 읽은 뒤에 이 학생 문제지를 볼 수 있어요.</span><button class="btn" type="button" id="unCellNos">번호 읽기</button></div>'
-    : pg.length ? `<div class="un-pages">${pg.map(k => `<img src="${G.pages[k].url}" alt="${no}번 학생 문제지">`).join('')}</div>` : '<p class="muted">스캔 이미지는 저장하지 않아서 지금은 볼 수 없어요.</p>';
+    : pg.length ? '<div class="un-cv" id="unCellView"><p class="muted un-cv-msg" id="unCvMsg" role="status"></p><div class="un-cv-body" id="unCvBody"></div></div>' : '<p class="muted">스캔 이미지는 저장하지 않아서 지금은 볼 수 없어요.</p>';
   const ptsUI = it.type === 'essay'
     ? `<label class="cls-inline">점수 <input class="field num" type="number" id="unCellPts" min="0" max="${full}" value="${c.pts}"> / ${full}점</label>`
     : `<div class="seg" role="group" aria-label="점수"><button type="button" data-pts="${full}" aria-pressed="${c.pts >= full}">맞음 ${full}점</button><button type="button" data-pts="0" aria-pressed="${!c.pts}">틀림 0점</button></div>`;
@@ -440,6 +524,19 @@ function openCell(no, itemNo) {
     sh.classList.add('wide');
     const nb = sh.querySelector('#unCellNos');
     if (nb) nb.addEventListener('click', () => { SS().closeSheet(); askMask(() => askNos(getTest(t.id), () => openCell(no, itemNo))); });
+    // 그 문항만 ↔ 쪽 전체: 이 평가에 자리가 없으면 처음 열 때 한 번 찾고(그동안 쪽 전체), 찾으면 열린 창을 바로 바꿈
+    const cv = sh.querySelector('#unCellView');
+    if (cv) {
+      const view = L.view = { id: t.id, el: cv, draw: () => drawView(cv, t.id, no, itemNo) };
+      cv.addEventListener('click', e => {
+        const b = e.target.closest('[data-cv]');
+        if (!b) return;
+        L.whole = b.dataset.cv === 'page'; view.draw();
+        const f = cv.querySelector(`[data-cv="${b.dataset.cv}"]`); if (f) f.focus();
+      });
+      if (!boxesNow(t) && !L.failed.has(t.id) && canLocate(t)) locate(t.id);
+      view.draw();
+    }
     sh.querySelectorAll('[data-pts]').forEach(b => b.addEventListener('click', () => { pick = Number(b.dataset.pts); sh.querySelectorAll('[data-pts]').forEach(x => x.setAttribute('aria-pressed', x === b)); }));
     // 두 의견 고르기: 검토 안은 그 답을 같은 규칙으로 채점한 점수, 그대로 두기는 메인 안
     const choose = useRv => {
@@ -560,6 +657,7 @@ document.addEventListener('click', e => {
   else if (a === 'nextChk') nextCheck();
   else if (a === 'nextRv') nextReview();
   else if (a === 'finish') askFinish();
+  else if (a === 'relocate') locate(t.id, true);
 });
 document.addEventListener('change', e => {
   const box = getBox();

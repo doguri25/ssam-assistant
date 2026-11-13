@@ -67,6 +67,18 @@ section[data-menu="evaluate"].ev-new > :not(.unit-box):not(.act-box):not(.chk-bo
 .un-cell.rvo{position:relative;outline:2px solid #e0b400;outline-offset:1px}.un-cell.rvo::after{content:'';position:absolute;top:2px;right:2px;width:6px;height:6px;border-radius:50%;background:#c27c00}
 .un-pages{display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow:auto}
 .un-pages img{width:100%;height:auto;border:1px solid var(--line);border-radius:6px}
+/* 칸 확인 창: 그 문항만 크게 ↔ 쪽 전체 (unit-grading.js drawView). 쪽 그림은 그대로 두고 그 자리만 보이게 — 늘리지 않아 또렷함.
+   테두리는 outline(자리를 차지하지 않아 비율이 그대로·창 밖으로 넘치지 않음), 키가 큰 문항은 화면 높이 60%까지 */
+.un-cv{display:flex;flex-direction:column;min-width:0}
+.un-cv-msg{margin:0 0 8px;display:flex;align-items:center;gap:6px}
+.un-cv-msg:empty{margin:0}
+.un-cv-body{display:flex;flex-direction:column;gap:8px;min-width:0}
+.un-crop{position:relative;overflow:hidden;width:min(100%,calc(60vh * var(--ar)));aspect-ratio:var(--ar);align-self:center;background:#fff;border-radius:6px;outline:1px solid var(--line)}
+.un-crop img{position:absolute;display:block;max-width:none;height:auto}
+.un-cv-seg{justify-content:center}
+.un-cv-seg button{min-height:44px;min-width:44px}
+.un-loc{gap:6px 10px}
+.un-loc .btn{min-height:44px}
 .un-items{list-style:none;margin:0;padding:0;max-height:55vh;overflow:auto}
 .un-irow{display:flex;align-items:center;gap:8px 12px;padding:6px 4px;border-top:1px solid var(--line)}
 .un-irow.chk{background:#fff8d9}

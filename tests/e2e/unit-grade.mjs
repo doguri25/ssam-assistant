@@ -21,6 +21,8 @@ const READS = {
 await mockClaude(page, async ({ prompt, images }) => {
   prompts.push({ prompt, images });
   if (slow) await new Promise(r => setTimeout(r, slow));
+  // 칸 확인 창을 처음 열 때 문항 자리 찾기(unit-locate.mjs가 따로 봄): 여기선 못 찾은 것으로
+  if (prompt.startsWith('[단원평가 문항 자리]')) return '{"items":[]}';
   const no = Number((/\[학생\] (\d+)번/.exec(prompt) || [])[1]);
   const reads = READS[no].slice();
   if (round === 2 && no === 3) reads[0] = '(2)';
