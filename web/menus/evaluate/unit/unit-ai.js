@@ -3,6 +3,7 @@ import { itemType } from './unit-key.js';
 import { ITEM_TYPES, studentTotal } from './unit-grade.js';
 import { makeTitle, LEVEL_NAME, itemName } from './unit-model.js';
 import { redoKind } from './unit-redo.js';
+import { evidenceList, evidencePrompt, EVIDENCE_RULE, normSentences, joinSentences } from '../../../core/evidence.js';
 
 const TYPE_NAME = Object.fromEntries(ITEM_TYPES);
 const TYPES = ITEM_TYPES.map(t => t[0]);
@@ -110,26 +111,51 @@ export function normFeedback(v) {
   return out;
 }
 
+/* 평어 근거(스펙 2026-11-13 §5-1)의 평가 이름: 「3학년 수학 3단원」(학년·교과·단원 — 학생 정보 없음) */
+export function evTitle(m = {}) {
+  return [m.grade ? `${m.grade}학년` : '', m.subject || '', m.unitNo ? `${m.unitNo}단원` : ''].filter(Boolean).join(' ') || makeTitle({ ...m, sample: false });
+}
+/* 그 학생의 잘한·보완할 평가 내용 정답률 [{ name, rate, titles }] → 근거 목록 「「3학년 수학 3단원」 세 자리 수 덧셈 90%」 */
+export function pyeongeoEvidence(rates) {
+  return evidenceList((rates || []).map(r => {
+    const ts = [...new Set(r.titles || [])];
+    const where = ts.length ? `「${ts[0]}${ts.length > 1 ? ` 외 ${ts.length - 1}개` : ''}」 ` : '';
+    return { kind: 'unit', label: `${where}${r.name} ${Math.round(r.rate * 100)}%` };
+  }));
+}
+
+/* list: [{ no, level, good, weak, ev(근거 목록) }] — 학생마다 학생 줄 아래 근거 목록, 답은 문장마다 기댄 근거 번호(src) */
 export function pyeongeoPrompt(subject, list) {
   return [
     '[단원평가 평어]',
     `${subject} 교과 단원평가 결과로 학생마다 교과학습발달상황 문장 초안을 씁니다.`,
     '', '[학생]',
-    ...list.map(s => `- ${s.no}번 | 수준 ${LEVEL_NAME[s.level] || s.level} | 잘한 것: ${s.good.join(', ') || '없음'} | 보완할 것: ${s.weak.join(', ') || '없음'}`),
+    ...list.map(s => `- ${s.no}번 | 수준 ${LEVEL_NAME[s.level] || s.level} | 잘한 것: ${s.good.join(', ') || '없음'} | 보완할 것: ${s.weak.join(', ') || '없음'}\n${evidencePrompt(s.ev || [], '  ')}`),
     '', '[규칙]',
     '- 1~2문장, 80~150자. 끝맺음은 「~함.」「~임.」처럼 씁니다.',
     '- 학생 이름·대명사·점수를 쓰지 않습니다. 잘한 것은 구체적으로, 보완할 것은 「~하면 더 나아질 것임」처럼 성장 중심으로 씁니다.',
     '- 수준이 같아도 학생마다 다른 문장으로 씁니다.',
-    '', '[출력] JSON 하나만 출력합니다.',
-    '{"students":[{"no":1,"text":"평어 문장"}]}'
+    `- ${EVIDENCE_RULE} 근거 번호는 그 학생 줄 아래 [근거 목록]의 번호이고, 정답률 숫자는 평어에 쓰지 않습니다.`,
+    '', '[출력] JSON 하나만 출력합니다. 학생마다 평어 문장을 sentences에 차례대로 나눠 담습니다.',
+    '{"students":[{"no":1,"sentences":[{"t":"문장","src":["e1"]}]}]}'
   ].join('\n');
 }
 
-export function normPyeongeo(v) {
+/* → { [no]: { text, sentences } } — 새 답은 sentences(문장마다 근거), 예전 답({ no, text })은 sentences: null.
+   lists: { [no]: 그 학생 근거 목록 } (목록에 없는 근거 번호는 뺌). 글은 400자까지(넘으면 끝 문장을 뺌) */
+export function normPyeongeo(v, lists = {}) {
   const out = {};
   for (const x of listOf(v, 'students')) {
     const no = Number(x && x.no);
-    if (Number.isInteger(no) && no > 0 && x.text) out[no] = String(x.text).trim().slice(0, 400);
+    if (!Number.isInteger(no) || no <= 0) continue;
+    if (Array.isArray(x.sentences)) {
+      const ss = normSentences(x.sentences, lists[no] || []);
+      while (ss.length > 1 && joinSentences(ss).length > 400) ss.pop();
+      if (ss.length === 1 && ss[0].t.length > 400) ss[0] = { ...ss[0], t: ss[0].t.slice(0, 400).trim() };
+      const text = joinSentences(ss);
+      if (text) { out[no] = { text, sentences: ss }; continue; }
+    }
+    if (x.text) out[no] = { text: String(x.text).trim().slice(0, 400), sentences: null };
   }
   return out;
 }

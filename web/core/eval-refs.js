@@ -12,8 +12,8 @@ export function linked(unit) {
   return [...linkedTo(link), ...unitLinkedTo(link)].sort((a, b) => String(b.date).localeCompare(String(a.date)));
 }
 const clip = (s, n) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, n);
-/* 체크한 것(refs: [{ kind, id }])에서 그 번호 학생의 결과를 한 줄로(한 학생 600자까지) */
-export function lines(refs, no) {
+/* 체크한 것(refs: [{ kind, id }])에서 그 번호 학생의 결과: 하나마다 한 줄 */
+function refLines(refs, no) {
   const out = [];
   for (const r of refs || []) {
     if (r.kind === 'activity') {
@@ -26,6 +26,10 @@ export function lines(refs, no) {
       out.push(`단원평가 「${clip(makeTitle(t.meta), 40)}」 ${studentTotal(t, s).pct}% · 잘한 점: ${clip(s.good, 160) || '-'} · 보완할 것: ${weak.slice(0, 5).join(', ') || '-'}`);
     }
   }
-  return out.join(' / ').slice(0, 600);
+  return out;
 }
-if (globalThis.window) { window.SSAM = window.SSAM || {}; window.SSAM.evalRefs = { linked, lines }; }
+/* 평어 요청의 「참고:」 한 줄(한 학생 600자까지) */
+export const lines = (refs, no) => refLines(refs, no).join(' / ').slice(0, 600);
+/* 근거가 보이는 평어(스펙 2026-11-13 §5-2): 참고한 것마다 근거 하나 { kind: 'ref', label }(80자로 줄이는 것은 core/evidence.js) */
+export const items = (refs, no) => refLines(refs, no).map(label => ({ kind: 'ref', label }));
+if (globalThis.window) { window.SSAM = window.SSAM || {}; window.SSAM.evalRefs = { linked, lines, items }; }

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import * as store from '../../web/core/store.js';
 import { newActivity, saveActivity } from '../../web/menus/evaluate/activity/activity-model.js';
 import { newTest, saveTest } from '../../web/menus/evaluate/unit/unit-model.js';
-import { linked, lines } from '../../web/core/eval-refs.js';
+import { linked, lines, items } from '../../web/core/eval-refs.js';
 
 function mem() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 store.useStorage(mem());
@@ -33,4 +33,14 @@ test('참고 줄: 활동지 수준·잘한 점·더 해 볼 점, 단원평가 %�
   assert.equal(lines(refs, 9), '');
   assert.equal(lines([], 3), '');
   assert.equal(lines([{ kind: 'activity', id: 'nope' }], 3), '');
+});
+
+test('참고 근거(스펙 §5-2): 체크한 것마다 한 줄 → { kind: \'ref\', label }(번호만, 이름 없음)', () => {
+  const refs = [{ kind: 'activity', id: a.id }, { kind: 'unit', id: t.id }];
+  const r = items(refs, 3);
+  assert.equal(r.length, 2);
+  assert.ok(r.every(x => x.kind === 'ref'));
+  assert.ok(r[0].label.startsWith('활동지 「물의 여행」 잘함') && r[1].label.startsWith('단원평가'), JSON.stringify(r));
+  assert.deepEqual(items(refs, 9), []);
+  assert.deepEqual(items([], 3), []);
 });
