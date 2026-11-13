@@ -132,3 +132,6 @@ section[data-menu="evaluate"][hidden]{display:none}
 .btn.fd-pick{outline:2px solid var(--accent);outline-offset:2px}
 .fd-hint{position:fixed;z-index:9000;transform:translateX(-100%);pointer-events:none;padding:5px 10px;border-radius:999px;background:var(--accent);color:var(--on-accent);font-size:13px;font-weight:700;line-height:1.3;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.18)}
 .fd-hint.busy{background:var(--surface3);color:var(--ink)}
+
+/* 알림(toast)은 글만 있어서 누르는 칸을 가리지 않게 함 — 긴 알림이 시트의 단추([만들기] 등) 위에 떠 있어도 눌림 */
+.toast{pointer-events:none}

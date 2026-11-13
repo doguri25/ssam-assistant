@@ -1,4 +1,4 @@
-/* 학급 › 기초학력 캠프 (스펙 2026-11-11): 캠프 목록·정보·학생 → 수업 일정([+ 줄]·[한 날 여러 교시 더하기]·[AI로 만들기]) → 출석 체크 →
+/* 학급 › 기초학력 캠프 (스펙 2026-11-11): 캠프 목록·정보·학생 → 수업 일정([+ 줄]·[한 날 여러 교시 더하기]·[차시 수로 날짜 만들기]·[AI로 만들기]·계획서 표 그대로) → 출석 체크 →
    관찰 기록([AI로 쓰기]) → 결과 보고서([AI로 쓰기]) → 문서 4가지 내보내기(문서마다 [양식 넣기]).
    위에는 6단계 진행 표시(camp-steps.js), 출석 체크 옆에는 문서 준비 상자(스펙 2026-11-11-ui-refresh §3).
    자료는 학년도 키 camp(camp-model.js), 넣은 양식은 IndexedDB forms('camp')(다른 메뉴 양식과 따로).
@@ -18,7 +18,9 @@ import * as M from './camp-model.js';
 import { campDoc, docTitle, docLabel } from './camp-docs.js';
 import { schedulePrompt, normSchedule, buildSessions, obsPrompt, normObs, reportHeads, reportPrompt, normCampReport, layoutPrompt, normLayout } from './camp-ai.js';
 import { fillCampForm, REPORT_DEFAULT_MSG, NO_MATCH_MSG } from './camp-form.js';
-import { readPlan, planSchedule, planPrompt, planDraft, fillCampInfo } from './camp-plan.js';
+import { readPlan, planSchedule, planPrompt, planDraft, fillCampInfo, planTable, tableSessions, applyDayTimes } from './camp-plan.js';
+import { sessionsByCount } from './camp-sched.js';
+import { weekday } from '../../core/calendar.js';
 import { STEPS, campSteps, docReadiness } from './camp-steps.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -36,6 +38,8 @@ let box = null, curTab = null, sec = 'info', attDate = '', attFor = '';
 let stale = false; // 칸에 치는 동안 다시 그릴 일이 생김 → 칸을 벗어나면 다시 그림
 const busy = {}; // `${캠프 id}:sched|obs|report` → true
 const drafts = {}; // 캠프 id → [AI로 만들기] 칸 글(화면에만)
+const planInfo = {}; // 캠프 id → 마지막에 넣은 계획서의 기간·요일·요일별 시간([차시 수로 날짜 만들기] 처음 값, 화면에만)
+const countForm = {}; // 캠프 id → [차시 수로 날짜 만들기]에 넣은 값(화면에만)
 const openPrev = new Set(); // 펼친 미리 보기
 const F = { store: null, list: [], adding: {} };
 
@@ -102,10 +106,10 @@ function schedHTML(c) {
     </section>
     <section class="yp-card">
       <div class="cls-card-h"><h3>수업 일정 <span class="muted cp-count">${c.sessions.length}줄 · 총 ${M.hoursTotal(c)}시간</span></h3>
-        <div class="row"><button class="btn" type="button" data-cp="addRow">+ 줄</button><button class="btn" type="button" data-cp="bulk">한 날 여러 교시 더하기</button>${c.sessions.length > 1 ? '<button class="btn text" type="button" data-cp="sortRows">날짜 차례로</button>' : ''}</div></div>
+        <div class="row"><button class="btn" type="button" data-cp="addRow">+ 줄</button><button class="btn" type="button" data-cp="bulk">한 날 여러 교시 더하기</button><button class="btn" type="button" data-cp="byCount">차시 수로 날짜 만들기</button>${c.sessions.length > 1 ? '<button class="btn text" type="button" data-cp="sortRows">날짜 차례로</button>' : ''}</div></div>
       ${c.unit === 'day' ? '<p class="muted" style="margin:0">날마다 캠프예요. 날짜마다 한 줄(그날 첫 교시 시작~끝 교시 끝)로 넣어 주세요.</p>' : ''}
       ${c.sessions.length ? `<div class="cp-tbl-wrap"><table class="cp-tbl cp-sched"><thead><tr><th scope="col">#</th><th scope="col">날짜</th><th scope="col">시작</th><th scope="col">끝</th><th scope="col">교과</th><th scope="col">지도 내용</th><th scope="col"><span class="sr">지우기</span></th></tr></thead><tbody>${rows}</tbody></table></div>`
-    : '<p class="muted" style="margin:0">아직 수업이 없어요. [+ 줄]·[한 날 여러 교시 더하기]·[AI로 만들기]로 넣어 주세요.</p>'}
+    : '<p class="muted" style="margin:0">아직 수업이 없어요. [+ 줄]·[한 날 여러 교시 더하기]·[차시 수로 날짜 만들기]·[AI로 만들기]로 넣거나, 지도 계획 표가 있는 계획 파일을 넣어 주세요.</p>'}
       <datalist id="cpSubs">${c.subjects.map(s => `<option value="${esc(s)}">`).join('')}</datalist>
     </section>`;
 }
@@ -369,6 +373,11 @@ async function addPlan(file) {
     if (!text.trim() && !ai.ready()) { toast(fileMessage('PDF_NO_TEXT'), 7000); return; }
     const ctx = { year: currentYear(), today: today() };
     const p = readPlan(text, ctx);
+    planInfo[id] = { range: p.range, weekdays: p.weekdays, dayTimes: p.dayTimes, start: p.start, end: p.end };
+    // 계획서에 지도 계획 표(차시·날짜·과목·학습 내용)가 있으면 그 표 그대로(AI를 부르지 않음)
+    const tbl = text.trim() ? planTable(text, { ...ctx, range: p.range }) : null;
+    if (tbl && tbl.kind === 'rows') { await planFromTable(id, p, tbl); return; }
+    const lessons = tbl && tbl.kind === 'lessons' ? tbl.lessons : {};
     let spec, byAI = false;
     if (ai.ready()) {
       const images = text.trim() ? [] : (SS().files && SS().files.toImages ? (await SS().files.toImages(file)).slice(0, 3) : []);
@@ -381,8 +390,10 @@ async function addPlan(file) {
     const c = M.getCamp(id);
     if (!c) return; // 그사이 지운 캠프
     const got = fillCampInfo(c, p);
-    if (!spec) spec = planSchedule(p, c);
-    const { sessions, empty } = buildSessions(spec, c);
+    if (!spec) spec = planSchedule(p, c, lessons);
+    const built = buildSessions(spec, c);
+    // 하루 한 차시이고 계획서가 요일마다 시간이 다르면(수 13:40·목 14:30) 그 요일 시간으로
+    const sessions = spec.slots.length === 1 && c.unit !== 'day' ? applyDayTimes(built.sessions, p) : built.sessions, empty = built.empty;
     if (!drafts[id] && planDraft(p)) drafts[id] = planDraft(p);
     const last = got.length ? got[got.length - 1].charCodeAt(got[got.length - 1].length - 1) - 0xac00 : 0;
     const info = got.length ? `계획서에서 ${got.join('·')}${last >= 0 && last % 28 ? '을' : '를'} 채웠어요. ` : '';
@@ -411,6 +422,145 @@ async function addPlan(file) {
   } catch (e) { toast(e && e.code && isFileCode(e.code) ? fileMessage(e.code) : errText(e), 7000); }
   finally { delete busy[k]; redraw(); }
 }
+/* 계획서 지도 계획 표 → 수업 줄(표의 날짜·교과·지도 내용 그대로, 시간은 그 요일 지도시간). 캠프 정보 빈 칸도 채움 */
+async function planFromTable(id, p, tbl) {
+  const c = M.getCamp(id);
+  if (!c) return;
+  const got = fillCampInfo(c, p);
+  const { sessions, undated } = tableSessions(tbl, p, c);
+  const last = got.length ? got[got.length - 1].charCodeAt(got[got.length - 1].length - 1) - 0xac00 : 0;
+  const info = got.length ? `계획서에서 ${got.join('·')}${last >= 0 && last % 28 ? '을' : '를'} 채웠어요. ` : '';
+  const dt = p.dayTimes || {}, WEEK = '일월화수목금토';
+  const times = Object.keys(dt).length ? ` 시간은 지도시간(${Object.entries(dt).map(([d, t]) => `${WEEK[d]} ${t.start}~${t.end}`).join(' · ')})대로예요.` : '';
+  const how = tbl.dated ? '날짜·교과·지도 내용을 표 그대로 넣었어요.' : undated ? '' : `날짜는 계획서 기간·요일에서 차례대로 셌어요.`;
+  const apply = mode => {
+    const x = M.getCamp(id);
+    if (!x) return;
+    Object.assign(x, { name: c.name, target: c.target, subjects: c.subjects, teacher: c.teacher });
+    if (mode === 'add') x.sessions = [...x.sessions, ...sessions];
+    else { x.sessions = sessions; x.att = {}; }
+    if (!x.subjects.length) x.subjects = [...new Set(sessions.flatMap(s => s.subject.split('·')).filter(Boolean))].slice(0, 12);
+    if (!save(x)) return;
+    render();
+    toast(`${info}계획서 지도 계획 표에서 ${sessions.length}차시를 ${mode === 'add' ? '더했어요' : '만들었어요'}. ${how}${times}`
+      + (undated ? ` 날짜가 없는 ${undated}줄은 [차시 수로 날짜 만들기]로 날짜를 넣어 주세요.` : ' 날짜·시간을 확인해 주세요.'), 10000);
+  };
+  if (!c.sessions.length) { apply('replace'); return; }
+  save(c);
+  const marked = Object.keys(c.att).length;
+  ask('계획서 수업 일정을 어떻게 넣을까요?', `계획서 표에 ${sessions.length}차시가 있어요. 지금 수업 줄은 ${c.sessions.length}개예요.${marked ? ' 바꾸면 그 줄의 출석 체크도 지워져요.' : ''}`,
+    [['add', '뒤에 더하기'], ['replace', '바꾸기', true]], apply);
+}
+
+/* ---------- 차시 수로 날짜 만들기 ---------- */
+/* 시작 날·(끝 날)·요일마다 시간·차시 수(·하루 차시·쉬는 시간)·교과 차례 → 수업 날을 셈(주말·공휴일 빼고).
+   지금 줄이 있으면: 지금 줄에 날짜·시간만 넣기(지도 내용 그대로) · 뒤에 더하기 · 바꾸기 */
+const CW = [[1, '월'], [2, '화'], [3, '수'], [4, '목'], [5, '금'], [6, '토']];
+function countDefaults(c) {
+  if (countForm[c.id]) return countForm[c.id];
+  const pi = planInfo[c.id] || {}, ss = M.sortSessions(c.sessions.filter(s => s.date));
+  const days = {};
+  for (const [d] of CW) {
+    const s = ss.find(x => weekday(x.date) === d && x.start);
+    const t = (pi.dayTimes || {})[d] || (s ? { start: s.start, end: s.end || s.start } : pi.start ? { start: pi.start, end: pi.end || pi.start } : { start: '09:00', end: '09:40' });
+    const on = pi.weekdays ? pi.weekdays.includes(d) : !!s;
+    days[d] = { on, start: t.start, end: t.end };
+  }
+  return { from: (pi.range && pi.range.from) || (ss[0] && ss[0].date) || today(), to: (pi.range && pi.range.to) || '', n: c.sessions.length || '', perDay: 1, rest: 10, subs: c.subjects.join(', '), days };
+}
+function openByCount() {
+  const c = cur();
+  if (!c || !SS().openSheet) return;
+  const f = countDefaults(c), day = c.unit === 'day';
+  SS().openSheet(`<h3>차시 수로 날짜 만들기</h3>
+    <p class="muted" style="margin:0">시작 날부터 고른 요일에 차시 수만큼 수업 날을 세요. 주말·공휴일은 빼요. 요일마다 시간이 다르면 요일 옆에 적어 주세요.</p>
+    <div class="cp-grid cp-bulk cp-cgrid">
+      <label class="yp-f"><span class="lab">시작 날</span><input class="field" type="date" id="cpCFrom" value="${esc(f.from)}"></label>
+      <label class="yp-f"><span class="lab">끝 날(없어도 돼요)</span><input class="field" type="date" id="cpCTo" value="${esc(f.to)}"></label>
+      <label class="yp-f"><span class="lab">차시 수</span><input class="field" type="number" id="cpCN" value="${esc(f.n)}" min="1" max="300" placeholder="예) 20"></label>
+      <label class="yp-f"><span class="lab">하루 차시</span><input class="field" type="number" id="cpCPer" value="${esc(f.perDay)}" min="1" max="10"></label>
+      <label class="yp-f"><span class="lab">쉬는 시간(분, 하루 여러 차시일 때)</span><input class="field" type="number" id="cpCRest" value="${esc(f.rest)}" min="0" max="60"></label>
+      <label class="yp-f wide"><span class="lab">교과 차례(차시마다 돌림)</span><input class="field" id="cpCSubs" value="${esc(f.subs)}" placeholder="예) 국어, 수학" autocomplete="off"></label>
+    </div>
+    <fieldset class="cp-cdays"><legend class="lab">요일과 한 차시 시간</legend>
+      ${CW.map(([d, w]) => `<div class="row cp-cday"><label class="cls-inline"><input type="checkbox" data-cd="${d}"${f.days[d].on ? ' checked' : ''}> ${w}</label>
+        <input class="field" type="time" data-cds="${d}" value="${esc(f.days[d].start)}" aria-label="${w}요일 시작"><span aria-hidden="true">~</span>
+        <input class="field" type="time" data-cde="${d}" value="${esc(f.days[d].end)}" aria-label="${w}요일 끝"></div>`).join('')}
+    </fieldset>
+    <p class="muted" id="cpCPrev" role="status" style="margin:0"></p>
+    ${day ? '<p class="muted" style="margin:0">날마다 캠프라 하루에 한 줄(그날 첫 차시 시작~끝 차시 끝)로 넣어요.</p>' : ''}
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>그만두기</button><button class="btn primary" type="button" id="cpCOk">만들기</button></div>`, sh => {
+    const q = id => sh.querySelector('#' + id);
+    const read = () => {
+      const days = {};
+      for (const [d] of CW) days[d] = { on: sh.querySelector(`[data-cd="${d}"]`).checked, start: sh.querySelector(`[data-cds="${d}"]`).value, end: sh.querySelector(`[data-cde="${d}"]`).value };
+      return { from: q('cpCFrom').value, to: q('cpCTo').value, n: q('cpCN').value, perDay: q('cpCPer').value, rest: q('cpCRest').value, subs: q('cpCSubs').value, days };
+    };
+    const make = v => {
+      const on = CW.filter(([d]) => v.days[d].on);
+      if (!v.from) return { err: '시작 날을 골라 주세요.' };
+      if (!on.length) return { err: '수업하는 요일을 하나 이상 골라 주세요.' };
+      const bad = on.find(([d]) => !v.days[d].start || !v.days[d].end || v.days[d].end <= v.days[d].start);
+      if (bad) return { err: `${bad[1]}요일 끝 시각이 시작보다 뒤여야 해요.` };
+      const n = Math.floor(+v.n);
+      if (!(n >= 1 && n <= 300)) return { err: '차시 수를 1~300 사이로 넣어 주세요.' };
+      const subjects = v.subs.split(/[,·、/]+/).map(s => s.trim()).filter(Boolean);
+      const r = sessionsByCount({ from: v.from, to: v.to, days: Object.fromEntries(on.map(([d]) => [d, v.days[d]])), n, perDay: +v.perDay || 1, rest: +v.rest || 0, subjects });
+      if (!r.specs.length) return { err: '이 기간에는 수업 날이 없어요. 시작 날·요일을 확인해 주세요.' };
+      return { ...r, n };
+    };
+    const prev = () => {
+      const v = read(), r = make(v), out = q('cpCPrev');
+      countForm[c.id] = v;
+      if (r.err) { out.textContent = r.err; return; }
+      const a = r.specs[0], z = r.specs[r.specs.length - 1];
+      out.textContent = `${M.fmtDate(a.date)}부터 ${M.fmtDate(z.date)}까지 ${r.specs.length}차시` + (r.short ? ` — 끝 날까지 ${r.specs.length}차시만 들어가요(${r.short}차시 모자라요). 끝 날을 늦추거나 비워 주세요.` : '');
+    };
+    sh.addEventListener('input', prev); sh.addEventListener('change', prev); prev();
+    q('cpCOk').addEventListener('click', () => {
+      const r = make(read());
+      if (r.err) { q('cpCPrev').textContent = r.err; return; }
+      SS().closeSheet();
+      applyByCount(c.id, r);
+    });
+  });
+}
+/* 차시 수로 만든 줄 넣기: dates(지금 줄에 날짜·시간만 — 지도 내용 그대로) · add · replace */
+function applyByCount(id, r) {
+  const x0 = M.getCamp(id);
+  if (!x0) return;
+  const day = x0.unit === 'day';
+  // 날마다 캠프: 같은 날 차시는 한 줄로
+  let specs = r.specs;
+  if (day) {
+    const by = new Map();
+    for (const s of specs) { const g = by.get(s.date); if (g) { g.end = s.end; if (s.subject && !g.subject.split('·').includes(s.subject)) g.subject += `·${s.subject}`; } else by.set(s.date, { ...s }); }
+    specs = [...by.values()];
+  }
+  const fresh = list => list.map(s => M.newSession(s));
+  const go = mode => {
+    const x = M.getCamp(id);
+    if (!x) return;
+    let note = '';
+    if (mode === 'dates') {
+      const n = Math.min(x.sessions.length, specs.length);
+      x.sessions = x.sessions.map((s, i) => (i < n ? { ...s, date: specs[i].date, start: specs[i].start, end: specs[i].end, subject: s.subject || specs[i].subject } : s));
+      if (specs.length > n) x.sessions = [...x.sessions, ...fresh(specs.slice(n))];
+      note = x.sessions.length > specs.length ? ` 뒤의 ${x.sessions.length - specs.length}줄은 그대로 두었어요.` : '';
+    } else if (mode === 'add') x.sessions = M.sortSessions([...x.sessions, ...fresh(specs)]);
+    else { x.sessions = fresh(specs); x.att = {}; }
+    if (!x.subjects.length) x.subjects = [...new Set(specs.flatMap(s => s.subject.split('·')).filter(Boolean))].slice(0, 12);
+    if (!save(x)) return;
+    render();
+    const a = specs[0], z = specs[specs.length - 1];
+    toast(`${M.fmtDate(a.date)}~${M.fmtDate(z.date)} ${r.specs.length}차시 날짜를 ${mode === 'dates' ? '지금 줄에 넣었어요(지도 내용은 그대로)' : mode === 'add' ? '더했어요' : '만들었어요'}.${note}${r.short ? ` 끝 날까지 들어가지 않은 ${r.short}차시는 빼고 넣었어요.` : ''}`, 8000);
+  };
+  if (!x0.sessions.length) { go('replace'); return; }
+  const marked = Object.keys(x0.att).length;
+  ask('만든 날짜를 어떻게 넣을까요?', `지금 수업 줄이 ${x0.sessions.length}개 있어요. 「지금 줄에 날짜 넣기」는 지도 내용은 그대로 두고 위에서부터 차례대로 날짜·시간만 바꿔요.${marked ? ' 바꾸기는 출석 체크도 지워요.' : ''}`,
+    [['add', '뒤에 더하기'], ['replace', '바꾸기'], ['dates', '지금 줄에 날짜 넣기', true]], go);
+}
+
 async function runSched(id, text, mode) {
   const k = `${id}:sched`;
   if (busy[k]) return;
@@ -671,6 +821,7 @@ function onClick(e) {
   else if (a === 'delRow') { c.sessions = c.sessions.filter(x => x.id !== b.dataset.id); delete c.att[b.dataset.id]; if (save(c)) render(); }
   else if (a === 'sortRows') { c.sessions = M.sortSessions(c.sessions); if (save(c)) render(); }
   else if (a === 'bulk') openBulk();
+  else if (a === 'byCount') openByCount();
   else if (a === 'schedAi') schedAi();
   else if (a === 'planFile') { const f = box.querySelector(`#cpPlanFile-${b.dataset.where}`); if (f) f.click(); }
   else if (a === 'attPrev' || a === 'attNext') { const ds = M.campDates(c), i = ds.indexOf(attDate); setAttDate(ds[Math.max(0, Math.min(ds.length - 1, i + (a === 'attPrev' ? -1 : 1)))]); }

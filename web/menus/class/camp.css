@@ -122,3 +122,12 @@
   .cp-step{padding:8px 10px;gap:8px}
   .cp-doc-row .field{max-width:none}
 }
+
+/* [차시 수로 날짜 만들기] 요일과 한 차시 시간 */
+.sheet:has(.cp-cdays){width:min(780px,100%)}
+.cp-cgrid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.cp-cdays{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:2px 16px;margin:0;padding:8px 12px 10px;border:1px solid var(--line);border-radius:var(--r-m,10px)}
+.cp-cdays legend{padding:0 4px}
+.cp-cday{gap:8px;flex-wrap:nowrap;align-items:center}
+.cp-cday .cls-inline{display:inline-flex;align-items:center;gap:6px;min-width:52px;min-height:44px}
+.cp-cday .field{flex:1 1 0;width:auto;min-width:0}
