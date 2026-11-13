@@ -135,3 +135,22 @@ section[data-menu="evaluate"][hidden]{display:none}
 
 /* 알림(toast)은 글만 있어서 누르는 칸을 가리지 않게 함 — 긴 알림이 시트의 단추([만들기] 등) 위에 떠 있어도 눌림 */
 .toast{pointer-events:none}
+
+/* 근거가 보이는 평어(core/evidence.js): 문장마다 「근거 n」(누르면 근거 줄), 근거 없는 문장은 주황 「! 근거 없음」(글자도 함께) */
+.evd{display:flex;flex-direction:column;gap:2px;margin-top:6px;min-width:0;font-size:13px;line-height:1.5}
+.evd-edit{margin:0;font-size:12.5px;color:var(--ink3)}
+.evd-ss{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;min-width:0}
+.evd-s{display:flex;flex-wrap:wrap;align-items:center;column-gap:8px;min-width:0;min-height:36px}
+.evd-n{flex:none;min-width:1.2em;font-size:12px;color:var(--ink3);font-variant-numeric:tabular-nums}
+.evd-t{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink2)}
+.evd-s.open .evd-t{white-space:normal}
+.evd-btn{flex:none;display:inline-flex;align-items:center;min-height:44px;min-width:44px;margin:0;padding:0;border:0;background:transparent;color:var(--accent-ink);font:600 12.5px/1 var(--f-body)}
+.evd-pill{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:999px;background:var(--accent-soft)}
+.evd-btn:hover .evd-pill{background:var(--surface3)}
+.evd-chev{display:inline-block;transition:transform .15s}
+.evd-btn[aria-expanded="true"] .evd-chev{transform:rotate(180deg)}
+@media (prefers-reduced-motion:reduce){.evd-chev{transition:none}}
+.evd-no{flex:none;display:inline-flex;align-items:center;gap:3px;padding:4px 10px;border-radius:999px;background:var(--warn-soft);color:var(--warn);font-size:12.5px;font-weight:700}
+.evd-src{flex:1 0 100%;list-style:none;margin:0 0 6px;padding:6px 10px;display:flex;flex-direction:column;gap:2px;min-width:0;border-left:3px solid var(--accent-soft);border-radius:var(--r-s);background:var(--surface2);color:var(--ink2)}
+.evd-src[hidden]{display:none}
+.evd-k{display:inline-block;margin-right:6px;padding:0 6px;border-radius:4px;background:var(--surface3);color:var(--ink2);font-size:11.5px;font-weight:600}
