@@ -36,6 +36,31 @@ const normStudent = v => (isObj(v) ? { ...newStudent(v), id: str(v.id) || rid('s
 const normSession = v => (isObj(v) ? { ...newSession(v), id: str(v.id) || rid('ss') } : null);
 const strMap = (v, keep = () => true) => (isObj(v) ? Object.fromEntries(Object.entries(v).filter(([k, t]) => typeof t === 'string' && keep(k))) : {});
 
+/* ---------- 사전·사후 점수 (스펙 2026-11-13-gap-evidence §2-2) ----------
+   growth = { 학생 id: { subject, area, pre: { pct, tests: [{ id, title }], date, source }, post: { pct, source: 'auto'|'manual', tests, date } | null } }.
+   pre.source: 'auto'(결손 찾기에서 넣음)·'manual'(직접). 점수율은 0~100(소수 한 자리), 아니면 null. 모르는 학생·빈 줄은 버림 */
+export function pctIn(v) {
+  const n = typeof v === 'string' ? (v.trim() ? Number(v.trim().replace(/\s*%$/, '')) : NaN) : typeof v === 'number' ? v : NaN;
+  return Number.isFinite(n) && n >= 0 && n <= 100 ? Math.round(n * 10) / 10 : null;
+}
+const normRefs = v => (Array.isArray(v) ? v : []).filter(isObj).map(t => ({ id: str(t.id).trim().slice(0, 40), title: str(t.title).trim().slice(0, 120) })).filter(t => t.id || t.title).slice(0, 12);
+function normGrowthEntry(v) {
+  if (!isObj(v)) return null;
+  const p = isObj(v.pre) ? v.pre : {}, q = isObj(v.post) ? v.post : null, qp = q ? pctIn(q.pct) : null;
+  const e = {
+    subject: str(v.subject).trim().slice(0, 20), area: str(v.area).trim().slice(0, 60),
+    pre: { pct: pctIn(p.pct), tests: normRefs(p.tests), date: isDate(p.date) ? p.date : '', source: p.source === 'auto' ? 'auto' : 'manual' },
+    post: qp == null ? null : { pct: qp, source: q.source === 'manual' ? 'manual' : 'auto', tests: normRefs(q.tests), date: isDate(q.date) ? q.date : '' }
+  };
+  return e.subject || e.area || e.pre.pct != null || e.post ? e : null;
+}
+/* ids: 프로그램 학생 id(Set) — 뺀 학생의 줄은 버림 */
+export function normGrowth(v, ids) {
+  const out = {};
+  if (isObj(v)) for (const [k, x] of Object.entries(v)) { if (!ids.has(k)) continue; const e = normGrowthEntry(x); if (e) out[k] = e; }
+  return out;
+}
+
 export function normCamp(v) {
   if (!isObj(v) || typeof v.id !== 'string' || !v.id) return null;
   const ap = Array.isArray(v.approval) ? v.approval.map(x => str(x).trim().slice(0, 20)).filter(Boolean).slice(0, 6) : [];
@@ -47,12 +72,13 @@ export function normCamp(v) {
   }
   const rp = isObj(v.report) ? v.report : {};
   const fm = isObj(v.forms) ? v.forms : {};
+  const students = (Array.isArray(v.students) ? v.students : []).map(normStudent).filter(Boolean).slice(0, 60);
   return {
     id: v.id, name: str(v.name).trim().slice(0, 120), teacher: str(v.teacher).trim().slice(0, 30), target: str(v.target).trim().slice(0, 60),
     unit: v.unit === 'day' ? 'day' : 'period',
     subjects: (Array.isArray(v.subjects) ? v.subjects : []).filter(x => typeof x === 'string').map(x => x.trim().slice(0, 20)).filter(Boolean).slice(0, 12),
     approval: ap.length ? ap : [...APPROVAL],
-    students: (Array.isArray(v.students) ? v.students : []).map(normStudent).filter(Boolean).slice(0, 60),
+    students,
     sessions: (Array.isArray(v.sessions) ? v.sessions : []).map(normSession).filter(Boolean).slice(0, 400),
     att,
     memo: strMap(v.memo), obs: strMap(v.obs),
@@ -62,6 +88,7 @@ export function normCamp(v) {
       sections: (Array.isArray(rp.sections) ? rp.sections : []).filter(isObj).map(s => ({ head: str(s.head).trim().slice(0, 60), text: str(s.text).slice(0, 6000) })).filter(s => s.head || s.text.trim()).slice(0, 12)
     },
     forms: Object.fromEntries(DOC_IDS.map(d => [d, str(fm[d])])),
+    growth: normGrowth(v.growth, new Set(students.map(s => s.id))),
     updatedAt: Number.isFinite(v.updatedAt) ? v.updatedAt : 0
   };
 }

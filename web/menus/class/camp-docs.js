@@ -3,6 +3,7 @@
    layout(넣은 PDF·사진·.hwp 양식을 AI가 읽은 모양 { title, columns, notes, heads })이 있으면 제목·칸 이름·차례·안내 글을 그것으로.
    표 조각(confirmTable·attendTable·observePages)은 학교 한글 양식 채우기(camp-form.js)도 같이 씀 */
 import { sortSessions, campDates, attCount, hoursTotal, fmtDate, fmtShort, fmtTime } from './camp-model.js';
+import { growthRows } from './camp-growth.js';
 
 export const DOC_LABEL = { confirm: '수업 확인서', attend: '학생 출석 및 관찰 기록부', observe: '관찰 기록부', report: '결과 보고서' };
 export const docLabel = (id, camp) => (id === 'attend' && camp && camp.unit === 'day' ? '학생 출석부' : DOC_LABEL[id] || '');
@@ -158,6 +159,7 @@ export function observeDoc(camp, layout) {
 }
 
 /* ---------- 결과 보고서 ---------- */
+/* 사전·사후 점수(camp-growth.js)가 있으면 끝에 「사전·사후 성취」 표(학생 | 교과·영역 | 사전 | 사후 | 변화) */
 export function reportDoc(camp, layout) {
   const r = camp.report;
   const blocks = [];
@@ -165,6 +167,8 @@ export function reportDoc(camp, layout) {
     if (s.head) blocks.push({ type: 'h', text: `${i + 1}. ${s.head}` });
     if (s.text.trim()) blocks.push({ type: 'p', text: s.text.trim() });
   });
+  const g = camp.growth ? growthRows(camp) : null;
+  if (g) blocks.push({ type: 'h', text: '사전·사후 성취' }, { type: 'table', head: true, rows: [g.head, ...g.rows], widths: [1.4, 2.6, 1, 1, 1.2] });
   return { title: r.title.trim() || titleOf('report', camp, layout), blocks };
 }
 
