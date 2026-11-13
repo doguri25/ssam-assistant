@@ -37,6 +37,8 @@ const until = async (fn, ms = 15000) => { const end = Date.now() + ms; while (!(
 await page.goto(url);
 await page.waitForTimeout(500);
 
+// 화면 정리(스펙 2026-11-14-ui-tidy): 자주 안 바꾸는 설정은 접혀 있어 펼친 뒤 바꿈(학생 수가 이미 있으면 접혀 있음)
+const openFold = async key => { await page.waitForSelector(`[data-fold="${key}"]`); if (!(await page.$eval(`[data-fold="${key}"]`, d => d.open))) await page.click(`[data-fold="${key}"] > summary`); };
 await run('review-writing', [
   ['교과 평어: 한 수준 50문장 → 검토 5번(10개씩, Opus, 성취기준 포함) → 문장마다 의견(노란 표시)', async () => {
     await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="pyeongeo"]');
@@ -92,6 +94,7 @@ await run('review-writing', [
   }],
   ['창체: 학습지로 3명 → 검토 1번 → 2번 학생 의견 → [고친 문장 쓰기]', async () => {
     await page.evaluate(() => window.SSAM.setMode('cc'));
+    await openFold('cc-set');
     await page.fill('#ccSetup [data-cls="count"]', '3'); await page.press('#ccSetup [data-cls="count"]', 'Tab');
     await page.fill('[data-ccf="name"][data-cck="auto"]', '교실 환경 지킴이');
     await page.fill('[data-ccf="desc"][data-cck="auto"]', '교실을 깨끗하게 하는 방법을 정해 실천함');

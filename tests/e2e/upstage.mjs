@@ -46,6 +46,8 @@ const reupload = async () => {
   await page.waitForTimeout(300);
 };
 
+// 화면 정리(스펙 2026-11-14-ui-tidy): 자주 안 바꾸는 설정은 접혀 있어 펼친 뒤 바꿈(학생 수가 이미 있으면 접혀 있음)
+const openFold = async key => { await page.waitForSelector(`[data-fold="${key}"]`); if (!(await page.$eval(`[data-fold="${key}"]`, d => d.open))) await page.click(`[data-fold="${key}"] > summary`); };
 await run('upstage', [
   ['설정에서 업스테이지와 키를 넣으면 세로 메뉴 AI가 업스테이지', async () => {
     await page.click('nav.app-side [data-menu-go="settings"]'); await page.click('#menuTabs [data-tab="ai"]');
@@ -74,6 +76,7 @@ await run('upstage', [
     assert((await page.textContent('#ccView')).includes('손글씨 이미지는 Claude·Gemini·GPT를 권장해요'), '창체 안내 없음');
   }],
   ['창체 학습지: 글자 읽기가 먼저, 읽은 글이 채팅 본문에 들어감', async () => {
+    await openFold('cc-set');
     await page.fill('#ccSetup [data-cls="count"]', '1'); await page.press('#ccSetup [data-cls="count"]', 'Tab');
     await page.fill('[data-ccf="name"][data-cck="auto"]', '교실 환경 지킴이');
     await page.fill('[data-ccf="desc"][data-cck="auto"]', '교실을 깨끗하게 하는 방법을 정해 실천함');

@@ -44,6 +44,8 @@ const upload = async files => {
   await fc.setFiles(files);
   await page.waitForFunction(n => document.querySelector('#grSetup').textContent.includes(`학생 ${n}명`), files.length);
 };
+// 화면 정리(스펙 2026-11-14-ui-tidy): 자주 안 바꾸는 설정은 접혀 있어 펼친 뒤 바꿈
+const openFold = async key => { await page.waitForSelector(`[data-fold="${key}"]`); if (!(await page.$eval(`[data-fold="${key}"]`, d => d.open))) await page.click(`[data-fold="${key}"] > summary`); };
 const drawNoBox = async () => {
   await page.click('[data-gr="noBox"]');
   await page.waitForSelector('#sheetRoot #mkStage');
@@ -85,6 +87,7 @@ await run('fix1104-evallegacy', [
     await fresh();
     await upload([await shot(300), await shot(310), await shot(320)]);
     reads = [1, 3, 4];
+    await openFold('gr-pages');
     await page.check('#grByNo');
     await drawNoBox();
     await page.fill('#grTitle', '세 자리 수 덧셈'); await page.dispatchEvent('#grTitle', 'input');
@@ -120,6 +123,7 @@ await run('fix1104-evallegacy', [
     await page.evaluate(() => document.querySelector('#grView').classList.add('show-pane'));
     await page.click('#grResults [data-grskip]');
     reads = [1, 2];
+    await openFold('gr-pages');
     if (!(await page.isChecked('#grByNo'))) await page.check('#grByNo');
     await page.fill('#grTitle', '세 자리 수 덧셈'); await page.dispatchEvent('#grTitle', 'input');
     await page.click('[data-gr="start"]');
@@ -147,6 +151,7 @@ await run('fix1104-evallegacy', [
   }],
   ['[gr-bundle-ocr-privacy] 글자층 학생 스캔 PDF(「이름 김민수」 쌍점 없음, 4쪽)를 평가지 채점 묶음에 넣으면 학생 4명, 정답·기준 문서 없음, 채점 요청에 이름 없음', async () => {
     await fresh();
+    await openFold('gr-pages');
     if (await page.isChecked('#grByNo')) await page.uncheck('#grByNo');
     const pdf = await pdfOf(KIDS.map(([no, nm]) => `<h2>3학년 수학 수행평가 곱셈</h2><p>3학년 2반 ${no}번 이름 ${nm}</p><p>1. 23 x 4 를 계산하고 까닭을 쓰시오. 답 92 까닭 20 x 4 와 3 x 4 를 더했어요</p>`));
     await putBundle([{ name: '3학년2반_곱셈_스캔.pdf', mimeType: 'application/pdf', buffer: pdf }], false);
@@ -240,6 +245,7 @@ await run('fix1104-evallegacy', [
   ['[gr-setup-rerender-ime] 채점을 마친 뒤 기준 칸 가운데를 고치면 0.9초 뒤에도 같은 칸·커서 그대로, 이어 친 글이 그 자리에', async () => {
     await fresh();
     await upload([await shot(300), await shot(310), await shot(320)]);
+    await openFold('gr-pages');
     if (await page.isChecked('#grByNo')) await page.uncheck('#grByNo');
     await page.fill('#grTitle', '곱셈'); await page.dispatchEvent('#grTitle', 'input');
     await page.fill('#grCrit', '1번 정답 456 / 2번 까닭'); await page.dispatchEvent('#grCrit', 'input');

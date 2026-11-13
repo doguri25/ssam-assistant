@@ -69,6 +69,8 @@ const seedGR = async (id, students, cls = { count: 4, except: [] }) => {
   await page.click(`[data-grhist="${id}"]`);
   await page.waitForSelector('[data-gr="copyAll"]');
 };
+// 화면 정리(스펙 2026-11-14-ui-tidy): 자주 안 바꾸는 설정은 접혀 있어 펼친 뒤 바꿈
+const openFold = async key => { await page.waitForSelector(`[data-fold="${key}"]`); if (!(await page.$eval(`[data-fold="${key}"]`, d => d.open))) await page.click(`[data-fold="${key}"] > summary`); };
 const stu = (no, level, text, d = 0) => ({ id: 's' + no, no, n: 1, skip: 0, score: 90 - no, level, text, d });
 // 한글(.hwpx) 정답표: 문단마다 한 줄
 const NSP = 'http://www.hancom.co.kr/hwpml/2011/paragraph', NSS = 'http://www.hancom.co.kr/hwpml/2011/section';
@@ -102,6 +104,7 @@ await run('fix1110-evallegacy', [
   ['[gr-hist-except] 지난 채점 기록을 열고 예외 번호(2)를 넣어도 기록의 학생 번호는 그대로(스캔 차례로 다시 매기지 않음), 저장된 기록도 그대로', async () => {
     await seedGR('h1', [stu(1, 'high', '1번 평어로 곱셈을 바르게 함.'), stu(2, 'mid', '2번 평어로 곱셈을 대체로 함.'), stu(3, 'mid', '3번 평어로 곱셈 과정을 설명함.'), stu(4, 'low', '4번 평어로 곱셈을 도움받아 함.')]);
     assert(JSON.stringify(await rows()) === '["1","2","3","4"]', JSON.stringify(await rows()));
+    await openFold('gr-pages');
     await page.fill('#grExcept', '2'); await page.dispatchEvent('#grExcept', 'change');
     await page.waitForTimeout(900);
     const r = await rows();
@@ -215,6 +218,7 @@ await run('fix1110-evallegacy', [
     await goTab('cc');
     await page.waitForSelector('[data-ccf="name"][data-cck="auto"]');
     await page.fill('[data-ccf="name"][data-cck="auto"]', '교실 환경 지킴이');
+    await openFold('cc-set');
     await page.click('#ccGrade');
     const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click('[data-ccsheet][data-cck="auto"]')]);
     await fc.setFiles([1, 2, 3].map(i => join(FIXTURES, `sheet-${i}.png`)));
@@ -250,6 +254,7 @@ await run('fix1110-evallegacy', [
     const id = await page.evaluate(() => document.activeElement.dataset.ccid);
     assert(id, '새 활동 칸 없음');
     await page.fill(`[data-ccf="name"][data-ccid="${id}"]`, '학급 회의');
+    await openFold('cc-set');
     await page.click('#ccGrade');
     const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click(`[data-ccsheet="${id}"]`)]);
     await fc.setFiles([1, 2, 3].map(i => join(FIXTURES, `sheet-${i}.png`)));

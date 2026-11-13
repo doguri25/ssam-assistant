@@ -51,6 +51,8 @@ const drawBox = async () => {
   await page.click('#sheetRoot #mkOk');
 };
 
+// 화면 정리(스펙 2026-11-14-ui-tidy): 자주 안 바꾸는 설정은 접혀 있어 펼친 뒤 바꿈
+const openFold = async key => { await page.waitForSelector(`[data-fold="${key}"]`); if (!(await page.$eval(`[data-fold="${key}"]`, d => d.open))) await page.click(`[data-fold="${key}"] > summary`); };
 await run('student-no', [
   ['단원평가: 「적힌 번호로 학생 맞추기」를 켜고 번호 칸을 정함(평가에 저장)', async () => {
     await page.click(`${V} [data-un-open="${A}"]`);
@@ -224,6 +226,7 @@ await run('student-no', [
     const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click('#grDrop')]);
     await fc.setFiles(files);
     await page.waitForFunction(() => document.querySelector('#grSetup').textContent.includes('학생 3명'));
+    await openFold('gr-pages');
     await page.check('#grByNo');
     await page.click('[data-gr="noBox"]');
     await drawBox();
@@ -248,7 +251,8 @@ await run('student-no', [
     assert(JSON.stringify(rows) === JSON.stringify([['1', 263], ['2', 280], ['3', 271]]), JSON.stringify(rows));
   }],
   ['평가지 채점: 번호로 맞춘 뒤 예외 번호를 바꿔도 읽은 번호는 그대로(차례로 다시 매기지 않음)', async () => {
-    await page.waitForSelector('#grExcept:not([disabled])', { timeout: 15000 });
+    await page.waitForSelector('[data-fold="gr-pages"] #grExcept:not([disabled])', { state: 'attached', timeout: 15000 });
+    await openFold('gr-pages');
     await page.fill('#grExcept', '2'); await page.dispatchEvent('#grExcept', 'change');
     await page.waitForTimeout(300);
     const rows = await page.$$eval('[data-grview1]', els => els.map(e => e.getAttribute('aria-label').match(/^(\d+)번/)[1]));

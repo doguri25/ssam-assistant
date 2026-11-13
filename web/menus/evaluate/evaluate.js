@@ -764,6 +764,50 @@ const S = {
   sets: new Map(), settings: { len: 'auto', tier: 'quick', ending: 'eum' }, remainOnly: false,
   queue: [], running: new Map(), paused: null, consecutiveErr: 0
 };
+
+/* ===== 화면 정리 공통 부품(core/ui-parts.js → window.SSAM.ui, 스펙 2026-11-14-ui-tidy) =====
+   이 파일은 모듈보다 먼저 돌아서, 그릴 때마다 부품이 있는지 보고 없으면 예전처럼 그림. 부품이 준비되면(ssam:ui-ready) 지금 화면을 한 번 다시 그림.
+   화면 설명(introHTML)은 화면을 연 횟수를 세므로, 평가 메뉴의 이 화면이 실제로 보일 때(창 틀의 menu:go)만 넣고 그 전에는 빈 자리만 둠 */
+const UIP = () => (window.SSAM && window.SSAM.ui) || null;
+const UI_TABS = ['pyeongeo', 'cc', 'hk', 'gr'];
+const UI_INTRO = {};          // 화면 → 설명 글
+const UI_FOLD_KEEP = new Set(); // 꼭 정해야 해서 펼쳐 보인 설정 접기: 이번 실행 동안 펼친 채(입력하자마자 접히지 않게)
+let uiSeen = false;           // 평가 메뉴의 옛 화면(교과 평어·창체·행특·채점)이 보이는 중
+function uiIntro(key, text) {
+  UI_INTRO[key] = text;
+  const u = UIP();
+  return u && uiSeen ? u.introHTML(key, text) : `<div data-intro-slot="${esc(key)}" hidden></div>`;
+}
+function uiFillIntros() {
+  const u = UIP();
+  if (!u || !uiSeen) return;
+  document.querySelectorAll('[data-intro-slot]').forEach(el => { if (el.dataset.introSlot === S.mode) el.outerHTML = u.introHTML(S.mode, UI_INTRO[S.mode] || ''); });
+}
+/* 「AI로 가는 것」: 무엇을 보내는지(부품이 없으면 회색 글 한 줄) */
+const PY_AI_NOTE = '평가계획 내용(학년·과목·성취기준·평가기준 등)만 보내요. 학생 정보는 보내지 않아요.'; // 교과 평어(넣기 화면·평가요소 화면)
+function uiAiNote(text) { const u = UIP(); return u ? u.aiNoteHTML(text) : `<p class="muted">${esc(text)}</p>`; }
+/* 자주 안 바꾸는 설정: 요약 한 줄 + [바꾸기]. need: 비어 있어 꼭 정해야 하면 펼침(부품이 없으면 설정 칸 그대로).
+   지금 화면에 펼쳐 있으면 다시 그려도 펼친 채(펼친 바로 뒤 toggle 알림이 오기 전에 다시 그려도) */
+function uiFold(key, summary, body, need) {
+  const u = UIP();
+  if (!u) return body;
+  const cur = document.querySelector(`details[data-fold="${key}"]`);
+  const open = !!need || (cur ? cur.open : UI_FOLD_KEEP.has(key));
+  if (need) UI_FOLD_KEEP.add(key);
+  return u.foldHTML({ key, summary, body, open });
+}
+/* 다시 그리지 않고 요약 한 줄만 고침(입력하는 칸의 초점을 지키려고) */
+function uiFoldText(key, summary) { const el = document.querySelector(`[data-fold="${key}"] .fold-text`); if (el) el.textContent = summary; }
+document.addEventListener('menu:go', e => {
+  const d = (e && e.detail) || {};
+  uiSeen = d.menu === 'evaluate' && UI_TABS.includes(d.tab);
+  uiFillIntros();
+});
+window.addEventListener('ssam:ui-ready', () => {
+  try {
+    if (S.mode === 'hk') renderHK(); else if (S.mode === 'gr') renderGR(); else if (S.mode === 'cc') renderCC(); else renderAll();
+  } catch (e) {}
+});
 const cap = { db: null, uid: null, sample: undefined, mcp: undefined, perms: null };
 const useCap = name => {
   try { return (window.claude && typeof window.claude.use === 'function') ? window.claude.use(name).catch(() => null) : Promise.resolve(null); }
@@ -2021,6 +2065,7 @@ function renderPane() {
         <button class="btn" type="button" data-act="regen">${ICON.redo}다시 만들기</button>
       </div>
     </div>
+    ${uiAiNote(PY_AI_NOTE)}
     <div id="listBox"></div>`;
   $('#infoBox').addEventListener('toggle', e => { S.infoOpen = e.target.open; });
   renderTabs();
@@ -2066,7 +2111,22 @@ function renderAll() {
   $('#planView').hidden = other || !has;
   $('#planTitle').textContent = cc ? '창의적 체험활동 · 공통 활동으로 학생별 특기사항 쓰기' : hk ? '행동특성 및 종합의견 · 메모로 글 완성하기' : gr ? '평가지 채점 · 스캔한 수행평가지로 수준과 평어 정하기' : has ? S.plan.title : '교과학습발달상황 · 평가계획으로 수준별 평어 만들기';
   if (has && !other) { renderNav(); renderUnits(); renderPane(); $('#planView').classList.toggle('show-pane', S.showPane); }
+  if (!has && !other) heroIntro();
   updateGen();
+}
+/* 넣기 화면 머리말 아래 설명(index.html의 글)을 「화면 설명」으로: 처음 몇 번만 펼쳐 보임 */
+function heroIntro() {
+  const hero = $('#importView .hero'); if (!hero) return;
+  let box = hero.querySelector('.hero-intro');
+  if (!box) {
+    box = document.createElement('div'); box.className = 'hero-intro';
+    const p = hero.querySelector(':scope > p');
+    if (p) p.replaceWith(box); else hero.appendChild(box);
+  }
+  if (!box.querySelector('.intro')) box.innerHTML = uiIntro('pyeongeo', '수준마다 겹치지 않는 평어를 50개씩 만들어요. 문장을 누르면 복사돼요.');
+  // 「학생 이름이나 개인정보는 들어가지 않아요」 → 「AI로 가는 것」(저장 안내 글 바로 위)
+  const sn = $('#storeNote');
+  if (UIP() && sn && !$('#importView .ai-note')) sn.insertAdjacentHTML('beforebegin', uiAiNote(PY_AI_NOTE));
 }
 function selectSubject(name) {
   S.subject = name;
@@ -2677,8 +2737,8 @@ renderAll();
 const planReady = storeReady.then(async () => {
   const sn = $('#storeNote');
   if (sn) sn.textContent = Store.mode === 'db'
-    ? '학생 이름이나 개인정보는 들어가지 않아요. 평가계획과 만든 평어는 선생님 Claude 계정에 저장돼요.'
-    : `학생 이름이나 개인정보는 들어가지 않아요. 평가계획과 만든 평어, API 키는 ${HERE}에만 저장돼요. 다른 컴퓨터에서는 보이지 않아요.`;
+    ? '평가계획과 만든 평어는 선생님 Claude 계정에 저장돼요.'
+    : `평가계획과 만든 평어, API 키는 ${HERE}에만 저장돼요. 다른 컴퓨터에서는 보이지 않아요.`;
   const prefs = await Store.getPrefs();
   if (prefs && prefs.settings) Object.assign(S.settings, prefs.settings);
   if (prefs && prefs.current && !S.plan) await openPlan(prefs.current);
@@ -2750,6 +2810,8 @@ function onClassChange(from) {
   // 행특: 명단 번호의 학생 칸을 채움 (예외 번호 학생은 지우지 않고 숨김)
   if (hkSyncRoster() && S.mode === 'hk') renderHK();
   else if (S.mode === 'hk' && from !== 'load') renderHKList();
+  // 행특 설정 요약(학생 수): 처음 불러왔을 때는 다시 그려 비어 있으면 펼치고, 그 뒤에는 요약 글만 고침(입력하는 칸의 초점을 지킴)
+  if (S.mode === 'hk') { if (from === 'load') renderHKSettings(); else uiFoldText('hk-set', hkSetSummary()); }
   // 평가지 채점: 예외 번호를 같이 씀 (채점을 시작하기 전이면 번호를 다시 매김)
   if (from !== 'gr' && (GR.settings.except || []).join(',') !== CLASS.except.join(',')) {
     GR.settings.except = CLASS.except.slice();
@@ -2757,7 +2819,7 @@ function onClassChange(from) {
     Store.lsSet('ssam:grset', GR.settings);
     if (S.mode === 'gr') renderGR();
   }
-  if (S.mode === 'cc') renderCC();
+  if (S.mode === 'cc') { renderCC(); uiFoldText('cc-set', ccSetSummary()); }
 }
 document.addEventListener('change', e => {
   const t = e.target;
@@ -3139,11 +3201,20 @@ function renderHK() {
   if (S.mode !== 'hk') return;
   renderHKSettings(); renderHKList(); renderHKEditor();
 }
+/* 행특 설정 요약 한 줄: 「300~500자 · 후보 2개 · ~함. · 3학년 12명」 */
+function hkSetSummary() {
+  const s = HK.settings, n = classNos().length;
+  const who = CLASS.count ? `${s.grade}학년 ${n}명${CLASS.except.length ? `(${CLASS.except.join('·')}번 제외)` : ''}` : `${s.grade}학년 · 학생 수를 넣어 주세요`;
+  return `${s.min.toLocaleString()}~${s.max.toLocaleString()}${unitWord()} · 후보 ${s.variants}개 · ${s.ending === 'da' ? '~한다.' : '~함.'} · ${who}`;
+}
 function renderHKSettings() {
   const s = HK.settings;
   const box = $('#hkSet'); if (!box) return;
   const active = document.activeElement && box.contains(document.activeElement) ? document.activeElement.id : null;
+  // 분량·후보·문장 끝·명단·학년은 자주 바꾸지 않아 접어 둠(학생 수가 비어 있으면 펼침)
   box.innerHTML = `<div class="ai-row" data-ai-row="writing"></div>
+    ${uiIntro('hk', '메모나 특성 단추로 학생마다 행동특성 글을 만들어요.')}
+    ${uiFold('hk-set', hkSetSummary(), `<div class="hk-opts">
     <div class="hk-opt"><span class="lab">분량 기준</span>
       <div class="seg" data-hkset="unit"><button type="button" data-v="char" aria-pressed="${s.unit === 'char'}">글자 수</button><button type="button" data-v="byte" aria-pressed="${s.unit === 'byte'}">나이스 바이트</button></div></div>
     <div class="hk-opt"><span class="lab">분량</span>
@@ -3156,7 +3227,7 @@ function renderHKSettings() {
     <div class="hk-opt hk-roster"><span class="lab">학급 명단 <span class="muted">· 창체·평가지 채점과 같이 씀</span></span>${rosterHTML(' ')}</div>
     <div class="hk-opt"><span class="lab">학년</span>
       <select class="field sm" id="hkGrade">${[1, 2, 3, 4, 5, 6].map(g => `<option value="${g}" ${s.grade === g ? 'selected' : ''}>${g}학년</option>`).join('')}</select></div>
-    <p class="muted hk-note">${s.unit === 'byte' ? '나이스 바이트: 한글 3바이트, 영문·숫자·공백 1바이트, 줄바꿈 2바이트로 셉니다.' : '공백을 포함한 글자 수로 셉니다.'} 범위를 벗어나면 저절로 다시 고쳐 써요.</p>`;
+    <p class="muted hk-note">${s.unit === 'byte' ? '나이스 바이트는 한글 3, 영문·숫자·공백 1, 줄바꿈 2바이트예요.' : '분량은 공백을 포함한 글자 수예요.'} 범위를 벗어나면 저절로 고쳐 써요.</p></div>`, CLASS.loaded && !CLASS.count)}`;
   if (active) { const el = document.getElementById(active); el && el.focus(); }
 }
 function renderHKList() {
@@ -3180,6 +3251,33 @@ function renderHKList() {
         <span class="st">${k === 'run' || k === 'wait' ? '<span class="spin"></span>' : k === 'done' ? ICON.check : ''}${label}</span></button></li>`;
     }).join('')}</ul>
     <div class="row" style="justify-content:space-between"><button class="btn text" type="button" data-hk="addOne">${ICON.plus}학생 더하기</button><span class="row"><button class="btn text" type="button" data-eval-check="hk">기재 점검</button><button class="btn" type="button" data-hk="copyAll">${ICON.copy}완료한 글 모두 복사</button><button class="btn text" type="button" data-hk="reset" style="color:var(--err)">새로 시작</button></span></div>`;
+}
+/* 특성 단추: 묶음(생활·학습·관계·특기·성장 중)마다 접기. 처음엔 첫 묶음만 펼침, 펼치고 접은 것은 이번 실행 동안 기억.
+   묶음 머리에 이 학생 메모에 들어 있는 특성 수(「생활 · 2개 골랐어요」) — 메모를 쉼표·줄로 나눈 조각이 단추 글과 같으면 고른 것 */
+const KWG_OPEN = new Map();
+document.addEventListener('toggle', e => { const d = e.target; if (d && d.matches && d.matches('#hkEditor details[data-kwg]')) KWG_OPEN.set(d.dataset.kwg, d.open); }, true);
+const hkKwPicked = s => new Set(String((s && s.memo) || '').split(/[,，;\n]/).map(x => x.trim()).filter(Boolean));
+const hkKwCount = (n) => (n ? ` · ${n}개 골랐어요` : '');
+function hkKwHTML(s) {
+  const got = hkKwPicked(s);
+  return `<div class="kw-groups">${KW_GROUPS.map(([g, ks], gi) => {
+    // 지금 화면의 펼침이 먼저(누른 바로 뒤 toggle 알림이 오기 전에 다시 그려도), 없으면 기억, 처음이면 첫 묶음만
+    const cur = document.querySelector(`#hkEditor details[data-kwg="${CSS.escape(g)}"]`);
+    if (cur) KWG_OPEN.set(g, cur.open);
+    const open = KWG_OPEN.has(g) ? KWG_OPEN.get(g) : gi === 0;
+    const n = ks.filter(k => got.has(k)).length;
+    return `<details class="kwg" data-kwg="${esc(g)}"${open ? ' open' : ''}><summary class="kwg-sum"><span class="kwg-name">${esc(g)}</span><span class="kwg-n">${hkKwCount(n)}</span></summary>
+      <div class="kw" role="group" aria-label="${esc(g)}">${ks.map(k => `<button type="button" class="kwc${got.has(k) ? ' on' : ''}" data-kw="${esc(k)}">${esc(k)}</button>`).join('')}</div></details>`;
+  }).join('')}</div>`;
+}
+/* 메모를 손으로 고칠 때: 다시 그리지 않고 묶음 머리의 고른 수와 단추 표시만 고침 */
+function hkKwRefresh(s) {
+  const got = hkKwPicked(s);
+  document.querySelectorAll('#hkEditor details[data-kwg]').forEach(d => {
+    const ks = (KW_GROUPS.find(x => x[0] === d.dataset.kwg) || [, []])[1];
+    const n = d.querySelector('.kwg-n'); if (n) n.textContent = hkKwCount(ks.filter(k => got.has(k)).length);
+  });
+  document.querySelectorAll('#hkEditor [data-kw]').forEach(b => b.classList.toggle('on', got.has(b.dataset.kw)));
 }
 function renderHKEditor() {
   const box = $('#hkEditor'); if (!box) return;
@@ -3215,15 +3313,16 @@ function renderHKEditor() {
       ${s.done ? `<span class="chip done">${ICON.check}완료</span>` : ''}</div>
     <label class="lab" for="hkMemo">교사 메모 · 단어나 짧은 문장 <span class="muted">(이름은 쓰지 마세요)</span></label>
     <textarea class="field" id="hkMemo" rows="4" placeholder="예) 1인 1역(우유 당번) 한 학기 동안 성실, 친구가 다치면 먼저 도와줌, 발표할 때 목소리가 작았는데 2학기에 자신감 생김, 수학 문제를 끝까지 풀려고 함">${esc(s.memo || '')}</textarea>
-    <div class="kw-groups" style="display:flex;flex-direction:column;gap:6px">${KW_GROUPS.map(([g, ks]) => `<div role="group" aria-label="${esc(g)}" data-kwg="${esc(g)}" style="display:flex;gap:8px;align-items:flex-start"><span class="muted" style="font-size:12px;flex:0 0 3.6em;padding-top:5px">${esc(g)}</span><div class="kw">${ks.map(k => `<button type="button" class="kwc" data-kw="${esc(k)}">${esc(k)}</button>`).join('')}</div></div>`).join('')}</div>
+    ${hkKwHTML(s)}
     <div class="row">
       <button class="btn primary" type="button" data-hk="gen" ${busy ? 'disabled' : ''}>${busy ? '<span class="spin"></span>쓰는 중' : ICON.spark + (s.results && s.results.length ? '새 후보 만들기' : '행특 만들기')}</button>
       <span class="muted num">후보 ${HK.settings.variants}개 · ${HK.settings.min}~${HK.settings.max}${unitWord()}${engineReady() ? ' · ' + esc(engineName()) : ''}</span>
     </div>
+    ${uiAiNote('교사 메모(붙여넣은 이름 칸은 빼고)와 학년을 보내요. 번호·별칭은 보내지 않아요.')}
     ${s.err ? `<div class="banner err"><span class="grow">${esc(s.err)}</span></div>` : ''}${s.rvErr ? RV_FAIL_HTML : ''}
     ${!engineReady() ? `<div class="banner info"><span class="grow">글을 만들 AI를 먼저 정해 주세요.</span><button class="btn primary" type="button" data-act="settings">API 키 넣기</button></div>` : ''}
     <div class="hk-results">${res || (busy ? '<div class="skel" style="height:120px"></div>' : '')}</div>
-    ${res ? '<p class="muted">글을 누르면 복사되고 완료로 표시돼요. 마음에 드는 글만 쓰고 나머지는 지워도 돼요.</p>' : ''}`;
+    ${res ? '<p class="muted">글을 누르면 복사되고 완료로 표시돼요.</p>' : ''}`;
   if (memoFocused) { const m = $('#hkMemo'); m.focus(); m.selectionStart = m.selectionEnd = m.value.length; }
   if (labelFocused) $('#hkLabel').focus();
 }
@@ -3315,7 +3414,7 @@ document.addEventListener('click', e => {
 document.addEventListener('input', e => {
   if (S.mode !== 'hk' || !evalShown()) return;
   const s = hkStudent(HK.sel);
-  if (e.target.id === 'hkMemo' && s) { s.memo = e.target.value; HKStore.save(); clearTimeout(HK.lt); HK.lt = setTimeout(renderHKList, 400); }
+  if (e.target.id === 'hkMemo' && s) { s.memo = e.target.value; HKStore.save(); hkKwRefresh(s); clearTimeout(HK.lt); HK.lt = setTimeout(renderHKList, 400); }
   const ed = e.target.closest && e.target.closest('[data-edit]');
   if (ed && s) {
     const r = s.results[+ed.dataset.edit];
@@ -3331,7 +3430,7 @@ document.addEventListener('change', e => {
     if (mn >= mx) { if (id === 'hkMin') mx = mn + 50; else mn = Math.max(20, mx - 50); }
     HK.settings.min = mn; HK.settings.max = mx; HKStore.save(); renderHK();
   }
-  if (id === 'hkGrade') { HK.settings.grade = +e.target.value; HK.settings.gradeSet = 1; HKStore.save(); }
+  if (id === 'hkGrade') { HK.settings.grade = +e.target.value; HK.settings.gradeSet = 1; HKStore.save(); uiFoldText('hk-set', hkSetSummary()); }
 });
 document.addEventListener('keydown', e => {
   if (S.mode !== 'hk' || !evalShown()) return;
@@ -4320,8 +4419,13 @@ function renderGRSetup() {
   const locked = ['grading', 'ranking', 'writing'].includes(GR.phase);
   const u = grUnit();
   const per = Math.max(1, st.pagesPer | 0), rem = GR.pages.length % per;
+  const ex = st.except || [], mixName = (GR_MIX[st.mix] || GR_MIX.mix).label;
+  // 자주 안 바꾸는 설정은 접어 둠: 쪽 나누기(학생당·시작 번호·예외 번호·적힌 번호), 수준 비율·평어 내용
+  const pagesSum = `학생당 ${per}쪽 · ${st.byNo ? '적힌 번호로 맞춤' : `${st.startNo}번부터`}${ex.length ? ` · ${ex.join('·')}번 제외` : ''}`;
+  const levelSum = sum === 100 ? `${LV.map(l => `${l.name} ${st.ratio[l.k]}`).join(' · ')}% · 평어 ${mixName}` : `수준 비율 합이 ${sum}%예요 · 100%로 맞춰 주세요`;
   // AI 줄은 하나: 채점과 이 탭의 평어 쓰기·검토 모두 채점 AI로
   const html = `<div class="ai-row" data-ai-row="grade"></div>
+    ${uiIntro('gr', 'AI가 평가지를 채점하고 수준별 평어를 써요.')}
     <div class="gr-step">
       <div class="gr-h"><span class="sn">1</span><b>무엇을 채점할까요</b></div>
       ${!locked && window.SSAM.bundleBoxHTML ? window.SSAM.bundleBoxHTML('gr', '정답·채점 기준 문서와 학생 평가지 스캔을 한꺼번에 넣으면 알아서 나눠요') : ''}
@@ -4340,7 +4444,7 @@ function renderGRSetup() {
         ${GR.critDocs.map((d, i) => `<span class="chip"><button class="chip-open" type="button" data-grcritview="${i}" title="읽은 내용 보기·고치기">${esc(d.name)} · ${d.text.length.toLocaleString()}자</button><button class="icon-btn tiny" type="button" data-grcritdocdel="${i}" aria-label="빼기" ${locked ? 'disabled' : ''}>${ICON.x}</button></span>`).join('')}
         ${GR.critImgs.map((im, i) => `<span class="chip">${esc(im.name)}<button class="icon-btn tiny" type="button" data-grcritdel="${i}" aria-label="빼기" ${locked ? 'disabled' : ''}>${ICON.x}</button></span>`).join('')}
       </div>
-      <p class="muted">정답표는 한글(.hwp·.hwpx)·PDF·사진 파일로 넣거나 이 칸에 끌어다 놓으세요. 한글 파일은 글자를 읽고, PDF와 사진은 쪽 그대로 봐요(${CRIT_IMG_MAX}쪽까지). 채점 기준이 없으면 평가계획의 평가기준과 AI 판단으로 채점해요.</p>
+      <p class="muted">한글·PDF·사진 정답표를 넣거나 끌어다 놓아요(PDF·사진은 ${CRIT_IMG_MAX}쪽까지). 없으면 평가기준으로 채점해요.</p>
       </div>
     </div>
     <div class="gr-step">
@@ -4350,14 +4454,16 @@ function renderGRSetup() {
         <span>번호 순서대로 스캔한 파일 · 여러 개면 파일 이름 순서로 이어 붙여요</span>
       </div>
       <div class="busy" id="grBusy" hidden></div>
+      ${uiFold('gr-pages', pagesSum, `<div class="gr-fold">
       <div class="row nowrap">
         <label class="lab" for="grPer">학생당</label><input class="field num sm" id="grPer" type="number" min="1" max="20" value="${per}" ${locked ? 'disabled' : ''}><span class="muted">쪽</span>
         <label class="lab" for="grStartNo">시작 번호</label><input class="field num sm" id="grStartNo" type="number" min="1" max="99" value="${st.startNo}" ${locked ? 'disabled' : ''}>
       </div>
       <label class="lab" for="grExcept">예외 번호 <span class="muted">(전출처럼 나이스에 칸이 없는 번호 · 학급 명단과 같이 씀)</span></label>
-      <input class="field" id="grExcept" placeholder="예) 7, 15" value="${esc((st.except || []).join(', '))}" ${locked ? 'disabled' : ''} autocomplete="off" inputmode="numeric">
+      <input class="field" id="grExcept" placeholder="예) 7, 15" value="${esc(ex.join(', '))}" ${locked ? 'disabled' : ''} autocomplete="off" inputmode="numeric">
       <label class="switch"><input type="checkbox" id="grByNo" ${st.byNo ? 'checked' : ''} ${locked ? 'disabled' : ''}>적힌 번호로 학생 맞추기 <span class="muted">(걷은 순서와 상관없이 첫 쪽에 쓴 번호로)</span></label>
       ${st.byNo ? `<div class="row"><button class="btn ${st.noBox ? '' : 'tonal'}" type="button" data-gr="noBox" ${GR.pages.length && !locked ? '' : 'disabled'}>${st.noBox ? '번호 칸 · 고치기' : '번호 칸 정하기'}</button><span class="muted">${st.noBox ? '채점 전에 번호를 읽어 확인해요(AI는 번호 칸만 봐요)' : '학생이 번호를 쓰는 칸을 정해 주세요'}</span></div>` : ''}
+      </div>`, st.byNo && !st.noBox)}
       ${GR.pages.length ? `<p class="muted">학생 ${GR.students.filter(s => s.pages.length).length}명 (${grNoRange() ? grNoRange().join('~') : st.startNo}번${grExceptIn().length ? `, ${grExceptIn().join('·')}번 제외` : ''})${rem ? ` · 마지막 학생은 ${rem}쪽뿐이에요` : ''} <button class="btn text tiny" type="button" data-gr="reverse" ${locked ? 'disabled' : ''}>쪽 순서 거꾸로</button> <button class="btn text tiny" type="button" data-gr="clearPages" ${locked ? 'disabled' : ''}>모두 빼기</button></p>` : ''}
     </div>
     <div class="gr-step">
@@ -4366,14 +4472,14 @@ function renderGRSetup() {
       ${st.maskOn ? `<div class="row"><button class="btn ${st.mask.length ? '' : 'tonal'}" type="button" data-gr="mask" ${GR.pages.length && !locked ? '' : 'disabled'}>${st.mask.length ? `가릴 곳 ${st.mask.length}개 · 고치기` : '가릴 곳 정하기'}</button>${!GR.pages.length ? '<span class="muted">평가지를 올리면 정할 수 있어요</span>' : st.mask.length ? '' : '<span class="muted warn">정하지 않으면 학생 이름이 그대로 AI 회사로 보내져요</span>'}</div>` : '<p class="muted">학생 이름이 그대로 AI 회사로 보내져요.</p>'}
     </div>
     <div class="gr-step">
-      <div class="gr-h"><span class="sn">4</span><b>수준 비율</b><span class="muted num ${sum === 100 ? '' : 'warn'}">합 ${sum}%</span></div>
+      <div class="gr-h"><span class="sn">4</span><b>수준 비율·평어 내용</b><span class="muted num ${sum === 100 ? '' : 'warn'}">합 ${sum}%</span></div>
+      ${uiFold('gr-level', levelSum, `<div class="gr-fold">
       <div class="ratio">${LV.map(l => `<label class="${l.cls}"><span class="lvtag">${l.name}</span><input class="field num sm" type="number" min="0" max="100" step="5" id="grR_${l.k}" value="${st.ratio[l.k]}" ${locked ? 'disabled' : ''}><span class="muted">%</span><small class="num">${act.length ? tg[l.k] + '명' : ''}</small></label>`).join('')}</div>
-      <p class="muted">점수 순위대로 이 비율에 맞춰 나눠요. 나눈 뒤에도 학생을 다른 수준으로 옮길 수 있어요.</p>
-    </div>
-    <div class="gr-step">
-      <div class="gr-h"><span class="sn">5</span><b>평어 내용</b></div>
+      <p class="muted">점수 순서대로 이 비율로 나눠요. 나눈 뒤에도 수준을 옮길 수 있어요.</p>
+      <span class="lab">평어 내용</span>
       <div class="seg" id="grMix">${Object.entries(GR_MIX).map(([k, m]) => `<button type="button" data-grmix="${k}" aria-pressed="${(st.mix || 'mix') === k}">${m.label}</button>`).join('')}</div>
       <p class="muted">${esc((GR_MIX[st.mix] || GR_MIX.mix).hint)}${GR.students.some(s => s.text) ? ' 바꾼 뒤 결과 화면의 「평어 모두 다시 쓰기」를 누르면 새로 써요.' : ''}</p>
+      </div>`, sum !== 100)}
     </div>
     ${GR.err ? `<div class="banner err"><span class="grow">${esc(GR.err)}</span><button class="btn" type="button" data-act="settings">평어 쓰는 방식</button></div>` : ''}
     ${!engineReady() ? `<div class="banner info"><span class="grow">채점할 AI를 먼저 정해 주세요. 이미지를 읽을 수 있는 Claude·Gemini·GPT 키가 필요해요.</span><button class="btn primary" type="button" data-act="settings">API 키 넣기</button></div>` : ''}
@@ -4383,7 +4489,8 @@ function renderGRSetup() {
         GR.phase === 'done' ? '' : `<button class="btn primary" type="button" data-gr="start" ${GR.pages.length || GR.phase === 'partial' ? '' : 'disabled'}>${ICON.spark}${GR.phase === 'partial' ? '이어서 하기' : `채점하고 평어 쓰기${act.length ? ` (${act.length}명)` : ''}`}</button>`}
       ${GR.id || GR.pages.length ? `<button class="btn text" type="button" data-gr="new" ${locked ? 'disabled' : ''}>새 채점</button>` : ''}
     </div>
-    <p class="muted">스캔 이미지는 이 화면에만 있고 저장하지 않아요. 점수·평어만 ${HERE}에 저장돼요.</p>
+    ${uiAiNote('평가지 그림(정한 이름 칸은 가려서)과 정답·채점 기준, 평가 정보를 보내요. 평어는 학생 번호·점수·채점 내용으로 써요.')}
+    <p class="muted gr-keep">스캔 이미지는 저장하지 않아요. 점수·평어만 ${HERE}에 저장돼요.</p>
     <div id="grHistBox" style="display:contents">${grHistHTML()}</div>`;
   // 파일 고르기 창이 열린 채 다시 그려도 「한꺼번에 넣기」에 고른 파일이 들어가게(core/keep-files.js, gr-bundle.js가 붙여 줌)
   ((window.SSAM && window.SSAM.keepFiles) || ((b, draw) => draw()))(box, () => { box.innerHTML = html; });
@@ -5471,29 +5578,36 @@ function renderCCSetup() {
       <div class="gr-h"><span class="sn">${n}</span><b>${info.name}</b></div>
       ${k === 'club' ? `<label class="lab" for="ccClub">동아리 이름 <span class="muted">· 문장 앞에 (동아리 이름)으로 붙어요</span></label>
         <input class="field" id="ccClub" data-ccf="club" data-cck="club" value="${esc(ccArea('club').club)}" placeholder="예) 3-2평화물결그리기" autocomplete="off">` : ''}
-      <label class="lab">공통 활동 <span class="muted">· 활동마다 학생 한 명에 한 문장씩 써요</span></label>
+      <label class="lab">공통 활동 <span class="muted">· 활동마다 한 문장씩 써요</span></label>
       ${actRows(k)}
       <button class="btn text tiny" type="button" data-ccadd="${k}">${ICON.plus}활동 더하기</button>
     </div>`;
   };
+  // 학급 명단·학년·문장 길이는 자주 바꾸지 않아 접어 둠(학생 수가 비어 있으면 펼침)
   box.innerHTML = `<div class="ai-row" data-ai-row="writing"></div>
-    <div class="gr-step">
-      <div class="gr-h"><span class="sn">1</span><b>학급 명단</b></div>
-      ${rosterHTML()}
+    ${uiIntro('cc', '공통 활동을 넣으면 학생마다 다른 특기사항 문장을 써요.')}
+    ${uiFold('cc-set', ccSetSummary(), `<div class="gr-fold">
+      <span class="lab">학급 명단</span>
+      ${rosterHTML('전출 등 나이스에 칸이 없는 번호는 예외 번호에 넣어요. 행특·평가지 채점과 같은 명단이에요.')}
       <label class="lab" for="ccGrade">학년</label>
       <select class="field" id="ccGrade">${[1, 2, 3, 4, 5, 6].map(g => `<option value="${g}" ${CHE.grade === g ? 'selected' : ''}>${g}학년</option>`).join('')}</select>
-    </div>
-    ${step(2, 'auto')}${step(3, 'club')}${step(4, 'career')}
-    <div class="gr-step">
-      <div class="gr-h"><span class="sn">5</span><b>문장 길이</b></div>
+      <span class="lab">문장 길이</span>
       <div class="seg">${[['short', '짧게'], ['mid', '보통'], ['long', '길게']].map(([v, l]) => `<button type="button" data-cclen="${v}" aria-pressed="${CHE.len === v}">${l} <small class="num">${CC_LEN[v][0]}~${CC_LEN[v][1]}자</small></button>`).join('')}</div>
-      <p class="muted">활동이 두 개면 학생마다 두 문장을 이어 써요. 문장 끝은 교과 평어 설정(${S.settings.ending === 'da' ? '~한다.' : '~함.'})을 따라요.</p>
-    </div>
+      <p class="muted">활동이 두 개면 두 문장을 이어 써요. 문장 끝은 교과 평어 설정(${S.settings.ending === 'da' ? '~한다.' : '~함.'})을 따라요.</p>
+    </div>`, CLASS.loaded && !CLASS.count)}
+    ${step(1, 'auto')}${step(2, 'club')}${step(3, 'career')}
     ${upNote()}
     <div class="cc-go">
       <button class="btn primary" type="button" data-cc="genAll">${ICON.spark}모든 영역 만들기</button>
       <button class="btn text back" type="button" data-cc="showRes">결과 보기</button>
-    </div>`;
+    </div>
+    ${uiAiNote('학년·영역·활동 이름과 내용, 넣은 학습지 그림(정한 이름 칸은 가려서)을 보내요.')}`;
+}
+/* 창체 설정 요약 한 줄: 「3학년 25명 · 보통 45~70자 · ~함.」 */
+function ccSetSummary() {
+  const n = classNos().length, len = CC_LEN[CHE.len] || CC_LEN.mid;
+  const who = CLASS.count ? `${CHE.grade}학년 ${n}명${CLASS.except.length ? `(${CLASS.except.join('·')}번 제외)` : ''}` : `${CHE.grade}학년 · 학생 수를 넣어 주세요`;
+  return `${who} · ${{ short: '짧게', mid: '보통', long: '길게' }[CHE.len] || '보통'} ${len[0]}~${len[1]}자 · ${S.settings.ending === 'da' ? '~한다.' : '~함.'}`;
 }
 /* 활동 카드의 학습지 칸 (끌어다 놓아도 됨) */
 function ccSheetInfo(actId) {
@@ -5521,7 +5635,7 @@ function ccSheetBox(k, a) {
       <div class="row"><button class="btn text tiny" type="button" data-ccsheet="${id}" data-cck="${k}" ${off}>${ICON.upload}학습지 스캔 넣기</button>
         ${nObs ? `<span class="muted">학습지를 읽은 학생 ${nObs}명</span><button class="btn text tiny" type="button" data-ccobsdel="${id}" data-cck="${k}" ${off}>읽은 내용 지우기</button>` : ''}</div>
       ${ccSheetBusyHTML(a.id)}
-      ${nObs ? '' : '<p class="muted">학생들이 쓴 학습지를 번호 순서대로 스캔해(PDF·사진) 넣거나 끌어다 놓으면, 학생마다 학습지 내용을 살려 써요.</p>'}
+      ${nObs ? '' : '<p class="muted">번호 순서대로 스캔한 PDF·사진을 넣으면 학생마다 학습지 내용을 살려 써요.</p>'}
     </div>`;
   }
   const mask = ccMask(a);
@@ -5723,7 +5837,7 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => {
   if (S.mode !== 'cc') return;
   const t = e.target;
-  if (t.id === 'ccGrade') { CHE.grade = +t.value || 3; CCStore.save(); return; }
+  if (t.id === 'ccGrade') { CHE.grade = +t.value || 3; CCStore.save(); uiFoldText('cc-set', ccSetSummary()); return; }
   if (t.dataset && t.dataset.ccsh) {
     // 학습지 쪽 나누기: 안내 글만 고치고 칸은 다시 그리지 않음 (입력이 끊기지 않게)
     const id = t.dataset.ccid, sh = CHE.sheets[id]; if (!sh) return;

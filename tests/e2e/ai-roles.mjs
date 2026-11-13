@@ -34,6 +34,8 @@ const V = 'section[data-menu="evaluate"] .unit-box';
 await page.goto(url);
 await page.waitForTimeout(500);
 
+// 화면 정리(스펙 2026-11-14-ui-tidy): 자주 안 바꾸는 설정은 접혀 있어 펼친 뒤 바꿈(학생 수가 이미 있으면 접혀 있음)
+const openFold = async key => { await page.waitForSelector(`[data-fold="${key}"]`); if (!(await page.$eval(`[data-fold="${key}"]`, d => d.open))) await page.click(`[data-fold="${key}"] > summary`); };
 await run('ai-roles', [
   ['정하지 않으면 모든 업무가 기본 AI(Sonnet)', async () => {
     calls.length = 0;
@@ -75,6 +77,7 @@ await run('ai-roles', [
   ['옛 화면 창체(writing)에 Haiku → 학습지 읽기·문장 쓰기 모두 Haiku', async () => {
     await setRoles({ review: null, tasks: { writing: { main: HAIKU } } });
     await page.evaluate(() => window.SSAM.setMode('cc'));
+    await openFold('cc-set');
     await page.fill('#ccSetup [data-cls="count"]', '3'); await page.press('#ccSetup [data-cls="count"]', 'Tab');
     await page.fill('[data-ccf="name"][data-cck="auto"]', '교실 환경 지킴이');
     await page.fill('[data-ccf="desc"][data-cck="auto"]', '교실을 깨끗하게 하는 방법을 정해 실천함');
