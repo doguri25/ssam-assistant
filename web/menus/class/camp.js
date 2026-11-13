@@ -7,7 +7,7 @@ import { onEnter, go } from '../../core/shell.js';
 import * as ai from '../../core/ai.js';
 import { aiRowHTML } from '../../core/ai-roles.js';
 import { toast, saveFile } from '../../core/ui.js';
-import { FULL_MSG } from '../../core/store.js';
+import { FULL_MSG, get as sget, set as sset } from '../../core/store.js';
 import { exportButton, exportDoc, docHtml, getFormat, fileName } from '../../core/doc-export.js';
 import { keepFiles } from '../../core/keep-files.js';
 import { forms, newFormId, MAX_FORM } from '../../core/form-store.js';
@@ -40,6 +40,10 @@ const busy = {}; // `${캠프 id}:sched|obs|report` → true
 const drafts = {}; // 캠프 id → [AI로 만들기] 칸 글(화면에만)
 const planInfo = {}; // 캠프 id → 마지막에 넣은 계획서의 기간·요일·요일별 시간([차시 수로 날짜 만들기] 처음 값, 화면에만)
 const countForm = {}; // 캠프 id → [차시 수로 날짜 만들기]에 넣은 값(화면에만)
+/* 출석 보기: day(하루씩 — 날짜 칩) · all(한눈에 — 학생 × 수업 날 표). 이 기기에 기억(공통 키 camp:attView) */
+const VIEW_KEY = 'camp:attView';
+let attView = null;
+const viewOf = () => attView || (attView = sget(VIEW_KEY, 'day') === 'all' ? 'all' : 'day');
 const openPrev = new Set(); // 펼친 미리 보기
 const F = { store: null, list: [], adding: {} };
 
@@ -127,13 +131,16 @@ function attHTML(c) {
   }
   attDate = pickAttDate(c); attFor = c.id;
   const ds = M.campDates(c), i = ds.indexOf(attDate), list = M.sessionsOn(c, attDate), rest = M.remainingOn(c, attDate);
+  const all = viewOf() === 'all';
+  const toggle = `<div class="cp-view" role="group" aria-label="출석 보기">${[['day', '하루씩'], ['all', '한눈에']].map(([k, l]) => `<button type="button" class="cp-view-b" data-att-view="${k}" aria-pressed="${viewOf() === k}">${l}</button>`).join('')}</div>`;
   // 칸: ○ 출석(진한 채움) · / 결석(주황) · — 체크 안 함(점선, 「—」는 CSS로 그려 글은 빈칸)
   const cell = (s, st) => { const m = (c.att[s.id] || {})[st.id] || ''; return `<td><button type="button" class="cp-mark m-${m || 'none'}" data-att="${esc(s.id)}|${esc(st.id)}" aria-label="${esc(st.name || '학생')} ${esc(M.fmtTime(s) || '수업')} ${MARK_WORD[m] || '체크 안 함'}">${MARK_TEXT[m] || ''}</button></td>`; };
   const chip = d => { const ok = M.dayDone(c, d); return `<button type="button" class="cp-day${ok ? ' done' : ''}" data-att-date="${d}" aria-pressed="${d === attDate}">${esc(chipDate(d))}${ok ? '<span aria-hidden="true"> ✓</span><span class="sr"> 다 체크함</span>' : ''}</button>`; };
   const stats = c.students.map(st => { const a = M.attStats(c, st.id); return `<tr><th scope="row">${esc(st.name || '이름 없음')}</th><td class="num">${a.present}/${a.total}</td><td class="num">${a.absent}</td><td class="num">${a.rate == null ? '—' : a.rate + '%'}</td></tr>`; }).join('');
   return `<div class="cp-att-wrap"><div class="cp-att-main">
     <section class="yp-card">
-      <div class="cp-day-nav"><button class="icon-btn cp-day-arrow" type="button" data-cp="attPrev" aria-label="앞 수업 날"${i > 0 ? '' : ' disabled'}>‹</button>
+      ${toggle}
+      ${all ? allHTML(c) : `<div class="cp-day-nav"><button class="icon-btn cp-day-arrow" type="button" data-cp="attPrev" aria-label="앞 수업 날"${i > 0 ? '' : ' disabled'}>‹</button>
         <div class="cp-days" role="group" aria-label="수업 날 고르기">${ds.map(chip).join('')}</div>
         <button class="icon-btn cp-day-arrow" type="button" data-cp="attNext" aria-label="다음 수업 날"${i < ds.length - 1 ? '' : ' disabled'}>›</button></div>
       <div class="row cp-att-bar"><b class="cp-att-day">${esc(M.fmtDate(attDate))}</b><span class="muted cp-att-rest">${rest ? `남은 칸 ${rest}개` : '다 체크했어요 ✓'}</span><span class="grow"></span>
@@ -141,12 +148,33 @@ function attHTML(c) {
         <button class="btn tonal" type="button" data-cp="attAll"${rest ? '' : ' disabled'}>남은 칸 모두 출석</button></div>
       <p class="muted cp-legend"><span class="cp-key-i"><span class="cp-key m-O" aria-hidden="true">○</span>출석</span><span class="cp-key-i"><span class="cp-key m-X" aria-hidden="true">/</span>결석</span><span class="cp-key-i"><span class="cp-key m-none" aria-hidden="true"></span>체크 안 함</span><span>칸을 누를 때마다 차례로 바뀌어요.</span></p>
       <div class="cp-tbl-wrap"><table class="cp-tbl cp-att"><thead><tr><th scope="col">시간</th><th scope="col">교과</th>${c.students.map(st => `<th scope="col">${esc(st.name || '이름 없음')}</th>`).join('')}</tr></thead>
-        <tbody>${list.map(s => `<tr><th scope="row">${esc(M.fmtTime(s) || '—')}</th><td>${esc(s.subject)}</td>${c.students.map(st => cell(s, st)).join('')}</tr>`).join('')}</tbody></table></div>
+        <tbody>${list.map(s => `<tr><th scope="row">${esc(M.fmtTime(s) || '—')}</th><td>${esc(s.subject)}</td>${c.students.map(st => cell(s, st)).join('')}</tr>`).join('')}</tbody></table></div>`}
     </section>
     <section class="yp-card"><h3>학생별 출석</h3>
       <div class="cp-tbl-wrap"><table class="cp-tbl cp-stats"><thead><tr><th scope="col">학생</th><th scope="col">출석</th><th scope="col">결석</th><th scope="col">출석률</th></tr></thead><tbody>${stats}</tbody></table></div>
       <p class="muted" style="margin:0">출석은 전체 수업 ${c.sessions.length}번 가운데, 출석률은 ○·/를 표시한 수업으로 셈해요.</p></section>
     </div>${readyHTML(c)}</div>`;
+}
+/* 출석 「한눈에」: 학생 × 수업 날 한 표(하루 여러 교시면 날짜 머리 아래 교시 줄). 칸은 하루씩과 같이 ○ → / → 빈칸,
+   이름 칸은 왼쪽에 붙고, 오늘 열은 표시하고 처음 열 때 오늘(없으면 다음 수업 날)이 보이게 넘김(render). 끝 열은 학생별 출석 계 */
+function allHTML(c) {
+  const t = today(), by = M.campDates(c).map(d => [d, M.sessionsOn(c, d)]);
+  const multi = by.some(([, ss]) => ss.length > 1);
+  const left = by.reduce((n, [d]) => n + M.remainingOn(c, d), 0), undated = c.sessions.filter(s => !s.date).length;
+  const legend = `<p class="muted cp-legend"><span class="cp-key-i"><span class="cp-key m-O" aria-hidden="true">○</span>출석</span><span class="cp-key-i"><span class="cp-key m-X" aria-hidden="true">/</span>결석</span><span class="cp-key-i"><span class="cp-key m-none" aria-hidden="true"></span>체크 안 함</span><span>칸을 누를 때마다 차례로 바뀌어요.</span></p>`;
+  const head = by.map(([d, ss]) => {
+    const ok = M.dayDone(c, d), one = !multi && ss[0];
+    return `<th scope="${multi ? 'colgroup' : 'col'}"${ss.length > 1 ? ` colspan="${ss.length}"` : ''} class="cp-all-d${d === t ? ' today' : ''}${ok ? ' done' : ''}" data-col-date="${d}">${esc(chipDate(d))}${ok ? '<span aria-hidden="true"> ✓</span><span class="sr"> 다 체크함</span>' : ''}${d === t ? '<span class="sr"> 오늘</span>' : ''}${one && one.subject ? `<small>${esc(one.subject)}</small>` : ''}</th>`;
+  }).join('');
+  const sub = multi ? `<tr>${by.map(([d, ss]) => ss.map((s, i) => `<th scope="col" class="cp-all-t${d === t ? ' today' : ''}">${esc(s.start || `${i + 1}교시`)}${s.subject ? `<small>${esc(s.subject)}</small>` : ''}</th>`).join('')).join('')}</tr>` : '';
+  const rs = multi ? ' rowspan="2"' : '';
+  const cell = (s, st, d) => { const m = (c.att[s.id] || {})[st.id] || ''; return `<td${d === t ? ' class="today"' : ''}><button type="button" class="cp-mark sm m-${m || 'none'}" data-att="${esc(s.id)}|${esc(st.id)}" aria-label="${esc(st.name || '학생')} ${esc(M.fmtDate(d))} ${esc(M.fmtTime(s) || '수업')} ${MARK_WORD[m] || '체크 안 함'}">${MARK_TEXT[m] || ''}</button></td>`; };
+  const rows = c.students.map(st => { const a = M.attStats(c, st.id); return `<tr><th scope="row" class="cp-all-name">${esc(st.name || '이름 없음')}</th>${by.map(([d, ss]) => ss.map(s => cell(s, st, d)).join('')).join('')}<td class="num cp-all-sum">${a.present}/${a.total}</td></tr>`; }).join('');
+  return `<div class="row cp-att-bar"><b class="cp-att-day">수업 ${by.length}일${multi ? ` · ${c.sessions.length - undated}교시` : ''}</b><span class="muted cp-all-left">${left ? `남은 칸 ${left}개` : '다 체크했어요 ✓'}</span></div>
+      ${legend}
+      <div class="cp-tbl-wrap cp-all-wrap"><table class="cp-tbl cp-all"><thead><tr><th scope="col" class="cp-all-name"${rs}>학생</th>${head}<th scope="col" class="cp-all-sum"${rs}>출석</th></tr>${sub}</thead>
+        <tbody>${rows}</tbody></table></div>
+      ${undated ? `<p class="muted" style="margin:0">날짜가 없는 수업 ${undated}줄은 여기 보이지 않아요. 수업 일정에서 날짜를 넣어 주세요.</p>` : ''}`;
 }
 /* 문서 준비 상자(출석 체크 옆, 좁으면 아래): 준비됨(✓ 초록 점)·할 일 남음(주황 점)·아직(빈 원) + 그 단계로 */
 const READY_SR = { ready: '', todo: '할 일 남음: ', none: '아직: ' };
@@ -262,7 +290,19 @@ export function render() {
   stale = false;
   const sel = focusSel(document.activeElement);
   const camps = M.listCamps(), c = cur();
+  const aw = box.querySelector('.cp-all-wrap'), keepX = aw ? aw.scrollLeft : null; // 한눈에 표: 칸을 눌러 다시 그려도 보던 자리 그대로
   keepFiles(box, () => { box.innerHTML = pageHTML(camps, c); });
+  const aw2 = box.querySelector('.cp-all-wrap');
+  if (aw2) {
+    if (keepX != null) aw2.scrollLeft = keepX;
+    else { // 처음 열면 오늘(없으면 다음 수업 날, 다 지났으면 끝) 열이 보이게
+      const cols = [...aw2.querySelectorAll('th[data-col-date]')], t = today();
+      const col = cols.find(x => x.dataset.colDate >= t) || cols[cols.length - 1], name = aw2.querySelector('thead .cp-all-name');
+      // 오늘 열을 보이는 칸의 3분의 1쯤에 둬서 앞의 며칠도 보이게(앞에 날이 더 있다는 것을 알 수 있게)
+      const nw = name ? name.offsetWidth : 0;
+      if (col) aw2.scrollLeft = Math.max(0, col.offsetLeft - nw - Math.round((aw2.clientWidth - nw) / 3));
+    }
+  }
   const st = box.querySelector('.cp-steps ol'), dy = box.querySelector('.cp-days');
   centerIn(st, st && st.querySelector('[aria-current="step"]') && st.querySelector('[aria-current="step"]').parentElement);
   centerIn(dy, dy && dy.querySelector('[aria-pressed="true"]'));
@@ -793,6 +833,8 @@ function onClick(e) {
   if (at) { tapMark(at.dataset.att); return; }
   const dd = t.closest('[data-att-date]');
   if (dd) { setAttDate(dd.dataset.attDate); return; }
+  const av = t.closest('[data-att-view]');
+  if (av) { attView = av.dataset.attView === 'all' ? 'all' : 'day'; sset(VIEW_KEY, attView); render(); return; }
   const u = t.closest('[data-unit]');
   if (u) { const c = cur(); if (c.unit !== u.dataset.unit) { c.unit = u.dataset.unit; if (save(c)) render(); } return; }
   const rk = t.closest('[data-rkind]');
