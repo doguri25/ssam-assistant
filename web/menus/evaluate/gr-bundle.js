@@ -3,6 +3,8 @@ import { readBundle, openBundleCard, needsCard, bundleBoxHTML, onBundle, bundleM
 import { toast } from '../../core/ui.js';
 import { keepFiles } from '../../core/keep-files.js';
 import '../../core/eval-refs.js';
+// 근거가 보이는 평어(평가지 채점 평어·행동특성): evaluate.js가 window.SSAM.evidence로 씀
+import '../../core/evidence.js';
 
 const SS = () => window.SSAM || {};
 SS().bundleBoxHTML = bundleBoxHTML;

@@ -1656,7 +1656,7 @@ const rvBarHTML = n => { const R = RV(); return R ? R.reviewBar(n, 'data-rv-next
 const GR_RV = { handle: () => false }; // 평가지 채점 점수 검토(아래에서 채움)
 const RV_FAIL_HTML = '<p class="rv-fail" role="status">검토하지 못했어요. 쓴 글은 그대로 쓸 수 있어요.</p>';
 /* 저장할 문장: 사용함 표시와 검토 의견 */
-const itemOut = x => ({ t: x.t, d: x.d ? 1 : 0, ...(x.rvd ? { rvd: 1 } : {}), ...(x.rv ? { rv: x.rv } : {}) });
+const itemOut = x => ({ t: x.t, d: x.d ? 1 : 0, ...(x.rvd ? { rvd: 1 } : {}), ...(x.rv ? { rv: x.rv } : {}), ...(x.ev ? { ev: x.ev } : {}) });
 const pyInfo = (u, lv) => [u.std && `[성취기준] ${u.std}`, u.elem && `[평가요소] ${u.elem}`, `[수준] ${LVNAME[lv]}${u.crit[lv] ? ': ' + u.crit[lv] : ''}`].filter(Boolean).join('\n');
 /* 의견 고르기: 열쇠 → 그 문장. py:평가요소:수준:번호 · hk:학생:번호 · cc:영역:번호:활동 · gr:학생 */
 function rvTarget(key) {
@@ -2890,14 +2890,54 @@ function hkMemoRows(text) {
 // AI로 보내는 메모: 예전에 붙여넣은 「김민수⇥메모」의 이름 칸, 「이름: 김민수」는 뺌
 const hkMemoOut = s => (MEMO_NAMES() ? MEMO_NAMES().forAI(s.memo) : String(s.memo || '').trim());
 
+/* ---------- 근거가 보이는 평어 (core/evidence.js가 window.SSAM.evidence로 줌, 스펙 2026-11-13 §5) ---------- */
+const EV = () => (window.SSAM && window.SSAM.evidence) || null;
+// 행특 근거: 이름 칸을 뺀 메모(hkMemoOut)를 줄·쉼표로 나눈 조각 m1, m2 …
+const hkEvList = s => (EV() ? EV().memoEvidence(hkMemoOut(s)) : []);
+// AI 답의 JSON(없거나 깨졌으면 null — 예전처럼 한 줄에 글 하나인 답)
+function hkJSON(text) {
+  const t = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  try { return JSON.parse(t); } catch (e) {}
+  const a = Math.min(...['{', '['].map(ch => { const i = t.indexOf(ch); return i < 0 ? Infinity : i; })), b = Math.max(t.lastIndexOf('}'), t.lastIndexOf(']'));
+  if (a < Infinity && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch (e) {} }
+  return null;
+}
+/* 행특 답 → [{ t, ss }] (ss: 문장마다 근거, 예전 모양 답이면 null). join: 고쳐 쓰기 답처럼 글 하나로 */
+function hkParse(text, list, join) {
+  const ev = EV(), j = ev ? hkJSON(text) : null;
+  const arr = j && (Array.isArray(j) ? j : Array.isArray(j.results) ? j.results : (j.sentences || j.text) ? [j] : null);
+  if (arr) {
+    const out = [];
+    for (const r of arr) {
+      if (r && Array.isArray(r.sentences)) {
+        const ss = ev.normSentences(r.sentences, list), t = ss.length ? hkClean(ev.joinSentences(ss)) : null;
+        if (t) { out.push({ t, ss: ev.alignSentences(ss, t) }); continue; }
+      }
+      const t = hkClean(typeof r === 'string' ? r : r && r.text);
+      if (t) out.push({ t, ss: null });
+    }
+    if (out.length) return join ? out.slice(0, 1) : out;
+  }
+  // 예전 모양: 한 줄에 글 하나(JSON 조각 줄은 글로 쓰지 않음)
+  const lines = String(text || '').split('\n').filter(l => !/^\s*[{}\[\]]|"\s*:\s*[\[{"]/.test(l)).map(hkClean).filter(Boolean);
+  return join ? (lines.length ? [{ t: lines.join(' '), ss: null }] : []) : lines.map(t => ({ t, ss: null }));
+}
+/* 글을 다듬은 뒤(trim: 길이 맞추기로 끝 문장을 자름)에도 문장과 근거를 함께 둠 — 잘린 문장은 빠짐. → { t, ev } */
+function hkOut(o, list, trim) {
+  const t = trim ? hkTrim(o.t) : o.t;
+  const ss = o.ss && EV() ? EV().alignSentences(o.ss, t) : null;
+  return { t, ev: ss && ss.length ? { list, sentences: ss } : null };
+}
+const hkEvHTML = (r, s, i) => (r.ev && EV() ? EV().evidenceHTML({ ...r.ev, text: r.t, key: `hk:${s.id}:${i}` }) : '');
+
 /* ---------- 프롬프트 ---------- */
 function hkEndRule() {
   return HK.settings.ending === 'da'
     ? "모든 문장은 '~한다.', '~할 수 있다.'처럼 '다.'로 끝냅니다."
     : "모든 문장은 '~함.', '~임.', '~보임.', '~할 수 있음.'처럼 명사형 종결어미와 마침표로 끝냅니다.";
 }
-function hkPrompt(s, count, others) {
-  const t = charTarget();
+function hkPrompt(s, count, others, list) {
+  const t = charTarget(), ev = EV();
   const grade = HK.settings.grade ? HK.settings.grade + '학년 ' : '';
   const byteNote = HK.settings.unit === 'byte' ? ` 나이스 기준 ${HK.settings.min}~${HK.settings.max}바이트 안에 들어가야 하므로 넘치지 않게 씁니다.` : '';
   return [
@@ -2907,6 +2947,7 @@ function hkPrompt(s, count, others) {
     `[교사 메모]`,
     hkMemoOut(s),
     ``,
+    ...(ev ? [`${ev.evidencePrompt(list || [])}`, `(근거 목록은 위 메모를 줄·쉼표로 나눈 조각입니다.)`, ``] : []),
     `[분량] 글 하나는 공백을 포함해 ${t.tlo}~${t.thi}자로 씁니다.${byteNote}`,
     ``,
     `[쓰기 규칙]`,
@@ -2918,18 +2959,29 @@ function hkPrompt(s, count, others) {
     `6. 학교 밖 대회 수상, 자격증·인증시험, 사교육, 부모의 직업이나 경제 형편은 쓰지 않습니다.`,
     `7. 상투적인 시작과 끝을 피하고, ${count > 1 ? '글마다 시작하는 말과 구성, 강조하는 특성의 순서를 서로 다르게 씁니다.' : '자연스럽게 이어지는 한 편의 글로 씁니다.'}`,
     `8. ${pronounRule()}`,
+    ev ? `9. ${ev.EVIDENCE_RULE}` : null,
     others && others.length ? `\n[이미 쓴 글] 아래 글과 표현이 겹치지 않게 씁니다.\n${others.map(x => '- ' + x).join('\n')}` : null,
     ``,
-    `[출력 형식] 글 ${count}개를 한 줄에 하나씩 출력합니다. 글과 글 사이는 줄바꿈 하나로 구분하고, 다른 말은 쓰지 않습니다.`
+    ev ? `[출력 형식] JSON 하나만 출력합니다. 글 ${count}개를 results에 담고, 글마다 문장을 sentences에 차례대로 나눠 담습니다(문장을 이으면 한 문단). 다른 말은 쓰지 않습니다.\n{"results":[{"sentences":[{"t":"문장","src":["m1"]}]}]}`
+      : `[출력 형식] 글 ${count}개를 한 줄에 하나씩 출력합니다. 글과 글 사이는 줄바꿈 하나로 구분하고, 다른 말은 쓰지 않습니다.`
   ].filter(x => x != null).join('\n');
 }
-function hkFixPrompt(s, text, dir) {
-  const t = charTarget();
+function hkFixPrompt(s, text, dir, list) {
+  const t = charTarget(), ev = EV();
   const now = charCount(text);
   const goal = dir === 'longer' ? `${Math.min(t.hi, now + Math.max(40, Math.round(now * 0.15)))}자 안팎` : dir === 'shorter' ? `${Math.max(t.lo, now - Math.max(40, Math.round(now * 0.15)))}자 안팎` : `${t.tlo}~${t.thi}자`;
   const how = (dir === 'longer' || (dir === 'fit' && measure(text) < HK.settings.min))
     ? '메모의 특성이 더 잘 드러나도록 학교생활 모습을 조금 더 풀어 쓰되, 메모에 없는 사실은 지어내지 않습니다.'
     : '겹치거나 덜 중요한 표현을 덜어 내되, 메모의 핵심 특성은 모두 남깁니다.';
+  // 근거: 고친 글도 문장마다 기댄 메모 조각 번호(src)를 다시 받음(길게·짧게 고쳐도 근거가 남게)
+  if (ev) return [
+    `아래 행동특성 및 종합의견을 공백 포함 ${goal}로 고쳐 써 주세요. 지금은 ${now}자입니다.`,
+    how,
+    `${hkEndRule()} ${pronounRule()} 줄바꿈 없는 한 문단으로 씁니다. ${ev.EVIDENCE_RULE}`,
+    ``,
+    `[교사 메모]`, hkMemoOut(s), ``, ev.evidencePrompt(list || []), ``, `[고칠 글]`, text,
+    ``, `[출력 형식] JSON 하나만 출력합니다. 고친 글의 문장을 sentences에 차례대로 나눠 담습니다.`, `{"results":[{"sentences":[{"t":"문장","src":["m1"]}]}]}`
+  ].join('\n');
   return [
     `아래 행동특성 및 종합의견을 공백 포함 ${goal}로 고쳐 써 주세요. 지금은 ${now}자입니다.`,
     how,
@@ -2988,20 +3040,21 @@ async function hkRun(id) {
   try {
     const want = HK.settings.variants;
     const keep = (s.results || []).filter(r => r.d);
-    const text = await hkCall(hkPrompt(s, want, keep.map(r => r.t)), ctl.signal);
-    let outs = text.split('\n').map(hkClean).filter(Boolean).slice(0, want);
+    const list = hkEvList(s); // 근거: 메모 조각(이 목록을 후보마다 함께 저장)
+    const text = await hkCall(hkPrompt(s, want, keep.map(r => r.t), list), ctl.signal);
+    let outs = hkParse(text, list).slice(0, want);
     if (!outs.length) throw { code: 'empty_completion' };
     // 범위 밖이면 두 번까지 고쳐 쓰기
     const fixed = [];
-    for (let t of outs) {
-      for (let k = 0; k < 2 && !rangeOk(t); k++) {
-        const r = await hkCall(hkFixPrompt(s, t, 'fit'), ctl.signal);
-        const c = r.split('\n').map(hkClean).filter(Boolean).join(' ');
-        if (c) t = c;
+    for (let o of outs) {
+      for (let k = 0; k < 2 && !rangeOk(o.t); k++) {
+        const r = await hkCall(hkFixPrompt(s, o.t, 'fit', list), ctl.signal);
+        const c = hkParse(r, list, true)[0];
+        if (c) o = c;
       }
-      fixed.push(hkTrim(t));
+      fixed.push(hkOut(o, list, true));
     }
-    s.results = [...keep, ...fixed.map(t => ({ t, d: 0 }))];
+    s.results = [...keep, ...fixed.map(o => ({ t: o.t, d: 0, ...(o.ev ? { ev: o.ev } : {}) }))];
     s.rl = 0; concOk();
     // 검토 AI: 새 후보만 (메인 결과는 먼저 보여 줌)
     const fresh = s.results.filter(x => !keep.includes(x));
@@ -3038,10 +3091,12 @@ async function hkAdjust(id, idx, dir) {
   if (!engineReady()) { openSettings(); return; }
   r.busy = 1; renderHKEditor();
   try {
-    const out = await hkCall(hkFixPrompt(s, r.t, dir));
-    const c = out.split('\n').map(hkClean).filter(Boolean).join(' ');
-    // 고친 글은 아직 쓰지 않았으니 사용함을 지우고, 쓴 글이 하나도 남지 않으면 학생도 완료가 아님(지울 때처럼)
-    if (c) { r.t = dir === 'longer' ? c : hkTrim(c); r.d = 0; delete r.rv; if (!s.results.some(x => x.d)) s.done = 0; }
+    const list = hkEvList(s);
+    const out = await hkCall(hkFixPrompt(s, r.t, dir, list));
+    const c = hkParse(out, list, true)[0];
+    // 고친 글은 아직 쓰지 않았으니 사용함을 지우고, 쓴 글이 하나도 남지 않으면 학생도 완료가 아님(지울 때처럼).
+    // 근거는 고친 글의 문장으로 새로(짧게 고치며 잘린 문장은 빠짐, 근거 없이 온 답이면 근거 표시 없음)
+    if (c) { const o = hkOut(c, list, dir !== 'longer'); r.t = o.t; if (o.ev) r.ev = o.ev; else delete r.ev; r.d = 0; delete r.rv; if (!s.results.some(x => x.d)) s.done = 0; }
     toast(dir === 'longer' ? '조금 길게 고쳤어요' : '조금 짧게 고쳤어요');
   } catch (e) { toast(errMsg((e && e.code) || 'upstream_error', e), 4500); }
   finally { delete r.busy; HKStore.save(); renderHKEditor(); renderHKList(); }
@@ -3112,6 +3167,7 @@ function renderHKEditor() {
     return `<div class="hk-res ${r.d ? 'done' : ''}${rvOpen(r) ? ' rv-mark' : ''}" data-ri="${i}">
       ${r.edit ? `<textarea class="field hk-edit" data-edit="${i}" rows="7">${esc(cur)}</textarea>`
         : `<div class="hk-text" role="button" tabindex="0" data-pick="${i}" aria-label="${r.d ? '사용함. ' : ''}눌러서 복사">${r.d ? ICON.check : ''}${esc(r.t)}</div>`}
+      ${hkEvHTML(r, s, i)}
       <div class="hk-meta">
         <span class="cnt ${ok ? 'ok' : 'warn'} num">${hkCountLabel(cur)}</span>
         <span class="right">
@@ -3340,7 +3396,7 @@ const GRStore = {
         id: s.id, no: s.no, n: s.pages.length, skip: s.skip ? 1 : 0, score: s.score ?? null, level: s.level || null, manual: s.manual ? 1 : 0,
         summary: s.summary || '', evidence: s.evidence || [], strengths: s.strengths || '', improve: s.improve || '',
         unreadable: s.unreadable ? 1 : 0, text: s.text || '', d: s.d ? 1 : 0, stale: s.stale ? 1 : 0,
-        ...(s.trv ? { trv: s.trv } : {}), ...(s.trvd ? { trvd: 1 } : {}), ...(s.rv ? { rv: s.rv } : {})
+        ...(s.trv ? { trv: s.trv } : {}), ...(s.trvd ? { trvd: 1 } : {}), ...(s.rv ? { rv: s.rv } : {}), ...(s.ev && s.text ? { ev: s.ev } : {})
       }))
     };
   },
@@ -3823,12 +3879,42 @@ function grPutBundle(b) {
     added && (text || crit.length > cut.length) && '이미 채점한 학생은 [다시 채점]을 누르면 넣은 정답표로 다시 채점해요'].filter(Boolean);
   toast([put && `${put}${jo(put, '을', '를')} 넣었어요`, ...notes].filter(Boolean).join('. '), notes.length ? 7000 : 5000);
 }
-function grWritePrompt(lv, group, avoid) {
+/* 근거가 보이는 평어(스펙 2026-11-13 §5-2): 그 학생 평어에 보내는 사실을 하나씩 근거로 — 수준 판정(평가기준),
+   채점 요약(평가계획 위주가 아니면)·답안 근거(평가지 위주, 채점 때 받은 evidence)·잘한 점·보완할 점, 체크한 단원평가·활동지(번호만, 이름 없음) */
+const grMix = () => (GR_MIX[GR.settings.mix] ? GR.settings.mix : 'mix');
+function grEvList(s) {
+  const ev = EV(); if (!ev) return [];
+  const mode = grMix(), u = grUnit(), c = (u && u.crit) || {}, items = [];
+  if (s.level) items.push({ kind: 'gr', label: `수준 「${LVNAME[s.level]}」${c[s.level] ? ` 기준: ${c[s.level]}` : '으로 판정'}` });
+  if (mode !== 'plan') for (const x of String(s.summary || '').split(/(?<=[.!?。])\s+/)) if (x.trim()) items.push({ kind: 'gr', label: '요약: ' + x.trim() });
+  if (mode === 'sheet') for (const x of s.evidence || []) items.push({ kind: 'gr', label: x });
+  if (s.strengths && s.strengths !== '-') items.push({ kind: 'gr', label: '잘한 점: ' + s.strengths });
+  if (s.improve && s.improve !== '-') items.push({ kind: 'gr', label: '보완할 점: ' + s.improve });
+  const R = window.SSAM && window.SSAM.evalRefs, refs = R && R.items ? grRefList() : [];
+  if (refs.length) items.push(...R.items(refs, s.no));
+  return ev.evidenceList(items);
+}
+/* 평어 답 하나 → { t, ev } — 새 답은 문장마다 근거, 예전 답({ no, text })은 근거 없이. 한 학생 한 문장 규칙(cleanLine)은 그대로 */
+function grTake(x, list) {
+  const ev = EV();
+  if (ev && x && Array.isArray(x.sentences)) {
+    const ss = ev.normSentences(x.sentences, list), t = ss.length ? cleanLine(ev.joinSentences(ss)) : null;
+    if (t) { const al = ev.alignSentences(ss, t); return { t, ev: al && al.length ? { list, sentences: al } : null }; }
+  }
+  const t = x && cleanLine(String(x.text || ''));
+  return t ? { t, ev: null } : null;
+}
+const grEvHTML = s => (s.ev && s.text && EV() ? EV().evidenceHTML({ ...s.ev, text: s.text, key: 'gr:' + s.id }) : '');
+/* lists: 학생 → 근거 목록(쓰는 동안 참고 체크를 바꿔도 답과 같은 목록으로 읽게 grWriteChunk가 한 번 만듦) */
+function grWritePrompt(lv, group, avoid, lists) {
   const [lo, hi] = grLength();
-  const mode = GR_MIX[GR.settings.mix] ? GR.settings.mix : 'mix';
+  const mode = grMix();
   const M = GR_MIX[mode];
   const endRule = endingRule(S.settings.ending === 'da');
+  const ev = EV(), evOf = s => (lists && lists.get(s)) || grEvList(s);
   const who = s => {
+    // 근거 목록이 있으면 학생 줄 아래 들여 쓴 목록이 그 학생의 사실(요약·근거·잘한 점·보완할 점)을 하나씩 담음
+    if (ev) return `- ${s.no}번 (${s.score ?? '-'}점)\n${ev.evidencePrompt(evOf(s), '  ')}`;
     const base = `- ${s.no}번 (${s.score ?? '-'}점): `;
     if (mode === 'plan') return base + `잘한 점: ${s.strengths || '-'} / 보완할 점: ${s.improve || '-'}`;
     if (mode === 'mix') return base + `${s.summary || ''} / 잘한 점: ${s.strengths || '-'} / 보완할 점: ${s.improve || '-'}`;
@@ -3847,11 +3933,13 @@ function grWritePrompt(lv, group, avoid) {
     `5. 점수, 수준 이름, 등급, '수행평가지', '답안'이라는 말은 쓰지 않습니다. 점수는 같은 수준 안에서 성취 정도를 조금씩 다르게 쓰는 데만 참고합니다.`,
     `6. 학생마다 시작하는 말, 핵심 표현, 서술어를 다르게 써서 서로 겹치지 않게 합니다.`,
     `7. ${pronounRule()}`,
+    ev ? `8. ${ev.EVIDENCE_RULE} 근거 번호는 그 학생 줄 아래 [근거 목록]의 번호입니다.` : '',
     ``, `[학생]`,
     ...(grActiveRefs().length ? ['', '[참고: 단원평가·활동지] 학생 줄 아래 「참고:」는 같은 평가 영역의 다른 평가 결과입니다. 그 학생다운 평어를 쓰는 데만 참고하고, 점수·평가 이름은 쓰지 않습니다.', ''] : []),
     ...group.map(s => who(s) + grRefLine(s.no)),
     avoid.length ? `\n[이미 쓴 평어] 아래와 표현이 겹치지 않게 씁니다.\n${avoid.slice(-30).map(t => '- ' + t).join('\n')}` : '',
-    ``, `[출력] JSON 배열 하나만 출력합니다. 예: [{"no": ${group[0].no}, "text": "평어"}]`
+    ``, ev ? `[출력] JSON 배열 하나만 출력합니다. 평어 한 문장을 sentences에 담습니다(근거가 다른 부분을 나눠 담아도 이으면 한 문장). 예: [{"no": ${group[0].no}, "sentences": [{"t": "평어", "src": ["e1"]}]}]`
+      : `[출력] JSON 배열 하나만 출력합니다. 예: [{"no": ${group[0].no}, "text": "평어"}]`
   ].filter(x => x !== '').join('\n');
 }
 
@@ -4150,22 +4238,24 @@ async function grWrite(only) {
 let grWrote = new Set(); // 이번 쓰기에서 평어를 쓴 학생 (검토는 이 학생만)
 async function grWriteChunk(lv, chunk, avoid, signal) {
   // 평가지 채점 탭은 AI 하나: 평어도 채점 AI로 씀(글쓰기 원칙은 평어 것)
-  const r = await generate(grWritePrompt(lv, chunk, avoid), { signal, fresh: true, task: 'grade', style: 'writing' });
+  const lists = new Map(chunk.map(s => [s, grEvList(s)]));
+  const put = (s, got) => { s.text = got.t; if (got.ev) s.ev = got.ev; else delete s.ev; s.stale = false; s.d = 0; delete s.trv; delete s.trvd; grWrote.add(s); };
+  const r = await generate(grWritePrompt(lv, chunk, avoid, lists), { signal, fresh: true, task: 'grade', style: 'writing' });
   const arr = grJSON(r.text);
   const list = Array.isArray(arr) ? arr : (arr && Array.isArray(arr.items) ? arr.items : []);
   for (const x of list) {
-    const s = chunk.find(c => c.no === Number(x.no));
-    const t = cleanLine(String(x.text || ''));
-    if (s && t) { s.text = t; s.stale = false; s.d = 0; delete s.writing; delete s.trv; delete s.trvd; grWrote.add(s); }
+    const s = chunk.find(c => c.no === Number(x && x.no));
+    const got = s && grTake(x, lists.get(s));
+    if (got) { put(s, got); delete s.writing; }
   }
   // 빠진 학생은 한 명씩
   for (const s of chunk.filter(c => c.writing)) {
     if (signal && signal.aborted) return;
-    const r2 = await generate(grWritePrompt(lv, [s], avoid.concat(chunk.filter(c => c.text).map(c => c.text))), { signal, fresh: true, task: 'grade', style: 'writing' });
+    const r2 = await generate(grWritePrompt(lv, [s], avoid.concat(chunk.filter(c => c.text).map(c => c.text)), lists), { signal, fresh: true, task: 'grade', style: 'writing' });
     const a2 = grJSON(r2.text);
     const x = Array.isArray(a2) ? a2[0] : a2;
-    const t = x && cleanLine(String(x.text || ''));
-    if (t) { s.text = t; s.stale = false; s.d = 0; delete s.trv; delete s.trvd; grWrote.add(s); }
+    const got = grTake(x, lists.get(s));
+    if (got) put(s, got);
     delete s.writing;
   }
 }
@@ -4359,7 +4449,7 @@ function renderGRResults() {
             <span class="grow"></span>
             ${s.d && s.text ? `<span class="chip done">${ICON.check}사용함</span>` : ''}
           </div>
-          ${s.text && !s.skip ? `<div class="gr-text ${s.d ? 'done' : ''} ${s.stale ? 'stale' : ''}${rvOpen(s, 'trv') ? ' rv-mark' : ''}" role="button" tabindex="0" data-grcopy="${esc(s.id)}" aria-label="${s.d ? '사용함. ' : ''}${s.no}번 평어 복사">${esc(s.text)}</div>${rvInline(s, 'gr:' + encodeURIComponent(s.id), `${s.no}번 평어`, 'trv', 'text')}` : ''}
+          ${s.text && !s.skip ? `<div class="gr-text ${s.d ? 'done' : ''} ${s.stale ? 'stale' : ''}${rvOpen(s, 'trv') ? ' rv-mark' : ''}" role="button" tabindex="0" data-grcopy="${esc(s.id)}" aria-label="${s.d ? '사용함. ' : ''}${s.no}번 평어 복사">${esc(s.text)}</div>${grEvHTML(s)}${rvInline(s, 'gr:' + encodeURIComponent(s.id), `${s.no}번 평어`, 'trv', 'text')}` : ''}
           ${s.stale && s.text && !s.writing ? `<p class="muted warn">수준이 바뀌었어요. 평어를 다시 쓰세요.</p>` : ''}
           ${s.summary && !s.skip ? `<p class="muted gr-sum">${esc(s.summary)}</p>` : ''}
           ${rvOpen(s) && RV() ? `<div class="rv-inline" data-rv-for="grs:${esc(s.id)}">${RV().opinionHTML({ title: '두 AI의 점수가 10점 넘게 달라요', main: `${s.score}점 · ${s.summary || ''}`, alt: `${s.rv.score}점 · ${s.rv.summary || ''}`, use: 'grs:' + encodeURIComponent(s.id), keep: 'grs:' + encodeURIComponent(s.id), useLabel: '검토 점수 쓰기' })}</div>` : ''}
@@ -4550,7 +4640,7 @@ function grNew(keepPages) {
   grStop();
   GR.id = null; GR.createdAt = 0; GR.calibrated = false; GR.err = ''; GR._critCache = null; GR.aiUse = null; GR.meter = null; GR.usedNow = false; GR.noMaskOk = false;
   if (!keepPages) { grFreePages(); GR.pages = []; GR.students = []; GR.settings.startNo = 1; }
-  else GR.students.forEach(s => Object.assign(s, { status: 'idle', score: null, score0: null, level: null, manual: false, summary: '', evidence: [], strengths: '', improve: '', text: '', d: 0, stale: false, err: '' }));
+  else GR.students.forEach(s => Object.assign(s, { status: 'idle', score: null, score0: null, level: null, manual: false, summary: '', evidence: [], strengths: '', improve: '', text: '', d: 0, stale: false, err: '', ev: null }));
   GR.phase = 'setup'; GR.showRes = false;
 }
 async function grOpenHistory(id) {
