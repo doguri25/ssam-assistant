@@ -203,3 +203,28 @@ export function normRedo(v, items) {
   }
   return out;
 }
+
+/* 틀린 까닭 묶기 (스펙 2026-11-13-miss-tour-check §1): 평가 하나에 한 번. req는 unit-miss.js missRequest —
+   문항(번호·평가 내용·유형·정답·채점 기준)과 틀린 답 글만, 학생은 a1·a2 같은 임시 번호로(학생 번호·이름은 없음, 앱이 다시 맞춤).
+   앱이 고른 답으로 묶은 것(g1·g2)은 그 답을 고른 까닭 짐작과 활동만 받음. 답은 unit-miss.js normMiss로 읽음 */
+export function missPrompt(test, req) {
+  const m = test.meta || {};
+  const body = req.items.flatMap(it => [
+    '', `[문항 ${it.no}] ${it.content} | ${TYPE_NAME[it.type] || '단답'} | 정답 ${it.answer || '(없음)'} | 배점 ${it.points}${it.criteria ? ` | 채점 기준 ${it.criteria}` : ''}`,
+    ...(it.groups.length ? ['앱이 묶은 것(임시 번호: 묶음, 사람 수):', ...it.groups.map(g => `- ${g.id}: ${g.why} (${g.n}명)`)] : []),
+    ...(it.answers.length ? ['틀린 답(임시 번호: 학생이 쓴 답):', ...it.answers.map(a => `- ${a.id}${a.part ? ' (부분 점수)' : ''}: ${a.text}`)] : [])
+  ]);
+  return [
+    '[단원평가 틀린 까닭]',
+    `${m.grade ? m.grade + '학년' : '초등학교'} ${makeTitle({ ...m, sample: false })} 단원평가에서 만점을 받지 못한 답을 문항마다 살펴봅니다. 틀린 까닭이 같은 답끼리 묶고, 묶음마다 다음 시간에 5분 안에 할 보충 활동을 씁니다.`,
+    '학생은 a1·a2 같은 임시 번호로만 나옵니다. 묶음은 g1·g2 같은 임시 번호입니다.',
+    ...body,
+    '', '[규칙]',
+    '- g로 시작하는 묶음은 앱이 이미 묶었습니다. 묶음마다 그 답을 고르거나 쓴 까닭을 짐작해 why에 짧게(30자 안), act에 활동을 씁니다.',
+    '- a로 시작하는 답은 틀린 까닭이 같은 것끼리 묶어 ids에 임시 번호를 모두 담고, why에 「받아올림을 빠뜨림」처럼 까닭을 짧게(20자 안) 씁니다. 답 하나는 한 묶음에만 넣습니다.',
+    '- act: 그 묶음 학생과 다음 시간에 5분 안에 할 보충 활동 한두 줄(무엇을·어떻게, 80자 안). 「~해요」처럼 씁니다. 준비물이 많이 드는 활동은 쓰지 않습니다.',
+    '- why·act에 임시 번호·학생 이름·점수를 쓰지 않습니다.',
+    '', '[출력] JSON 하나만 출력합니다. 문항마다 groups에 앱 묶음(g)과 새로 묶은 것(ids)을 함께 담습니다.',
+    '{"items":[{"no":1,"groups":[{"g":"g1","why":"그 답을 고른 까닭 짐작","act":"5분 활동"},{"ids":["a1","a2"],"why":"틀린 까닭","act":"5분 활동"}]}]}'
+  ].join('\n');
+}

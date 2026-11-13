@@ -78,6 +78,20 @@ section[data-menu="evaluate"].ev-new > :not(.unit-box):not(.act-box){display:non
 .un-rq-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:6px 10px}
 .un-rq-warn{margin:0;color:var(--warn,#b45309)}
 .un-rq-warn:empty{display:none}
+/* 4단계: 틀린 까닭(unit-miss-card.js) — 누르는 칸 44px, 좁으면 글이 줄바꿈 */
+.un-miss .btn{min-height:44px}
+.un-miss-ed>summary{cursor:pointer;font-weight:600;min-height:44px;display:flex;align-items:center}
+.un-miss-list{display:flex;flex-direction:column;gap:12px;min-width:0}
+.un-miss-it{border-top:1px solid var(--line);padding-top:8px;min-width:0}
+.un-miss-h{margin:0 0 6px;font-size:14.5px;overflow-wrap:anywhere}
+.un-miss-gs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.un-miss-g{min-width:0;padding-left:10px;border-left:3px solid var(--line);display:flex;flex-direction:column;gap:4px}
+.un-miss-gh{overflow-wrap:anywhere;line-height:1.45}
+.un-miss-tag .chip{margin-left:4px}
+.un-miss-guess{margin:0;font-size:13px;overflow-wrap:anywhere}
+.un-miss-g textarea.field{width:100%;box-sizing:border-box;min-height:44px;resize:vertical}
+.un-miss-stale{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;margin:0 0 6px;font-weight:600;color:var(--warn,#b45309)}
+.un-miss-key{margin:0}
 .un-print{display:none}
 @media print{
   body *{visibility:hidden !important}
