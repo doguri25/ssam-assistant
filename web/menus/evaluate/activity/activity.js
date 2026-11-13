@@ -14,6 +14,7 @@ import { readMeta, termOf, SUBJECTS, cleanSheet } from './activity-read.js';
 import { TYPES, criteriaPrompt, normCriteria, applyKey, itemsFromSheets } from './activity-ai.js';
 import { sampleActivity } from './activity-sample.js';
 import { accuracyText, yearAccuracy, yearText } from '../grade-accuracy.js';
+import { introHTML, aiNoteHTML } from '../../../core/ui-parts.js';
 
 export const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const SS = () => window.SSAM || {};
@@ -72,7 +73,7 @@ function listHTML() {
     <span class="muted">${esc([s.subject, s.date, termName(s.term)].filter(Boolean).join(' · '))} · 학생 ${s.n}명</span>${accOf(s) ? `<span class="muted act-c-acc">${esc(accOf(s))}</span>` : ''}
     <span class="chip${s.done ? ' ok' : ''}">${s.done ? '확정' : s.n ? '채점 중' : '준비 중'}</span>
     <span class="grow"></span><button class="btn text" type="button" data-ac="del" data-id="${esc(s.id)}">지우기</button></li>`).join('');
-  return `<div class="m-head"><h2>활동지</h2><p class="muted">수업 중·수업 후 활동지를 넣으면 문항마다 ○·△·×·안 함으로 보고, 학생마다 잘한 점·더 해 볼 점과 수준(잘함·보통·노력)을 써요. 정답이 없는 활동지는 AI가 기준을 먼저 만들어요.</p></div>
+  return `<div class="m-head"><h2>활동지</h2>${introHTML('activity', '활동지를 넣으면 문항마다 ○·△·×로 보고, 학생마다 잘한 점·더 해 볼 점을 써요.')}</div>
     <div class="row"><button class="btn primary" type="button" data-ac="new">새 활동지</button><button class="btn" type="button" data-ac="sample">예시로 채우기</button>${views.records ? '<button class="btn" type="button" data-ac="records">학생별 모아 보기</button>' : ''}</div>
     ${year ? `<p class="act-year" id="acYear">${esc(year)}</p>` : ''}
     ${list.length ? `<ul class="act-list">${cards}</ul>` : '<div class="yp-card"><p class="muted" style="margin:0">아직 활동지가 없어요. [새 활동지]로 활동지 파일을 넣어 주세요. 바로 보려면 [예시로 채우기].</p></div>'}`;
@@ -108,7 +109,8 @@ function itemsHTML(a) {
 function step2HTML(a) {
   const busy = A.busy === 'criteria:' + a.id, other = !!A.busy && !busy;
   return `<div class="yp-card"><h3>채점 기준</h3>${aiRowHTML('grade')}
-      <p class="muted" style="margin:0">${a.sheet.teacher ? '교사용·예시·정답에서 가져오고 모자란 기준만 AI가 만들어요.' : '정답·예시 답안이 없어서 AI가 빈 활동지를 읽고 기준을 만들어요. 고친 뒤 [기준 확정]을 누르면 모든 학생에게 같은 기준을 써요.'}</p>
+      <p class="muted" style="margin:0">${a.sheet.teacher ? '교사용·예시·정답에서 가져오고 모자란 기준만 AI가 만들어요.' : '정답·예시 답안이 없어 AI가 빈 활동지로 기준을 만들어요. [기준 확정]하면 모든 학생에게 같은 기준을 써요.'}</p>
+      ${aiNoteHTML('AI에는 활동지 글(이름·전화번호가 적힌 줄은 빼요)과 활동지 그림만 보내요. 그림의 이름 칸은 가려요(3단계 「이름 칸 가리기」).')}
       ${busy ? '<p class="muted"><span class="spin"></span> AI가 기준을 만들고 있어요…</p>' : ''}
       ${other ? `<p class="muted" id="actOtherBusy"><span class="spin"></span> 다른 활동지의 기준을 AI가 만들고 있어요. ${a.items.length ? '끝난 뒤에 눌러 주세요.' : '끝나면 이 활동지 기준도 이어서 만들어요.'}</p>` : ''}
       ${A.msg ? `<div class="banner err" role="alert"><span class="grow">${esc(A.msg)}</span></div>` : ''}
@@ -125,6 +127,13 @@ function actHTML(a) {
   return `<div class="un-top"><button class="btn text" type="button" data-ac="back">‹ 목록</button><b class="un-title">${esc(a.meta.title || '새 활동지')}</b>${a.meta.subject ? `<span class="muted">${esc(a.meta.subject)}</span>` : ''}</div>
     ${stepsHTML(STEPS, A.step, reach(a))}<div class="un-body">${body}</div>`;
 }
+/* 휴대폰에서 한 줄로 밀어 넘기는 단계 탭: 지금 단계가 보이게 탭 줄만 옆으로 밂(화면은 위아래로 움직이지 않음) */
+function stepsInView(root) {
+  const ol = root.querySelector('.steps'), li = ol && ol.querySelector('li.cur');
+  if (!li || ol.scrollWidth <= ol.clientWidth) return;
+  const d = li.getBoundingClientRect().right - ol.getBoundingClientRect().right;
+  if (d > 0) ol.scrollLeft += d + 12;
+}
 let rendering = false, again = false;
 export function render() {
   if (!box) return;
@@ -135,6 +144,7 @@ export function render() {
     if (A.view === 'act' && !a) A.view = 'list';
     const inner = A.view === 'act' ? actHTML(a) : A.view !== 'list' && views[A.view] ? views[A.view].html() : listHTML();
     keepFiles(box, () => { box.innerHTML = `<div class="m-page act-page">${inner}</div>`; }); // 파일 고르기 창이 열린 채 다시 그려도 고른 파일이 들어가게(core/keep-files.js, 한꺼번에 넣기 칸)
+    stepsInView(box);
     if (A.view === 'act' && stepViews[A.step] && stepViews[A.step].bind) stepViews[A.step].bind(box, a);
     if (A.view === 'act' && A.step === 2) autoCriteria(a);
   } finally { rendering = false; }
@@ -272,7 +282,8 @@ function editItem(a, el) {
 document.addEventListener('click', e => {
   if (!box || !box.contains(e.target) || !visible()) return;
   const open = e.target.closest('[data-ac-open]');
-  if (open && !e.target.closest('[data-ac]')) { openActivity(open.dataset.acOpen); return; }
+  // 목록 아래쪽 활동지를 열어도 맨 위(이름·단계 탭)부터 보이게
+  if (open && !e.target.closest('[data-ac]')) { openActivity(open.dataset.acOpen); box.scrollIntoView({ block: 'start' }); return; }
   const st = e.target.closest('[data-step]');
   if (st && A.view === 'act') { goStep(+st.dataset.step); return; }
   const b = e.target.closest('[data-ac]');

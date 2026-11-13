@@ -16,6 +16,7 @@ import { locatePrompt, validLocate, normBoxes, cropRect, boxesOf, nextRef } from
 import { unitAccuracy, accuracyText } from '../grade-accuracy.js';
 import { arrangePages } from './unit-pages.js';
 import { readNos, openNoCheck, openNoWait, rosterAllowed, byNoOrder } from '../../../core/student-no.js';
+import { aiNoteHTML, foldHTML } from '../../../core/ui-parts.js';
 import { esc, SS, AI_KEY, registerStep, registerPapers, inStep, cur, curId, commit, saveOrWarn, refresh, later, render, goStep, getBox, openTest } from './unit.js';
 
 const TYPE = Object.fromEntries(ITEM_TYPES);
@@ -143,16 +144,18 @@ function ansRowHTML(t, step) {
         <span class="muted" id="unAnsMsg" role="status">${esc(ansMsg(t, step === 1))}</span></div>
       <input type="file" id="unAnsFile" accept="${step === 1 ? '.pdf,.png,.jpg,.jpeg,.webp,.hwp,.hwpx,.txt' : '.pdf,.png,.jpg,.jpeg,.webp'}" multiple hidden>`;
 }
+/* 스캔 모양 설정(자주 안 바꿈) 요약 한 줄 */
+const scanSum = set => `스캔 모양: ${set.twoUp ? '한 면에 2쪽(모아찍기)' : '한 면에 1쪽'} · 뒷면 ${set.flipBack ? '거꾸로' : '그대로'}`;
 function step2HTML(t) {
   const set = getSet(), m = maskOf(t);
   const note = t.students.length && !hasPages(t.id) ? '<p class="banner warn" style="margin:8px 0 0">스캔 이미지는 저장하지 않아요. 다시 채점하려면 학생 문제지를 다시 넣어 주세요.</p>' : '';
   return `<div class="yp-card">
       <h3>나누기·이름 가리기</h3>
-      <p class="muted cls-note">넣은 학생 문제지 스캔을 학생마다 나눠요. 학생마다 쪽 수가 같아야 차례대로 나눠져요. 번호는 학급 명단의 예외 번호와 결석 번호를 건너뛰어 매겨요.</p>
+      <p class="muted cls-note">학생마다 쪽 수가 같아야 차례대로 나눠요. 번호는 명단의 예외·결석 번호를 건너뛰어 매겨요.</p>
       ${ansRowHTML(t, 2)}
-      <div class="row"><label class="switch"><input type="checkbox" id="unTwoUp"${set.twoUp ? ' checked' : ''}>모아찍기(한 면에 2쪽)</label>
-        <label class="switch"><input type="checkbox" id="unFlipBack"${set.flipBack ? ' checked' : ''}>양면 스캔 뒷면이 거꾸로</label>
-        <span class="muted">모아찍기면 가로로 긴 장을 왼쪽·오른쪽 쪽으로 나눠요. 학생 한 명 쪽 수는 나눈 뒤 쪽 수(문제지 쪽 수)로 적어 주세요.</span></div>
+      ${foldHTML({ key: 'unit-scan', summary: scanSum(set), body: `<div class="row"><label class="switch"><input type="checkbox" id="unTwoUp"${set.twoUp ? ' checked' : ''}>모아찍기(한 면에 2쪽)</label>
+        <label class="switch"><input type="checkbox" id="unFlipBack"${set.flipBack ? ' checked' : ''}>양면 스캔 뒷면이 거꾸로</label></div>
+        <p class="muted cls-note">모아찍기면 가로로 긴 장을 왼쪽·오른쪽 쪽으로 나눠요. 학생 한 명 쪽 수는 나눈 뒤 쪽 수(문제지 쪽 수)로 적어 주세요.</p>` })}
       <div class="row"><label class="switch"><input type="checkbox" id="unByNo"${byNo(t) ? ' checked' : ''}>적힌 번호로 학생 맞추기</label>
         ${byNo(t) ? `<button class="btn" type="button" data-un="noBox"${hasPages(t.id) ? '' : ' disabled'}>번호 칸 정하기</button>
         <span class="muted">${t.noBox ? '번호 칸을 정했어요. 채점 전에 번호를 읽어 확인해요.' : '학생이 번호를 쓰는 칸을 정해 주세요.'}</span>` : '<span class="muted">걷은 순서와 상관없이 첫 쪽에 쓴 번호를 읽어 학생을 맞춰요(AI는 번호 칸만 봐요).</span>'}</div>
@@ -410,8 +413,9 @@ function step3HTML(t) {
       ${reviewBar(rvCount(t), 'data-un="nextRv"')}
       <div class="row"><b id="unPending">확인할 칸 ${pending(t)}개</b><button class="btn text" type="button" data-un="nextChk">다음 확인할 칸</button><span class="grow"></span><button class="btn primary" type="button" data-un="finish">채점 마치기</button></div>
       ${done ? `<p class="muted cls-note un-acc" id="unAcc">${esc(accuracyText(unitAccuracy(t), { finished: t.done, graded: true }))}</p>` : ''}
-      <p class="muted cls-note">노란 칸은 확인할 칸이에요: AI가 확신하지 못했거나, 앱과 AI의 판단이 다르거나, 단답이 정답과 글자가 다르거나, 서술형이에요. 문항 번호를 누르면 반 전체 답을 모아 봐요.</p>
+      <p class="muted cls-note">노란 칸은 확인할 칸이에요(AI가 확신하지 못함·앱과 AI가 다름·정답과 글자가 다름·서술형). 문항 번호를 누르면 반 전체 답을 모아 봐요.</p>
       ${locRowHTML(t)}
+      ${aiNoteHTML('채점 AI에는 학생 번호와 문제지 그림(정한 이름 칸은 가려요), 정답표·빈 문제지 글을 보내요. 문항 자리를 찾을 때는 한 학생의 그림과 문항 번호·평가 내용·유형만 보내요.')}
     </div>
     <div class="yp-card un-grid-card"><div class="un-grid-wrap"><table class="un-grid"><thead>${head}</thead><tbody>${rows}</tbody></table></div></div>`;
 }

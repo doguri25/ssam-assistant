@@ -9,6 +9,9 @@ await page.addInitScript(() => {
   if (!localStorage.getItem('ssam:activity:set')) localStorage.setItem('ssam:activity:set', JSON.stringify({ pagesPer: 1, maskOn: false, mask: [], maskAll: false }));
 });
 const P = 'section[data-menu="evaluate"]';
+
+// 자주 안 바꾸는 설정은 접힌 요약 한 줄(스펙 2026-11-14-ui-tidy §2): 펼친 뒤 칸을 누름(펼침은 이 실행 동안 그대로)
+const unfold = async key => { const f = `${P} [data-fold="${key}"]`; if (await page.getAttribute(f, 'open') == null) await page.click(`${f} > summary`); };
 const acts = () => page.evaluate(() => (JSON.parse(localStorage.getItem('ssam:activity:list') || '[]')).map(s => JSON.parse(localStorage.getItem('ssam:activity:a:' + s.id))));
 const cur = () => page.evaluate(() => { const l = JSON.parse(localStorage.getItem('ssam:activity:list') || '[]'); return l.map(s => JSON.parse(localStorage.getItem('ssam:activity:a:' + s.id))); });
 const until = async (fn, ms = 10000) => { const end = Date.now() + ms; while (!(await fn())) { if (Date.now() > end) throw new Error('시간 초과'); await new Promise(r => setTimeout(r, 60)); } };
@@ -115,6 +118,7 @@ await run('deferred-13', [
     assert(done === 4 && maxIn <= 3, JSON.stringify({ done, maxIn, gradeCalls }));
     // M9: 채점한 학생이 있을 때 쪽 수를 바꾸면 확인 → 취소하면 쪽 수도 그대로
     await page.click(`${P} [data-step="3"]`);
+    await unfold('act-scan');
     await page.fill(`${P} #acPer`, '2'); await page.press(`${P} #acPer`, 'Tab');
     await page.waitForSelector('#sheetRoot #acRedoOk');
     await page.click('#sheetRoot [data-close]');

@@ -27,6 +27,9 @@ await page.route('https://api.anthropic.com/**', async route => {
   await route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body: [{ type: 'content_block_delta', delta: { type: 'text_delta', text: out } }, { type: 'message_delta', delta: { stop_reason: 'end_turn' } }].map(e => 'data: ' + JSON.stringify(e) + '\n\n').join('') }).catch(() => {});
 });
 const P = 'section[data-menu="evaluate"]';
+
+// 자주 안 바꾸는 설정은 접힌 요약 한 줄(스펙 2026-11-14-ui-tidy §2): 펼친 뒤 칸을 누름(펼침은 이 실행 동안 그대로)
+const unfold = async key => { const f = `${P} [data-fold="${key}"]`; if (await page.getAttribute(f, 'open') == null) await page.click(`${f} > summary`); };
 const ACT = { id: 'acT1', meta: { subject: '과학', unit: '1', lesson: '2', pages: '12~13쪽', title: '물의 여행', date: '2026-09-10', term: 2 }, sheet: { student: '1. 고르기\n2. 빈칸\n3. 설명\n4. 그리기', teacher: '' },
   items: [{ no: 1, type: 'choice', ask: '고르기', answer: '③', ok: '', part: '', src: 'answer' }, { no: 2, type: 'short', ask: '빈칸', answer: '증발', ok: '', part: '', src: 'answer' }, { no: 3, type: 'write', ask: '설명', answer: '증발·구름·비', ok: '셋 다', part: '일부', src: 'ai' }, { no: 4, type: 'draw', ask: '그리기', answer: '', ok: '바다·구름·비', part: '일부', src: 'ai' }],
   confirmed: true, students: [], done: false, link: null, createdAt: 1 };
@@ -138,6 +141,8 @@ await run('activity-grading', [
   }],
   ['모아찍기 켬: 가로로 긴 장 1장 → 왼쪽·오른쪽 2쪽 → 학생 2명(학생 수가 다르면 확인)', async () => {
     await page.click(`${P} [data-step="3"]`);
+    assert((await page.textContent(`${P} [data-fold="act-scan"] .fold-text`)).includes('한 면에 1쪽'), '접힌 요약');
+    await unfold('act-scan');
     await page.check(`${P} #acTwoUp`);
     const wide = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 840; c.height = 300; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 840, 300); g.fillStyle = '#123'; g.fillRect(40, 60, 200, 30); g.fillRect(480, 60, 200, 30); return c.toDataURL('image/png').split(',')[1]; });
     await page.setInputFiles('#bundleFile-act3', [{ name: '모아찍기.png', mimeType: 'image/png', buffer: Buffer.from(wide, 'base64') }]);

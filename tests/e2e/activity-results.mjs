@@ -13,6 +13,9 @@ await page.addInitScript(p => {
   if (!localStorage.getItem('ssam:plans')) { localStorage.setItem('ssam:plan:P1', JSON.stringify(p)); localStorage.setItem('ssam:plans', JSON.stringify(['P1'])); localStorage.setItem('ssam:prefs', JSON.stringify({ current: 'P1' })); }
 }, PLAN);
 const P = 'section[data-menu="evaluate"]';
+
+// 자주 안 바꾸는 설정은 접힌 요약 한 줄(스펙 2026-11-14-ui-tidy §2): 펼친 뒤 칸을 누름(펼침은 이 실행 동안 그대로)
+const unfold = async key => { const f = `${P} [data-fold="${key}"]`; if (await page.getAttribute(f, 'open') == null) await page.click(`${f} > summary`); };
 const acts = () => page.evaluate(() => (JSON.parse(localStorage.getItem('ssam:activity:list') || '[]')).map(s => JSON.parse(localStorage.getItem('ssam:activity:a:' + s.id))));
 const go = async () => { await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="activity"]'); };
 const docxText = async (attr) => {
@@ -43,13 +46,16 @@ await run('activity-results', [
     const n = (await acts())[0].students.filter(s => !s.skip && s.status === 'done').length;
     assert(n >= 2, '채점한 학생 ' + n);
     const pb = x => (x.match(/<w:pageBreakBefore\/>/g) || []).length;
-    const chk = `${P} .row:has([data-ac="exportSlips"]) [data-one-page]`;
+    const chk = `${P} [data-fold="act-slip"] [data-one-page]`;
     assert(!(await page.isChecked(chk)), '처음부터 켜짐');
+    assert((await page.textContent(`${P} [data-fold="act-slip"] .fold-text`)).includes('한 쪽에 4명'), '접힌 요약');
     assert((await page.textContent(`${P} #acSlipNote`)).includes('한 쪽에 4명'), '처음 안내');
     let slips = await docxText('exportSlips');
     assert(pb(slips) === Math.ceil(n / 4) - 1, `4명씩: ${pb(slips)}`);
+    await unfold('act-slip');
     await page.check(chk);
     assert((await page.textContent(`${P} #acSlipNote`)).includes('번호마다 한 장씩'), '켠 뒤 안내');
+    assert((await page.textContent(`${P} [data-fold="act-slip"] .fold-text`)).includes('번호마다 한 장씩'), '요약 줄도 바뀜');
     slips = await docxText('exportSlips');
     assert(pb(slips) === n - 1, `한 장씩: ${pb(slips)} / ${n}명`);
     assert(slips.includes('1번') && slips.includes('더 해 볼 점'), '쪽지 내용');

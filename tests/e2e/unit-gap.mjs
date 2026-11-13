@@ -63,6 +63,9 @@ await run('unit-gap', [
     assert((await gapLine(7)).includes('도형 52%'), await gapLine(7));
   }],
   ['기준을 바꾸면 그 아래만, 단원평가 설정에 기억(40~90)', async () => {
+    // 기준은 접힌 요약 한 줄(스펙 2026-11-14-ui-tidy §2) — [바꾸기]로 펼치면 다시 그려도 펼친 채로
+    assert((await page.textContent(`${V} [data-fold="unit-gapcut"] .fold-text`)).includes('60% 아래'), '요약 줄');
+    await page.click(`${V} [data-fold="unit-gapcut"] > summary`);
     await page.fill(`${V} #unGapCut`, '50');
     await page.press(`${V} #unGapCut`, 'Tab');
     await page.waitForFunction(() => document.querySelectorAll('.unit-box .un-gap-i').length === 2);
@@ -70,6 +73,7 @@ await run('unit-gap', [
     assert((await gapLine(9)).includes('수와 연산 40%') && !(await gapLine(9)).includes('도형'), await gapLine(9));
     const saved = await page.evaluate(async () => (await import('./menus/evaluate/unit/unit-model.js')).getSet().gapCut);
     assert(saved === 50, '기억: ' + saved);
+    assert((await page.textContent(`${V} [data-fold="unit-gapcut"] .fold-text`)).includes('50% 아래'), '요약 줄도 바뀜');
     await page.click(`${V} [data-rv="table"]`); await page.click(`${V} [data-rv="gap"]`);
     assert(await page.inputValue(`${V} #unGapCut`) === '50', '다시 열어도 50');
     await page.fill(`${V} #unGapCut`, '200'); await page.press(`${V} #unGapCut`, 'Tab');

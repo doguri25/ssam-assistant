@@ -25,6 +25,9 @@ await mockClaude(page, async ({ prompt }) => {
   return JSON.stringify({ items });
 });
 const V = 'section[data-menu="evaluate"] .unit-box';
+
+// 자주 안 바꾸는 설정은 접힌 요약 한 줄(스펙 2026-11-14-ui-tidy §2): 펼친 뒤 칸을 누름(펼침은 이 실행 동안 그대로)
+const unfold = async key => { const f = `${V} [data-fold="${key}"]`; if (await page.getAttribute(f, 'open') == null) await page.click(`${f} > summary`); };
 const T = id => page.evaluate(id => JSON.parse(localStorage.getItem('ssam:unit:t:' + id)), id);
 const redos = () => prompts.filter(p => p.startsWith('[단원평가 복습 문제]'));
 const until = async (fn, ms = 6000) => { const end = Date.now() + ms; while (!(await fn())) { if (Date.now() > end) throw new Error('시간 초과'); await new Promise(r => setTimeout(r, 50)); } };
@@ -77,6 +80,7 @@ await run('unit-review', [
     assert(m.a < m.p && m.last && m.after >= 0 && m.after < 16, JSON.stringify(m));
   }],
   ['번호별로 한 장씩: 자리가 넓어 학생마다 최대 3개(배점 큰 순, 같으면 번호순), 끄면 다시 반 쪽', async () => {
+    await unfold('unit-slip');
     await page.check(`${V} [data-one-page]`);
     const s2 = await psText(2);
     assert(s2.includes('1) 9번 복습 물음') && s2.includes('2) 10번 복습 물음') && s2.includes('3) 3번 복습 물음 ① 가 ② 나 ③ 다 ④ 라') && !s2.includes('4)'), s2);

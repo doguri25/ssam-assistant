@@ -90,7 +90,11 @@ await run('unit-results', [
       return [1, 2, 3].map(no => m.levelOf(avg(no)));
     });
     for (const [i, lv] of want.entries()) assert(await page.inputValue(`${V} select[data-pylv="${i + 1}"]`) === lv, `${i + 1}번 ${lv}`);
+    // 수준 기준은 접힌 요약 한 줄(스펙 2026-11-14-ui-tidy §2) — [바꾸기]로 펼침
+    assert((await page.textContent(`${V} [data-fold="unit-cuts"] .fold-text`)).includes('최상'), '요약 줄');
+    await page.click(`${V} [data-fold="unit-cuts"] > summary`);
     await page.fill(`${V} #unCutTop`, '10'); await page.dispatchEvent(`${V} #unCutTop`, 'change');
+    assert((await page.textContent(`${V} [data-fold="unit-cuts"] .fold-text`)).includes('최상 10'), '요약 줄도 바뀜');
     assert(await page.inputValue(`${V} select[data-pylv="3"]`) === 'top', '기준 바꿔도 그대로');
     await page.fill(`${V} #unCutTop`, '95'); await page.dispatchEvent(`${V} #unCutTop`, 'change');
     await pick('select[data-pylv="2"]', 'low');

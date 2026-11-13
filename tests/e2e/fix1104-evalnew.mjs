@@ -103,7 +103,7 @@ await run('fix1104-evalnew', only([
     await openAct('acM');
     await upload(await scans(1));
     await page.waitForFunction(() => /학생 1명/.test((document.querySelector('.act-box #acStus') || {}).textContent || ''));
-    const note = (await page.textContent(`${P} .act-set`)).replace(/\s+/g, ' ');
+    const note = (await page.textContent(`${P} .act-set:has(#acMaskOn)`)).replace(/\s+/g, ' '); // 스캔 설정은 접힌 줄(스펙 2026-11-14-ui-tidy §2), 이름 칸 줄은 그대로
     assert(note.includes('아직 정하지 않음') && !note.includes('정해 둠'), note);
     await page.click(`${P} [data-ac="toGrade"]`);
     await page.click(`${P} [data-ac="grade"]`);

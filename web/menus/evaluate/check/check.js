@@ -11,6 +11,7 @@ import { getPyeongeo, savePyeongeo } from '../unit/unit-model.js';
 import { showPyeongeo } from '../unit/unit-results.js';
 import { checkItems, KINDS, KIND_NAME } from './check-rules.js';
 import { fixPrompt, normFix } from './check-ai.js';
+import { introHTML, aiNoteHTML } from '../../../core/ui-parts.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SS = () => window.SSAM || {};
@@ -92,7 +93,7 @@ function rowHTML(x, issues) {
 }
 function draw() {
   if (!box) return;
-  const head = `<div class="m-head"><h2 tabindex="-1">기재 점검</h2><p class="muted">생기부에 쓰면 안 되는 말·부정 표현·이름·같은 문장·글자 수를 AI 없이 찾아요. 고친 안은 [바꾸기]를 눌러야 바뀌어요.</p></div>`;
+  const head = `<div class="m-head"><h2 tabindex="-1">기재 점검</h2>${introHTML('check', '생기부에 쓰면 안 되는 말·이름·같은 문장·글자 수를 AI 없이 찾아요.')}</div>`;
   if (!C.res) { box.innerHTML = `<div class="m-page chk-page">${head}<p class="muted chk-sum" role="status"><span class="spin"></span>점검하는 중이에요</p></div>`; return; }
   const inSrc = C.items.filter(x => !C.src || x.src === C.src);
   const rows = inSrc.map(x => [x, issuesOf(x.ref)]).filter(([, l]) => l.length);
@@ -109,7 +110,7 @@ function draw() {
     </div>
     ${!inSrc.length ? `<div class="chk-empty"><p class="muted">점검할 글이 아직 없어요. ${C.src ? `${esc((SRC.find(s => s[0] === C.src) || [])[1])}에서` : '교과 평어·창체·행특·평가지 채점·단원평가 평어에서'} 글을 쓰면 여기서 살펴봐요.</p></div>`
       : !shown.length ? '<div class="chk-empty"><p class="muted">고칠 곳이 없어요.</p></div>'
-        : `<ul class="chk-list">${shown.map(([x, l]) => rowHTML(x, l)).join('')}</ul>`}</div>`;
+        : `${aiNoteHTML('[AI로 고치기]를 누른 글 하나와 고칠 까닭만 보내요. 이름은 ○○○로 가리고 학생 번호는 보내지 않아요. 고친 안은 [바꾸기]를 눌러야 바뀌어요.')}<ul class="chk-list">${shown.map(([x, l]) => rowHTML(x, l)).join('')}</ul>`}</div>`;
   if (focus) restore(focus);
 }
 // 다시 그린 뒤에도 누르던 단추·고르기 칸에 초점을 둠

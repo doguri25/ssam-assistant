@@ -17,6 +17,7 @@ import { readBundle, openBundleCard, needsCard, bundleBoxHTML, onBundle, filledN
 import { isDocFile, keyName, paperFileGoes, keyFileGoes, bundleParts } from './unit-route.js';
 import { linkHTML, openLinkSheet } from '../../../core/eval-link.js';
 import { accuracyText, yearAccuracy, yearText } from '../grade-accuracy.js';
+import { introHTML, aiNoteHTML } from '../../../core/ui-parts.js';
 
 export const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const SS = () => window.SSAM || {};
@@ -138,10 +139,11 @@ function keyHTML(t) {
   const m = U.msg.id === t.id ? U.msg : { key: '', paper: '' }, hasPaper = !!(t.paper && t.paper.text);
   return `<div class="yp-card">
       <h3>학생 문제지·답안</h3>
-      <p class="muted cls-note">학생이 푼 문제지를 반 전체 스캔(PDF·사진)으로 넣고, 선생님 답안(정답·이원 분류표)을 넣어요. 「문항 이원 분류 및 모범 답안」 한글 파일은 AI 없이 바로 읽고, 사진이나 스캔 PDF는 AI가 읽어요.</p>
+      <p class="muted cls-note">반 전체 스캔(PDF·사진)과 선생님 답안(정답·이원 분류표)을 넣어요.</p>
       ${papers ? papers.html(t) : ''}
       <div class="row"><button class="btn primary" type="button" data-un="keyFile" data-drop-pick>답안 넣기</button><span class="muted" id="unKeyMsg" role="status">${esc(m.key)}</span></div>
       <input type="file" id="unKeyFile" accept=".hwp,.hwpx,.pdf,.txt,.png,.jpg,.jpeg,.webp" hidden>
+      ${aiNoteHTML('「문항 이원 분류 및 모범 답안」 한글 파일은 AI 없이 바로 읽어요. 사진·스캔 PDF나 표로 읽지 못한 답안만 AI가 읽어요.')}
       ${bundleBoxHTML('unit', '학생 문제지 스캔·답안·빈 문제지를 한꺼번에 넣으면 알아서 나눠요')}
       <details class="un-more" data-more="${esc(t.id)}"${moreOpen.get(t.id) ? ' open' : ''}><summary>빈 문제지도 있으면 (선택)${hasPaper ? ' · 넣었어요' : ''}</summary>
         <p class="muted cls-note">학생이 풀기 전의 빈 문제지(한글·PDF)를 넣으면 채점 AI가 문제를 보고 채점해요. 없어도 돼요.</p>
@@ -158,6 +160,13 @@ function testHTML(t) {
   return `<div class="un-top"><button class="btn text" type="button" data-un="back">‹ 목록</button><b class="un-title">${esc(makeTitle(t.meta))}</b></div>
     ${band ? band.html(t) : ''}${stepsHTML(STEPS, U.step, reach(t))}<div class="un-body">${body}</div>`;
 }
+/* 휴대폰에서 한 줄로 밀어 넘기는 단계 탭: 지금 단계가 보이게 탭 줄만 옆으로 밂(화면은 위아래로 움직이지 않음) */
+export function stepsInView(root) {
+  const ol = root && root.querySelector('.steps'), li = ol && ol.querySelector('li.cur');
+  if (!li || ol.scrollWidth <= ol.clientWidth) return;
+  const d = li.getBoundingClientRect().right - ol.getBoundingClientRect().right;
+  if (d > 0) ol.scrollLeft += d + 12;
+}
 /* 그리는 중에 지워지는 입력 칸의 blur→change가 다시 그리기를 부르면, 끝난 뒤 한 번 더 그림 */
 let rendering = false, again = false;
 export function render() {
@@ -171,13 +180,14 @@ export function render() {
 function draw() {
   const t = U.view === 'test' ? cur() : null;
   if (U.view === 'test' && !t) U.view = 'list';
-  const head = `<div class="m-head"><h2>단원평가</h2><p class="muted">학생 문제지(스캔한 것)와 답안을 넣으면 문항마다 채점하고, 학생에게 줄 피드백을 만들어요. 결과는 쌓아 두고 모아 봐요.</p></div>`;
+  const head = `<div class="m-head"><h2>단원평가</h2>${introHTML('unit', '학생 문제지 스캔과 답안을 넣으면 채점하고 피드백을 만들어요. 결과는 모아 봐요.')}</div>`;
   const seg = `<div class="seg un-seg" role="group" aria-label="단원평가 보기"><button type="button" data-unv="list" aria-pressed="${U.view !== 'results'}">평가 목록</button><button type="button" data-unv="results" aria-pressed="${U.view === 'results'}">결과 모아 보기</button></div>`;
   let inner;
   if (U.view === 'test') inner = testHTML(t);
   else if (U.view === 'results') inner = head + seg + (resultsView ? resultsView.html() : '');
   else inner = head + seg + listHTML();
   box.innerHTML = `<div class="m-page un-page">${inner}</div>`;
+  stepsInView(box);
   if (U.view === 'test' && stepViews[U.step] && stepViews[U.step].bind) stepViews[U.step].bind(box, t);
   if (U.view === 'results' && resultsView && resultsView.bind) resultsView.bind(box);
 }
@@ -425,7 +435,8 @@ document.addEventListener('click', e => {
   if (a === 'sample') { fillSample(); return; }
   if (a === 'sampleDel') { listTests().filter(s => s.sample).forEach(s => removeTest(s.id)); toast('예시 평가를 지웠어요'); render(); return; }
   if (a === 'back') { U.view = 'list'; U.id = null; U.draft = null; render(); return; }
-  if (!a) { const o = e.target.closest('[data-un-open]'); if (o) openTest(o.dataset.unOpen); return; }
+  // 목록 아래쪽 평가를 열어도 평가 화면은 맨 위(평가 이름·띠·단계 탭)부터 보이게
+  if (!a) { const o = e.target.closest('[data-un-open]'); if (o) { openTest(o.dataset.unOpen); box.scrollIntoView({ block: 'start' }); } return; }
   if (!inStep(1)) return;
   const t = cur();
   if (a === 'keyFile') box.querySelector('#unKeyFile').click();

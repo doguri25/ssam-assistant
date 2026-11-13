@@ -52,7 +52,8 @@ await run('unit-miss', [
     const i4 = await itemText(4);
     assert(i4.includes('답을 쓰지 않음 · 1명 · 5번') && i4.includes('아직 묶지 않음 · 1명 · 3번'), i4);
     assert((await page.textContent(M)).includes('AI에는 문항·정답·틀린 답 글만 보내요. 번호와 이름은 보내지 않아요.'), '안내 글');
-    assert((await page.textContent(`${V} .yp-card .cls-note`)).includes('학생이 쓴 답과 이름은 보내지 않아요'), '피드백 안내는 그대로');
+    assert((await page.textContent(`${V} .yp-card .ai-note`)).includes('학생이 쓴 답과 이름은 보내지 않아요'), '피드백 안내는 그대로');
+    assert(await page.locator(`${M} .ai-note`).count() === 1 && !(await page.getAttribute(`${M} .ai-note`, 'open')), '「AI로 가는 것」은 접혀 있음');
     assert(await page.evaluate(() => { const m = document.querySelector('.un-miss'), f = document.querySelector('.un-fbs'); return !!(m.compareDocumentPosition(f) & Node.DOCUMENT_POSITION_FOLLOWING); }), '결과지 카드 앞이 아님');
     assert(prompts.length === 0, '저절로 AI를 부름');
   }],
