@@ -35,6 +35,9 @@ export const registerResults = v => { resultsView = v; };
 /* 학생 문제지(스캔) 쪽: { html(t), put(files, t0), putPages(pages, t0), keyArrived(id), note(id, text) } — unit-grading.js가 붙임 */
 let papers = null;
 export const registerPapers = p => { papers = p; };
+/* 평가를 연 화면 4단계 탭 위 「평가 한 바퀴」 띠: { html(t) } — unit-flow-card.js가 붙임(스펙 2026-11-13-crop-log-flow §3) */
+let band = null;
+export const registerBand = b => { band = b; };
 export const visible = () => curTab === 'unit' && !!box && box.isConnected && !box.hidden && !box.closest('[hidden]');
 export const inStep = n => visible() && U.view === 'test' && U.step === n;
 export const cur = () => (U.id ? getTest(U.id) : U.draft);
@@ -153,7 +156,7 @@ function keyHTML(t) {
 function testHTML(t) {
   const body = U.step === 1 ? keyHTML(t) : stepViews[U.step] ? stepViews[U.step].html(t) : '<div class="yp-card"><p class="muted" style="margin:0">준비 중이에요.</p></div>';
   return `<div class="un-top"><button class="btn text" type="button" data-un="back">‹ 목록</button><b class="un-title">${esc(makeTitle(t.meta))}</b></div>
-    ${stepsHTML(STEPS, U.step, reach(t))}<div class="un-body">${body}</div>`;
+    ${band ? band.html(t) : ''}${stepsHTML(STEPS, U.step, reach(t))}<div class="un-body">${body}</div>`;
 }
 /* 그리는 중에 지워지는 입력 칸의 blur→change가 다시 그리기를 부르면, 끝난 뒤 한 번 더 그림 */
 let rendering = false, again = false;

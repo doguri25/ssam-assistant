@@ -13,6 +13,19 @@ section[data-menu="evaluate"].ev-new > :not(.unit-box):not(.act-box):not(.chk-bo
 .un-top{display:flex;align-items:center;gap:8px;margin:0 0 8px;flex-wrap:wrap}
 .un-title{font:700 17px/1.3 var(--f-display)}
 .un-body{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+/* 평가 한 바퀴 띠(unit-flow-card.js): 4단계 탭 위 한 줄, 좁으면 제 칸 안에서 줄을 바꿔 감쌈. 다 된 마디는 ✓ 글자, 지금 할 차례는 「지금」 글자(색만으로 나르지 않음) */
+.un-flow{margin:0;min-width:0}
+.un-flow-l{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px 0;min-width:0}
+.un-flow-i{display:flex;align-items:stretch;flex:1 1 100px;min-width:0}
+.un-flow-b{flex:1;min-width:44px;min-height:44px;display:flex;flex-direction:column;justify-content:center;gap:2px;padding:6px 10px;box-sizing:border-box;border:1px solid var(--line);border-radius:var(--r-s);background:var(--surface);color:var(--ink2);font:inherit;text-align:left;cursor:pointer;transition:border-color .15s,background .15s}
+.un-flow-b:hover{border-color:var(--accent)}
+.un-flow-n{font:700 13.5px/1.25 var(--f-body);color:var(--ink);overflow-wrap:anywhere}
+.un-flow-s{font-size:12.5px;line-height:1.3;color:var(--ink3);overflow-wrap:anywhere}
+.un-flow-ck{font-weight:700;color:var(--ok)}
+.un-flow-b.done{background:var(--surface2)}
+.un-flow-b[aria-current="step"]{border:2px solid var(--accent);padding:5px 9px;background:var(--accent-soft)}
+.un-flow-now{display:inline-block;margin-left:2px;padding:0 6px;border-radius:999px;background:var(--accent);color:var(--on-accent);font:700 11.5px/1.6 var(--f-body);vertical-align:1px}
+.un-flow-a{flex:none;align-self:center;width:16px;text-align:center;color:var(--ink3);font-size:13px}
 .un-meta{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px 12px}
 .un-meta .field{width:100%;box-sizing:border-box;min-width:0}
 .un-key-wrap{overflow-x:auto;max-width:100%}
