@@ -387,6 +387,15 @@ async function run(intent, p = {}) {
       : p.view === 'quant' ? '기타 › 다면평가(정량평가)로 왔어요. 항목마다 숫자를 넣으면 점수가 계산돼요.' : '기타 › 다면평가로 왔어요. 정량평가·정성평가 가운데 골라 주세요.');
     afterGo(); return;
   }
+  if (intent === 'tour') {
+    // 3분 둘러보기(core/tour.js): 체험 중이 아니면 묻는 창을 띄우고, 체험 중이면 안내를 처음부터
+    const fn = await optional('./tour.js', 'startTour');
+    if (!fn) { say('둘러보기를 열지 못했어요. 「오늘」 화면의 [3분 둘러보기]를 눌러 주세요.'); return; }
+    afterGo();
+    const st = await Promise.resolve().then(() => fn()).catch(() => 'error');
+    say(st === 'steps' ? '체험 중이에요. 안내를 처음부터 다시 보여 드려요.' : st === 'asked' ? '3분 둘러보기를 열었어요. 묻는 창에서 [둘러보기 시작]을 눌러 주세요.' : '둘러보기를 열지 못했어요. 「오늘」 화면의 [3분 둘러보기]를 눌러 주세요.');
+    return;
+  }
   if (intent === 'briefing') { await refreshBrief(); say(brief && brief.length ? `오늘 할 일 ${brief.length}개를 맨 위에 모았어요. 누르면 그 화면으로 가요.` : EMPTY); if (logEl) logEl.scrollTop = 0; return; }
   if (intent === 'memo') { await addMemo(p); return; }
   if (intent === 'memoView') { await viewMemo(p); return; }

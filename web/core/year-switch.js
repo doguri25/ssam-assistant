@@ -8,8 +8,9 @@ const S = () => window.SSAM || {};
 let archive = null;
 export const getArchive = () => archive || (archive = openArchive());
 
-/* 성공하면 앱을 다시 엶. 실패하면 { ok: false, code } (지금 자료는 그대로) */
-export async function switchYear(target, data = null) {
+/* 옮기기만(다시 열지 않음): 성공하면 저장을 멈춘 채로 { ok: true } — 부른 쪽이 할 일(3분 둘러보기의 체험 표시 등)을 하고 다시 엶.
+   실패하면 { ok: false, code } (지금 자료는 그대로) */
+export async function moveYear(target, data = null) {
   // AI가 쓰는 중이면 옮기지 않음 (다시 열면 그 글을 잃으므로). 평가 메뉴의 미뤄 둔 저장은 먼저 씀
   if (busyCount() > 0 || (S().busy && S().busy())) return { ok: false, code: 'BUSY' };
   flushAll();
@@ -19,6 +20,11 @@ export async function switchYear(target, data = null) {
     freeze: () => { freeze(); if (S().freeze) S().freeze(true); },
     unfreeze: () => { unfreeze(); if (S().freeze) S().freeze(false); }
   });
+  return r;
+}
+/* 성공하면 앱을 다시 엶. 실패하면 { ok: false, code } (지금 자료는 그대로) */
+export async function switchYear(target, data = null) {
+  const r = await moveYear(target, data);
   if (r.ok) location.reload();
   return r;
 }

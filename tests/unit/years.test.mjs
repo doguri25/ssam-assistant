@@ -209,3 +209,31 @@ test('떠 있는 버튼 설정·위치는 학년도와 상관없음', () => {
   assert.equal(isYearKey('inbox'), false);
   assert.equal(isYearKey('bubble'), false);
 });
+
+test('3분 둘러보기: 체험 표시(demo)는 공통 키, 체험용 학년도는 날짜로 셈하는 곳에는 오늘이 든 학년도', async () => {
+  const { GLOBAL, DEMO_YEAR, currentYear, demoOf, isDemoYear } = await import('../../web/core/years.js');
+  assert.ok(GLOBAL.includes('demo'));
+  assert.equal(isYearKey('demo'), false);
+  // 학년도를 옮겨도 체험 표시는 남고, 학년도 자료(snapshot)에 들어가지 않음
+  const ls = seed();
+  ls.setItem('ssam:demo', J({ from: 2026, at: 1 }));
+  assert.ok(!('demo' in snapshot(ls)));
+  const r = await moveTo(DEMO_YEAR, { ls, archive: memArchive(), data: { 'class:info': J({ grade: 3, room: 1 }) }, today: '2026-11-13' });
+  assert.ok(r.ok);
+  assert.equal(ls.getItem('ssam:demo'), J({ from: 2026, at: 1 }));
+  assert.equal(getYears(ls).current, DEMO_YEAR); // 옮기기·보관함은 그대로 체험용 번호
+  assert.deepEqual(demoOf(ls), { from: 2026, at: 1 });
+  assert.ok(isDemoYear(DEMO_YEAR) && !isDemoYear(2026));
+  const keep = globalThis.localStorage;
+  try {
+    globalThis.localStorage = ls;
+    assert.equal(currentYear('2026-11-13'), 2026);
+    assert.equal(currentYear('2027-02-10'), 2026);
+    ls.setItem('ssam:years', J({ current: 2025 }));
+    assert.equal(currentYear('2026-11-13'), 2025); // 진짜 학년도는 그대로
+  } finally { if (keep === undefined) delete globalThis.localStorage; else globalThis.localStorage = keep; }
+  // 틀린 표시는 없는 것으로
+  for (const bad of ['', 'x', J({}), J({ from: 'a' }), J([1])]) { ls.setItem('ssam:demo', bad); assert.equal(demoOf(ls), null, bad); }
+  ls.removeItem('ssam:demo'); assert.equal(demoOf(ls), null);
+  assert.equal(demoOf(null), null);
+});

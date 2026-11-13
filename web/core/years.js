@@ -7,7 +7,8 @@ import { periodStart } from '../menus/class/class-import.js';
 const PREFIX = 'ssam:';
 // testkey:told(시험용 키 알림을 보였음)·queue(차례로 붙여넣기 설정)·queueCalc(산출 내역 넣는 방식)는 화면 설정이라 학년도 자료가 아님
 // chat(「쌤」 채팅 기록 30개)·chat:open(바탕화면 버튼이 채팅을 열라고 적은 때)·nav:tabs(메뉴마다 마지막으로 연 탭)도 학년도와 상관없음
-export const GLOBAL = ['engine', 'theme', 'nav', 'nav:tabs', 'mode', 'updSkip', 'years', 't', 'backupAt', 'inbox', 'bubble', 'export', 'ai-roles', 'purchase:view', 'purchase:flow', 'camp:attView', 'msg:sender', 'testkey:told', 'queue', 'queueCalc', 'slips', 'chat', 'chat:open'];
+// demo: 3분 둘러보기 중 { from: 원래 학년도, at, ... } (core/tour.js) — 학년도를 옮겨도 남아야 끝낼 때 돌아갈 곳을 앎
+export const GLOBAL = ['engine', 'theme', 'nav', 'nav:tabs', 'mode', 'updSkip', 'years', 't', 'backupAt', 'inbox', 'bubble', 'export', 'ai-roles', 'purchase:view', 'purchase:flow', 'camp:attView', 'msg:sender', 'testkey:told', 'queue', 'queueCalc', 'slips', 'chat', 'chat:open', 'demo'];
 export const isYearKey = k => !!k && !GLOBAL.includes(k) && !k.startsWith('mig:');
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const pad = n => String(n).padStart(2, '0');
@@ -18,11 +19,21 @@ export function getYears(ls, today = todayStr()) {
   try { const v = JSON.parse(ls.getItem(PREFIX + 'years')); if (isObj(v) && Number.isInteger(v.current)) return { current: v.current }; } catch (e) {}
   return { current: schoolYearOf(today) };
 }
-/* 지금 자료의 학년도 (저장소에 닿지 못하면 오늘이 든 학년도) */
+/* 3분 둘러보기(스펙 2026-11-13-miss-tour-check §3)의 체험용 학년도: 진짜 학년도와 겹치지 않는 번호(보관함·학년도 표시에만 씀).
+   체험 자료는 이 학년도로 옮겨(moveTo) 쓰고, 끝내면 원래 학년도로 돌아가 이 보관 자료를 지움 */
+export const DEMO_YEAR = 9999;
+export const isDemoYear = y => y === DEMO_YEAR;
+export const DEMO_WAIT = '체험을 끝낸 뒤에 해 주세요';
+/* 체험 중 표시 { from(원래 학년도), at, … } 또는 null (ls: 저장소, 막혔으면 null) */
+export function demoOf(ls) {
+  try { const v = JSON.parse(ls.getItem(PREFIX + 'demo')); return isObj(v) && Number.isInteger(v.from) ? v : null; } catch (e) { return null; }
+}
+/* 지금 자료의 학년도 (저장소에 닿지 못하면 오늘이 든 학년도). 체험용 학년도면 오늘이 든 학년도(날짜·문서의 학년도를 셈하는 곳이 쓰므로) */
 export function currentYear(today = todayStr()) {
   let ls = null;
   try { ls = globalThis.localStorage || null; } catch (e) {}
-  return getYears(ls, today).current;
+  const y = getYears(ls, today).current;
+  return isDemoYear(y) ? schoolYearOf(today) : y;
 }
 /* 학년도 첫 수업일: 3월 2일부터 주말·공휴일이 아닌 첫날 */
 export function firstSchoolDay(year) {

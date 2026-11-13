@@ -17,7 +17,7 @@ import { oneshotPrompt, normOneshot, confirmChips, askNeeds, GUESS_KEYS } from '
 import { pushRecent, newId, listRecent, deleteRecent, listTemplates, saveTemplate, renameTemplate, deleteTemplate, templateForm } from './library.js';
 import { fileMessage, isFileCode } from '../../core/files.js';
 import { registerInbox } from '../../core/inbox.js';
-import { getYears } from '../../core/years.js';
+import { currentYear } from '../../core/years.js';
 import { canQueue, openQueue, QUEUE_MAX } from '../../core/queue-paste.js';
 
 const CUR_KEY = 'purchase:current';
@@ -51,7 +51,7 @@ function normForm(v) {
 /* 사유의 첫 문장(새 꼴은 「2.」 줄, 예전 꼴은 첫 문단) */
 const firstPara = introOf;
 /* 품의 사유 「1. 관련:」에 쓰는 학년도 */
-const curYear = () => getYears(localStorage).current;
+const curYear = () => currentYear(); // 지금 자료의 학년도(3분 둘러보기 중이면 오늘이 든 학년도)
 const normRv = v => (Array.isArray(v) ? v.filter(x => x && (x.field === 'title' || x.field === 'intro') && typeof x.fix === 'string' && x.fix.trim())
   .map(x => ({ field: x.field, problem: String(x.problem || ''), fix: x.fix, ...(x.done === 'review' || x.done === 'main' ? { done: x.done } : {}) })) : []);
 /* tail: 사유를 앱이 마지막으로 맞췄을 때의 가~붙임(예전 초안은 연 때의 것) — 그 뒤 품목·붙임이 바뀌었는지 보려고.

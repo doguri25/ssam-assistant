@@ -4,7 +4,7 @@
    가로 메뉴는 한 줄 가로 스크롤 칩. 앱을 켜면(열기·새로 고침) 늘 「오늘」 (스펙 2026-11-11 §1) */
 import { icon } from './icons.js';
 import { renderPlaceholder } from '../menus/placeholder.js';
-import { ensureYears } from './years.js';
+import { ensureYears, isDemoYear } from './years.js';
 import { freeze, onFail, FULL_MSG, flushAll, usage } from './store.js';
 import { TABS_KEY, parseTabs, pickTab } from './nav-tabs.js';
 import './file-drop.js'; // 파일 고르기 단추(data-drop-pick)가 있는 칸에 끌어 놓기 — window에 먼저 걸어 둠(쌤 버튼의 막기보다 앞)
@@ -146,7 +146,9 @@ function drawBottom() {
   el.innerHTML = BOTTOM.map(find).map(m => `<button type="button" class="bt-btn" data-menu-go="${m.id}">${icon(m.icon, 22)}<span>${esc(m.label)}</span></button>`).join('')
     + `<button type="button" class="bt-btn" id="moreBtn" aria-haspopup="dialog" aria-expanded="false">${icon('more', 22)}<span>더보기</span></button>`;
 }
-const yearText = () => { let ls = null; try { ls = window.localStorage; } catch (e) {} return `${ensureYears(ls).current}학년도`; };
+/* 「2026학년도」, 3분 둘러보기 중(체험용 학년도)이면 「체험용 자료」 */
+const yearLabel = y => (isDemoYear(y) ? '체험용 자료' : `${y}학년도`);
+const yearText = () => { let ls = null; try { ls = window.localStorage; } catch (e) {} return yearLabel(ensureYears(ls).current); };
 const aiText = () => (SSAM().ai && SSAM().ai.engineReady && SSAM().ai.engineReady() ? SSAM().ai.engineName() : '') || 'AI를 정해 주세요';
 /* 더보기 시트: 아래 탭에 없는 메뉴(계획·연수·기타·설정) + 학년도·사용 중인 AI(누르면 설정 그 탭) */
 function openMore() {
@@ -189,7 +191,7 @@ function drawYear() {
   let ls = null;
   try { ls = window.localStorage; } catch (e) {}
   // 처음 연 날의 학년도를 저장해 둠 (저장소가 막혀 있으면 오늘이 든 학년도만 보임)
-  el.innerHTML = `<small>학년도</small><b>${ensureYears(ls).current}학년도</b>`;
+  el.innerHTML = `<small>학년도</small><b>${yearLabel(ensureYears(ls).current)}</b>`;
 }
 
 /* 세로 메뉴 아래 「사용 중인 AI」 */

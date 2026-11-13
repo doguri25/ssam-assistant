@@ -3,8 +3,8 @@
 const PREFIX = 'ssam:';
 let storage = (() => { try { return globalThis.localStorage || null; } catch (e) { return null; } })();
 
-/* 시험용: 다른 저장소 끼우기 */
-export function useStorage(s) { storage = s; }
+/* 다른 저장소 끼우기(시험, 체험 자료 만들기 — core/demo-data.js). 앞의 저장소를 돌려줌(되돌려 끼울 수 있게) */
+export function useStorage(s) { const prev = storage; storage = s; return prev; }
 
 export function get(key, fallback = null) {
   try {

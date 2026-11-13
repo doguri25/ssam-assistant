@@ -8,7 +8,7 @@ import { get, FULL_MSG } from '../../core/store.js';
 import { toast } from '../../core/ui.js';
 import { briefing } from '../../core/briefing.js';
 import { gather, goRoute, today } from '../../core/brief-data.js';
-import { ensureYears } from '../../core/years.js';
+import { ensureYears, isDemoYear } from '../../core/years.js';
 import { listDocs } from '../etc/gongmun-model.js';
 import { makeCtx, dayView, hasTimetable } from '../class/class-model.js';
 import { listCamps, getCamp, saveCamp, currentCampId, setCurrentCamp, markRest, fmtDate } from '../class/camp-model.js';
@@ -53,11 +53,15 @@ const sigOf = d => `${d.t}|${d.lessons.rows.map(r => r.now).join(',')}`;
 
 /* ---------- 그리기 ---------- */
 function headHTML(d) {
-  const a = aiState(), n = H.todoCount({ gongmun: d.gm, lessons: d.lessons, camp: d.camp });
+  const a = aiState(), n = H.todoCount({ gongmun: d.gm, lessons: d.lessons, camp: d.camp }), y = year(), demo = isDemoYear(y);
+  // [3분 둘러보기](core/tour.js가 누르기를 받음): 체험 중이면 안내를 처음부터
+  const tour = demo ? '<button type="button" class="btn tonal hm-tour" data-tour="steps">안내 다시 보기</button>'
+    : '<button type="button" class="btn tonal hm-tour" data-tour="start" aria-haspopup="dialog"><span aria-hidden="true">▶</span>3분 둘러보기</button>';
   return `<header class="hm-head">
-    <div class="hm-head-t"><p class="hm-date">${esc(H.dateLine(d.t, year()))}</p><h2 id="hmTitle">${esc(H.headline(n))}</h2></div>
+    <div class="hm-head-t"><p class="hm-date">${esc(H.dateLine(d.t, y, { demo }))}</p><h2 id="hmTitle">${esc(H.headline(n))}</h2></div>
+    <div class="hm-head-b">${tour}
     <button type="button" class="hm-ai ${a.ok ? 'ok' : 'need'}" data-hm-go="ai" aria-label="사용 중인 AI: ${esc(a.ok ? `${a.name} 준비됨` : '정해 주세요')} (설정 › AI로 가기)">
-      <span class="hm-ai-dot" aria-hidden="true">${a.ok ? '✓' : '!'}</span><span>${a.ok ? `${esc(a.name || 'AI')} · 준비됨` : 'AI를 정해 주세요'}</span></button>
+      <span class="hm-ai-dot" aria-hidden="true">${a.ok ? '✓' : '!'}</span><span>${a.ok ? `${esc(a.name || 'AI')} · 준비됨` : 'AI를 정해 주세요'}</span></button></div>
   </header>`;
 }
 const dropHTML = () => `<div class="hm-drop" id="hmDrop" data-hm-drop>

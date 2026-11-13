@@ -12,9 +12,9 @@ const DAY = ['일요일', '월요일', '화요일', '수요일', '목요일', '�
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const str = v => (typeof v === 'string' ? v : '');
 
-/* 머리 첫 줄: 「11월 11일 수요일 · 2026학년도」 */
-export function dateLine(today, year) {
-  const y = `${year}학년도`;
+/* 머리 첫 줄: 「11월 11일 수요일 · 2026학년도」, 3분 둘러보기 중이면(demo) 「… · 체험용 자료」 */
+export function dateLine(today, year, { demo = false } = {}) {
+  const y = demo ? '체험용 자료' : `${year}학년도`;
   return isDate(today) ? `${+today.slice(5, 7)}월 ${+today.slice(8, 10)}일 ${DAY[weekday(today)]} · ${y}` : y;
 }
 

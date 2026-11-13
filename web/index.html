@@ -29,6 +29,7 @@
 <link rel="stylesheet" href="menus/class/camp.css">
 <link rel="stylesheet" href="menus/home/home.css">
 <link rel="stylesheet" href="menus/evaluate/unit/unit.css">
+<link rel="stylesheet" href="core/tour.css">
 <script>/* 테마를 먼저 정해 깜빡임을 막고, 그 테마 글꼴만 화면을 막지 않게 부름 (core/theme.js의 THEMES·fontUrl과 같은 규칙) */try{var t=JSON.parse(localStorage.getItem('ssam:theme'))}catch(e){}t=['dark-nav','mono','soft','paper','rail'].indexOf(t)>=0?t:'dark-nav';document.documentElement.dataset.theme=t;(function(){var F={'dark-nav':'Gothic+A1:wght@400;500;600;700;800','mono':'IBM+Plex+Sans+KR:wght@400;500;600;700','soft':'Noto+Sans+KR:wght@400;500;700','paper':'Noto+Serif+KR:wght@600;700&family=Noto+Sans+KR:wght@400;500;700','rail':'Noto+Sans+KR:wght@400;500;700'};var l=document.createElement('link');l.rel='stylesheet';l.media='print';l.onload=function(){l.media='all'};l.dataset.font=t;l.href='https://fonts.googleapis.com/css2?family='+F[t]+'&family=Roboto+Mono:wght@400;500&display=swap';document.head.appendChild(l)})();</script>
 </head>
 <body>
@@ -191,6 +192,7 @@
 <script src="menus/evaluate/evaluate.js"></script>
 <script type="module" src="core/shell.js"></script>
 <script type="module" src="menus/home/home.js"></script>
+<script type="module" src="core/tour.js"></script>
 <script type="module" src="core/inbox.js"></script>
 <script type="module" src="core/ai-roles.js"></script>
 <script type="module" src="core/ai-review.js"></script>
