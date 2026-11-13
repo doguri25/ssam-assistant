@@ -1,7 +1,8 @@
 // 단원평가 AI 프롬프트와 답 읽기 (스펙 3.2~3.4)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gradePrompt, normGrade, validGrade, keyPrompt, normKeyAI, feedbackPrompt, normFeedback, pyeongeoPrompt, normPyeongeo } from '../../web/menus/evaluate/unit/unit-ai.js';
+import { gradePrompt, normGrade, validGrade, keyPrompt, normKeyAI, feedbackPrompt, normFeedback, pyeongeoPrompt, normPyeongeo, pyeongeoEvidence, evTitle } from '../../web/menus/evaluate/unit/unit-ai.js';
+import { EVIDENCE_RULE } from '../../web/core/evidence.js';
 
 const ITEMS = [
   { no: 1, content: '글의 내용 파악하기', domain: '이해', type: 'choice', answer: '③', points: 4, criteria: '', pages: '<국어> 36쪽' },
@@ -58,7 +59,47 @@ test('평어 프롬프트·답 읽기', () => {
   const p = pyeongeoPrompt('국어', [{ no: 2, level: 'high', good: ['글의 내용 파악하기'], weak: ['생각 쓰기'] }]);
   assert.ok(p.startsWith('[단원평가 평어]') && p.includes('국어') && p.includes('2번') && p.includes('수준 상') && p.includes('생각 쓰기'));
   assert.ok(p.includes('~함.'));
-  assert.deepEqual(normPyeongeo([{ no: 2, text: ' 잘 읽음. ' }]), { 2: '잘 읽음.' });
+  assert.deepEqual(normPyeongeo([{ no: 2, text: ' 잘 읽음. ' }]), { 2: { text: '잘 읽음.', sentences: null } }, '예전 text 답');
+});
+
+test('평어 근거(스펙 §5-1): 평가 내용별 정답률 → 「「3학년 수학 3단원」 세 자리 수 덧셈 90%」, 평가가 여럿이면 「외 n개」', () => {
+  assert.equal(evTitle({ grade: 3, subject: '수학', unitNo: 3, unitName: '곱셈', round: 1 }), '3학년 수학 3단원');
+  assert.equal(evTitle({ subject: '국어' }), '국어');
+  const l = pyeongeoEvidence([{ name: '세 자리 수 덧셈', rate: 0.9, titles: ['3학년 수학 3단원'] }, { name: '3번 문항', rate: 0.333, titles: ['3학년 수학 3단원', '3학년 수학 4단원'] }]);
+  assert.deepEqual(l, [
+    { id: 'e1', kind: 'unit', label: '「3학년 수학 3단원」 세 자리 수 덧셈 90%' },
+    { id: 'e2', kind: 'unit', label: '「3학년 수학 3단원 외 1개」 3번 문항 33%' }
+  ]);
+});
+
+test('평어 프롬프트(근거): 학생마다 근거 목록(학생 줄 아래 들여 씀)·근거 규칙, 답은 문장마다 src', () => {
+  const ev = pyeongeoEvidence([{ name: '글의 내용 파악하기', rate: 1, titles: ['3학년 국어 1단원'] }, { name: '생각 쓰기', rate: 0.25, titles: ['3학년 국어 1단원'] }]);
+  const p = pyeongeoPrompt('국어', [{ no: 2, level: 'high', good: ['글의 내용 파악하기'], weak: ['생각 쓰기'], ev }, { no: 3, level: 'mid', good: [], weak: [], ev: [] }]);
+  assert.ok(p.includes('- 2번 | 수준 상') && p.includes('  [근거 목록]\n  e1) 「3학년 국어 1단원」 글의 내용 파악하기 100%\n  e2) 「3학년 국어 1단원」 생각 쓰기 25%'), p);
+  assert.ok(p.includes('- 3번 | 수준 중') && p.includes('  [근거 목록] 없음'), '근거 없는 학생');
+  assert.ok(p.includes(EVIDENCE_RULE), '근거 규칙');
+  assert.ok(p.includes('{"students":[{"no":1,"sentences":[{"t":"문장","src":["e1"]}]}]}'), '답 모양');
+  assert.equal(p.split('\n').filter(l => /^- \d+번 \|/.test(l)).length, 2, '학생 줄은 학생마다 하나');
+  assert.ok(!/\d+\s*점/.test(p), '점수(○점)는 보내지 않음');
+});
+
+test('평어 답 읽기(근거): sentences → 글·문장(목록에 없는 id 빼고), 예전 text 답도', () => {
+  const lists = { 1: pyeongeoEvidence([{ name: '곱셈하기', rate: 1, titles: ['3학년 수학 3단원'] }]) };
+  const v = { students: [
+    { no: 1, sentences: [{ t: '곱셈을 바르게 함.', src: ['e1', 'e7'] }, { t: ' 꾸준히 노력함. ', src: [] }] },
+    { no: 2, text: '예전 모양 평어임.' },
+    { no: 3, sentences: [] },
+    { no: 'x', text: '번호 없음' }
+  ] };
+  const r = normPyeongeo(v, lists);
+  assert.deepEqual(r[1], { text: '곱셈을 바르게 함. 꾸준히 노력함.', sentences: [{ t: '곱셈을 바르게 함.', src: ['e1'] }, { t: '꾸준히 노력함.', src: [] }] });
+  assert.deepEqual(r[2], { text: '예전 모양 평어임.', sentences: null });
+  assert.deepEqual(Object.keys(r), ['1', '2'], '빈 답·번호 없는 답은 뺌');
+  assert.deepEqual(normPyeongeo({ students: [{ no: 4, sentences: [{ t: '목록이 없어도 글은 씀.', src: ['e1'] }] }] })[4], { text: '목록이 없어도 글은 씀.', sentences: [{ t: '목록이 없어도 글은 씀.', src: [] }] });
+  const long = normPyeongeo({ students: [{ no: 5, sentences: Array.from({ length: 6 }, (_, i) => ({ t: `${i}${'가'.repeat(90)}.`, src: [] })) }] })[5];
+  assert.ok(long.text.length <= 400 && long.text === long.sentences.map(s => s.t).join(' '), '400자에 맞춰 끝 문장을 뺌');
+  const one = normPyeongeo({ students: [{ no: 6, sentences: [{ t: '나'.repeat(450), src: [] }] }] })[6];
+  assert.ok(one.text.length === 400 && one.sentences[0].t === one.text, '한 문장이 길면 400자로 자름');
 });
 
 test('다듬기: AI 점수가 「4점」처럼 글이어도 앞의 수를 읽음', () => {

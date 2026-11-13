@@ -10,7 +10,9 @@ import {
   levelOf, LEVEL_NAME, getPyeongeo, savePyeongeo, contentKey
 } from './unit-model.js';
 import { tableDoc, tableCsv } from './unit-docs.js';
-import { pyeongeoPrompt, normPyeongeo } from './unit-ai.js';
+import { pyeongeoPrompt, normPyeongeo, pyeongeoEvidence, evTitle } from './unit-ai.js';
+import { evidenceHTML } from '../../../core/evidence.js';
+import { itemName } from './unit-model.js';
 import { unitAccuracy, accuracyText } from '../grade-accuracy.js';
 import { U, esc, AI_KEY, registerResults, visible, render, refresh, later, editing, getBox } from './unit.js';
 
@@ -92,14 +94,18 @@ function pyState(all) {
     const ps = chosen.map(t => { const s = graded(t).find(x => x.no === no); return s ? studentTotal(t, s).pct : null; }).filter(v => v != null);
     const avg = ps.length ? Math.round(ps.reduce((a, b) => a + b, 0) / ps.length * 10) / 10 : 0;
     const sv = (saved && saved.students[no]) || {};
-    return { no, avg, level: sv.manual ? sv.level : levelOf(avg, saved ? saved.cuts : undefined), manual: !!sv.manual, text: sv.text || '' };
+    return { no, avg, level: sv.manual ? sv.level : levelOf(avg, saved ? saved.cuts : undefined), manual: !!sv.manual, text: sv.text || '', ev: sv.ev || null };
   });
   return { subs, mine, saved, ids, chosen, students };
 }
+// 근거(ev: { list, sentences })는 글이 있을 때만 평어 옆에 둠 — 칸을 비우면 근거도 지움
+const pyOut = list => Object.fromEntries(list.map(s => [s.no, { level: s.level, text: s.text, manual: s.manual, ...(s.ev && s.text ? { ev: s.ev } : {}) }]));
 function savePy(st, patch = {}) {
-  const v = { off: st.mine.map(t => t.id).filter(id => !st.ids.includes(id)), cuts: st.saved.cuts, students: Object.fromEntries(st.students.map(s => [s.no, { level: s.level, text: s.text, manual: s.manual }])), ...patch };
+  const v = { off: st.mine.map(t => t.id).filter(id => !st.ids.includes(id)), cuts: st.saved.cuts, students: pyOut(st.students), ...patch };
   savePyeongeo(R.pySubject, v);
 }
+/* 고치는 칸 아래 근거 표시(근거가 없는 옛 평어는 그대로 아무것도 없음) */
+const pyEvHTML = s => (s.ev && s.text ? evidenceHTML({ ...s.ev, text: s.text, key: `py:${R.pySubject}:${s.no}` }) : '');
 function pyHTML(all) {
   const st = pyState(all);
   if (!st.subs.length) return '';
@@ -114,24 +120,26 @@ function pyHTML(all) {
       <label class="cls-inline">중 <input class="field num" type="number" id="unCutMid" min="0" max="100" value="${c.mid}"></label><span class="muted">이상</span></div>
     ${aiRowHTML('writing')}
     <div class="row"><button class="btn primary" type="button" data-un="pyAI"${R.pyRun ? ' disabled' : ''}>${R.pyRun ? '<span class="spin"></span>쓰는 중…' : '평어 쓰기'}</button><button class="btn" type="button" data-un="pyCopyAll">모두 복사</button>
-      <span class="muted">AI에는 번호·수준·평가 내용만 보내요. 점수와 이름은 보내지 않아요.</span></div>
+      <span class="muted">AI에는 번호·수준·평가 내용과 그 정답률만 보내요. 이름은 보내지 않아요.</span></div>
     <ul class="un-pys">${st.students.map(s => `<li class="un-py"><div class="row"><b>${s.no}번</b><span class="muted">평균 ${s.avg}점</span>${lvSel(s)}<span class="grow"></span><button class="btn text" type="button" data-un="pyCopy" data-no="${s.no}">복사</button></div>
-      <textarea class="field" data-py="${s.no}" rows="2" placeholder="[평어 쓰기]를 누르거나 직접 써요">${esc(s.text)}</textarea></li>`).join('')}</ul>
+      <textarea class="field" data-py="${s.no}" rows="2" placeholder="[평어 쓰기]를 누르거나 직접 써요">${esc(s.text)}</textarea><div class="un-pyev" data-pyev="${s.no}">${pyEvHTML(s)}</div></li>`).join('')}</ul>
   </div>`;
 }
-/* 잘한·보완할 평가 내용: 고른 평가의 문항을 평가 내용으로 묶어 정답률 */
+/* 잘한·보완할 평가 내용: 고른 평가의 문항을 평가 내용으로 묶어 정답률.
+   근거(스펙 §5-1)에 쓰게 문항 이름(name: 평가 내용 또는 「3번 문항」)과 그 평가 이름(titles: 「3학년 수학 3단원」)도 */
 function contentRates(tests, no) {
   const m = new Map();
   for (const t of tests) {
     const s = graded(t).find(x => x.no === no);
     if (!s) continue;
     for (const it of t.key.items) {
-      const k = contentKey(t, it), v = m.get(k) || [0, 0]; // 평가 내용이 없는 문항끼리 뭉치지 않게
-      v[0] += Number(s.items[it.no] && s.items[it.no].pts) || 0; v[1] += Number(it.points) || 0;
+      const k = contentKey(t, it), v = m.get(k) || { pts: 0, max: 0, name: itemName(it), titles: [] }; // 평가 내용이 없는 문항끼리 뭉치지 않게
+      v.pts += Number(s.items[it.no] && s.items[it.no].pts) || 0; v.max += Number(it.points) || 0;
+      if (!v.titles.includes(evTitle(t.meta))) v.titles.push(evTitle(t.meta));
       m.set(k, v);
     }
   }
-  return [...m].filter(([, v]) => v[1]).map(([content, v]) => ({ content, rate: v[0] / v[1] }));
+  return [...m].filter(([, v]) => v.max).map(([content, v]) => ({ content, rate: v.pts / v.max, name: v.name, titles: v.titles }));
 }
 async function writePyeongeo() {
   if (R.pyRun) return;
@@ -144,12 +152,19 @@ async function writePyeongeo() {
     for (let i = 0; i < todo.length; i += 10) {
       const chunk = todo.slice(i, i + 10).map(s => {
         const rates = contentRates(st.chosen, s.no);
-        return { no: s.no, level: s.level, good: rates.filter(r => r.rate >= 0.8).sort((a, b) => b.rate - a.rate).slice(0, 3).map(r => r.content), weak: rates.filter(r => r.rate < 0.6).sort((a, b) => a.rate - b.rate).slice(0, 3).map(r => r.content) };
+        const good = rates.filter(r => r.rate >= 0.8).sort((a, b) => b.rate - a.rate).slice(0, 3), weak = rates.filter(r => r.rate < 0.6).sort((a, b) => a.rate - b.rate).slice(0, 3);
+        // 근거: 잘한 것·보완할 것 평가 내용과 그 정답률(번호·평가 이름·평가 내용만, 이름 없음)
+        return { no: s.no, level: s.level, good: good.map(r => r.content), weak: weak.map(r => r.content), ev: pyeongeoEvidence([...good, ...weak]) };
       });
-      const res = normPyeongeo(await ai.generateJSON(pyeongeoPrompt(subject, chunk), { task: 'writing', valid: v => Object.keys(normPyeongeo(v)).length > 0 }));
+      const lists = Object.fromEntries(chunk.map(c => [c.no, c.ev]));
+      const res = normPyeongeo(await ai.generateJSON(pyeongeoPrompt(subject, chunk), { task: 'writing', valid: v => Object.keys(normPyeongeo(v)).length > 0 }), lists);
       const cur = getPyeongeo(subject), now = pyStateFor(subject);
-      for (const s of now.students) if (res[s.no] && !s.text) s.text = res[s.no];
-      savePyeongeo(subject, { off: now.mine.map(t => t.id).filter(id => !now.ids.includes(id)), cuts: cur.cuts, students: Object.fromEntries(now.students.map(s => [s.no, { level: s.level, text: s.text, manual: s.manual }])) });
+      for (const s of now.students) {
+        if (!res[s.no] || s.text) continue;
+        s.text = res[s.no].text;
+        s.ev = res[s.no].sentences ? { list: lists[s.no], sentences: res[s.no].sentences } : null; // 예전 모양 답이면 근거 없이
+      }
+      savePyeongeo(subject, { off: now.mine.map(t => t.id).filter(id => !now.ids.includes(id)), cuts: cur.cuts, students: pyOut(now.students) });
     }
   } catch (e) {
     toast(e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 해 보세요.' : ai.errorMessage(e && e.code, e), 6000);
@@ -163,7 +178,10 @@ function refreshView() {
   refresh();
   if (!editing()) return;
   const box = getBox(), st = pyState(loaded(doneTests()));
-  for (const s of st.students) { const el = box.querySelector(`textarea[data-py="${s.no}"]`); if (el && el !== document.activeElement) el.value = s.text; }
+  for (const s of st.students) {
+    const el = box.querySelector(`textarea[data-py="${s.no}"]`);
+    if (el && el !== document.activeElement) { el.value = s.text; const ev = box.querySelector(`[data-pyev="${s.no}"]`); if (ev) ev.innerHTML = pyEvHTML(s); }
+  }
   const b = box.querySelector('[data-un="pyAI"]');
   if (b) { b.disabled = !!R.pyRun; b.innerHTML = R.pyRun ? '<span class="spin"></span>쓰는 중…' : '평어 쓰기'; }
 }
@@ -227,7 +245,12 @@ document.addEventListener('change', e => {
     } else if (el.dataset.pylv) {
       const s = st.students.find(x => x.no === Number(el.dataset.pylv)); if (s) { s.level = el.value; s.manual = true; savePy(st); }
     } else if (el.dataset.py) {
-      const s = st.students.find(x => x.no === Number(el.dataset.py)); if (s) { s.text = el.value.trim(); savePy(st); }
+      const s = st.students.find(x => x.no === Number(el.dataset.py));
+      if (s) {
+        s.text = el.value.trim(); savePy(st);
+        // 손으로 고치면 근거 위에 「고친 글」(칸을 비우면 근거도 사라짐)
+        const ev = box.querySelector(`[data-pyev="${s.no}"]`); if (ev) ev.innerHTML = pyEvHTML(s);
+      }
     }
   }
 });
