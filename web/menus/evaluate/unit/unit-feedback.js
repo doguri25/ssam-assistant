@@ -12,6 +12,7 @@ import { feedbackPrompt, normFeedback, redoPrompt, normRedo } from './unit-ai.js
 import { ITEM_TYPES } from './unit-grade.js';
 import { redoFor, redoWant, redoFit, redoTargets, redoBlocks, redoText, redoKind, normAnswer, redoIssues } from './unit-redo.js';
 import { unitAccuracy, accuracyText } from '../grade-accuracy.js';
+import { missHTML } from './unit-miss-card.js'; // 「틀린 까닭」 카드(스펙 2026-11-13-miss-tour-check §1): 그 파일이 그리고 듣기도 함
 import { esc, AI_KEY, registerStep, inStep, cur, curId, saveOrWarn, refresh, getBox } from './unit.js';
 
 let runId = null; // 잘한 점·격려를 쓰는 중인 평가
@@ -111,7 +112,7 @@ function step4HTML(t) {
         ${exportButton('data-un="fbHwpx"', { prefix: '결과지 · ' })}${downloadsButton()}<button class="btn" type="button" data-un="fbPrint">인쇄</button><button class="btn" type="button" data-un="fbCopyAll">모두 복사</button><label class="switch"><input type="checkbox" data-one-page${onePerPage() ? ' checked' : ''}>번호별로 한 장씩</label></div>
       <p class="muted cls-note">AI에는 번호·점수·평가 내용만 보내요. 학생이 쓴 답과 이름은 보내지 않아요. <span id="unSlipNote">${SLIP_NOTE(onePerPage())}</span></p>
     </div>
-    ${redoHTML(t)}
+    ${redoHTML(t)}${missHTML(t)}
     <div class="un-fbs">${list.map(s => card(t, s)).join('')}</div>
     ${printHTML(t, list)}`;
 }
