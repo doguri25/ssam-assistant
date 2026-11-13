@@ -62,7 +62,7 @@ test('AI 글: 「운영 계획서」 표시, 계획서의 지도 계획까지 �
   const c = newCamp({ teacher: '한가람', students: [{ id: 'a', name: '김하늘' }] });
   const p = readPlan(PLAN + '\n※ 김하늘 학생은 받침 지도 필요', ctx);
   const { prompt, range } = planPrompt(PLAN + '\n※ 김하늘 학생은 받침 지도 필요', c, ctx, p);
-  assert.ok(prompt.includes('[기초학력 캠프 수업 일정]') && prompt.includes('[운영 계획서]'), prompt.slice(0, 200));
+  assert.ok(prompt.includes('[기초학력 수업 일정]') && prompt.includes('[운영 계획서]'), prompt.slice(0, 200));
   assert.ok(prompt.includes('받침 있는 낱말 읽기') && prompt.includes('두 자리 수 뺄셈'), '지도 계획');
   for (const w of ['한가람', '김하늘', '010-1234-5678']) assert.ok(!prompt.includes(w), w);
   assert.deepEqual(range, { from: '2027-01-08', to: '2027-01-22' });

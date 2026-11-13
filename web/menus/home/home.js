@@ -90,17 +90,17 @@ function lessonHTML(d) {
 function campHTML(d) {
   const k = d.camp;
   if (!k) return '';
-  const pick = d.todays.length > 1 ? `<div class="hm-camp-pick" role="group" aria-label="오늘 수업이 있는 캠프">${d.todays.map(x =>
-    `<button type="button" class="chip hm-chip" data-hm-camp="${esc(x.camp.id)}" aria-pressed="${x.camp.id === k.id}">${esc(x.camp.name || '이름 없는 캠프')}</button>`).join('')}</div>` : '';
+  const pick = d.todays.length > 1 ? `<div class="hm-camp-pick" role="group" aria-label="오늘 수업이 있는 기초학력 프로그램">${d.todays.map(x =>
+    `<button type="button" class="chip hm-chip" data-hm-camp="${esc(x.camp.id)}" aria-pressed="${x.camp.id === k.id}">${esc(x.camp.name || '이름 없는 프로그램')}</button>`).join('')}</div>` : '';
   const sts = k.students.length ? `<div class="hm-att" role="group" aria-label="학생 출석 (누를 때마다 출석 → 결석 → 빈칸)">${k.students.map(s => {
     const [sym, word] = MARK[s.mark] || MARK[''];
     return `<button type="button" class="hm-att-btn m-${s.mark || 'none'}" data-hm-mark="${esc(s.id)}" aria-label="${esc(s.name)}: ${word} (누르면 ${NEXT_WORD[s.mark] || '출석'})">
       <span class="hm-att-m" aria-hidden="true">${sym}</span><span class="hm-att-n">${esc(s.name)}</span><span class="hm-att-w" aria-hidden="true">${word}</span></button>`;
-  }).join('')}</div>` : '<p class="muted hm-none">캠프에 학생을 넣으면 여기서 출석을 체크해요</p>';
-  return `<section class="hm-card hm-camp" aria-labelledby="hmCampH"><div class="hm-card-h"><h3 id="hmCampH">교과캠프 출석</h3>
+  }).join('')}</div>` : '<p class="muted hm-none">기초학력에 학생을 넣으면 여기서 출석을 체크해요</p>';
+  return `<section class="hm-card hm-camp" aria-labelledby="hmCampH"><div class="hm-card-h"><h3 id="hmCampH">기초학력 출석</h3>
       <span class="muted">${esc(k.name)} · 오늘 ${k.count}번${k.time ? ` · ${esc(k.time)}` : ''}</span></div>
     ${pick}${sts}
-    <div class="hm-card-f">${k.students.length ? '<button type="button" class="btn tonal" data-hm="attAll">남은 칸 모두 출석</button>' : ''}<button type="button" class="btn text" data-hm-go="camp">캠프 열기</button></div></section>`;
+    <div class="hm-card-f">${k.students.length ? '<button type="button" class="btn tonal" data-hm="attAll">남은 칸 모두 출석</button>' : ''}<button type="button" class="btn text" data-hm-go="camp">기초학력 열기</button></div></section>`;
 }
 function contHTML(d) {
   if (brief === null) return '<section class="hm-cont" aria-labelledby="hmContH"><h3 id="hmContH">이어서 하기</h3><p class="muted hm-none"><span class="spin"></span>세는 중…</p></section>';
@@ -179,7 +179,7 @@ function onClick(e) {
     // 남은 칸만 ○(이미 적은 / 결석은 그대로 — 출석부에 그대로 나감)
     if (!saveCamp(markRest(c, today()))) { toast(FULL_MSG, 7000); return; }
     draw();
-    toast(`${fmtDate(today())} ${c.name || '캠프'} 남은 칸을 출석으로 표시했어요(결석은 그대로)`);
+    toast(`${fmtDate(today())} ${c.name || '기초학력'} 남은 칸을 출석으로 표시했어요(결석은 그대로)`);
   }
 }
 

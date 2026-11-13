@@ -4,7 +4,7 @@
 import { DOC_IDS, hoursTotal, sessionChecked, campDates } from './camp-model.js';
 import { docLabel } from './camp-docs.js';
 
-export const STEPS = [['info', '캠프 정보'], ['sched', '수업 일정'], ['att', '출석 체크'], ['obs', '관찰 기록'], ['report', '결과 보고서'], ['docs', '문서 내보내기']];
+export const STEPS = [['info', '기본 정보'], ['sched', '수업 일정'], ['att', '출석 체크'], ['obs', '관찰 기록'], ['report', '결과 보고서'], ['docs', '문서 내보내기']];
 const has = s => String(s || '').trim().length > 0;
 /* 날마다 캠프는 날짜마다 한 번(출석부도 날짜마다 한 칸): 그날 수업 중 어느 줄에든 학생마다 ○·/가 있으면 그날은 체크됨 */
 const MARK = m => m === 'O' || m === 'X';

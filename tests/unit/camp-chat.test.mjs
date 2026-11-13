@@ -5,9 +5,9 @@ import assert from 'node:assert/strict';
 import { routeText, isSure, INTENT_IDS, intentLabel } from '../../web/core/chat-route.js';
 import { searchGuide, offlineAnswer, guideText } from '../../web/core/chat-knowledge.js';
 
-test('채팅 할 일 camp(기초학력 캠프)', () => {
+test('채팅 할 일 camp(기초학력) — 「캠프」라고 써도 찾음', () => {
   assert.ok(INTENT_IDS.includes('camp'));
-  assert.equal(intentLabel('camp'), '기초학력 캠프');
+  assert.equal(intentLabel('camp'), '기초학력');
   for (const t of ['캠프 출석', '기초학력 캠프', '교과캠프', '교과 캠프 출석부 열어 줘', '기초학력 캠프 관찰 기록부 만들어 줘', '캠프 출석 체크할래', '기초학력 캠프 결과 보고서 써 줘']) {
     const r = routeText(t);
     assert.ok(isSure(r) && r.intent === 'camp', `${t}: ${JSON.stringify(r)}`);
@@ -21,5 +21,5 @@ test('안내: 기초학력 캠프를 찾고, 학급 메뉴 설명에 탭 이름'
   const a = offlineAnswer('기초학력 캠프는 어떻게 써?');
   assert.ok(a && a.go.includes('camp'), JSON.stringify(a));
   const all = guideText();
-  assert.ok(all.includes('기초학력 캠프') && all.includes('학생A'), '안내 글');
+  assert.ok(all.includes('학급 › 기초학력') && all.includes('[새 프로그램]') && all.includes('학생A'), '안내 글');
 });

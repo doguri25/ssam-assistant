@@ -126,7 +126,7 @@ await run('home', [
     assert((await page.textContent(`${H} .hm-head h2`)) === '오늘 챙길 일 6가지', '출석을 다 하면 할 일이 줄어듦: ' + await page.textContent(`${H} .hm-head h2`));
     await page.click(`${card} [data-hm-go="camp"]`);
     await waitTitle('학급');
-    assert(await title() === '학급' && await tabNow() === '기초학력 캠프', `${await title()} › ${await tabNow()}`);
+    assert(await title() === '학급' && await tabNow() === '기초학력', `${await title()} › ${await tabNow()}`);
     await page.click('nav.app-side [data-menu-go="home"]');
   }],
   ['이어서 하기: 품의 초안·다면평가(정량 총점) 줄, 누르면 그 화면', async () => {

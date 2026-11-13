@@ -48,7 +48,7 @@ test('일정 프롬프트: 앱이 센 수업 날 수·교과·출석 단위, 이
   const { prompt, range } = schedulePrompt('1/8~1/23 평일, 9:00~12:40 하루 5교시(40분·쉬는 5분), 국어·수학, 김하늘·이바다 2명, 아이스크림 홈런', c, { year: 2026, today: '2026-11-11' });
   noNames(prompt, '일정 프롬프트');
   assert.deepEqual(range, { from: '2027-01-08', to: '2027-01-23' });
-  assert.ok(prompt.startsWith('[기초학력 캠프 수업 일정]'));
+  assert.ok(prompt.startsWith('[기초학력 수업 일정]'));
   assert.ok(prompt.includes('11일'), '앱이 센 수업 날: ' + prompt);
   assert.ok(prompt.includes('국어') && prompt.includes('아이스크림 홈런') && prompt.includes('학생A'));
   assert.ok(/"lessons"/.test(prompt) && /"order"/.test(prompt));
@@ -97,7 +97,7 @@ test('관찰 글 프롬프트: 학생A·학생B, 출석 수, 메모(이름은 �
   const c = camp();
   const p = obsPrompt(c, ['a', 'b']);
   noNames(p, '관찰 프롬프트');
-  assert.ok(p.startsWith('[기초학력 캠프 관찰 기록]'));
+  assert.ok(p.startsWith('[기초학력 관찰 기록]'));
   assert.ok(p.includes('학생A') && p.includes('학생B'));
   assert.ok(p.includes('출석 3/3회') && p.includes('출석 1/3회'), p);
   assert.ok(p.includes('받아쓰기에 자신감이 붙음') && p.includes('덧셈을 손가락으로'), '메모 내용');
@@ -123,7 +123,7 @@ test('결과 보고서: 꼴마다 글 머리, 프롬프트에 이름 없음(학�
   const c = camp({ report: { kind: 'select', prompt: '김하늘이 받아쓰기 60점→85점. 이바다 덧셈 속도 빨라짐' }, obs: { a: '하늘이 자신감이 붙음.' } });
   const p = reportPrompt(c);
   noNames(p, '보고서 프롬프트');
-  assert.ok(p.startsWith('[기초학력 캠프 결과 보고서]'));
+  assert.ok(p.startsWith('[기초학력 결과 보고서]'));
   assert.ok(p.includes('사업선택제') && p.includes('2쪽 이내'));
   assert.ok(p.includes('「운영 목적」') && p.includes('「운영 성과」'));
   assert.ok(p.includes('학생A') && p.includes('60점→85점') && p.includes('총 3시간') && p.includes('낱말 읽기'));
@@ -142,7 +142,7 @@ test('결과 보고서 AI 답 정리: 글 머리 차례로 맞추고, 없으면 
 
 test('양식 읽기: 프롬프트(문서 종류·글), AI 답 정리(번호 뺀 글 머리, 빈 답은 null)', () => {
   const p = layoutPrompt('confirm', { text: '수업 확인서\n순 날짜 시간', nImages: 0 });
-  assert.ok(p.startsWith('[기초학력 캠프 양식 읽기]') && p.includes('수업 확인서') && p.includes('순 날짜 시간'));
+  assert.ok(p.startsWith('[기초학력 양식 읽기]') && p.includes('수업 확인서') && p.includes('순 날짜 시간'));
   assert.ok(layoutPrompt('attend', { nImages: 2 }).includes('그림 2장'));
   const l = normLayout({ title: ' 3-(1) 교과캠프 수업 확인서 ', columns: ['순', ' 날짜 ', '', 3], notes: ['※확인(서명)란은 지도 교사가 반드시 날인(사인)'], heads: ['1. 운영 목적', 'Ⅱ. 운영 내용', '가. 성과'] });
   assert.deepEqual(l, { title: '3-(1) 교과캠프 수업 확인서', columns: ['순', '날짜'], notes: ['※확인(서명)란은 지도 교사가 반드시 날인(사인)'], heads: ['운영 목적', '운영 내용', '성과'] });

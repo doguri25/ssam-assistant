@@ -242,7 +242,7 @@ export function planDraft(p) {
 /* 캠프 정보의 빈 칸만 계획서 값으로 → 채운 칸 이름들 */
 export function fillCampInfo(c, p) {
   const got = [];
-  if (!tidy(c.name) && p.name) { c.name = p.name; got.push('캠프 이름'); }
+  if (!tidy(c.name) && p.name) { c.name = p.name; got.push('이름'); }
   if (!tidy(c.target) && p.target) { c.target = p.target; got.push('대상'); }
   if (!c.subjects.length && p.subjects.length) { c.subjects = [...p.subjects]; got.push('교과'); }
   if (!tidy(c.teacher) && p.teacher) { c.teacher = p.teacher; got.push('지도교사'); }

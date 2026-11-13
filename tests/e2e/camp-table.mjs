@@ -105,6 +105,24 @@ await run('camp-table', [
     await page.click(`${S} [data-close]`);
     await page.setViewportSize({ width: 1280, height: 860 });
   }],
+  ['이름 칸에 커서가 있는 채로 계획 파일을 끌어다 놓아도, 다 넣으면 「계획서 읽는 중」이 멈추고 단추가 돌아옴', async () => {
+    await page.click(`${P} [data-cp="new"]`);
+    await page.click(`${P} [data-sec="info"]`);
+    await page.focus(`${P} [data-cf="name"]`);
+    await page.evaluate(b64 => {
+      const btn = document.querySelector('.cls-camp [data-cp="planFile"][data-where="info"]');
+      const card = btn.closest('section');
+      const dt = new DataTransfer();
+      dt.items.add(new File([Uint8Array.from(atob(b64), c => c.charCodeAt(0))], '운영 계획.hwpx'));
+      const o = { bubbles: true, cancelable: true, dataTransfer: dt };
+      card.dispatchEvent(new DragEvent('dragover', o)); card.dispatchEvent(new DragEvent('drop', o));
+    }, PLAN.toString('base64'));
+    await waitToast('지도 계획 표에서 4차시를');
+    await page.waitForTimeout(300);
+    const b = await page.$eval(`${P} [data-cp="planFile"][data-where="info"]`, e => ({ text: e.textContent.trim(), disabled: e.disabled }));
+    assert(b.text === '계획 파일 넣기' && !b.disabled, '단추가 돌아옴: ' + JSON.stringify(b));
+    assert(await page.evaluate(() => document.activeElement && document.activeElement.matches('[data-cf="name"]')), '이름 칸 커서는 그대로');
+  }],
   ['페이지 오류 없음', async () => { assert(!errors.length, errors.join(' / ')); }]
 ]);
 await t.close();

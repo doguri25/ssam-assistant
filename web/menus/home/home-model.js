@@ -94,7 +94,7 @@ export function campCard(camp, date) {
   const ss = sessionsOn(camp, date), students = dayMarks(camp, date);
   const a = ss[0], b = ss[ss.length - 1];
   const time = a && a.start ? fmtTime({ start: a.start, end: (b && (b.end || b.start)) || '' }) : '';
-  return { id: camp.id, name: camp.name || '이름 없는 캠프', count: ss.length, time, students, left: students.filter(s => s.mark !== 'O' && s.mark !== 'X').length };
+  return { id: camp.id, name: camp.name || '이름 없는 프로그램', count: ss.length, time, students, left: students.filter(s => s.mark !== 'O' && s.mark !== 'X').length };
 }
 
 /* ---------- 이어서 하기 ---------- */

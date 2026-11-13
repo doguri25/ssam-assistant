@@ -14,7 +14,7 @@ export const MENUS = [
   { id: 'evaluate', label: '평가', tabs: [['pyeongeo', '교과 평어'], ['cc', '창의적 체험활동'], ['hk', '행동특성'], ['gr', '평가지 채점'], ['unit', '단원평가'], ['activity', '활동지']] },
   { id: 'training', label: '연수', tabs: [['mine', '내 필수연수'], ['board', '연수 현황판']] },
   { id: 'plan', label: '계획', tabs: [['year', '연간계획'], ['event', '행사계획'], ['class', '학급운영계획'], ['report', '결과 보고']] },
-  { id: 'class', label: '학급', tabs: [['today', '오늘 수업'], ['progress', '진도표·시수'], ['weekly', '주간학습안내'], ['camp', '기초학력 캠프']] },
+  { id: 'class', label: '학급', tabs: [['today', '오늘 수업'], ['progress', '진도표·시수'], ['weekly', '주간학습안내'], ['camp', '기초학력']] },
   { id: 'purchase', label: '품의', tabs: [['new', '새 품의'], ['templates', '저장한 템플릿'], ['recent', '최근 작성']] },
   { id: 'etc', label: '기타', tabs: [['message', '쪽지 작성'], ['letter', '가정통신문'], ['gongmun', '공문 처리'], ['handover', '인수인계서'], ['multi', '다면평가']] },
   { id: 'settings', label: '설정', tabs: [['roster', '학급 명단'], ['ai', 'AI'], ['screen', '화면'], ['school', '학교 정보'], ['years', '학년도'], ['purchase', '품의 기준']] }

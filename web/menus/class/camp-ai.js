@@ -66,9 +66,9 @@ export function schedulePrompt(text, camp, { year, today, plan = false, range: r
   const range = r0 !== undefined && r0 !== null ? r0 : findRange(raw, { year, today }), weekdays = w0 !== undefined && w0 !== null ? w0 : findWeekdays(raw);
   const days = range ? expandDates(range.from, range.to, { weekdays: (weekdays || [1, 2, 3, 4, 5]).filter(d => d >= 1 && d <= 5) }) : null;
   const day = camp.unit === 'day';
-  const prompt = ['[기초학력 캠프 수업 일정]',
-    `초등학교 기초학력(교과) 캠프의 수업 일정을 만듭니다. 오늘: ${today || ''}, 학년도: ${year || ''}(3월~이듬해 2월).`,
-    `캠프 교과: ${subjectsText(camp)} · 대상: ${toAlias(camp.target, camp) || '(없음)'} · 출석 단위: ${day ? '날마다(하루에 한 줄)' : '교시마다'}`,
+  const prompt = ['[기초학력 수업 일정]',
+    `초등학교 기초학력 지원(캠프·교실·수업)의 수업 일정을 만듭니다. 오늘: ${today || ''}, 학년도: ${year || ''}(3월~이듬해 2월).`,
+    `교과: ${subjectsText(camp)} · 대상: ${toAlias(camp.target, camp) || '(없음)'} · 출석 단위: ${day ? '날마다(하루에 한 줄)' : '교시마다'}`,
     days ? `앱이 읽은 기간: ${range.from} ~ ${range.to} → 주말·공휴일을 빼면 수업 날 ${days.length}일(${days.map(d => `${+d.slice(5, 7)}/${+d.slice(8, 10)}(${WEEK[weekday(d)]})`).join(', ')})` : '',
     '',
     plan ? '[운영 계획서]' : '[선생님 글]', toAlias(raw, camp).slice(0, plan ? 6000 : 2000) || '(없음)',
@@ -155,7 +155,7 @@ function contentSummary(camp, n = 700) {
 }
 const campLine = camp => {
   const ds = campDates(camp);
-  return `캠프: ${toAlias(camp.name, camp) || '기초학력 캠프'} · 대상: ${toAlias(camp.target, camp) || '(없음)'} · 교과: ${subjectsText(camp)}`
+  return `프로그램: ${toAlias(camp.name, camp) || '기초학력 지원'} · 대상: ${toAlias(camp.target, camp) || '(없음)'} · 교과: ${subjectsText(camp)}`
     + (ds.length ? ` · 기간: ${ds[0]} ~ ${ds[ds.length - 1]}(수업 날 ${ds.length}일)` : '') + ` · 지도 시간: 총 ${hoursTotal(camp)}시간 · 학생 ${camp.students.length}명`;
 };
 const attLine = (camp, st) => { const a = attStats(camp, st.id); return `출석 ${a.present}/${a.total}회${a.absent ? `(결석 ${a.absent}회)` : ''}`; };
@@ -163,8 +163,8 @@ const oneLine = s => str(s).replace(/\s*\n\s*/g, ' ').replace(/\s+/g, ' ').trim(
 /* ids: 쓸 학생 id(고친 칸은 빼고 부르는 쪽이 고름) */
 export function obsPrompt(camp, ids) {
   const al = aliasMap(camp), pick = camp.students.filter(s => ids.includes(s.id));
-  return ['[기초학력 캠프 관찰 기록]',
-    '초등학교 기초학력(교과) 캠프 학생마다 「관찰 및 지도 결과」를 씁니다.',
+  return ['[기초학력 관찰 기록]',
+    '초등학교 기초학력 지원(캠프·교실·수업) 학생마다 「관찰 및 지도 결과」를 씁니다.',
     campLine(camp),
     `지도 내용(간추림): ${contentSummary(camp)}`,
     '',
@@ -212,7 +212,7 @@ export function reportPrompt(camp, layout = null) {
   const heads = reportHeads(camp, layout), al = aliasMap(camp);
   const kind = (REPORT_KINDS.find(k => k[0] === camp.report.kind) || REPORT_KINDS[0])[1];
   const obs = camp.students.map(st => [al[st.id], clip(oneLine(toAlias(camp.obs[st.id], camp)), 200)]).filter(([, t]) => t);
-  return ['[기초학력 캠프 결과 보고서]',
+  return ['[기초학력 결과 보고서]',
     `${kind}를 씁니다. ${KIND_NOTE[camp.report.kind] || KIND_NOTE.select}`,
     campLine(camp),
     `출석: ${camp.students.map(st => `${al[st.id]} ${attLine(camp, st).replace(/^출석 /, '')}`).join(', ') || '(학생 없음)'}`,
@@ -248,9 +248,9 @@ export function normCampReport(v, heads = []) {
 /* ---------- 양식 읽기(PDF·사진·.hwp) ---------- */
 export function layoutPrompt(docId, { text = '', nImages = 0 } = {}) {
   const label = DOC_LABEL[docId] || '문서';
-  return ['[기초학력 캠프 양식 읽기]',
-    `학교 기초학력 캠프 「${label}」 양식의 모양을 읽습니다.${nImages ? ` 첨부한 그림 ${nImages}장이 양식입니다.` : ''}`,
-    '- title: 문서 제목 그대로(예: 「3-(1) 느린학습자 지원 중점학급 교과캠프 수업 확인서」)',
+  return ['[기초학력 양식 읽기]',
+    `학교 기초학력 지원 「${label}」 양식의 모양을 읽습니다.${nImages ? ` 첨부한 그림 ${nImages}장이 양식입니다.` : ''}`,
+    '- title: 문서 제목 그대로(예: 「3-2 기초학력 중점학급 수업 확인서」)',
     '- columns: 수업·학생 표의 머리 칸 이름을 왼쪽부터 차례대로, 칸 이름 그대로. 학생마다 칸이 있으면 「학생1」「학생2」, 날짜마다 칸이면 「날짜1」「날짜2」처럼 씁니다. 관찰 기록부처럼 머리 칸이 왼쪽 세로 줄이면 위에서부터. 결재란 칸은 넣지 않습니다.',
     '- notes: 안내 글(「※ …」 같은 줄) 그대로',
     '- heads: 결과 보고서면 글 머리(소제목) 차례대로, 아니면 []',

@@ -56,20 +56,32 @@ const save = c => { const r = M.saveCamp(c); if (!r) toast(FULL_MSG, 7000); retu
 const errText = e => (e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 눌러 주세요.' : ai.errorMessage(e && e.code, e));
 const typing = () => { const a = document.activeElement; return a && box && box.contains(a) && a.matches('input:not([type="file"]), textarea') ? a : null; };
 /* AI 일이 끝났을 때 등: 칸에 치는 중이면 벗어날 때 다시 그림(포커스·한글 조합이 끊기지 않게) */
-function redraw() { if (!visible()) return; if (typing()) stale = true; else render(); }
+function redraw() { if (!visible()) return; if (typing()) { stale = true; paintBusy(); } else render(); }
+/* 칸에 치는 중이라 다시 그리지 못할 때(새로 만들면 이름 칸에 커서가 있음 — 그대로 파일을 끌어다 놓기 등):
+   일하는 중 표시가 바뀌는 단추만 새로 그린 것에서 가져와 그 자리에서 바꿈(「계획서 읽는 중」이 멈추지 않던 것). 커서·치던 글은 그대로 */
+const BUSY_BTNS = ['[data-cp="planFile"]', '[data-cp="schedAi"]', '[data-cp="obsAi"]', '[data-cp="reportAi"]', '[data-cp="pickForm"]'];
+function paintBusy() {
+  if (!box) return;
+  const tpl = document.createElement('template');
+  tpl.innerHTML = pageHTML(M.listCamps(), cur());
+  for (const sel of BUSY_BTNS) {
+    const next = [...tpl.content.querySelectorAll(sel)];
+    box.querySelectorAll(sel).forEach((b, i) => { const n = next[i]; if (n && (b.innerHTML !== n.innerHTML || b.disabled !== n.disabled)) { b.disabled = n.disabled; b.innerHTML = n.innerHTML; } });
+  }
+}
 
 /* ---------- 그리기 ---------- */
 const btnBusy = (k, idle, doing) => (busy[k] ? `<span class="spin"></span>${doing}` : idle);
 const PLAN_ACCEPT = '.hwp,.hwpx,.pdf,.docx,.txt,.png,.jpg,.jpeg,.webp,.heic';
 /* 계획 파일 넣기 줄(캠프 정보·수업 일정에 하나씩) */
 const planRow = (c, where) => `<div class="row cp-plan"><button class="btn tonal" type="button" data-cp="planFile" data-drop-pick data-where="${where}"${busy[`${c.id}:plan`] ? ' disabled' : ''}>${btnBusy(`${c.id}:plan`, '계획 파일 넣기', '계획서 읽는 중…')}</button>
-  <span class="muted">운영 계획서(한글·PDF·워드)를 넣으면 캠프 이름·대상·교과·지도교사(빈 칸만)와 수업 일정(기간·시간·교시${ai.ready() ? '·지도 내용' : ''})을 채워요.</span>
+  <span class="muted">운영 계획서(한글·PDF·워드)를 넣으면 이름·대상·교과·지도교사(빈 칸만)와 수업 일정(기간·시간·교시${ai.ready() ? '·지도 내용' : ''})을 채워요.</span>
   <input type="file" id="cpPlanFile-${where}" hidden accept="${PLAN_ACCEPT}"></div>`;
 function pickHTML(camps, c) {
   return `<div class="row cp-bar">
-    ${camps.length ? `<label class="cp-pick"><span class="lab">캠프</span><select class="field" id="cpPick" aria-label="캠프 고르기">${camps.map(x => `<option value="${esc(x.id)}"${c && x.id === c.id ? ' selected' : ''}>${esc(x.name || '이름 없는 캠프')}</option>`).join('')}</select></label>` : ''}
-    <button class="btn" type="button" data-cp="new">새 캠프</button>
-    ${c ? '<button class="btn text" type="button" data-cp="del">캠프 지우기</button>' : ''}</div>`;
+    ${camps.length ? `<label class="cp-pick"><span class="lab">프로그램</span><select class="field" id="cpPick" aria-label="프로그램 고르기">${camps.map(x => `<option value="${esc(x.id)}"${c && x.id === c.id ? ' selected' : ''}>${esc(x.name || '이름 없는 프로그램')}</option>`).join('')}</select></label>` : ''}
+    <button class="btn" type="button" data-cp="new">새 프로그램</button>
+    ${c ? '<button class="btn text" type="button" data-cp="del">프로그램 지우기</button>' : ''}</div>`;
 }
 function infoHTML(c) {
   const f = (k, label, ph, cls = '') => `<label class="yp-f ${cls}"><span class="lab">${label}</span><input class="field" data-cf="${k}" value="${esc(k === 'subjects' ? c.subjects.join(', ') : k === 'approval' ? c.approval.join(', ') : c[k])}" placeholder="${esc(ph)}" autocomplete="off"></label>`;
@@ -80,7 +92,7 @@ function infoHTML(c) {
     <td><button class="icon-btn" type="button" data-cp="delStudent" data-id="${esc(s.id)}" aria-label="${i + 1}번째 학생 빼기">×</button></td></tr>`).join('');
   return `<section class="yp-card">
       ${planRow(c, 'info')}
-      <div class="cp-grid">${f('name', '캠프 이름', '예) 3-(1) 느린학습자 지원 중점학급 교과캠프', 'wide')}${f('teacher', '지도교사', '선생님 이름(AI로 보내지 않아요)')}${f('target', '대상', '예) 3학년')}
+      <div class="cp-grid">${f('name', '프로그램 이름', '예) 3-2 기초학력 중점학급, 겨울방학 교과 교실', 'wide')}${f('teacher', '지도교사', '선생님 이름(AI로 보내지 않아요)')}${f('target', '대상', '예) 3학년')}
         ${f('subjects', '교과', '예) 국어, 수학')}${f('approval', '결재란 칸', '예) 계(담당자), 교감, 교장')}</div>
       <div class="yp-f"><span class="lab">출석 단위</span><div class="seg" role="group" aria-label="출석 단위">${M.UNITS.map(([k, l]) => `<button type="button" data-unit="${k}" aria-pressed="${c.unit === k}">${l}</button>`).join('')}</div>
         <p class="muted" style="margin:0">${c.unit === 'day' ? '날짜마다 한 번 체크하고 「학생 출석부」(학생 × 날짜)를 만들어요.' : '수업 줄(교시)마다 체크하고 「학생 출석 및 관찰 기록부」(교시 × 학생)를 만들어요.'}</p></div>
@@ -111,7 +123,7 @@ function schedHTML(c) {
     <section class="yp-card">
       <div class="cls-card-h"><h3>수업 일정 <span class="muted cp-count">${c.sessions.length}줄 · 총 ${M.hoursTotal(c)}시간</span></h3>
         <div class="row"><button class="btn" type="button" data-cp="addRow">+ 줄</button><button class="btn" type="button" data-cp="bulk">한 날 여러 교시 더하기</button><button class="btn" type="button" data-cp="byCount">차시 수로 날짜 만들기</button>${c.sessions.length > 1 ? '<button class="btn text" type="button" data-cp="sortRows">날짜 차례로</button>' : ''}</div></div>
-      ${c.unit === 'day' ? '<p class="muted" style="margin:0">날마다 캠프예요. 날짜마다 한 줄(그날 첫 교시 시작~끝 교시 끝)로 넣어 주세요.</p>' : ''}
+      ${c.unit === 'day' ? '<p class="muted" style="margin:0">날마다 출석이에요. 날짜마다 한 줄(그날 첫 교시 시작~끝 교시 끝)로 넣어 주세요.</p>' : ''}
       ${c.sessions.length ? `<div class="cp-tbl-wrap"><table class="cp-tbl cp-sched"><thead><tr><th scope="col">#</th><th scope="col">날짜</th><th scope="col">시작</th><th scope="col">끝</th><th scope="col">교과</th><th scope="col">지도 내용</th><th scope="col"><span class="sr">지우기</span></th></tr></thead><tbody>${rows}</tbody></table></div>`
     : '<p class="muted" style="margin:0">아직 수업이 없어요. [+ 줄]·[한 날 여러 교시 더하기]·[차시 수로 날짜 만들기]·[AI로 만들기]로 넣거나, 지도 계획 표가 있는 계획 파일을 넣어 주세요.</p>'}
       <datalist id="cpSubs">${c.subjects.map(s => `<option value="${esc(s)}">`).join('')}</datalist>
@@ -126,8 +138,8 @@ function pickAttDate(c) {
 }
 function attHTML(c) {
   if (!c.students.length || !c.sessions.length) {
-    return `<section class="yp-card"><p style="margin:0">${!c.students.length ? '먼저 캠프 정보에서 학생을 넣어 주세요.' : '먼저 수업 일정을 넣어 주세요.'}</p>
-      <div class="row"><button class="btn primary" type="button" data-sec="${!c.students.length ? 'info' : 'sched'}">${!c.students.length ? '캠프 정보로' : '수업 일정으로'}</button></div></section>`;
+    return `<section class="yp-card"><p style="margin:0">${!c.students.length ? '먼저 기본 정보에서 학생을 넣어 주세요.' : '먼저 수업 일정을 넣어 주세요.'}</p>
+      <div class="row"><button class="btn primary" type="button" data-sec="${!c.students.length ? 'info' : 'sched'}">${!c.students.length ? '기본 정보로' : '수업 일정으로'}</button></div></section>`;
   }
   attDate = pickAttDate(c); attFor = c.id;
   const ds = M.campDates(c), i = ds.indexOf(attDate), list = M.sessionsOn(c, attDate), rest = M.remainingOn(c, attDate);
@@ -190,7 +202,7 @@ function readyHTML(c) {
 const chipDate = d => `${M.fmtShort(d)}${(/\(.\)$/.exec(M.fmtDate(d)) || [''])[0]}`;
 function obsHTML(c) {
   const k = `${c.id}:obs`;
-  if (!c.students.length) return '<section class="yp-card"><p style="margin:0">먼저 캠프 정보에서 학생을 넣어 주세요.</p><div class="row"><button class="btn primary" type="button" data-sec="info">캠프 정보로</button></div></section>';
+  if (!c.students.length) return '<section class="yp-card"><p style="margin:0">먼저 기본 정보에서 학생을 넣어 주세요.</p><div class="row"><button class="btn primary" type="button" data-sec="info">기본 정보로</button></div></section>';
   return `<section class="yp-card">
       <div class="cls-card-h"><h3>관찰 기록</h3><button class="btn tonal" type="button" data-cp="obsAi"${busy[k] ? ' disabled' : ''}>${btnBusy(k, 'AI로 쓰기', 'AI가 쓰는 중…')}</button></div>
       ${aiRowHTML('writing')}
@@ -248,7 +260,7 @@ function docsHTML(c) {
 const SEC_HTML = { info: infoHTML, sched: schedHTML, att: attHTML, obs: obsHTML, report: reportHTML, docs: docsHTML };
 /* 단계 진행 표시 6칸: 번호·이름·상태 한 줄, 다 된 단계 ✓, 지금 단계는 진한 칸(aria-current="step"). 좁으면 가로 스크롤 */
 function stepsHTML(c) {
-  return `<nav class="cp-steps" aria-label="캠프 단계"><ol>${campSteps(c).map((s, i) => `<li><button type="button" class="cp-step${s.done ? ' done' : ''}" data-sec="${s.id}"${sec === s.id ? ' aria-current="step"' : ''}>
+  return `<nav class="cp-steps" aria-label="진행 단계"><ol>${campSteps(c).map((s, i) => `<li><button type="button" class="cp-step${s.done ? ' done' : ''}" data-sec="${s.id}"${sec === s.id ? ' aria-current="step"' : ''}>
       <span class="cp-step-n" aria-hidden="true">${s.done ? '✓' : i + 1}</span>
       <span class="cp-step-t"><span class="sr">${i + 1}단계 </span><b class="cp-step-name">${esc(s.label)}</b><span class="cp-step-line">${esc(s.line)}</span><span class="sr cp-step-sr"${s.done ? '' : ' hidden'}> · 다 됨</span></span></button></li>`).join('')}</ol></nav>`;
 }
@@ -271,11 +283,11 @@ function centerIn(row, el) {
 }
 function pageHTML(camps, c) {
   return `<div class="m-page cls-page cp-page">
-    <div class="m-head"><h2>기초학력 캠프</h2><p class="muted">수업 일정·출석 체크·관찰 기록을 쌓아 수업 확인서·출석부·관찰 기록부·결과 보고서를 만들어요. 학생 이름은 이 컴퓨터에만 두고 AI에는 학생A·학생B로 보내요.</p></div>
+    <div class="m-head"><h2>기초학력</h2><p class="muted">수업 일정·출석 체크·관찰 기록을 쌓아 수업 확인서·출석부·관찰 기록부·결과 보고서를 만들어요. 학생 이름은 이 컴퓨터에만 두고 AI에는 학생A·학생B로 보내요.</p></div>
     ${pickHTML(camps, c)}
     ${c ? `${stepsHTML(c)}
       <div id="cpSec" class="cp-sec">${SEC_HTML[sec](c)}</div>`
-    : '<section class="yp-card"><p style="margin:0">이 학년도에 만든 캠프가 없어요. 캠프를 만들고 학생·수업 일정을 넣으면 출석 체크와 문서 만들기를 할 수 있어요.</p><div class="row"><button class="btn primary" type="button" data-cp="new">새 캠프 만들기</button></div></section>'}
+    : '<section class="yp-card"><p style="margin:0">이 학년도에 만든 프로그램이 없어요. 캠프·교실·수업 무엇이든 [새 프로그램]으로 만들고 학생·수업 일정을 넣으면 출석 체크와 문서 만들기를 할 수 있어요.</p><div class="row"><button class="btn primary" type="button" data-cp="new">새 캠프 만들기</button></div></section>'}
   </div>`;
 }
 /* 다시 그린 뒤 초점을 돌려 둘 곳: 누르던 단추·칸(id나 data- 속성으로 다시 찾음) */
@@ -318,12 +330,12 @@ function newCampAct() {
   M.setCurrentCamp(c.id); sec = 'info';
   render();
   const n = box.querySelector('[data-cf="name"]'); if (n) n.focus();
-  toast('새 캠프를 만들었어요. 캠프 이름과 학생을 넣어 주세요.');
+  toast('새 프로그램을 만들었어요. 이름과 학생을 넣어 주세요.');
 }
 function askDelete() {
   const c = cur();
   if (!c || !SS().openSheet) return;
-  SS().openSheet(`<h3>「${esc(c.name || '이름 없는 캠프')}」 지우기</h3>
+  SS().openSheet(`<h3>「${esc(c.name || '이름 없는 프로그램')}」 지우기</h3>
     <p class="muted" style="margin:0">학생·수업 일정·출석·관찰 기록·결과 보고서가 모두 지워져요. 되돌릴 수 없어요. 넣어 둔 양식은 남아요.</p>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>그만두기</button><button class="btn primary" type="button" id="cpDelOk">지우기</button></div>`,
   sh => sh.querySelector('#cpDelOk').addEventListener('click', () => {
@@ -331,7 +343,7 @@ function askDelete() {
     if (!M.deleteCamp(c.id)) { toast(FULL_MSG, 7000); return; }
     const next = M.listCamps()[0];
     M.setCurrentCamp(next ? next.id : '');
-    render(); toast('캠프를 지웠어요');
+    render(); toast('프로그램을 지웠어요');
   }));
 }
 /* 고를 것 묻기: buttons [[값, 글, 주된 단추?]] */
@@ -365,7 +377,7 @@ function openBulk() {
       <label class="yp-f wide"><span class="lab">교과 차례(교시 수보다 적으면 되풀이)</span><input class="field" id="cpBSubs" value="${esc(c.subjects.join(', '))}" placeholder="예) 국어, 수학" autocomplete="off"></label>
     </div>
     <p class="muted" id="cpBPrev" style="margin:0"></p>
-    ${day ? '<p class="muted" style="margin:0">날마다 캠프라 그날 한 줄(첫 교시 시작~끝 교시 끝)로 더해요.</p>' : ''}
+    ${day ? '<p class="muted" style="margin:0">날마다 출석이라 그날 한 줄(첫 교시 시작~끝 교시 끝)로 더해요.</p>' : ''}
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>그만두기</button><button class="btn primary" type="button" id="cpBOk">더하기</button></div>`, sh => {
     const q = id => sh.querySelector('#' + id);
     const plan = () => {
@@ -528,7 +540,7 @@ function openByCount() {
         <input class="field" type="time" data-cde="${d}" value="${esc(f.days[d].end)}" aria-label="${w}요일 끝"></div>`).join('')}
     </fieldset>
     <p class="muted" id="cpCPrev" role="status" style="margin:0"></p>
-    ${day ? '<p class="muted" style="margin:0">날마다 캠프라 하루에 한 줄(그날 첫 차시 시작~끝 차시 끝)로 넣어요.</p>' : ''}
+    ${day ? '<p class="muted" style="margin:0">날마다 출석이라 하루에 한 줄(그날 첫 차시 시작~끝 차시 끝)로 넣어요.</p>' : ''}
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>그만두기</button><button class="btn primary" type="button" id="cpCOk">만들기</button></div>`, sh => {
     const q = id => sh.querySelector('#' + id);
     const read = () => {
@@ -620,7 +632,7 @@ async function runSched(id, text, mode) {
     if (!c.subjects.length) c.subjects = [...new Set(sessions.flatMap(s => s.subject.split('·')).filter(Boolean))].slice(0, 12);
     if (!save(c)) return;
     const here = visible() && cur() && cur().id === id;
-    toast(`${here ? '' : `기초학력 캠프 「${c.name || '이름 없는 캠프'}」에 `}수업 ${sessions.length}줄을 ${mode === 'add' ? '더했어요' : '만들었어요'}`
+    toast(`${here ? '' : `기초학력 「${c.name || '이름 없는 프로그램'}」에 `}수업 ${sessions.length}줄을 ${mode === 'add' ? '더했어요' : '만들었어요'}`
       + (spec.dropped ? ` · 주말·공휴일 ${spec.dropped}일은 뺐어요` : '') + (empty ? ` · 지도 내용이 빈 ${empty}줄은 채워 주세요` : '') + '. 날짜·시간을 확인해 주세요.', 7000);
   } catch (e) { toast(errText(e), 6000); }
   finally { delete busy[k]; redraw(); }
@@ -696,7 +708,7 @@ async function runReport(id) {
     if (JSON.stringify(c.report.sections) !== was) { toast('쓰는 동안 보고서를 고치셔서 AI 글은 넣지 않았어요. 다시 눌러 주세요.', 6000); return; }
     c.report.title = r.title || c.report.title; c.report.sections = r.sections;
     if (!save(c)) return;
-    toast(`결과 보고서를 썼어요${visible() && cur() && cur().id === id ? '' : `(기초학력 캠프 「${c.name || '이름 없는 캠프'}」)`}. 숫자·성과는 꼭 확인해 주세요.`, 6000);
+    toast(`결과 보고서를 썼어요${visible() && cur() && cur().id === id ? '' : `(기초학력 「${c.name || '이름 없는 프로그램'}」)`}. 숫자·성과는 꼭 확인해 주세요.`, 6000);
   } catch (e) { toast(errText(e), 6000); }
   finally { delete busy[k]; redraw(); }
 }
@@ -806,7 +818,7 @@ function onInput(el) {
     if (k === 'subjects') c.subjects = splitList(el.value, /[,·、/]+/);
     else if (k === 'approval') c.approval = splitList(el.value, /[,·、/]+/);
     else c[k] = el.value;
-    if (k === 'name') { const o = box.querySelector(`#cpPick option[value="${CSS.escape(c.id)}"]`); if (o) o.textContent = el.value.trim() || '이름 없는 캠프'; }
+    if (k === 'name') { const o = box.querySelector(`#cpPick option[value="${CSS.escape(c.id)}"]`); if (o) o.textContent = el.value.trim() || '이름 없는 프로그램'; }
   } else if (el.dataset.st) {
     const s = c.students.find(x => x.id === el.dataset.st);
     if (!s) return;

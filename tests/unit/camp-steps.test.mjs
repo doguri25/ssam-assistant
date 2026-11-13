@@ -20,9 +20,9 @@ function sample(f = {}) {
 }
 const byId = list => Object.fromEntries(list.map(x => [x.id, x]));
 
-test('단계 6칸: 캠프 정보·수업 일정·출석 체크·관찰 기록·결과 보고서·문서 내보내기 차례', () => {
+test('단계 6칸: 기본 정보·수업 일정·출석 체크·관찰 기록·결과 보고서·문서 내보내기 차례', () => {
   assert.deepEqual(STEPS.map(s => s[0]), ['info', 'sched', 'att', 'obs', 'report', 'docs']);
-  assert.deepEqual(STEPS.map(s => s[1]), ['캠프 정보', '수업 일정', '출석 체크', '관찰 기록', '결과 보고서', '문서 내보내기']);
+  assert.deepEqual(STEPS.map(s => s[1]), ['기본 정보', '수업 일정', '출석 체크', '관찰 기록', '결과 보고서', '문서 내보내기']);
   assert.deepEqual(campSteps(sample()).map(s => [s.id, s.label]), STEPS);
 });
 

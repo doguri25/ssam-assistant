@@ -27,16 +27,16 @@ await mockClaude(page, async ({ prompt, images }) => {
   reqs.push({ prompt, images });
   if (slow) await new Promise(r => setTimeout(r, slow));
   if (rate) { rate--; return { status: 429 }; }
-  if (prompt.includes('[기초학력 캠프 수업 일정]')) return JSON.stringify(SCHED);
-  if (prompt.includes('[기초학력 캠프 관찰 기록]')) {
+  if (prompt.includes('[기초학력 수업 일정]')) return JSON.stringify(SCHED);
+  if (prompt.includes('[기초학력 관찰 기록]')) {
     const ids = [...prompt.matchAll(/\{"id":"(학생[A-Z])"/g)].map(m => m[1]);
     return JSON.stringify({ students: ids.map(id => ({ id, text: `${id === '학생A' ? '받아쓰기에 자신감이 붙음' : '덧셈 원리를 익힘'}. 꾸준히 참여함.` })) });
   }
-  if (prompt.includes('[기초학력 캠프 결과 보고서]')) {
+  if (prompt.includes('[기초학력 결과 보고서]')) {
     const heads = [...prompt.matchAll(/\{"head":"([^"]+)"/g)].map(m => m[1]);
     return JSON.stringify({ title: '겨울 교과캠프 운영 보고서', sections: heads.map(h => ({ head: h, text: `- ${h} 내용 (학생A) 받아쓰기 60점 → 85점` })) });
   }
-  if (prompt.includes('[기초학력 캠프 양식 읽기]')) {
+  if (prompt.includes('[기초학력 양식 읽기]')) {
     return JSON.stringify({ title: '3-(1) 느린학습자 지원 중점학급 교과캠프 학생 출석 및 관찰 기록부', columns: ['순', '일시(날짜)', '시간', '학생1', '학생2', '비고'], notes: ['※ 출석 : ○ , 결석 : /'], heads: [] });
   }
   return '{}';
@@ -71,8 +71,8 @@ await run('camp', [
   ['학급에 「기초학력 캠프」 탭(주간학습안내 다음), 처음엔 캠프 만들기 안내', async () => {
     await tab();
     const tabs = await page.locator('#menuTabs button').allInnerTexts();
-    assert(tabs.join('|') === '오늘 수업|진도표·시수|주간학습안내|기초학력 캠프', tabs.join('|'));
-    assert((await page.textContent(P)).includes('만든 캠프가 없어요'), '빈 화면');
+    assert(tabs.join('|') === '오늘 수업|진도표·시수|주간학습안내|기초학력', tabs.join('|'));
+    assert((await page.textContent(P)).includes('만든 프로그램이 없어요'), '빈 화면');
     assert(await page.isHidden(`${C} .cls-weekly`) || !(await page.$(`${C} .cls-weekly`)), '다른 학급 화면이 보임');
   }],
   ['새 캠프 → 캠프 정보·학생 2명 → 학년도 키 camp에 저장', async () => {
@@ -120,14 +120,14 @@ await run('camp', [
     assert(v.sessions[0].date === '2027-01-08' && v.sessions[0].start === '09:00' && v.sessions[0].end === '09:40' && v.sessions[0].subject === '국어', JSON.stringify(v.sessions[0]));
     assert(v.sessions.at(-1).date === '2027-01-22', '끝 날(토요일 1/23은 뺌): ' + v.sessions.at(-1).date);
     assert(v.sessions[1].content === '수학 1차시 덧셈' && v.sessions[2].content === '국어 2차시 낱말 읽기', v.sessions.slice(0, 3).map(s => s.content).join());
-    const p = reqs.find(r => r.prompt.includes('[기초학력 캠프 수업 일정]')).prompt;
+    const p = reqs.find(r => r.prompt.includes('[기초학력 수업 일정]')).prompt;
     noNames(p, '일정 프롬프트');
     assert(p.includes('수업 날 11일') && p.includes('아이스크림 홈런'), p.slice(0, 400));
     assert((await page.textContent(`${P} .cp-count`)).includes('55줄 · 총 55시간'));
   }],
   ['단계 진행 표시 6칸: 번호·이름·상태 한 줄, 다 된 단계 ✓, 지금 단계 aria-current, 칸에 치면 상태 줄이 바로 바뀜', async () => {
     const steps = await page.$$eval(`${P} .cp-steps .cp-step`, a => a.map(b => [b.dataset.sec, b.querySelector('.cp-step-name').textContent]));
-    assert(JSON.stringify(steps) === JSON.stringify([['info', '캠프 정보'], ['sched', '수업 일정'], ['att', '출석 체크'], ['obs', '관찰 기록'], ['report', '결과 보고서'], ['docs', '문서 내보내기']]), JSON.stringify(steps));
+    assert(JSON.stringify(steps) === JSON.stringify([['info', '기본 정보'], ['sched', '수업 일정'], ['att', '출석 체크'], ['obs', '관찰 기록'], ['report', '결과 보고서'], ['docs', '문서 내보내기']]), JSON.stringify(steps));
     assert(!(await page.$(`${P} .cp-secs`)), '둥근 섹션 탭은 없어짐');
     assert(await page.$$eval(`${P} .cp-step[aria-current="step"]`, a => a.map(b => b.dataset.sec).join()) === 'sched', '지금 단계 하나');
     assert(await stepLine('info') === '대상 3학년 · 국어·수학', await stepLine('info'));
@@ -197,7 +197,7 @@ await run('camp', [
     await page.click(`${P} [data-cp="obsAi"]`);
     await page.click('#sheetRoot [data-ask="keep"]');
     await page.waitForFunction(a => document.querySelector(`[data-obs="${a}"]`).value.includes('받아쓰기에 자신감'), a);
-    const p = reqs.filter(r => r.prompt.includes('[기초학력 캠프 관찰 기록]')).at(-1).prompt;
+    const p = reqs.filter(r => r.prompt.includes('[기초학력 관찰 기록]')).at(-1).prompt;
     noNames(p, '관찰 프롬프트');
     assert(p.includes('학생A') && !p.includes('- 학생B'), '고친 칸(학생B)은 보내지 않음');
     assert(p.includes('출석 5/55회') && p.includes('받아쓰기에 자신감이 붙음'), p);
@@ -210,7 +210,7 @@ await run('camp', [
     await page.fill(`${P} #cpRPrompt`, '김하늘 받아쓰기 60점→85점, 이바다 덧셈 속도가 빨라짐');
     await page.click(`${P} [data-cp="reportAi"]`);
     await page.waitForFunction(() => document.querySelectorAll('.cls-camp [data-rt]').length === 4);
-    const p = reqs.filter(r => r.prompt.includes('[기초학력 캠프 결과 보고서]')).at(-1).prompt;
+    const p = reqs.filter(r => r.prompt.includes('[기초학력 결과 보고서]')).at(-1).prompt;
     noNames(p, '보고서 프롬프트');
     assert(p.includes('5쪽 이상') && p.includes('「일반화 방안」') && p.includes('60점→85점'), p.slice(0, 300));
     assert(await page.inputValue(`${P} #cpRTitle`) === '겨울 교과캠프 운영 보고서', '제목');
@@ -263,13 +263,13 @@ await run('camp', [
     assert(t.length === 57 && t[0][4] === '지도 내용' && t[1][0] === '1' && t[1][3] && t[1][4] && t[1][5] === '', '수업 55줄: ' + JSON.stringify(t.slice(0, 2)));
     assert(t[56][0] === '계' && t[56][1] === '지도 시간: 총 ( 55 )시간', '계 줄: ' + JSON.stringify(t[56]));
     assert(texts.includes('지도교사 : 한가람 (인)'), JSON.stringify(texts));
-    assert(!reqs.some(r => r.prompt.includes('[기초학력 캠프 양식 읽기]')), '한글 양식(수업 확인서)은 AI로 읽지 않음');
+    assert(!reqs.some(r => r.prompt.includes('[기초학력 양식 읽기]')), '한글 양식(수업 확인서)은 AI로 읽지 않음');
   }],
   ['출석부에 양식 사진 → AI가 모양을 읽고(그림), 내보낸 문서가 그 제목·칸을 따름, 빈 양식 안내', async () => {
     assert((await page.textContent(`${P} .cp-form-tip`)).includes('빈 양식으로 넣어 주세요'), '안내');
     await page.setInputFiles(`${P} #cpFile-attend`, join(FIXTURES, 'sheet-1.png'));
     await page.waitForFunction(() => (document.querySelector('.cls-camp .cp-doc[data-doc="attend"] .cp-form-note') || {}).textContent?.includes('느린학습자'));
-    const r = reqs.filter(x => x.prompt.includes('[기초학력 캠프 양식 읽기]')).at(-1);
+    const r = reqs.filter(x => x.prompt.includes('[기초학력 양식 읽기]')).at(-1);
     assert(r.images === 1 && r.prompt.includes('학생 출석 및 관찰 기록부'), JSON.stringify({ images: r.images }));
     const x = await hwpxText(await download('attend'));
     assert(x.includes('3-(1) 느린학습자 지원 중점학급 교과캠프 학생 출석 및 관찰 기록부') && x.includes('비고') && x.includes('일시(날짜)'), '양식 모양');
@@ -344,7 +344,7 @@ await run('camp', [
     const before = reqs.length;
     await page.setInputFiles(`${P} #cpPlanFile-info`, { name: '겨울 캠프 운영 계획.hwpx', mimeType: 'application/octet-stream', buffer: PLAN });
     await waitToast('수업 55줄을 만들었어요');
-    assert((await toast()).includes('계획서에서 캠프 이름·대상을 채웠어요'), await toast());
+    assert((await toast()).includes('계획서에서 이름·대상을 채웠어요'), await toast());
     const c = await camp();
     assert(c.name === '겨울방학 기초학력 교과캠프' && c.target === '3학년' && c.teacher === '한가람', JSON.stringify([c.name, c.target, c.teacher]));
     assert(c.sessions.length === 55 && c.sessions[0].date === '2027-01-08' && c.sessions[0].start === '09:00' && c.sessions[0].content === '국어 1차시 낱말 읽기', JSON.stringify(c.sessions[0]));

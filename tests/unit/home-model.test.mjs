@@ -145,7 +145,7 @@ test('캠프 카드: 이름·오늘 수업 수·시간, 학생, 덜 체크한 �
   const done = campCard(markAll(c, WED), WED);
   assert.equal(done.left, 0);
   assert.ok(done.students.every(s => s.mark === 'O'));
-  assert.equal(campCard(newCamp({ name: '', students: [], sessions: [{ id: 'q', date: WED }] }), WED).name, '이름 없는 캠프');
+  assert.equal(campCard(newCamp({ name: '', students: [], sessions: [{ id: 'q', date: WED }] }), WED).name, '이름 없는 프로그램');
   assert.equal(campCard(newCamp({ students: [], sessions: [{ id: 'q', date: WED }] }), WED).time, '');
 });
 
