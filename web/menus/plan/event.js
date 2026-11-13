@@ -20,6 +20,7 @@ import { readTable } from '../../core/sheet.js';
 import { listPlans, planText } from './year-model.js';
 import { putReportSources } from './report.js';
 import { putLetterDraft } from '../etc/letter.js';
+import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import { letterBodyFromEvent } from '../etc/letter-ai.js';
 import { KINDS, DOCS, REF_KINDS, normRefs, guessKind, refsBlock, normRefNotes, newEvent, listEventPlans, getEvent, saveEvent, deleteEvent, currentEventId, setCurrentEvent, normOptions, letterMissing, docDoc, confirmBlockers, normItems, maskResult } from './event-model.js';
 
@@ -99,7 +100,7 @@ const calCtx = () => ({ breaks: getSchool().breaks, events: listCalendar(), sour
 /* ---------- 그리기 ---------- */
 function render() {
   const html = `<div class="m-page yp-page ev-page">
-    <div class="m-head"><h2>행사계획</h2><p class="muted">행사 정보를 넣으면 구성안 2~3개, 계획서·안전 점검표·가정통신문, 설문과 결과 보고서까지 만들어요.</p></div>
+    <div class="m-head"><h2>행사계획</h2>${introHTML('event', '행사 정보로 구성안과 계획서·안전 점검표·가정통신문을 만들어요.')}</div>
     <div class="yp-grid">
       <aside class="yp-side" aria-labelledby="evListH">
         <div class="yp-side-h"><b id="evListH">지난 행사</b><button class="btn text" type="button" data-e="new">+ 새 행사</button></div>
@@ -131,7 +132,7 @@ function renderMain() {
   const s = ev.step;
   const body = s === 1 ? step1() : s === 2 ? step2() : s === 3 ? step3() : step4();
   const html = stepsHTML(STEPS, s, ev.maxStep)
-    + (s === 2 || s === 3 ? aiRowHTML('plan') : '')
+    + (s === 2 || s === 3 ? aiRowHTML('plan') + aiNoteHTML('행사 정보·참고 자료·작년 설문을 보내요. 명단·전화번호 줄과 개인정보 열은 빼고 이름은 가려서 보내요.') : '')
     + (errs[ev.id] ? `<div class="banner err" role="alert"><span class="grow">${esc(errs[ev.id])}</span></div>` : '')
     + body
     + `<div class="row yp-nav">${s > 1 ? '<button class="btn" type="button" data-e="prev">이전</button>' : ''}<span class="grow"></span>${s < 4 ? '<button class="btn primary" type="button" data-e="next">다음</button>' : ''}</div>`
@@ -169,7 +170,7 @@ function step1() {
     <div class="yp-card">
       <div class="yp-src-h"><h3>작년 설문 결과 <span class="muted">(선택)</span></h3><span class="row"><button class="btn text" type="button" data-e="importMemo">지난 행사 개선 메모 불러오기</button><button class="btn" type="button" data-e="lastFile" data-drop-pick>파일 넣기</button></span></div>
       ${showMemos ? memosHTML() : ''}
-      <p class="muted">있으면 아쉬운 점을 고친 「보완안」도 만들어요. CSV·엑셀·한글 파일이나 붙여넣기.</p>
+      <p class="muted">있으면 아쉬운 점을 고친 「보완안」도 만들어요.</p>
       <textarea class="field" id="evLast" rows="4" placeholder="작년 설문 결과나 반성 메모" aria-label="작년 설문 결과">${esc(ev.lastSurvey)}</textarea>
     </div>
     ${refsCard()}`;
@@ -181,7 +182,7 @@ function refsCard() {
     <div class="yp-src-h"><h3>참고 자료 <span class="muted">(선택 · 상위 계획, 교육청 공문 등)</span></h3>
       <span class="row"><button class="btn text" type="button" data-e="refPlan">연간계획에서 불러오기</button><button class="btn text" type="button" data-e="refPaste">붙여넣기</button><button class="btn" type="button" data-e="refFile" data-drop-pick>파일 넣기</button></span></div>
     ${showPlans ? plansHTML() : ''}
-    <p class="muted">AI가 구성안과 문서를 만들 때 참고해요. 공문의 날짜·대상·필수 활동·안전 기준 같은 요구 사항을 지키게 해요. 원본 파일은 저장하지 않고 읽은 글만 저장해요.</p>
+    <p class="muted">공문의 날짜·대상·안전 기준 같은 요구 사항을 지켜 써요. 원본 파일은 저장하지 않아요.</p>
     ${ev.refs.length ? `<ul class="ev-refs">${ev.refs.map(r => `<li data-ref="${esc(r.id)}">
       <select class="field" data-refkind="${esc(r.id)}" aria-label="「${esc(r.name)}」 종류">${REF_KINDS.map(([k, l]) => `<option value="${k}"${r.kind === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
       <b>${esc(r.name)}</b><span class="muted">${r.text.length.toLocaleString('ko-KR')}자</span><span class="grow"></span>
@@ -297,7 +298,7 @@ function step3() {
 function letterBoxHTML(miss) {
   return (miss.length ? `<p class="banner warn" id="evLetterMissing"><span class="grow">가정통신문에 빠진 항목: <b>${miss.join('·')}</b></span></p>` : '')
     + `<div class="row"><button class="btn primary" type="button" data-e="letterDone" ${miss.length ? 'disabled' : ''}>${ev.docs.done ? '완성했어요' : '완성'}</button>
-      <button class="btn" type="button" data-e="toLetter" title="기타 › 가정통신문에서 고른 학교 양식에 이 글을 넣어요">학교 양식으로</button></div>`;
+      <button class="btn" type="button" data-e="toLetter" title="문서·소통 › 가정통신문에서 고른 학교 양식에 이 글을 넣어요">학교 양식으로</button></div>`;
 }
 
 function step4() {

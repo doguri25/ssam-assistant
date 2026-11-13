@@ -1,7 +1,9 @@
 /* 창 틀: 왼쪽 세로 메뉴 + 상단 헤더(메뉴 제목·가로 메뉴). 메뉴마다 <section data-menu>를 보이고 숨김.
    평가 메뉴의 가로 메뉴는 기존 앱의 화면(mode)과 같음: window.SSAM.setMode로 바꿈.
-   휴대폰(≤760px, shell.css): 세로 메뉴 대신 아래 탭 5칸(오늘·평가·학급·품의·더보기 — 더보기는 시트: 계획·연수·기타·설정, 학년도·사용 중인 AI),
-   가로 메뉴는 한 줄 가로 스크롤 칩. 앱을 켜면(열기·새로 고침) 늘 「오늘」 (스펙 2026-11-11 §1) */
+   휴대폰(≤760px, shell.css): 세로 메뉴 대신 아래 탭 5칸(오늘·평가·학급·품의·더보기 — 더보기는 시트: 계획·연수·문서·소통·설정, 학년도·사용 중인 AI),
+   가로 메뉴는 한 줄 가로 스크롤 칩. 앱을 켜면(열기·새로 고침) 늘 「오늘」 (스펙 2026-11-11 §1).
+   평가 탭은 두 묶음(스펙 2026-11-14 §4): 「채점」 단원평가·활동지·평가지 채점 | 「생활기록부」 교과 평어·창체·행특·기재 점검 — 탭 줄 안에 묶음 이름(작은 글)과 구분선.
+   메뉴 id `etc`의 이름은 「문서·소통」(전에는 「기타」) */
 import { icon } from './icons.js';
 import { renderPlaceholder } from '../menus/placeholder.js';
 import { ensureYears, isDemoYear } from './years.js';
@@ -11,14 +13,15 @@ import './file-drop.js'; // 파일 고르기 단추(data-drop-pick)가 있는 �
 
 export const MENUS = [
   { id: 'home', label: '오늘', tabs: [] },
-  { id: 'evaluate', label: '평가', tabs: [['pyeongeo', '교과 평어'], ['cc', '창의적 체험활동'], ['hk', '행동특성'], ['gr', '평가지 채점'], ['unit', '단원평가'], ['activity', '활동지'], ['check', '기재 점검']] },
+  { id: 'evaluate', label: '평가', tabs: [['unit', '단원평가', '채점'], ['activity', '활동지', '채점'], ['gr', '평가지 채점', '채점'],
+    ['pyeongeo', '교과 평어', '생활기록부'], ['cc', '창의적 체험활동', '생활기록부'], ['hk', '행동특성', '생활기록부'], ['check', '기재 점검', '생활기록부']] },
   { id: 'training', label: '연수', tabs: [['mine', '내 필수연수'], ['board', '연수 현황판']] },
   { id: 'plan', label: '계획', tabs: [['year', '연간계획'], ['event', '행사계획'], ['class', '학급운영계획'], ['report', '결과 보고']] },
   { id: 'class', label: '학급', tabs: [['today', '오늘 수업'], ['progress', '진도표·시수'], ['weekly', '주간학습안내'], ['camp', '기초학력']] },
   { id: 'purchase', label: '품의', tabs: [['new', '새 품의'], ['templates', '저장한 템플릿'], ['recent', '최근 작성']] },
-  { id: 'etc', label: '기타', tabs: [['message', '쪽지 작성'], ['letter', '가정통신문'], ['gongmun', '공문 처리'], ['handover', '인수인계서'], ['multi', '다면평가']] },
+  { id: 'etc', label: '문서·소통', tabs: [['message', '쪽지 작성'], ['letter', '가정통신문'], ['gongmun', '공문 처리'], ['handover', '인수인계서'], ['multi', '다면평가']] },
   { id: 'settings', label: '설정', tabs: [['roster', '학급 명단'], ['ai', 'AI'], ['screen', '화면'], ['school', '학교 정보'], ['years', '학년도'], ['purchase', '품의 기준']] }
-].map(m => ({ ...m, icon: m.id, tabs: m.tabs.map(([id, label]) => ({ id, label })) }));
+].map(m => ({ ...m, icon: m.id, tabs: m.tabs.map(([id, label, group]) => (group ? { id, label, group } : { id, label })) }));
 
 const NAV_KEY = 'ssam:nav'; // 마지막 메뉴·탭(채팅 도우미가 「보고 있는 화면」으로 읽음). 켤 때는 쓰지 않음 — 늘 「오늘」
 /* 휴대폰 아래 탭: 이 넷 + 더보기(MORE — 아래 탭에 없는 메뉴, 시트에 이 차례로) */
@@ -48,8 +51,8 @@ function keepTab(menu, tab) {
 
 /* 다른 메뉴에서 AI가 일하는 중이면 그 메뉴 버튼에 작은 점(지금 보는 메뉴는 화면에 진행이 보여서 뺌). 일은 메뉴를 옮겨도 뒤에서 이어짐.
    AI 부르기(평가 메뉴의 generate — 새 메뉴의 core/ai.js도 그것을 부름)가 부를 때마다 window.SSAM_WORK(업무)로 알리고, 끝나면 돌려받은 함수를 부름.
-   업무로 메뉴를 앎(채점·평어는 평가 등). 모르는 업무는 부를 때 보던 메뉴, 기타 › 인수인계서에서 부른 계획 AI는 기타,
-   학급 › 기초학력 캠프에서 부른 계획·평어 AI(일정·보고서·양식 읽기·관찰 글)는 학급, 기타 › 다면평가에서 부른 계획·평어 AI(기준 양식·근거자료 읽기·줄글 나누기)는 기타.
+   업무로 메뉴를 앎(채점·평어는 평가 등). 모르는 업무는 부를 때 보던 메뉴, 문서·소통 › 인수인계서에서 부른 계획 AI는 문서·소통,
+   학급 › 기초학력 캠프에서 부른 계획·평어 AI(일정·보고서·양식 읽기·관찰 글)는 학급, 문서·소통 › 다면평가에서 부른 계획·평어 AI(기준 양식·근거자료 읽기·줄글 나누기)는 문서·소통.
    work 'none'(쌤 채팅 도우미 — 메뉴 일이 아니어서 보던 메뉴에 점이 잘못 뜨지 않게)은 점을 띄우지 않음 */
 const TASK_MENU = { grade: 'evaluate', writing: 'evaluate', letter: 'etc', message: 'etc', reply: 'etc', gongmun: 'etc', purchase: 'purchase', plan: 'plan', report: 'plan' };
 const working = {};
@@ -127,7 +130,12 @@ function drawTabs(m) {
   const el = $('#menuTabs');
   el.setAttribute('aria-label', `${m.label} 메뉴`);
   el.hidden = !m.tabs.length; // 오늘은 탭 없음
-  el.innerHTML = m.tabs.map(t => `<button type="button" data-tab="${t.id}"${t.id === cur.tab ? ' aria-current="page"' : ''}>${esc(t.label)}</button>`).join('');
+  // 묶음이 있는 메뉴(평가): 묶음이 바뀌는 곳에 구분선, 묶음 앞에 이름(작은 글 — 누르는 칸이 아님)
+  el.innerHTML = m.tabs.map((t, i) => {
+    const prev = m.tabs[i - 1], head = t.group && (!prev || prev.group !== t.group)
+      ? `${prev ? '<span class="tab-sep" aria-hidden="true"></span>' : ''}<span class="tab-grp">${esc(t.group)}</span>` : '';
+    return `${head}<button type="button" data-tab="${t.id}"${t.id === cur.tab ? ' aria-current="page"' : ''}>${esc(t.label)}</button>`;
+  }).join('');
   // 휴대폰의 가로 스크롤 칩: 지금 탭이 보이게 (넘칠 때만 — 페이지는 움직이지 않음)
   const b = el.querySelector('[aria-current="page"]');
   if (b && el.scrollWidth > el.clientWidth) el.scrollLeft = Math.max(0, b.offsetLeft - (el.clientWidth - b.offsetWidth) / 2);
@@ -150,7 +158,7 @@ function drawBottom() {
 const yearLabel = y => (isDemoYear(y) ? '체험용 자료' : `${y}학년도`);
 const yearText = () => { let ls = null; try { ls = window.localStorage; } catch (e) {} return yearLabel(ensureYears(ls).current); };
 const aiText = () => (SSAM().ai && SSAM().ai.engineReady && SSAM().ai.engineReady() ? SSAM().ai.engineName() : '') || 'AI를 정해 주세요';
-/* 더보기 시트: 아래 탭에 없는 메뉴(계획·연수·기타·설정) + 학년도·사용 중인 AI(누르면 설정 그 탭) */
+/* 더보기 시트: 아래 탭에 없는 메뉴(계획·연수·문서·소통·설정) + 학년도·사용 중인 AI(누르면 설정 그 탭) */
 function openMore() {
   if (!SSAM().openSheet) return;
   const item = m => `<button type="button" class="more-go" data-more-go="${m.id}"${cur && cur.menu === m.id ? ' aria-current="page"' : ''}>${icon(m.icon, 22)}<span>${esc(m.label)}</span></button>`;

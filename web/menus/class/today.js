@@ -4,6 +4,7 @@ import { toast } from '../../core/ui.js';
 import { listEvents, addDays, isDate } from '../../core/calendar.js';
 import { makeCtx, dayView, setMark, missingDays, fmtDay, fmtShort, today, unitPos, hasTimetable } from './class-model.js';
 import { askSample } from './setup.js';
+import { introHTML } from '../../core/ui-parts.js';
 import { listDocs } from '../etc/gongmun-model.js';
 import { dueSoon, ddayText } from '../etc/gongmun-ai.js';
 
@@ -39,7 +40,7 @@ function missingHTML(ctx) {
   if (!days.length) return '';
   return `<div class="banner warn cls-missing"><span>체크하지 않은 날:</span>${days.map(d => `<button class="btn text" type="button" data-go-day="${d}">${fmtShort(d)}</button>`).join('')}</div>`;
 }
-/* 공문 기한 띠(스펙 2026-11-04 5.3): 오늘부터 7일 안(지난 것 포함)·끝나지 않은 공문 3개까지, 누르면 기타 › 공문 처리 */
+/* 공문 기한 띠(스펙 2026-11-04 5.3): 오늘부터 7일 안(지난 것 포함)·끝나지 않은 공문 3개까지, 누르면 문서·소통 › 공문 처리 */
 function bandHTML() {
   const soon = dueSoon(listDocs(), today());
   return soon.length ? `<div class="gm-band banner warn" id="gmBand"><b>공문 기한</b>${soon.map(d => `<button class="btn text" type="button" data-gm-band><b>${esc(ddayText(d.n))}</b> ${esc(d.title || d.name || '공문')}</button>`).join('')}</div>` : '';
@@ -47,7 +48,7 @@ function bandHTML() {
 function render() {
   if (!box) return;
   const ctx = makeCtx();
-  const head = '<div class="m-head"><h2>오늘 수업</h2><p class="muted">교시마다 수업한 만큼 체크하면 시수와 진도가 저절로 계산돼요.</p></div>' + bandHTML();
+  const head = `<div class="m-head"><h2>오늘 수업</h2>${introHTML('today', '교시마다 수업한 만큼 체크하면 시수와 진도가 저절로 계산돼요.')}</div>` + bandHTML();
   if (!hasTimetable(ctx.tt)) {
     box.innerHTML = `<div class="m-page cls-page">${head}<div class="yp-card"><p style="margin:0">먼저 진도표·시수 › 준비에서 시간표를 넣어 주세요.</p>
       <div class="row"><button class="btn primary" type="button" data-t="setup">준비로 가기</button><button class="btn" type="button" data-t="sample">예시로 채우기</button></div></div></div>`;

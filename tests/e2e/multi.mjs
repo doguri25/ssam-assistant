@@ -1,4 +1,4 @@
-// 기타 › 다면평가(스펙 2026-11-11): 탭(인수인계서 다음) → 내 정보 → 정량 예시 기준에 숫자 넣기(점수·소계·총점·감점·근무 6개월 이하)
+// 문서·소통 › 다면평가(스펙 2026-11-11): 탭(인수인계서 다음) → 내 정보 → 정량 예시 기준에 숫자 넣기(점수·소계·총점·감점·근무 6개월 이하)
 // → 학교 기준 양식(.hwpx 지어낸 것, AI 없이 읽음) → 항목 바뀜(같은 이름 값은 이어짐) → 근거자료(한글 공문 → 규칙, 사진 → AI) → 비고 → 한글·워드 내려받기 내용
 // → 기준 고치기 → 정성 줄글 → AI로 넣기(가짜, 다른 메뉴에 가도 이어짐) → 입력 필요 채우기 → 다시 넣기(고친 칸은 둠) → 내려받기
 // → 정성 기준 양식 → 사진 정량 기준(AI) → 새로 고침 뒤 그대로 → AI 없을 때 규칙 → 390px → AI로 간 글에 학교·이름 없음 → 페이지 오류 없음
@@ -354,7 +354,7 @@ await run('multi', [
     assert(reqs.length === n0, 'AI를 부르지 않음');
     await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true })));
   }],
-  ['채팅 등 다른 곳에서 openMulti(정성) → 기타 › 다면평가 정성 쪽', async () => {
+  ['채팅 등 다른 곳에서 openMulti(정성) → 문서·소통 › 다면평가 정성 쪽', async () => {
     await page.click('nav.app-side [data-menu-go="plan"]');
     await page.evaluate(() => import('./menus/etc/multi.js').then(m => m.openMulti('qual')));
     await page.waitForSelector(`${P} .mv-page`);

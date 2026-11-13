@@ -1,8 +1,9 @@
-/* 기타 › 가정통신문 (스펙 2026-11-03 가정통신문): 학교 양식 + 상위기관 공문·계획 + 넣을 내용 → AI 한 번 →
+/* 문서·소통 › 가정통신문 (스펙 2026-11-03 가정통신문): 학교 양식 + 상위기관 공문·계획 + 넣을 내용 → AI 한 번 →
    학교 양식에 맞춘 가정통신문(.hwpx 양식은 모양 그대로, .hwp·기본 양식은 글 짜임만), 알림 앱용 짧은 글, 발송 기안.
    양식은 IndexedDB(form-store.js), 글은 학년도 자료(letter-model.js). 원본 공문 파일은 저장하지 않음(글만).
    번역본(스펙 2026-11-06 K, letter-translate.js): 다문화 가정용 원문과 나란히 문서, 언어마다 저장. 다른 메뉴는 openLetterTranslate(lang)로 엶 */
 import { onEnter, go } from '../../core/shell.js';
+import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import { parseTableLines } from '../../core/body-table.js';
 import * as ai from '../../core/ai.js';
 import { toast, copyText, saveFile } from '../../core/ui.js';
@@ -313,7 +314,8 @@ function collectHTML(x) {
   const col = x.collect, rows = flagRows(col.rows), allowed = rosterAllowed(), t = tally(col.rows, opts), miss = missingNos(col.rows, allowed);
   const order = rows.map((r, i) => ({ r, i })).sort((a, b) => (a.r.no == null) - (b.r.no == null) || (a.r.no || 0) - (b.r.no || 0));
   return `<section class="pc-card" id="lfCollect"><h3>회신서 모으기</h3>
-    <p class="muted" style="margin:0">걷은 회신서를 스캔(PDF·사진)해 넣고 이름 칸을 한 번 가리면, AI가 가린 그림에서 번호와 ☑만 읽어요(이름은 읽지도 저장하지도 않아요).</p>
+    <p class="muted" style="margin:0">걷은 회신서를 스캔(PDF·사진)해 넣고 이름 칸을 한 번 가려 주세요.</p>
+    ${aiNoteHTML('이름 칸을 가린 그림만 보내요. AI는 번호와 ☑만 읽고, 이름은 읽지도 저장하지도 않아요.')}
     <p style="margin:0">읽을 칸: ${opts.map(o => `<b>${esc(o.name)}</b>(${o.options.map(esc).join(' / ')})`).join(', ')}</p>
     <div class="row"><button class="btn" type="button" data-lf="rcPick" data-drop-pick>${RC.adding ? '<span class="spin"></span>읽는 중…' : '스캔 넣기'}</button><input type="file" id="lfRcFile" multiple hidden accept=".pdf,.png,.jpg,.jpeg,.webp">
       <span class="muted">${RC.pages.length}장</span>
@@ -415,7 +417,8 @@ function trHTML(x) {
   const hwpx = F.form && F.form.rec.kind === 'hwpx';
   const make = !e || miss || busy ? `<button class="btn primary" type="button" data-lf="trMake"${F.trBusy ? ' disabled' : ''}>${busy ? '<span class="spin"></span>번역하는 중…' : '번역본 만들기'}</button>` : '';
   return `<section class="pc-card lf-tr" id="lfTrCard"><h3>번역본 <span class="muted">다문화 가정</span></h3>
-    <p class="muted" style="margin:0">문단마다 한국어 아래에 번역을 넣은 가정통신문을 만들어요. 전화번호·날짜·숫자만 있는 줄은 AI로 보내지 않고 그대로 둬요.</p>
+    <p class="muted" style="margin:0">문단마다 한국어 아래에 번역을 넣은 가정통신문을 만들어요.</p>
+    ${aiNoteHTML('문단 글만 보내요. 전화번호·날짜·숫자만 있는 줄과 개인정보가 있는 줄은 보내지 않고 그대로 둬요.')}
     <div class="seg" role="group" aria-label="번역할 언어">${LANGS.map(l => `<button type="button" data-lf-lang="${l.id}" aria-pressed="${l.id === lang}">${esc(l.name)}${x.tr && x.tr[l.id] ? ' ✓' : ''}</button>`).join('')}</div>
     ${make ? `<div class="row">${make}</div>` : ''}
     ${e ? `<p class="banner warn lf-tr-note" role="note">${TR_NOTE}</p>
@@ -469,16 +472,17 @@ function draw() { keepFiles(box, () => { box.innerHTML = pageHTML(); }); } // �
 function pageHTML() {
   const x = c();
   return `<div class="m-page lf-page">
-    <div class="m-head m-head-row"><div><h2>가정통신문</h2><p class="muted">학교 양식을 넣어 두고, 공문·계획과 넣을 내용을 주면 학교 양식에 맞춘 가정통신문을 써요.</p></div>
+    <div class="m-head m-head-row"><div><h2>가정통신문</h2>${introHTML('letter', '공문·계획과 넣을 내용으로 학교 양식에 맞춘 가정통신문을 써요.')}</div>
       <div class="m-head-act">${aiRowHTML('letter')}<button class="btn text" type="button" data-lf="new">새 가정통신문</button></div></div>
     <div class="msg-grid">
       <section class="pc-card"><h3>양식</h3>${formsHTML()}${mapHTML()}
         <h3>넣기</h3>
-        <div class="msg-drop" data-lf-drop><p class="muted" style="margin:0">상위기관 공문·계획(한글·PDF·워드·글)을 여기에 끌어 놓거나 고르세요.</p>
+        <div class="msg-drop" data-lf-drop><p class="muted" style="margin:0">상위기관 공문·계획(한글·PDF·워드·글)을 끌어 놓아도 돼요.</p>
           <div class="row"><button class="btn text" type="button" data-lf="pick">파일 고르기</button><input type="file" id="lfFile" multiple hidden accept=".hwp,.hwpx,.pdf,.docx,.txt"></div></div>
         ${srcHTML(x)}
         <label class="yp-f"><span class="lab">넣을 내용</span><textarea class="field" id="lfMemo" rows="7" placeholder="예) 11월 12일(목) 3학년 국립중앙과학관 현장체험학습. 9시 출발 15시 도착. 도시락·물·편한 옷. 참가 동의서 11월 7일까지.">${esc(x.memo)}</textarea></label>
         <div class="row"><button class="btn primary" type="button" data-lf="write"${F.busy ? ' disabled' : ''}>${F.busy ? '<span class="spin"></span>쓰는 중…' : x.out ? '가정통신문 다시 쓰기' : '가정통신문 쓰기'}</button></div>
+        ${aiNoteHTML('공문·계획 글과 넣을 내용을 보내요. 명단·전화번호가 적힌 줄과 양식의 머리·학교장 줄은 보내지 않아요.')}
       </section>
       <section class="pc-card"><h3>가정통신문</h3>${outHTML(x)}</section>
     </div>

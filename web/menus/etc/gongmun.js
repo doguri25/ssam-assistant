@@ -1,7 +1,8 @@
-/* 기타 › 공문 처리 (스펙 2026-11-04 5장): 공문(파일·글)을 넣으면 AI가 제출 기한·할 일을 뽑고, 기한 차례 목록에서 할 일을 체크.
+/* 문서·소통 › 공문 처리 (스펙 2026-11-04 5장): 공문(파일·글)을 넣으면 AI가 제출 기한·할 일을 뽑고, 기한 차례 목록에서 할 일을 체크.
    [쪽지][가정통신문][품의][결과 보고]로 그 공문을 들고 넘어감. 기한은 학사일정(달력)·오늘 수업 띠에도.
    원본 파일은 저장하지 않음(명단·전화번호 줄을 뺀 글만, gongmun-model.js) */
 import { onEnter } from '../../core/shell.js';
+import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import * as ai from '../../core/ai.js';
 import { toast } from '../../core/ui.js';
 import { readText, fileMessage } from '../../core/files.js';
@@ -71,14 +72,14 @@ export async function addFiles(files) {
   else if (cut) toast(`명단·전화번호가 적힌 줄 ${cut}곳은 빼고 넣었어요(AI로 보내지 않아요)`, 5000);
   for (const id of ids) await readDoc(id);
 }
-/* 떠 있는 버튼: 안내·공문 파일 → 기타 › 공문 처리 */
+/* 떠 있는 버튼: 안내·공문 파일 → 문서·소통 › 공문 처리 */
 export async function putGongmunFiles(files) {
   const { go } = await import('../../core/shell.js');
   go('etc', 'gongmun');
   await addFiles(files || []);
 }
 
-/* 「쌤」 채팅: 공문 글 → 기타 › 공문 처리에 넣고 AI로 기한·할 일 뽑기(붙여 넣기 [넣기]와 같게). 뽑기는 기다리지 않고 상태를 돌려줌
+/* 「쌤」 채팅: 공문 글 → 문서·소통 › 공문 처리에 넣고 AI로 기한·할 일 뽑기(붙여 넣기 [넣기]와 같게). 뽑기는 기다리지 않고 상태를 돌려줌
    → 'started' | 'no-ai'(글만 넣음) | 'empty'(명단·전화번호 줄을 빼니 남은 글이 없어 넣지 않음) */
 export async function putGongmunText(text) {
   const { go } = await import('../../core/shell.js');
@@ -132,12 +133,13 @@ function listHTML() {
 export function render() {
   if (!box || box.hidden) return;
   const html = `<div class="m-page gm-page">
-    <div class="m-head m-head-row"><div><h2>공문 처리</h2><p class="muted">공문을 넣으면 제출 기한과 할 일을 뽑아 기한 차례로 보여 줘요. 쪽지·가정통신문·품의·결과 보고로 바로 이어 써요.</p></div>
+    <div class="m-head m-head-row"><div><h2>공문 처리</h2>${introHTML('gongmun', '공문을 넣으면 제출 기한과 할 일을 뽑아 기한 차례로 보여 줘요.')}</div>
       <div class="m-head-act">${aiRowHTML('gongmun')}</div></div>
-    <section class="pc-card"><div class="msg-drop" data-gm-drop><p class="muted" style="margin:0">공문 파일(한글·PDF·워드·글)을 여기에 끌어 놓거나 고르세요. 파일마다 하나씩 넣어요.</p>
+    <section class="pc-card"><div class="msg-drop" data-gm-drop><p class="muted" style="margin:0">공문 파일(한글·PDF·워드·글)을 끌어 놓아도 돼요. 파일마다 하나씩 넣어요.</p>
         <div class="row"><button class="btn text" type="button" data-gm="pick">${pickHTML()}</button><input type="file" id="gmFile" multiple hidden accept=".hwp,.hwpx,.pdf,.docx,.txt"></div></div>
       <label class="yp-f"><span class="lab">또는 공문 글 붙여 넣기</span><textarea class="field" id="gmPaste" rows="3" placeholder="공문 본문을 붙여 넣고 [넣기]">${esc(S.paste)}</textarea></label>
-      <div class="row"><button class="btn primary" type="button" data-gm="paste">넣기</button></div></section>
+      <div class="row"><button class="btn primary" type="button" data-gm="paste">넣기</button></div>
+      ${aiNoteHTML('공문 글을 보내요. 명단·전화번호가 적힌 줄은 빼고 보내요. 원본 파일은 저장하지 않아요.')}</section>
     <section class="pc-card" id="gmLists">${listHTML()}</section></div>`;
   keepFiles(box, () => { box.innerHTML = html; }); // 파일 고르기 창이 열린 채 다시 그려도 고른 파일이 들어가게(core/keep-files.js)
 }
@@ -259,9 +261,9 @@ document.addEventListener('drop', e => {
   if (fs.length) addFiles(fs);
 });
 
-/* 떠 있는 버튼: 연수·회의·행사 안내 공문·계획 → 기타 › 공문 처리(쪽지 등은 그 뒤 버튼으로) */
+/* 떠 있는 버튼: 연수·회의·행사 안내 공문·계획 → 문서·소통 › 공문 처리(쪽지 등은 그 뒤 버튼으로) */
 registerInbox('notice', {
-  act: files => `기타 › 공문 처리에 넣고 기한·할 일 뽑기${files.length > 1 ? `(파일 ${files.length}개)` : ''}`,
+  act: files => `문서·소통 › 공문 처리에 넣고 기한·할 일 뽑기${files.length > 1 ? `(파일 ${files.length}개)` : ''}`,
   async run(files) { await putGongmunFiles(files); return ''; }
 });
 

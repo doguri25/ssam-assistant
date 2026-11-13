@@ -204,7 +204,7 @@ await run('event-plan', [
     assert(w[0] <= w[1], '넘침: ' + w);
     await page.setViewportSize({ width: 1280, height: 860 });
   }],
-  ['가정통신문 [학교 양식으로] → 기타 › 가정통신문에 제목·본문(AI 안 부름), 회신서 끔', async () => {
+  ['가정통신문 [학교 양식으로] → 문서·소통 › 가정통신문에 제목·본문(AI 안 부름), 회신서 끔', async () => {
     const n0 = prompts.length;
     await page.click(`${V} #evList [data-ev]:has-text("가을 운동회")`);
     await page.click(`${V} ol.steps [data-step="3"]`);

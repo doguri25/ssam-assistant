@@ -1,6 +1,7 @@
 /* 학급 › 진도표·시수 아래 「준비」: 학급, 시간표, 교과 진도표 목록·고치기, 예시 (스펙 2장).
    저장하면 'class:changed'를 보내고, 다른 학급 화면은 그것을 듣고 다시 그림 */
 import { onEnter, go } from '../../core/shell.js';
+import { introHTML } from '../../core/ui-parts.js';
 import { registerInbox } from '../../core/inbox.js';
 import { getYears, prepYear, currentYear } from '../../core/years.js';
 import { toast } from '../../core/ui.js';
@@ -67,7 +68,7 @@ function render() {
   stale = false;
   const info = getInfo(), tt = getTimetable(), subs = listSubjects(), ctx = makeCtx();
   const html = `<div class="m-page cls-page cls-setup-page">
-    <div class="m-head"><h2 class="cls-h2">준비</h2><p class="muted">학급, 시간표, 교과 진도표를 넣어요. 학교에서 받은 한글 파일을 그대로 올려도 돼요.</p></div>
+    <div class="m-head"><h2 class="cls-h2">준비</h2>${introHTML('class-setup', '학급·시간표·교과 진도표를 넣어요. 학교 한글 파일을 그대로 올려도 돼요.')}</div>
     ${prepNote()}
     <div class="yp-card">
       <h3>학급</h3>

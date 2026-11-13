@@ -24,7 +24,7 @@ await run('layout-0417', [
     const seg = await box('.pc-types'), tpl = await box('[data-pc="saveTpl"]'), fresh = await box('[data-pc="fresh"]');
     assert(sameRow(seg, tpl) && sameRow(seg, fresh) && tpl.x > seg.x + seg.width - 1, JSON.stringify({ seg, tpl, fresh }));
   }],
-  ...[['message', 'msg-box', 'data-msg="new"'], ['letter', 'lf-box', 'data-lf="new"'], ['gongmun', 'gm-box', null]].map(([tab, cls, btn]) => [`기타 › ${tab}: AI 줄이 머리 안(제목과 같은 줄 높이)`, async () => {
+  ...[['message', 'msg-box', 'data-msg="new"'], ['letter', 'lf-box', 'data-lf="new"'], ['gongmun', 'gm-box', null]].map(([tab, cls, btn]) => [`문서·소통 › ${tab}: AI 줄이 머리 안(제목과 같은 줄 높이)`, async () => {
     await page.click('nav.app-side [data-menu-go="etc"]'); await page.click(`#menuTabs [data-tab="${tab}"]`);
     const P = `section[data-menu="etc"] .${cls}`;
     await page.waitForSelector(`${P} .m-head [data-ai-row]`, { timeout: 5000 });

@@ -6,6 +6,7 @@ import { onEnter, go as goMenu } from '../../core/shell.js';
 import { registerInbox } from '../../core/inbox.js';
 import * as ai from '../../core/ai.js';
 import { aiRowHTML } from '../../core/ai-roles.js';
+import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import { readText, fileMessage } from '../../core/files.js';
 import { toast } from '../../core/ui.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
@@ -79,7 +80,7 @@ const unfinal = p => { if (p.status === 'final') p.status = 'draft'; };
 function render() {
   if (!box) return;
   const html = `<div class="m-page yp-page">
-    <div class="m-head"><h2>학급운영계획</h2><p class="muted">작년 학급운영계획을 바탕으로 올해 계획서 초안을 만들어요. 진도표·평가계획을 붙이면 읽어서 표로 넣어요.</p></div>
+    <div class="m-head"><h2>학급운영계획</h2>${introHTML('classplan', '작년 학급운영계획을 바탕으로 올해 계획서 초안을 만들어요.')}</div>
     <div class="yp-grid">
       <aside class="yp-side" aria-labelledby="cpListH">
         <div class="yp-side-h"><b id="cpListH">지난 학급운영계획</b><button class="btn text" type="button" data-c="new">+ 새 계획</button></div>
@@ -108,7 +109,7 @@ function renderMain() {
   const step = plan.step;
   const body = step === 1 ? step1() : step === 2 ? step2() : step === 3 ? step3() : step4();
   main.innerHTML = stepsHTML(STEPS, step, plan.maxStep)
-    + (step === 3 || step === 4 ? aiRowHTML('plan') : '')
+    + (step === 3 || step === 4 ? aiRowHTML('plan') + aiNoteHTML('작년 계획·지침·첨부 글을 보내요. 이름·전화번호가 적힌 줄은 빼고 이름은 ○○○로 가려서 보내요.') : '')
     + (errs[plan.id] ? `<div class="banner err" role="alert"><span class="grow">${esc(errs[plan.id])}</span></div>` : '')
     + (notes[plan.id] && step === 3 ? `<div class="banner warn" role="status"><span class="grow">${esc(notes[plan.id])}</span></div>` : '')
     + body
@@ -314,7 +315,7 @@ function step3() {
   const b = busy[plan.id];
   if (b === 'guide' || b === 'draft') return `<div class="yp-card"><p class="muted"><span class="spin"></span> ${b === 'guide' ? '올해 지침에서 꼭 넣을 항목을 찾고 있어요…' : '칸마다 올해 초안을 쓰고 있어요. 다른 메뉴로 가도 계속 써요…'}</p></div>`;
   const d = plan.draft;
-  if (!d) return `<div class="yp-card"><h3>초안</h3><p class="muted">목차 칸마다 작년 글의 짜임과 문체를 따라 올해 우리 반에 맞게 써요.${plan.sources.guide.trim() ? ' 올해 지침에서 꼭 넣을 항목을 먼저 찾아 함께 넣어요.' : ''} 학생 이름은 보내지 않아요.</p>
+  if (!d) return `<div class="yp-card"><h3>초안</h3><p class="muted">목차 칸마다 작년 글의 짜임과 문체를 따라 올해 우리 반에 맞게 써요.${plan.sources.guide.trim() ? ' 올해 지침의 꼭 넣을 항목도 함께 넣어요.' : ''}</p>
     <div class="row"><button class="btn primary" type="button" data-c="draft">AI로 초안 쓰기</button><button class="btn" type="button" data-c="blank">직접 쓰기</button></div></div>`;
   const leafIds = new Set(leaves(plan.outline).map(x => x.id));
   let a = 0, n = 0;
@@ -425,7 +426,7 @@ function evalHTML() {
   const b = busy[plan.id] === 'eval', rows = plan.evalRows;
   const has = plan.attach.some(a => a.kind === 'eval' && a.text);
   return `<div class="yp-card"><h3>평가 표</h3>
-      <p class="muted">${has ? '첨부한 평가계획을 AI로 읽어 교과·단원·성취기준·평가 방법·시기 표로 넣어요. 학생 이름은 보내지 않아요.' : '평가계획을 첨부하면 AI로 읽어 평가 표를 만들어요. 줄을 더해 직접 써도 돼요.'}</p>
+      <p class="muted">${has ? '첨부한 평가계획을 AI로 읽어 교과·단원·성취기준·평가 방법·시기 표로 넣어요.' : '평가계획을 첨부하면 AI로 읽어 평가 표를 만들어요. 줄을 더해 직접 써도 돼요.'}</p>
       ${b ? '<p class="muted"><span class="spin"></span> 평가계획에서 평가 표를 읽고 있어요…</p>' : ''}
       ${rows.length ? `<div class="yp-tbl-wrap"><table class="yp-tbl cp-eval" id="cpEval"><thead><tr>${EVAL_COLS.map(c => `<th>${c[1]}</th>`).join('')}<th></th></tr></thead><tbody>${rows.map((r, i) => `<tr>
         ${EVAL_COLS.map(([k, n]) => `<td><input class="field" data-ev="${i}" data-ek="${k}" value="${esc(r[k])}" aria-label="${i + 1}번째 줄 ${n}"></td>`).join('')}
@@ -437,7 +438,7 @@ function evalHTML() {
 function exportHTML() {
   const fin = plan.status === 'final', d = !!plan.draft;
   return `<div class="yp-card"><h3>내보내기와 확정</h3>
-      <p class="muted">한글 파일은 목차 그대로 제목과 칸 글을 쓰고, 시수표·평가 표·월별 표는 그 칸 뒤에, 첨부파일은 끝 「붙임」에 적어요. 확정한 계획은 다음 해 「지난 학급운영계획에서 불러오기」로 쓸 수 있어요.</p>
+      <p class="muted">한글 파일은 목차 그대로 쓰고 표는 그 칸 뒤, 첨부파일은 끝 「붙임」에 적어요. 확정한 계획은 다음 해 다시 불러올 수 있어요.</p>
       ${plan.attach.length ? `<div class="cp-buim"><b>붙임</b><ol id="cpBuim">${plan.attach.map(a => `<li>${esc(KIND_NAME[a.kind] || '첨부')}(${esc(a.name)}) 1부.</li>`).join('')}</ol></div>` : ''}
       ${plan.monthly.length && noSec('monthly') ? '<p class="muted">목차에 「월별」 칸이 없어 월별 활동 표는 한글 파일에 들어가지 않아요. 2단계에서 칸을 더해 주세요.</p>' : ''}
       ${!d ? '<p class="banner warn"><span class="grow">3단계에서 초안을 먼저 써 주세요.</span></p>' : fin ? '<p class="banner ok"><span class="grow">확정한 계획이에요. 고치면 다시 「작성 중」이 돼요.</span></p>' : ''}

@@ -26,6 +26,7 @@ import { STEPS, campSteps, docReadiness } from './camp-steps.js';
 import { applyAutoPost, setGrowth, growthChange, changeText } from './camp-growth.js';
 import { listTests, loadTests } from '../evaluate/unit/unit-model.js';
 import { getInfo } from './class-model.js';
+import { introHTML, aiNoteHTML, foldHTML } from '../../core/ui-parts.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad = n => String(n).padStart(2, '0');
@@ -79,7 +80,7 @@ const btnBusy = (k, idle, doing) => (busy[k] ? `<span class="spin"></span>${doin
 const PLAN_ACCEPT = '.hwp,.hwpx,.pdf,.docx,.txt,.png,.jpg,.jpeg,.webp,.heic';
 /* 계획 파일 넣기 줄(캠프 정보·수업 일정에 하나씩) */
 const planRow = (c, where) => `<div class="row cp-plan"><button class="btn tonal" type="button" data-cp="planFile" data-drop-pick data-where="${where}"${busy[`${c.id}:plan`] ? ' disabled' : ''}>${btnBusy(`${c.id}:plan`, '계획 파일 넣기', '계획서 읽는 중…')}</button>
-  <span class="muted">운영 계획서(한글·PDF·워드)를 넣으면 이름·대상·교과·지도교사(빈 칸만)와 수업 일정(기간·시간·교시${ai.ready() ? '·지도 내용' : ''})을 채워요.</span>
+  <span class="muted">운영 계획서(한글·PDF·워드)로 빈 칸과 수업 일정을 채워요.</span>
   <input type="file" id="cpPlanFile-${where}" hidden accept="${PLAN_ACCEPT}"></div>`;
 function pickHTML(camps, c) {
   return `<div class="row cp-bar">
@@ -97,13 +98,15 @@ function infoHTML(c) {
   return `<section class="yp-card">
       ${planRow(c, 'info')}
       <div class="cp-grid">${f('name', '프로그램 이름', '예) 3-2 기초학력 중점학급, 겨울방학 교과 교실', 'wide')}${f('teacher', '지도교사', '선생님 이름(AI로 보내지 않아요)')}${f('target', '대상', '예) 3학년')}
-        ${f('subjects', '교과', '예) 국어, 수학')}${f('approval', '결재란 칸', '예) 계(담당자), 교감, 교장')}</div>
+        ${f('subjects', '교과', '예) 국어, 수학')}</div>
+      ${foldHTML({ key: 'camp-info', summary: `결재란 ${c.approval.join('·') || '없음'} · 출석 ${(M.UNITS.find(([k]) => k === c.unit) || M.UNITS[0])[1]}`,
+        body: `<div class="cp-grid">${f('approval', '결재란 칸', '예) 계(담당자), 교감, 교장', 'wide')}</div>
       <div class="yp-f"><span class="lab">출석 단위</span><div class="seg" role="group" aria-label="출석 단위">${M.UNITS.map(([k, l]) => `<button type="button" data-unit="${k}" aria-pressed="${c.unit === k}">${l}</button>`).join('')}</div>
-        <p class="muted" style="margin:0">${c.unit === 'day' ? '날짜마다 한 번 체크하고 「학생 출석부」(학생 × 날짜)를 만들어요.' : '수업 줄(교시)마다 체크하고 「학생 출석 및 관찰 기록부」(교시 × 학생)를 만들어요.'}</p></div>
+        <p class="muted" style="margin:0">${c.unit === 'day' ? '날짜마다 한 번 체크하고 「학생 출석부」(학생 × 날짜)를 만들어요.' : '수업 줄(교시)마다 체크하고 「학생 출석 및 관찰 기록부」(교시 × 학생)를 만들어요.'}</p></div>` })}
     </section>
     <section class="yp-card">
       <div class="cls-card-h"><h3>학생 ${c.students.length}명</h3><button class="btn" type="button" data-cp="addStudent">+ 학생</button></div>
-      <p class="muted" style="margin:0">이름은 이 컴퓨터에만 저장해요(백업 파일에는 들어가요). AI에는 이름 대신 학생A·학생B로 보내요.</p>
+      ${aiNoteHTML('이름 대신 학생A·학생B(표의 「AI에는」 칸)로 보내요. 이름은 이 컴퓨터에만 저장해요(백업 파일에는 들어가요).')}
       ${c.students.length ? `<div class="cp-tbl-wrap"><table class="cp-tbl cp-students"><thead><tr><th scope="col">AI에는</th><th scope="col">학년</th><th scope="col">반</th><th scope="col">번호</th><th scope="col">이름</th><th scope="col"><span class="sr">빼기</span></th></tr></thead><tbody>${rows}</tbody></table></div>`
     : '<p class="muted" style="margin:0">[+ 학생]으로 학생을 넣어 주세요.</p>'}
     </section>`;
@@ -121,8 +124,8 @@ function schedHTML(c) {
       ${planRow(c, 'sched')}
       <label class="yp-f"><span class="lab">AI로 만들기</span><textarea class="field" id="cpSchedPrompt" rows="3" placeholder="예) 1/8~1/23 평일, 9:00~12:40 하루 5교시(40분·쉬는 5분), 국어·수학, 3학년 2명, 아이스크림 홈런">${esc(drafts[c.id] || '')}</textarea></label>
       <div class="row"><button class="btn tonal" type="button" data-cp="schedAi"${busy[k] ? ' disabled' : ''}>${btnBusy(k, 'AI로 만들기', 'AI가 만드는 중…')}</button>
-        <span class="muted">날짜는 앱이 세고 주말·공휴일은 빼요. 지도 내용은 AI가 교과·차시에 맞게 써요.</span></div>
-      ${aiRowHTML('plan')}
+        <span class="muted">날짜는 앱이 세고 주말·공휴일은 빼요.</span></div>
+      ${aiRowHTML('plan')}${aiNoteHTML('적은 글(또는 운영 계획서)과 대상·교과만 보내요. 이름은 학생A·지도교사처럼 바꿔 보내요.')}
     </section>
     <section class="yp-card">
       <div class="cls-card-h"><h3>수업 일정 <span class="muted cp-count">${c.sessions.length}줄 · 총 ${M.hoursTotal(c)}시간</span></h3>
@@ -210,7 +213,8 @@ function obsHTML(c) {
   return `<section class="yp-card">
       <div class="cls-card-h"><h3>관찰 기록</h3><button class="btn tonal" type="button" data-cp="obsAi"${busy[k] ? ' disabled' : ''}>${btnBusy(k, 'AI로 쓰기', 'AI가 쓰는 중…')}</button></div>
       ${aiRowHTML('writing')}
-      <p class="muted" style="margin:0">메모를 짧게 적고 [AI로 쓰기]를 누르면 「관찰 및 지도 결과」를 2~4문장으로 써요. AI에는 이름 대신 학생A·학생B와 출석 수·지도 내용만 보내요. 선생님이 고친 칸은 다시 쓰기 전에 물어요.</p>
+      ${aiNoteHTML('이름 대신 학생A·학생B와 출석 수·지도 내용·메모만 보내요.')}
+      <p class="muted" style="margin:0">메모를 짧게 적으면 「관찰 및 지도 결과」를 2~4문장으로 써요. 고친 칸은 다시 쓰기 전에 물어요.</p>
       <ol class="cp-obs">${c.students.map(st => { const a = M.attStats(c, st.id); return `<li class="cp-ob">
         <div class="cp-ob-h"><b>${esc(st.name || '이름 없음')}</b><span class="muted">${esc(M.studentLabel({ ...st, name: '' }))}${st.grade || st.no ? ' · ' : ''}출석 ${a.present}/${a.total}</span>${c.obsEdited[st.id] ? '<span class="cls-tag">고친 칸</span>' : ''}</div>
         <label class="yp-f"><span class="lab">메모</span><textarea class="field" data-memo="${esc(st.id)}" rows="2" placeholder="예) 받침 있는 낱말 받아쓰기를 어려워함 → 3주 차에 80점">${esc(c.memo[st.id] || '')}</textarea></label>
@@ -244,9 +248,9 @@ function growthHTML(c) {
   }).join('');
   return `<section class="yp-card cp-growth" aria-labelledby="cpGrowthH">
       <div class="cls-card-h"><h3 id="cpGrowthH">사전·사후 점수</h3><span class="muted">선택</span></div>
-      <p class="muted" style="margin:0">${any ? '' : '평가 › 단원평가 › 결과 모아 보기 › 「도달하지 못한 학생」에서 학생을 넣으면 사전 점수가 들어와요. 직접 써도 돼요. '}사후 점수는 첫 수업 날 뒤에 본 같은 교과 단원평가에서 저절로 채워요. 칸을 고치면 직접 쓴 점수가 앞서요(사후 칸을 비우면 다시 자동).</p>
+      <p class="muted" style="margin:0">${any ? '' : '단원평가 결과의 「도달하지 못한 학생」에서 넣으면 사전 점수가 들어와요(직접 써도 돼요). '}사후 점수는 첫 수업 뒤 같은 교과 단원평가로 채워요(고치면 직접 쓴 점수가 앞서고, 비우면 다시 자동).</p>
       <div class="cp-tbl-wrap"><table class="cp-tbl cp-growth-t"><thead><tr><th scope="col">학생</th><th scope="col">교과·영역</th><th scope="col">사전(%)</th><th scope="col">사후(%)</th><th scope="col">변화</th></tr></thead><tbody>${rows}</tbody></table></div>
-      <p class="muted" style="margin:0">[AI로 쓰기]에 이 점수를 학생A·학생B로 보내 운영 성과에 그대로 쓰고, 결과 보고서 문서 끝에 「사전·사후 성취」 표로 넣어요.</p>
+      <p class="muted" style="margin:0">결과 보고서 끝에 「사전·사후 성취」 표로 넣고, [AI로 쓰기]의 운영 성과에도 써요.</p>
     </section>`;
 }
 /* 칸에 치는 동안: 그 학생 줄의 변화·안내 글만 바꿈 */
@@ -269,8 +273,8 @@ function reportHTML(c) {
       <div class="yp-f"><span class="lab">보고서 꼴</span><div class="seg" role="group" aria-label="보고서 꼴">${M.REPORT_KINDS.map(([id, l]) => `<button type="button" data-rkind="${id}" aria-pressed="${r.kind === id}">${l}</button>`).join('')}</div>
         <p class="muted" style="margin:0">${esc(note)} · 글 머리: ${heads.map(h => `「${esc(h)}」`).join(' ')}</p></div>
       <label class="yp-f"><span class="lab">목적·성과 메모</span><textarea class="field" id="cpRPrompt" rows="4" placeholder="예) 받아쓰기 평균 60점 → 85점, 수학 연산 속도가 빨라짐, 학생 스스로 학습 습관">${esc(r.prompt)}</textarea></label>
-      <div class="row"><button class="btn tonal" type="button" data-cp="reportAi"${busy[k] ? ' disabled' : ''}>${btnBusy(k, 'AI로 쓰기', 'AI가 쓰는 중…')}</button><span class="muted">수업 일정·출석·관찰 기록과 이 메모를 학생A·학생B로 보내요.</span></div>
-      ${aiRowHTML('plan')}
+      <div class="row"><button class="btn tonal" type="button" data-cp="reportAi"${busy[k] ? ' disabled' : ''}>${btnBusy(k, 'AI로 쓰기', 'AI가 쓰는 중…')}</button></div>
+      ${aiRowHTML('plan')}${aiNoteHTML('수업 일정·출석·관찰 기록·사전·사후 점수와 이 메모를 학생A·학생B로 보내요.')}
     </section>
     <section class="yp-card">
       <label class="yp-f"><span class="lab">제목</span><input class="field" id="cpRTitle" value="${esc(r.title)}" placeholder="${esc(docTitle('report', c))}" autocomplete="off"></label>
@@ -330,7 +334,7 @@ function centerIn(row, el) {
 }
 function pageHTML(camps, c) {
   return `<div class="m-page cls-page cp-page">
-    <div class="m-head"><h2>기초학력</h2><p class="muted">수업 일정·출석 체크·관찰 기록을 쌓아 수업 확인서·출석부·관찰 기록부·결과 보고서를 만들어요. 학생 이름은 이 컴퓨터에만 두고 AI에는 학생A·학생B로 보내요.</p></div>
+    <div class="m-head"><h2>기초학력</h2>${introHTML('camp', '수업 일정·출석·관찰 기록으로 확인서·출석부·결과 보고서를 만들어요.')}</div>
     ${pickHTML(camps, c)}
     ${c ? `${stepsHTML(c)}
       <div id="cpSec" class="cp-sec">${SEC_HTML[sec](c)}</div>`
