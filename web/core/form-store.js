@@ -2,6 +2,7 @@
    양식 = { id, name, kind: 'hwpx'|'plain', bytes(hwpx, 5MB까지), plain, roles, savedAt }. 저장소를 못 쓰면 이 화면에서만(메모리).
    forms(ns): 다른 문서 양식은 따로 둠(「handover」 → 「ssam-forms-handover」, 기타 › 인수인계서). 이름 없으면 가정통신문·결과 보고가 같이 쓰는 「ssam-forms」 */
 const DB = 'ssam-forms', STORE = 'forms';
+import { DEMO_YEAR } from './years.js';
 export const MAX_FORM = 5 * 1024 * 1024;
 export const newFormId = () => 'fm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
@@ -47,8 +48,12 @@ async function make(ns) {
   try { if (typeof indexedDB === 'undefined') throw new Error('no idb'); const f = openForms(dbName(ns)); await f.list(); f.persistent = true; return f; }
   catch (e) { const m = memForms(); m.persistent = false; return m; }
 }
+/* 둘러보기(체험용 학년도) 중에는 학교 양식을 지우지 않음 — 양식은 학년도와 상관없이 하나라 체험이 끝나도 되돌릴 수 없음 */
+const demoYear = () => { try { const v = JSON.parse(globalThis.localStorage.getItem('ssam:years')); return !!v && v.current === DEMO_YEAR; } catch (e) { return false; } };
+export const DEMO_DEL = '체험을 끝낸 뒤에 양식을 지울 수 있어요';
+const guard = f => ({ ...f, del: async id => { if (demoYear()) { const e = new Error(DEMO_DEL); e.code = 'DEMO'; throw e; } return f.del(id); } });
 export function forms(ns = '') {
   const k = dbName(ns);
-  if (!shared.has(k)) shared.set(k, make(ns));
+  if (!shared.has(k)) shared.set(k, make(ns).then(guard));
   return shared.get(k);
 }

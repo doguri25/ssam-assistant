@@ -55,6 +55,13 @@ await page.waitForTimeout(400);
 const BEFORE = await yearSnap(), BEFORE_YEARS = await ls('years'), BEFORE_TABS = await ls('nav:tabs');
 
 await run('tour', [
+  ['진짜 학년도인데 체험 표시만 남아 있으면(들어가다 창을 닫음·다른 창이 먼저 엶) 띠를 띄우지 않고 표시를 지움(검토 #5)', async () => {
+    await page.evaluate(y => localStorage.setItem('ssam:demo', JSON.stringify({ from: y, at: Date.now(), step: 0 })), JSON.parse(BEFORE_YEARS).current);
+    await page.reload(); await page.waitForSelector(`${H} .hm-head`); await page.waitForTimeout(500);
+    assert(!(await page.isVisible(BAND)) && await page.locator(POP).count() === 0, '띠·안내가 뜸');
+    assert(await ls('demo') === null && await yearSnap() === BEFORE, '표시가 남음');
+    assert((await page.textContent(`${H} [data-tour="start"]`)).includes('3분 둘러보기'), '단추');
+  }],
   ['오늘 머리에 [3분 둘러보기](44px), 누르면 묻는 창 — [그만두기]면 그대로', async () => {
     const b = page.locator(`${H} .hm-head [data-tour="start"]`);
     assert(await b.isVisible() && (await b.innerText()).includes('3분 둘러보기'), '단추가 없음');
@@ -62,7 +69,7 @@ await run('tour', [
     await b.click();
     await page.waitForSelector('#sheetRoot #tourGo');
     const txt = await page.textContent('#sheetRoot .sheet');
-    assert(txt.includes('지금 자료는 그대로 두고 체험용 자료로 바꿔요. 끝내면 돌아와요.'), txt.slice(0, 120));
+    assert(txt.includes('지금 자료는 그대로 두고 체험용 자료로 바꿔요. 끝내면 돌아와요.') && txt.includes('학교 양식'), txt.slice(0, 200));
     assert(await page.evaluate(() => document.activeElement && document.activeElement.id === 'tourGo'), '초점이 [둘러보기 시작]에');
     await page.click('#sheetRoot [data-close]');
     assert(await page.locator('#sheetRoot .sheet').count() === 0 && !(await page.isVisible(BAND)), '창이 남음');

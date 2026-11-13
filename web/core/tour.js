@@ -7,7 +7,6 @@
    선생님 자료는 그동안 보관함에 그대로 있고, 돌아오면 학년도 자료(ssam: 키)가 들어가기 전과 글자 하나까지 같음 */
 import { DEMO_YEAR, demoOf, getYears } from './years.js';
 import { moveYear, switchError, getArchive, safeLS } from './year-switch.js';
-import { FULL_MSG } from './store.js';
 import { tourSteps } from './tour-steps.js';
 
 const KEY = 'ssam:demo', BACK = 'ssam-tour-back'; // BACK: 끝내고 다시 열 때 알림(창마다 — sessionStorage, 학년도 자료가 아님)
@@ -21,11 +20,14 @@ const narrow = () => window.matchMedia && window.matchMedia('(max-width:760px)')
 /* 보관함(IndexedDB)이 응답하지 않아도 멈춰 있지 않게: ms 안에 끝나지 않으면 그냥 넘어감 */
 const soon = (p, ms = 5000) => Promise.race([Promise.resolve(p).catch(() => {}), new Promise(ok => setTimeout(ok, ms))]);
 
-/* 체험 중이면 표시({ from, … }), 체험용 학년도인데 표시가 없어진 경우는 { from: null }(끝낼 때 보관함에서 찾음), 아니면 null */
+/* 체험 중이면 표시({ from, … }), 체험용 학년도인데 표시가 없어진 경우는 { from: null }(끝낼 때 보관함에서 찾음), 아니면 null.
+   진짜 학년도인데 표시만 남았으면(끝낼 때 다른 창이 먼저 다시 엶 등) 표시를 지움 — 진짜 자료 위에 「체험 중」 띠가 뜨지 않게 */
 export function inDemo() {
   const ls = safeLS();
   if (!ls) return null;
-  return demoOf(ls) || (getYears(ls).current === DEMO_YEAR ? { from: null } : null);
+  const d = demoOf(ls);
+  if (getYears(ls).current !== DEMO_YEAR) { if (d) { try { ls.removeItem(KEY); } catch (e) {} } return null; }
+  return d || { from: null };
 }
 function writeMark(patch) {
   const ls = safeLS(), d = ls && demoOf(ls);
@@ -41,7 +43,8 @@ export function startTour() {
   SS().openSheet(`<h3>3분 둘러보기</h3>
     <p style="margin:0">지금 자료는 그대로 두고 체험용 자료로 바꿔요. 끝내면 돌아와요.</p>
     <ul class="tour-sum"><li>지어낸 학급(새싹초등학교 3학년 1반)의 단원평가·기초학력·평어로 ${tourSteps().length}단계를 보여 줘요.</li>
-      <li>체험 중에 바꾼 것은 끝낼 때 사라져요. 백업·학년도 옮기기는 체험을 끝낸 뒤에 해요.</li></ul>
+      <li>체험 중에 바꾼 학년도 자료는 끝낼 때 사라져요. 학교 양식·AI 설정은 체험과 같이 쓰므로 그대로 남아요(양식 지우기는 끝낸 뒤에).</li>
+      <li>백업·학년도 옮기기는 체험을 끝낸 뒤에 해요.</li></ul>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>그만두기</button><button class="btn primary" type="button" id="tourGo">둘러보기 시작</button></div>`,
   sh => { sh.classList.add('tour-ask'); sh.querySelector('#tourGo').addEventListener('click', () => { SS().closeSheet(); enterDemo(); }); });
   const go = document.querySelector('#sheetRoot #tourGo');
@@ -53,6 +56,8 @@ async function enterDemo() {
   const ls = safeLS();
   if (moving || !ls) { if (!ls) toast('이 브라우저는 저장소를 막아 두어 둘러보기를 할 수 없어요', 6000); return; }
   if (inDemo()) { showStep(0); return; }
+  // 평가 화면이 계정 저장소(db)를 쓰면 체험 학년도로 나뉘지 않아 진짜 기록을 바꾸게 됨 — 들어가지 않음
+  if (SS().storeMode && SS().storeMode() === 'db') { toast('여기서는 평가 자료가 계정에 바로 저장돼 둘러보기를 할 수 없어요', 6000); return; }
   const from = getYears(ls).current;
   let snap;
   try { snap = (await import('./demo-data.js')).demoSnapshot(today()); } catch (e) { toast('체험 자료를 만들지 못했어요', 5000); return; }
@@ -60,10 +65,12 @@ async function enterDemo() {
   try {
     // 지난번에 지우지 못한 체험용 보관 자료가 있으면 먼저 지움(남아 있으면 새 체험 자료를 쓰지 못함)
     await soon(getArchive().del(DEMO_YEAR));
-    try { ls.setItem(KEY, JSON.stringify({ from, at: Date.now(), step: 0, nav: ls.getItem('ssam:nav'), tabs: ls.getItem('ssam:nav:tabs') })); } catch (e) { toast(FULL_MSG, 7000); return; }
+    const mark = JSON.stringify({ from, at: Date.now(), step: 0, nav: ls.getItem('ssam:nav'), tabs: ls.getItem('ssam:nav:tabs') });
     toast('체험용 자료를 여는 중이에요…', 8000);
     const r = await moveYear(DEMO_YEAR, snap);
-    if (!r.ok) { try { ls.removeItem(KEY); } catch (e) {} toast(switchError(r.code), 7000); return; }
+    if (!r.ok) { toast(switchError(r.code), 7000); return; }
+    // 표시는 옮긴 뒤에 씀(옮기는 사이 창을 닫아도 진짜 자료 위에 표시가 남지 않게). 못 써도 체험용 학년도라 띠가 뜨고, 끝낼 때 보관함에서 원래 학년도를 찾음
+    try { ls.setItem(KEY, mark); } catch (e) {}
     location.reload();
   } finally { moving = false; }
 }

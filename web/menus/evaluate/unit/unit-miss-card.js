@@ -7,7 +7,7 @@ import * as ai from '../../../core/ai.js';
 import { exportButton, exportDoc } from '../../../core/doc-export.js';
 import { getTest, makeTitle } from './unit-model.js';
 import { ITEM_TYPES } from './unit-grade.js';
-import { missView, missRequest, normMiss, missGot, mergeItem, missSig, setAct, missText, missHead, nosText, PENDING } from './unit-miss.js';
+import { missView, missRequest, normMiss, missGot, mergeItem, missSig, setAct, groupId, missText, missHead, nosText, PENDING } from './unit-miss.js';
 import { missPrompt } from './unit-ai.js';
 import { missDoc } from './unit-docs.js';
 import { esc, AI_KEY, inStep, cur, curId, saveOrWarn, refresh, getBox } from './unit.js';
@@ -21,7 +21,7 @@ function groupHTML(v, g, i) {
   return `<li class="un-miss-g" data-miss-g="${v.no}-${i}">
       <div class="un-miss-gh"><b>${esc(g.why)}</b> · ${g.nos.length}명 · ${esc(nosText(g.nos))} <span class="un-miss-tag">${tagOf(g.src)}</span></div>
       ${g.guess ? `<p class="muted un-miss-guess">짐작: ${esc(g.guess)}</p>` : ''}
-      <label class="yp-f"><span class="lab">5분 보충 활동</span><textarea class="field" data-miss="${v.no}-${i}" rows="2" maxlength="200" placeholder="${g.act ? '' : '다음 시간에 5분 동안 할 일(무엇을·어떻게)'}" aria-label="${v.no}번 ${esc(g.why)} 5분 보충 활동">${esc(g.act)}</textarea></label>
+      <label class="yp-f"><span class="lab">5분 보충 활동</span><textarea class="field" data-miss="${v.no}-${i}" data-miss-id="${esc(groupId(g))}" rows="2" maxlength="200" placeholder="${g.act ? '' : '다음 시간에 5분 동안 할 일(무엇을·어떻게)'}" aria-label="${v.no}번 ${esc(g.why)} 5분 보충 활동">${esc(g.act)}</textarea></label>
     </li>`;
 }
 function itemHTML(v, busy) {
@@ -111,8 +111,12 @@ document.addEventListener('change', e => {
   if (!box || !box.contains(el) || !inStep(4) || !el.dataset || !el.dataset.miss) return;
   const [no, i] = el.dataset.miss.split('-').map(Number), t = cur();
   if (!t) return;
-  const next = setAct(t, no, i, el.value);
-  if (next === t.miss) return;
+  const next = setAct(t, no, i, el.value, el.dataset.missId);
+  if (next === t.miss) {
+    // 쓰는 동안 그 묶음이 없어짐(다시 묶기) — 엉뚱한 묶음에 쓰지 않고 알림
+    if (el.dataset.missId != null && missView(t).find(x => x.no === no) && !missView(t).find(x => x.no === no).groups.some(g => groupId(g) === el.dataset.missId)) { toast('묶음이 바뀌어 활동을 저장하지 못했어요. 다시 써 주세요.', 5000); refresh(t.id); }
+    return;
+  }
   t.miss = next;
   saveOrWarn(t);
   const tag = el.closest('.un-miss-g') && el.closest('.un-miss-g').querySelector('.un-miss-tag');

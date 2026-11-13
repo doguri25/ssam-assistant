@@ -2,7 +2,7 @@
 // 단답·서술형은 AI가 까닭으로(임시 번호 a1·a2만 보냄), 묶음마다 5분 활동, 선생님이 고친 활동은 다시 묶어도 남음, 다시 채점하면 그 문항 묶음은 낡음
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { wrongOf, appGroups, missTargets, missSig, missRequest, normMiss, missGot, mergeItem, missView, setAct, missText, BLANK, OTHER, PENDING } from '../../web/menus/evaluate/unit/unit-miss.js';
+import { wrongOf, appGroups, missTargets, missSig, missRequest, normMiss, missGot, mergeItem, missView, setAct, missText, groupId, BLANK, OTHER, PENDING } from '../../web/menus/evaluate/unit/unit-miss.js';
 import { missPrompt } from '../../web/menus/evaluate/unit/unit-ai.js';
 import { missDoc } from '../../web/menus/evaluate/unit/unit-docs.js';
 
@@ -227,4 +227,29 @@ test('쌤 채팅 안내: 「틀린 까닭」이 어디 있는지 찾음', async 
   for (const q of ['틀린 까닭은 어디서 봐?', '오답 유형 묶기 어떻게 해?', '5분 보충 활동 만들어 줘']) assert.equal((searchGuide(q)[0] || {}).id, 'unit-miss', `${q}: ${JSON.stringify(searchGuide(q).map(h => [h.id, h.score]))}`);
   const a = offlineAnswer('틀린 까닭 어디 있어?');
   assert.ok(a.text.includes('4단계') && a.text.includes('틀린 까닭 묶기') && a.text.includes('번호·이름은 보내지 않아요') && a.go.includes('unit'), a.text);
+});
+
+test('활동 칸은 묶음 열쇠로 맞춤: AI가 묶은 뒤 차례가 바뀌어도 쓰던 묶음에(검토 #1), 없는 열쇠는 쓰지 않음', () => {
+  const t = T(), it2 = it(t, 2);
+  const blank = missView(t).find(x => x.no === 2).groups[0];
+  assert.equal(blank.why, BLANK);
+  const id = groupId(blank);
+  // AI가 묶어 「받아올림을 빠뜨림」이 앞에 옴(선생님은 그 전에 「답을 쓰지 않음」 칸(0번째)에 쓰던 중)
+  t.miss = { at: 1, items: { 2: { groups: [{ why: '받아올림을 빠뜨림', nos: [17, 44], act: 'AI 활동', src: 'ai' }, { ...blank }], sig: missSig(t, it2), ai: true } } };
+  t.miss = setAct(t, 2, 0, '답 칸을 끝까지 확인하기', id);
+  const g = t.miss.items[2].groups;
+  assert.deepEqual(g.map(x => [x.why, x.act, x.src]), [['받아올림을 빠뜨림', 'AI 활동', 'ai'], [BLANK, '답 칸을 끝까지 확인하기', 'manual']]);
+  const before = t.miss;
+  assert.equal(setAct(t, 2, 0, 'x', 'w:없는 묶음'), before, '열쇠가 맞는 묶음이 없으면 그대로');
+  assert.notEqual(groupId({ key: 'a:1', why: '①을 고름' }), groupId({ why: '①을 고름' }));
+});
+
+test('AI에 보내는 앱 묶음 이름도 이름을 가림(알아볼 수 없는 고르기 답 「김하늘이 말한 것」, 검토 #4)', () => {
+  const t = T();
+  t.students.find(s => s.no === 17).items[1] = C('김하늘이 말한 것', 0);
+  const req = missRequest(t);
+  const txt = JSON.stringify(req.items);
+  assert.ok(!txt.includes('김하늘'), txt.slice(0, 400));
+  // 화면 묶음 이름은 선생님이 보는 것이라 그대로
+  assert.ok(missView(t).find(x => x.no === 1).groups.some(g => g.why.includes('김하늘')));
 });

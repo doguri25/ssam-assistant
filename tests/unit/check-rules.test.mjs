@@ -230,3 +230,26 @@ test('checkItems: 글마다 표시 + 같은 문장(다른 학생 번호) + 모�
   assert.equal(r.groups.length, 1);
   assert.deepEqual(r.byKind, { ban: 1, neg: 0, name: 0, dup: 2, len: 0 });
 });
+
+test('대회: 교내·학교·학급 경시·경연대회는 그대로, 「학교 밖」「학교 대표로 나간」 대회 수상은 표시(검토 #2)', () => {
+  for (const x of ['교내 경시대회에 참가함.', '학교 경시대회에서 금상을 받음.', '학급 경연대회에서 친구들과 협동함.']) assert.deepEqual(checkText(x).filter(i => i.kind === 'ban'), [], x);
+  for (const x of ['학교 밖 수영 대회에서 금상을 받음.', '방학 중 학교 밖 미술 대회에서 대상을 받음.', '학교 대표로 참가한 수원시 과학 경진 대회에서 금상을 받음.'])
+    assert.ok(checkText(x).some(i => i.kind === 'ban'), x);
+});
+
+test('흔한 말 더: 「구구단 2단을 따라 외움」「고려대장경」은 그대로(검토 #7)', () => {
+  for (const x of ['구구단 2단을 따라 외우며 곱셈의 뜻을 익힘.', '고려대장경을 조사하여 발표함.']) assert.deepEqual(checkText(x), [], x);
+  assert.ok(checkText('고려대학교 견학에서 느낀 점을 씀.').some(i => i.kind === 'ban'));
+  assert.ok(checkText('태권도 2단을 땄음.').some(i => i.kind === 'ban'));
+});
+
+test('같은 문장: dup:false인 글(고르지 않은 행특 후보)은 견주지 않음(검토 #7)', () => {
+  const s = '친구의 말을 귀 기울여 듣고 자기 생각을 차분하게 말함.';
+  const r = checkItems([
+    { id: 'a', who: 1, group: 'hk', text: s },
+    { id: 'b', who: 2, group: 'hk', text: s, dup: false }
+  ]);
+  assert.ok(r.list.every(x => x.issues.every(i => i.kind !== 'dup')), JSON.stringify(r.list.map(x => x.issues)));
+  const r2 = checkItems([{ id: 'a', who: 1, group: 'hk', text: s }, { id: 'b', who: 2, group: 'hk', text: s }]);
+  assert.ok(r2.list.every(x => x.issues.some(i => i.kind === 'dup')), '둘 다 견주면 같은 문장');
+});

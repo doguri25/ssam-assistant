@@ -604,7 +604,7 @@ document.addEventListener('click', async e => {
     if (F.list.some(f => f.id === F.form.rec.id)) { try { await F.store.put(F.form.rec); } catch (e) { toast(QUOTA, 6000); return; } }
     F.mapOpen = false; render(); toast(rolesOk(F.form.rec.roles) ? '양식 자리를 저장했어요.' : '제목·본문·날짜 자리가 아직 비어 있어요.', 4000);
   } else if (a === 'delForm' && F.form) {
-    try { await F.store.del(F.form.rec.id); F.list = await F.store.list(); } catch (e) { toast('양식을 지우지 못했어요. 다시 눌러 주세요.', 5000); return; }
+    try { await F.store.del(F.form.rec.id); F.list = await F.store.list(); } catch (e) { toast(e && e.code === 'DEMO' ? e.message : '양식을 지우지 못했어요. 다시 눌러 주세요.', 5000); return; }
     await selectForm('');
     toast('양식을 지웠어요.');
   } else if (a === 'write') write();

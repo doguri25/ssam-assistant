@@ -124,7 +124,8 @@ export function missRequest(t, items = missTargets(t)) {
     const { groups, rest } = appGroups(t, it);
     return {
       no: it.no, content: itemName(it), type: it.type, answer: String(it.answer || ''), criteria: String(it.criteria || ''), points: full(it),
-      groups: groups.map(x => { const id = `g${++g}`; gs[id] = { item: it.no, key: x.key }; return { id, why: x.why, n: x.nos.length }; }),
+      // 앱 묶음 이름도 이름처럼 보이는 말은 가림(알아볼 수 없는 답 「「김하늘이 말한 것」라고 씀」 — 화면에는 그대로)
+      groups: groups.map(x => { const id = `g${++g}`; gs[id] = { item: it.no, key: x.key }; return { id, why: maskPersons(x.why).text, n: x.nos.length }; }),
       answers: rest.map(r => { const id = `a${++a}`; ids[id] = { item: it.no, no: r.no }; return { id, text: clip(maskPersons(r.read).text, 160), part: r.pts > 0 }; })
     };
   });
@@ -212,11 +213,16 @@ export function missView(t) {
   }).sort((a, b) => (b.groups.length + (b.pending.length ? 1 : 0)) - (a.groups.length + (a.pending.length ? 1 : 0)) || b.n - a.n || a.no - b.no);
 }
 
-/* 활동 칸 고치기 → 새 miss. 저장 전 문항이면 지금 묶음으로 저장(지금 지문), 저장한 문항이면 지문 그대로(낡은 표시가 남게). 없는 묶음이면 그대로 */
-export function setAct(t, no, idx, text) {
+/* 묶음 열쇠: 앱 묶음은 key, AI 묶음은 까닭 글 — 활동 칸이 쓰는 동안 차례가 바뀌어도(AI가 묶어 앞에 옴) 그 묶음을 찾게 */
+export const groupId = g => (g && g.key ? 'k:' + g.key : 'w:' + String((g && g.why) || ''));
+/* 활동 칸 고치기 → 새 miss. 저장 전 문항이면 지금 묶음으로 저장(지금 지문), 저장한 문항이면 지문 그대로(낡은 표시가 남게). 없는 묶음이면 그대로.
+   id(groupId)를 주면 그 열쇠의 묶음에(차례 idx는 보지 않음), 그런 묶음이 없으면 쓰지 않음 */
+export function setAct(t, no, idx, text, id) {
   const v = missView(t).find(x => x.no === Number(no)), s = savedOf(t, no);
-  if (!v || !v.groups[idx]) return t.miss;
-  const groups = v.groups.map((g, i) => (i === Number(idx) ? { ...g, act: clip(text, ACT_MAX), src: 'manual' } : { ...g }));
+  if (!v) return t.miss;
+  const at = id != null ? v.groups.findIndex(g => groupId(g) === id) : Number(idx);
+  if (!v.groups[at]) return t.miss;
+  const groups = v.groups.map((g, i) => (i === at ? { ...g, act: clip(text, ACT_MAX), src: 'manual' } : { ...g }));
   const items = { ...((t.miss && t.miss.items && typeof t.miss.items === 'object') ? t.miss.items : {}) };
   items[no] = { groups: groups.map(clean), sig: s ? s.sig : missSig(t, v.it), ai: s ? !!s.ai : false };
   return { at: Date.now(), items };

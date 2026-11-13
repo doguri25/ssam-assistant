@@ -817,7 +817,7 @@ async function addForm(doc, file) {
 async function delForm(doc) {
   const c = cur(), id = c && c.forms[doc];
   if (!id) return;
-  try { if (!F.store) F.store = await forms(NS); await F.store.del(id); F.list = await F.store.list(); } catch (e) { toast('양식을 지우지 못했어요. 다시 눌러 주세요.', 5000); return; }
+  try { if (!F.store) F.store = await forms(NS); await F.store.del(id); F.list = await F.store.list(); } catch (e) { toast(e && e.code === 'DEMO' ? e.message : '양식을 지우지 못했어요. 다시 눌러 주세요.', 5000); return; }
   // 이 양식을 고른 다른 캠프도 기본 양식으로
   for (const x of M.listCamps()) if (Object.values(x.forms).includes(id)) { for (const d of M.DOC_IDS) if (x.forms[d] === id) x.forms[d] = ''; M.saveCamp(x); }
   render(); toast('양식을 지웠어요. 기본 양식으로 만들어요.');

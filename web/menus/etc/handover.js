@@ -304,7 +304,7 @@ document.addEventListener('click', async e => {
     F.mapOpen = false; F.mapSel = -1; drawForms();
     toast(formRolesOk(F.form.rec.roles) ? '양식 자리를 저장했어요.' : '제목·본문 자리가 아직 비어 있어요.', 4000);
   } else if (a === 'delForm' && F.form) {
-    if (!F.form.temp) { try { await F.store.del(F.form.rec.id); F.list = await F.store.list(); } catch (er) { toast('양식을 지우지 못했어요. 다시 눌러 주세요.', 5000); return; } }
+    if (!F.form.temp) { try { await F.store.del(F.form.rec.id); F.list = await F.store.list(); } catch (er) { toast(er && er.code === 'DEMO' ? er.message : '양식을 지우지 못했어요. 다시 눌러 주세요.', 5000); return; } }
     await selectForm('');
     toast('양식을 지웠어요.');
   }

@@ -6019,7 +6019,6 @@ storeReady.then(() => setTimeout(() => {
 const ckRef = (...p) => p.map(x => encodeURIComponent(x)).join(':');
 const ckParse = ref => String(ref || '').split(':').map(decodeURIComponent);
 const ckPick = (list, i, from, f = 't') => (list[i] && list[i][f] === from ? list[i] : list.find(o => o && o[f] === from)) || null;
-const grLenFor = unitId => { const u = unitId && unitById(unitId); return u || S.settings.len !== 'auto' ? lengthRange(u || { crit: {} }) : [50, 75]; };
 async function checkItems() {
   await storeReady;
   await Promise.all([planReady, HKStore.ready, ccReady, classReady].map(p => Promise.resolve(p).catch(() => {})));
@@ -6044,23 +6043,26 @@ async function checkItems() {
       if (pt && pt.t) out.push({ ref: ckRef('cc', a.k, no, act.id), src: 'cc', label: `창의적 체험활동 · ${a.name} · ${no}번${acts.length > 1 ? ' · ' + ((act.name || '').trim() || '활동') : ''}`, who: no, group: 'cc:' + a.k, text: pt.t });
     }
   }
-  // 행특: 고른 글·후보, 한도는 행특 설정(글자 수·나이스 바이트)
-  for (const s of hkShown()) (s.results || []).forEach((r, i) => {
-    if (r && r.t) out.push({ ref: ckRef('hk', s.id, i), src: 'hk', label: `행동특성 · ${s.no}번${s.results.length > 1 ? (r.d ? ' · 고른 글' : ` · 후보 ${i + 1}`) : ''}`, who: s.no, group: 'hk', text: r.t, limit: { max: HK.settings.max, unit: HK.settings.unit } });
-  });
-  // 평가지 채점: 기록마다(지금 연 기록은 화면의 것), 한도는 그 화면이 표시하는 평어 길이
+  // 행특: 고른 글·후보, 한도는 행특 설정(글자 수·나이스 바이트). 고른 글이 있으면 고르지 않은 후보는 같은 문장 견주기에서 뺌
+  for (const s of hkShown()) {
+    const chosen = (s.results || []).some(r => r && r.d);
+    (s.results || []).forEach((r, i) => {
+      if (r && r.t) out.push({ ref: ckRef('hk', s.id, i), src: 'hk', label: `행동특성 · ${s.no}번${s.results.length > 1 ? (r.d ? ' · 고른 글' : ` · 후보 ${i + 1}`) : ''}`, who: s.no, group: 'hk', text: r.t, limit: { max: HK.settings.max, unit: HK.settings.unit }, ...(chosen && !r.d ? { dup: false } : {}) });
+    });
+  }
+  // 평가지 채점: 기록마다(지금 연 기록은 화면의 것). 그 화면의 평어 길이는 AI에 주는 목표(권장)라 최대 글자 수로 치지 않음(대부분이 조금 넘어 표시가 늘 뜨던 것)
   await GRStore.list();
   for (const h of GR.history) {
     const open = h.id === GR.id, b = open ? null : await GRStore.get(h.id);
     const list = open ? GR.students : ((b && b.students) || []);
-    const hi = grLenFor(open ? GR.unitId : b && b.unitId)[1];
-    for (const s of list) if (!s.skip && s.text) out.push({ ref: ckRef('gr', h.id, s.id), src: 'gr', label: `평가지 채점 · ${h.title || '수행평가'} · ${s.no > 0 ? s.no + '번' : '번호 없음'}`, who: s.no > 0 ? s.no : null, group: 'gr:' + h.id, text: s.text, limit: { max: hi, unit: 'char' } });
+    for (const s of list) if (!s.skip && s.text) out.push({ ref: ckRef('gr', h.id, s.id), src: 'gr', label: `평가지 채점 · ${h.title || '수행평가'} · ${s.no > 0 ? s.no + '번' : '번호 없음'}`, who: s.no > 0 ? s.no : null, group: 'gr:' + h.id, text: s.text });
   }
   return out;
 }
 async function checkApply(ref, from, to) {
   const p = ckParse(ref), t = String(to == null ? '' : to).replace(/\s+/g, ' ').trim();
-  if (!t || S.wiping) return false;
+  // 대명사 줄이기가 도는 중이면 쓰지 않음(그 일이 들고 있던 옛 글로 끝날 때 덮어씀)
+  if (!t || S.wiping || (typeof PRON !== 'undefined' && PRON.busy)) return false;
   if (p[0] === 'py') {
     const [, pid, uid, lv, i] = p, key = setKey(uid, lv), cur = pid === S.planId;
     const sets = cur ? S.sets : await Store.loadSets(pid), set = cur ? getSet(uid, lv) : sets.get(key);
@@ -6189,6 +6191,7 @@ window.SSAM = {
   },
   // 생기부 기재 점검(check/check.js): 글 모으기·고친 글 쓰기·그 글로 가기 (위 「생기부 기재 점검 다리」)
   evalCheck: { items: checkItems, apply: checkApply, show: checkShow },
+  storeMode: () => Store.mode, // 둘러보기: 평가 자료가 계정 저장소(db)면 체험 학년도로 나뉘지 않음
   // 평가지 채점 한꺼번에 넣기(gr-bundle.js)
   gr: { putBundle: b => grPutBundle(b), refresh: () => { if (S.mode === 'gr') renderGRSetup(); }, mask: () => (GR.settings.maskOn ? GR.settings.mask : []) },
   // 평가 영역 이음(활동지·단원평가 → 평가지 채점): 지금 평가계획의 영역 [{ id, subject, label }]

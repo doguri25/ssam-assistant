@@ -23,11 +23,14 @@ const WHY = {
   masked: '가린 이름(○○)은 빼요'
 };
 
-/* 문장 안에서 이 자리 앞에 학교 안 활동이라는 말(교내·학교·학급·학년·우리 반)이 있는지 */
+/* 문장 안에서 이 자리까지(맞은 글 포함 — 「학교 경시대회」의 학교도) 학교 안 활동이라는 말(교내·학교·학급·학년·우리 반)이 있는지.
+   「학교 밖」「학교 외」「학교 대표로」「교외」가 있으면 학교 밖 대회로 봄 */
 const SCHOOL = /교내|학교|학급|학년|우리\s?반|반\s?대항|학생\s?자치|운동회|체육\s?대회|학예회|교실/;
+const OUTSIDE = /학교\s?(?:밖|외|대표)|교외/;
 function inSchool(text, m) {
   const head = text.slice(0, m.index), cut = Math.max(head.lastIndexOf('.'), head.lastIndexOf('!'), head.lastIndexOf('?'), head.lastIndexOf('\n'));
-  return SCHOOL.test(head.slice(cut + 1));
+  const seg = text.slice(cut + 1, m.index + m[0].length);
+  return !OUTSIDE.test(seg) && SCHOOL.test(seg);
 }
 // 이름 없는 기관(「역사박물관」「어린이박물관」「국립박물관」)의 앞말
 const GENERIC = new Set(('학교 교내 우리 마을 동네 지역 어린이 작은 학급 시립 구립 국립 공립 도립 과학 역사 미술 자연사 민속 전통 생태 해양 농업 곤충 우주 교육 청소년 '
@@ -53,7 +56,7 @@ const BAN = [
   ['cert', /토익|토플|텝스|토셀|오픽|아이엘츠|컴활|컴퓨터\s?활용\s?능력|워드\s?프로세서\s?자격|정보처리\s?기능사|한자\s?(?:능력|급수)|한국사\s?능력|한국어\s?능력\s?시험|국가\s?공인|(?:수학|영어|한자|독서)\s?인증/g],
   ['cert', /\b(?:TOEIC|TOEFL|TEPS|TOSEL|HSK|JLPT|JPT|IELTS|OPIc|ITQ|MOS|DIAT|TOPIK)\b/gi],
   ['cert', /(?:태권도|검도|합기도|유도|바둑|주산|암산)\s?(?:[가-힣]{1,4}\s)?\d+\s?(?:급|단|품)/g],
-  ['cert', /\d+\s?(?:급|단|품)\s?(?:을|를|에)?\s?(?:취득|획득|합격|땄|땀|딴|따)/g],
+  ['cert', /\d+\s?(?:급|단|품)\s?(?:을|를|에)?\s?(?:취득|획득|합격|땄|땀|딴|따(?![라르로]))/g],
   // 사교육
   ['private', /(?<![대과])학원|과외(?!\s?(?:활동|시간))|사교육|선행\s?학습|교습소|공부방|레슨|인강|인터넷\s?강의|(?:방문\s?)?학습지\s?(?:선생님|교사|회원|수업)|방문\s?학습지?/g],
   ['private', /구몬|눈높이\s?(?:수학|영어|국어|학습|교육)|빨간펜|씽크빅|윙크\s?학습|밀크T|엘리하이|홈런\s?학습|아이스크림\s?홈런|튼튼영어|웅진\s?(?:학습|씽크빅)|재능\s?(?:교육|학습지)/g],
@@ -69,7 +72,7 @@ const BAN = [
   // 장학금
   ['scholar', /장학금|장학생|장학\s?재단|장학\s?증서/g],
   // 특정 대학·기관·상호 이름
-  ['inst', /[가-힣]{2,8}대학교|(?:서울대(?!공원)|연세대|고려대|카이스트|포스텍|하버드)|\b(?:KAIST|POSTECH|MIT)\b|영재\s?교육원|영재원/g],
+  ['inst', /[가-힣]{2,8}대학교|(?:서울대(?!공원)|연세대|고려대(?!장경)|카이스트|포스텍|하버드)|\b(?:KAIST|POSTECH|MIT)\b|영재\s?교육원|영재원/g],
   ['inst', /([가-힣]{2,10})(박물관|과학관|미술관|기념관|천문대|연구소|연구원|재단|협회|복지관|수련원|수련관)/g, { keep: named }],
   ['inst', /유튜브|유튜버|틱톡|인스타그램|페이스북|카카오톡|카톡|네이버|구글|마인크래프트|로블록스|포켓몬|레고|파워포인트|엑셀|스크래치(?!\s?(?:기법|페이퍼|아트|화|북))|엔트리\s?(?:코딩|프로그램|으로|로)|아이패드|갤럭시|크롬북|미리캔버스|캔바(?!스)|패들렛|띵커벨|클래스카드|챗\s?GPT|삼성|롯데|이마트|스타벅스|맥도날드|현대자동차/g],
   ['inst', /\b(?:PPT|ChatGPT|LG)\b/g]
@@ -166,7 +169,7 @@ const MIN_KEY = 8; // 이보다 짧은 조각(「성실함.」 등)은 같은 �
 export function findDuplicates(items) {
   const by = new Map();
   for (const it of Array.isArray(items) ? items : []) {
-    if (!it || it.who == null || it.who === '') continue;
+    if (!it || it.who == null || it.who === '' || it.dup === false) continue; // dup:false — 고르지 않은 행특 후보처럼 견주지 않을 글
     for (const s of splitSentences(it.text)) {
       const key = sentenceKey(s.t);
       if (key.length < MIN_KEY) continue;
