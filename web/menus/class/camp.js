@@ -1,6 +1,7 @@
 /* 학급 › 기초학력 캠프 (스펙 2026-11-11): 캠프 목록·정보·학생 → 수업 일정([+ 줄]·[한 날 여러 교시 더하기]·[차시 수로 날짜 만들기]·[AI로 만들기]·계획서 표 그대로) → 출석 체크 →
    관찰 기록([AI로 쓰기]) → 결과 보고서([AI로 쓰기]) → 문서 4가지 내보내기(문서마다 [양식 넣기]).
    위에는 6단계 진행 표시(camp-steps.js), 출석 체크 옆에는 문서 준비 상자(스펙 2026-11-11-ui-refresh §3).
+   결과 보고서 단계 위에는 「사전·사후 점수」 카드(camp-growth.js, 스펙 2026-11-13-gap-evidence §2-2 — 단원평가 「도달하지 못한 학생」에서 넣은 사전 점수, 뒤 단원평가로 사후 자동).
    자료는 학년도 키 camp(camp-model.js), 넣은 양식은 IndexedDB forms('camp')(다른 메뉴 양식과 따로).
    AI 일(일정·관찰·보고서·양식 읽기)은 다른 메뉴·캠프로 가도 이어지고, 끝나면 시작한 캠프에 넣음. AI에는 학생 이름 대신 학생A·학생B */
 import { onEnter, go } from '../../core/shell.js';
@@ -22,6 +23,9 @@ import { readPlan, planSchedule, planPrompt, planDraft, fillCampInfo, planTable,
 import { sessionsByCount } from './camp-sched.js';
 import { weekday } from '../../core/calendar.js';
 import { STEPS, campSteps, docReadiness } from './camp-steps.js';
+import { applyAutoPost, setGrowth, growthChange, changeText } from './camp-growth.js';
+import { listTests, loadTests } from '../evaluate/unit/unit-model.js';
+import { getInfo } from './class-model.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad = n => String(n).padStart(2, '0');
@@ -213,12 +217,55 @@ function obsHTML(c) {
         <label class="yp-f"><span class="lab">관찰 및 지도 결과</span><textarea class="field" data-obs="${esc(st.id)}" rows="3">${esc(c.obs[st.id] || '')}</textarea></label></li>`; }).join('')}</ol>
     </section>`;
 }
+/* ---------- 사전·사후 점수 (스펙 2026-11-13-gap-evidence §2-2, 결과 보고서 단계 위 · 선택) ----------
+   사전: 단원평가 결과 모아 보기 「도달하지 못한 학생」에서 넣을 때 적힘. 사후: 첫 수업 날(없으면 넣은 날) 뒤 같은 교과 단원평가에서 자동(camp-growth.js).
+   칸을 고치면 직접 쓴 값이 앞섬(사후 칸을 비우면 다시 자동). 단계 상태·문서 준비와는 따로 */
+const doneUnits = () => { try { return loadTests(listTests().filter(s => s.done)); } catch (e) { return []; } };
+/* 사후 자동을 지금 단원평가에 맞춤(바뀌면 저장) — 결과 보고서·문서 내보내기를 그릴 때, 보고서 AI·내려받기 전에 */
+function withGrowth(c) {
+  if (!c || !Object.keys(c.growth || {}).length) return c;
+  const r = applyAutoPost(c, doneUnits(), { info: getInfo() });
+  return r.changed ? (M.saveCamp(r.camp) || r.camp) : c;
+}
+const preNote = e => (!e || e.pre.pct == null ? '' : e.pre.source === 'auto' ? `단원평가 ${e.pre.tests.length || 1}개` : '직접 씀');
+const postNote = e => (!e ? '' : e.post ? (e.post.source === 'manual' ? '직접 씀' : `자동 · ${(e.post.tests[0] && e.post.tests[0].title) || '단원평가'}`) : e.pre.pct != null ? '아직 없어요' : '');
+const chgClass = d => (d > 0 ? ' up' : d < 0 ? ' down' : '');
+function growthHTML(c) {
+  if (!c.students.length) return '';
+  const any = c.students.some(st => c.growth[st.id]);
+  const rows = c.students.map(st => {
+    const e = c.growth[st.id] || null, sid = esc(st.id), who = st.name || '이름 없음', lab = M.studentLabel({ ...st, name: '' }), d = growthChange(e);
+    const inp = (k, v, label, cls, extra = '') => `<input class="field ${cls}" data-gr="${sid}" data-k="${k}" value="${esc(v == null ? '' : v)}" aria-label="${esc(who)} ${label}" autocomplete="off"${extra}>`;
+    return `<tr><th scope="row"><span class="cp-gr-who">${esc(who)}</span>${lab ? `<span class="muted cp-gr-lab">${esc(lab)}</span>` : ''}</th>
+      <td data-lab="교과·영역"><div class="cp-gr-what">${inp('subject', e && e.subject, '교과', 'cp-gr-sub', ' placeholder="교과"')}${inp('area', e && e.area, '영역', 'cp-gr-area', ' placeholder="영역"')}</div></td>
+      <td data-lab="사전(%)">${inp('pre', e && e.pre.pct, '사전 점수(%)', 'num', ' inputmode="decimal"')}<span class="cp-gr-note" data-gr-note="pre">${esc(preNote(e))}</span></td>
+      <td data-lab="사후(%)">${inp('post', e && e.post && e.post.pct, '사후 점수(%)', 'num', ' inputmode="decimal"')}<span class="cp-gr-note" data-gr-note="post">${esc(postNote(e))}</span></td>
+      <td data-lab="변화" class="cp-gr-chg${chgClass(d)}" data-gr-chg="${sid}">${esc(changeText(d) || '—')}</td></tr>`;
+  }).join('');
+  return `<section class="yp-card cp-growth" aria-labelledby="cpGrowthH">
+      <div class="cls-card-h"><h3 id="cpGrowthH">사전·사후 점수</h3><span class="muted">선택</span></div>
+      <p class="muted" style="margin:0">${any ? '' : '평가 › 단원평가 › 결과 모아 보기 › 「도달하지 못한 학생」에서 학생을 넣으면 사전 점수가 들어와요. 직접 써도 돼요. '}사후 점수는 첫 수업 날 뒤에 본 같은 교과 단원평가에서 저절로 채워요. 칸을 고치면 직접 쓴 점수가 앞서요(사후 칸을 비우면 다시 자동).</p>
+      <div class="cp-tbl-wrap"><table class="cp-tbl cp-growth-t"><thead><tr><th scope="col">학생</th><th scope="col">교과·영역</th><th scope="col">사전(%)</th><th scope="col">사후(%)</th><th scope="col">변화</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <p class="muted" style="margin:0">[AI로 쓰기]에 이 점수를 학생A·학생B로 보내 운영 성과에 그대로 쓰고, 결과 보고서 문서 끝에 「사전·사후 성취」 표로 넣어요.</p>
+    </section>`;
+}
+/* 칸에 치는 동안: 그 학생 줄의 변화·안내 글만 바꿈 */
+function paintGrowth(c, sid) {
+  const cell = box && box.querySelector(`[data-gr-chg="${CSS.escape(sid)}"]`);
+  if (!cell) return;
+  const e = c.growth[sid] || null, d = growthChange(e), tr = cell.closest('tr');
+  cell.textContent = changeText(d) || '—';
+  cell.className = `cp-gr-chg${chgClass(d)}`;
+  tr.querySelector('[data-gr-note="pre"]').textContent = preNote(e);
+  tr.querySelector('[data-gr-note="post"]').textContent = postNote(e);
+}
+
 const formOf = id => F.list.find(f => f.id === id) || null;
 const reportLayout = c => { const f = formOf(c.forms.report); return (f && f.layout) || null; };
 function reportHTML(c) {
   const k = `${c.id}:report`, r = c.report, heads = reportHeads(c, reportLayout(c));
   const note = r.kind === 'select' ? '사업선택제 [서식 2] · 2쪽 이내' : r.kind === 'lead' ? '이끎교사 [서식 1] · 5쪽 이상' : reportLayout(c) && reportLayout(c).heads.length ? '넣은 결과 보고서 양식의 글 머리를 따라요' : '결과 보고서 양식을 [문서 내보내기]에서 넣으면 그 글 머리를 따라요. 지금은 사업선택제 글 머리로 써요';
-  return `<section class="yp-card">
+  return `${growthHTML(c)}<section class="yp-card">
       <div class="yp-f"><span class="lab">보고서 꼴</span><div class="seg" role="group" aria-label="보고서 꼴">${M.REPORT_KINDS.map(([id, l]) => `<button type="button" data-rkind="${id}" aria-pressed="${r.kind === id}">${l}</button>`).join('')}</div>
         <p class="muted" style="margin:0">${esc(note)} · 글 머리: ${heads.map(h => `「${esc(h)}」`).join(' ')}</p></div>
       <label class="yp-f"><span class="lab">목적·성과 메모</span><textarea class="field" id="cpRPrompt" rows="4" placeholder="예) 받아쓰기 평균 60점 → 85점, 수학 연산 속도가 빨라짐, 학생 스스로 학습 습관">${esc(r.prompt)}</textarea></label>
@@ -301,7 +348,7 @@ export function render() {
   if (!visible()) return;
   stale = false;
   const sel = focusSel(document.activeElement);
-  const camps = M.listCamps(), c = cur();
+  const c = sec === 'report' || sec === 'docs' ? withGrowth(cur()) : cur(), camps = M.listCamps(); // 사후 점수 자동(보고서·문서에 씀)
   const aw = box.querySelector('.cp-all-wrap'), keepX = aw ? aw.scrollLeft : null; // 한눈에 표: 칸을 눌러 다시 그려도 보던 자리 그대로
   keepFiles(box, () => { box.innerHTML = pageHTML(camps, c); });
   const aw2 = box.querySelector('.cp-all-wrap');
@@ -697,7 +744,7 @@ function reportAi() {
 async function runReport(id) {
   const k = `${id}:report`;
   if (busy[k]) return;
-  const c0 = M.getCamp(id);
+  const c0 = withGrowth(M.getCamp(id)); // 사전·사후 점수는 지금 단원평가로 맞춘 뒤 보냄
   if (!c0) return;
   busy[k] = true; redraw();
   const layout = reportLayout(c0), heads = reportHeads(c0, layout), was = JSON.stringify(c0.report.sections);
@@ -778,7 +825,7 @@ async function delForm(doc) {
 
 /* ---------- 내려받기 ---------- */
 async function exportCampDoc(doc) {
-  const c = cur();
+  const c = doc === 'report' ? withGrowth(cur()) : cur();
   if (!c) return;
   if (!F.store) await loadForms();
   const f = formOf(c.forms[doc]), name = docTitle(doc, c);
@@ -833,9 +880,11 @@ function onInput(el) {
   else if (el.id === 'cpRTitle') c.report.title = el.value;
   else if (el.dataset.rh != null) { const s = c.report.sections[+el.dataset.rh]; if (s) s.head = el.value; }
   else if (el.dataset.rt != null) { const s = c.report.sections[+el.dataset.rt]; if (s) s.text = el.value; }
+  else if (el.dataset.gr) { const n = setGrowth(c, el.dataset.gr, el.dataset.k, el.value, { date: today() }); if (n === c) return; c.growth = n.growth; } // 숫자가 아니면 저장하지 않음(칸을 벗어나면 저장한 값으로)
   else return;
   const saved = save(c);
   if (saved) paintSteps(saved);
+  if (saved && el.dataset.gr) paintGrowth(saved, el.dataset.gr);
 }
 function onClick(e) {
   const t = e.target;
@@ -865,11 +914,11 @@ function onClick(e) {
       const x = cur();
       x.students = x.students.filter(y => y.id !== id);
       for (const r of Object.values(x.att)) delete r[id];
-      delete x.memo[id]; delete x.obs[id]; delete x.obsEdited[id];
+      delete x.memo[id]; delete x.obs[id]; delete x.obsEdited[id]; delete x.growth[id];
       if (save(x)) render();
     };
-    const has = Object.values(c.att).some(r => r[id]) || (c.memo[id] || '').trim() || (c.obs[id] || '').trim();
-    if (has) ask(`「${st.name || '이름 없는 학생'}」 빼기`, '이 학생의 출석 체크·메모·관찰 기록도 지워져요.', [['go', '빼기', true]], drop); else drop();
+    const has = Object.values(c.att).some(r => r[id]) || (c.memo[id] || '').trim() || (c.obs[id] || '').trim() || c.growth[id];
+    if (has) ask(`「${st.name || '이름 없는 학생'}」 빼기`, '이 학생의 출석 체크·메모·관찰 기록·사전·사후 점수도 지워져요.', [['go', '빼기', true]], drop); else drop();
   }
   else if (a === 'addRow') addRow();
   else if (a === 'delRow') { c.sessions = c.sessions.filter(x => x.id !== b.dataset.id); delete c.att[b.dataset.id]; if (save(c)) render(); }
@@ -913,6 +962,12 @@ document.addEventListener('change', e => {
   if (m) { const f = el.files[0]; el.value = ''; if (f) addForm(m[1], f); return; }
   // 학생 칸(학년·반·번호)은 칸을 벗어나면 정리한 값으로
   if (el.dataset.st && el.dataset.k !== 'name') { const c = cur(), s = c && c.students.find(x => x.id === el.dataset.st); if (s) el.value = s[el.dataset.k] == null ? '' : s[el.dataset.k]; }
+  // 사전·사후 점수 칸도 저장한 값으로(「78%」→ 78), 사후 칸을 비웠으면 칸을 벗어난 뒤 다시 그려 자동 점수를 보여 줌
+  if (el.dataset.gr && (el.dataset.k === 'pre' || el.dataset.k === 'post')) {
+    const c = cur(), e = c && c.growth[el.dataset.gr], v = e ? (el.dataset.k === 'pre' ? e.pre.pct : e.post && e.post.pct) : null;
+    el.value = v == null ? '' : v;
+    if (el.dataset.k === 'post' && v == null) redraw();
+  }
 });
 document.addEventListener('toggle', e => {
   const d = e.target;

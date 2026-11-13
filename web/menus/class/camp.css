@@ -92,6 +92,29 @@
 .cp-ob:first-child{border-top:0;padding-top:0}
 .cp-ob-h{display:flex;align-items:baseline;gap:4px 10px;flex-wrap:wrap}
 .cp-ob textarea.field{min-height:0;font-size:13.5px}
+/* 사전·사후 점수(결과 보고서 단계 위): 넓으면 표, 좁으면 학생마다 두 줄(칸 이름은 data-lab). 변화는 ▲·▼ 글자와 색 함께 */
+.cp-growth-t th,.cp-growth-t td{border-bottom:1px solid var(--line);padding:6px 4px;vertical-align:top}
+.cp-growth-t tbody th{font-weight:600;font-size:13.5px;white-space:nowrap;padding-top:12px}
+.cp-gr-lab{display:block;font-size:12px;font-weight:400}
+.cp-growth-t .field{min-height:44px}
+.cp-gr-what{display:flex;gap:6px;min-width:0}
+.cp-gr-what .cp-gr-sub{flex:0 0 76px}
+.cp-gr-what .cp-gr-area{flex:1 1 130px;min-width:96px}
+.cp-growth-t .field.num{width:76px;text-align:right;font-variant-numeric:tabular-nums}
+.cp-gr-note{display:block;margin-top:3px;font-size:12px;line-height:1.35;color:var(--ink3);max-width:15em;overflow-wrap:anywhere}
+.cp-growth-t td.cp-gr-chg{white-space:nowrap;font-weight:700;font-variant-numeric:tabular-nums;padding-top:14px}
+.cp-gr-chg.up{color:var(--ok)}
+.cp-gr-chg.down{color:var(--warn)}
+@media (max-width:640px){
+  .cp-growth-t thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .cp-growth-t,.cp-growth-t tbody,.cp-growth-t th,.cp-growth-t td{display:block}
+  .cp-growth-t tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:6px 10px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .cp-growth-t tbody th,.cp-growth-t td[data-lab="교과·영역"]{grid-column:1/-1}
+  .cp-growth-t tbody th,.cp-growth-t td{border-bottom:0;padding:0}
+  .cp-growth-t td[data-lab]::before{content:attr(data-lab);display:block;margin-bottom:2px;font-size:12px;color:var(--ink3);font-weight:400}
+  .cp-growth-t .field.num{width:100%}
+  .cp-growth-t td.cp-gr-chg{padding-top:0;display:flex;flex-direction:column;justify-content:flex-start}
+}
 /* 결과 보고서 */
 .cp-rsec{display:flex;flex-direction:column;gap:6px}
 .cp-rsec .row .field{min-width:0;font-weight:600}

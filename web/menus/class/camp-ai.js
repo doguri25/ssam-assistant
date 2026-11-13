@@ -5,6 +5,7 @@
 import { isDate, weekday, yearOfMonth, addDays, HOLIDAYS } from '../../core/calendar.js';
 import { toAlias, aliasMap, attStats, hoursTotal, campDates, sortSessions, expandDates, periodSlots, normTime, newSession, REPORT_HEADS, REPORT_KINDS } from './camp-model.js';
 import { DOC_LABEL } from './camp-docs.js';
+import { growthLines } from './camp-growth.js';
 
 const str = v => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
@@ -212,12 +213,15 @@ export function reportPrompt(camp, layout = null) {
   const heads = reportHeads(camp, layout), al = aliasMap(camp);
   const kind = (REPORT_KINDS.find(k => k[0] === camp.report.kind) || REPORT_KINDS[0])[1];
   const obs = camp.students.map(st => [al[st.id], clip(oneLine(toAlias(camp.obs[st.id], camp)), 200)]).filter(([, t]) => t);
+  // 사전·사후 점수(단원평가 영역 점수율·직접 넣은 점수): 학생A · 수학 수와 연산 45% → 78%(+33)
+  const growth = camp.growth ? growthLines(camp) : [], outcome = heads.find(h => /성과|결과/.test(h)) || '운영 성과';
   return ['[기초학력 결과 보고서]',
     `${kind}를 씁니다. ${KIND_NOTE[camp.report.kind] || KIND_NOTE.select}`,
     campLine(camp),
     `출석: ${camp.students.map(st => `${al[st.id]} ${attLine(camp, st).replace(/^출석 /, '')}`).join(', ') || '(학생 없음)'}`,
     `지도 내용(간추림): ${contentSummary(camp, 1500)}`,
     obs.length ? `관찰 및 지도 결과(간추림): ${obs.map(([a, t]) => `${a}: ${t}`).join(' / ')}` : '',
+    ...(growth.length ? ['', '[사전·사후 점수]', ...growth.map(l => `- ${l}`)] : []),
     '',
     '[선생님 메모(목적·성과)]', clip(toAlias(camp.report.prompt, camp), 3000) || '(없음)',
     '',
@@ -225,6 +229,7 @@ export function reportPrompt(camp, layout = null) {
     `- sections는 이 글 머리 차례대로: ${heads.map(h => `「${h}」`).join(' ')}`,
     '- 공문서 말투(~함, ~임). 줄마다 「- 」로 시작하는 짧은 개조식으로 씁니다.',
     '- 학생은 이름 대신 학생A·학생B로 씁니다(예: (학생A) 받아쓰기 60점 → 85점).',
+    ...(growth.length ? [`- [사전·사후 점수]는 「${outcome}」에 숫자 그대로 씁니다. 숫자를 바꾸거나 없는 점수를 지어내지 않습니다.`] : []),
     '- 선생님 메모·자료에 없는 숫자·성과·만족도는 지어내지 않습니다. 지도교사 이름은 쓰지 않습니다.',
     '',
     '[출력] JSON 하나만:',

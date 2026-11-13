@@ -110,6 +110,20 @@ section[data-menu="evaluate"].ev-new > :not(.unit-box):not(.act-box){display:non
 .un-sumt tbody th{text-align:left}
 .un-sumt tr.avg{font-weight:700;background:var(--surface2)}
 .un-weaklist{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px}
+/* 도달하지 못한 학생(unit-gap-card.js): 줄마다 체크 칸 44px, 좁으면 글이 줄바꿈 */
+.un-gap-list{display:flex;flex-direction:column;gap:10px;min-width:0}
+.un-gap-bar{gap:6px 8px}
+.un-gaps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.un-gap-i{border-top:1px solid var(--line)}
+.un-gap-i:last-child{border-bottom:1px solid var(--line)}
+.un-gap-i label{display:flex;align-items:center;gap:10px;min-height:44px;padding:4px 2px;cursor:pointer}
+.un-gap-i input[type="checkbox"],.un-gap-opt input[type="radio"]{flex:none;width:20px;height:20px;margin:0;accent-color:var(--accent)}
+.un-gap-t{min-width:0;overflow-wrap:anywhere;line-height:1.45}
+.un-gap-pick{display:flex;flex-direction:column;gap:2px;margin:4px 0}
+.un-gap-opt{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;min-height:44px;cursor:pointer}
+.un-gap-new{margin:4px 0 0 30px}
+.un-gap-new[hidden]{display:none}
+.un-gap-new .field{width:100%;box-sizing:border-box;min-width:0}
 .un-pytests{display:flex;flex-wrap:wrap;gap:6px 16px}
 .un-pys{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .un-py{border-top:1px solid var(--line);padding-top:8px}
