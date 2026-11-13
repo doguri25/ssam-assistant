@@ -143,6 +143,17 @@ await run('home', [
     assert(await title() === '문서·소통' && await tabNow() === '다면평가', `${await title()} › ${await tabNow()}`);
     await page.click('nav.app-side [data-menu-go="home"]');
   }],
+  ['다시 들어와도 바뀐 것이 없으면 화면을 다시 그리지 않음(끌어 오던 칸·누르던 단추가 그 사이에 바뀌지 않게)', async () => {
+    await page.click('nav.app-side [data-menu-go="plan"]');
+    const kept = await page.evaluate(async () => {
+      document.querySelector('nav.app-side [data-menu-go="home"]').click();
+      const el = document.querySelector('section[data-menu="home"] .hm-drop');
+      await new Promise(r => setTimeout(r, 400)); // 브리핑을 다 모을 때까지
+      return !!el && el.isConnected;
+    });
+    assert(kept, '들어온 뒤 브리핑을 다 모으면 같은 내용으로 화면을 통째로 다시 그림');
+    assert(await page.isVisible(H) && (await page.textContent(`${H} .hm-head h2`)).startsWith('오늘 챙길 일'), '오늘 화면이 보여야 함');
+  }],
   ['파일 놓는 칸: 끌어 놓기·[파일 고르기] 모두 받는 곳(쌤 버튼과 같은 확인 카드)으로', async () => {
     const dt = await page.evaluateHandle(() => { const d = new DataTransfer(); d.items.add(new File(['안녕하세요. 회의는 3시입니다.'], '회의 메모.txt', { type: 'text/plain' })); return d; });
     await page.dispatchEvent(`${H} .hm-drop`, 'dragenter', { dataTransfer: dt });

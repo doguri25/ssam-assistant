@@ -25,7 +25,7 @@ const TRAY = '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke
 const MARK = { O: ['○', '출석'], X: ['/', '결석'], '': ['—', '아직'], mixed: ['◐', '일부'] };
 const NEXT_WORD = { O: '결석', X: '빈칸', '': '출석', mixed: '출석' };
 
-let box = null, view = null, picker = null, brief = null, campPick = '', sig = '', tok = 0;
+let box = null, view = null, picker = null, brief = null, campPick = '', sig = '', tok = 0, shown = '';
 const visible = () => !!(box && box.isConnected && !box.closest('[hidden]'));
 function year() { let ls = null; try { ls = window.localStorage; } catch (e) {} return ensureYears(ls).current; }
 function aiState() {
@@ -128,9 +128,13 @@ function draw() {
   if (!box) return;
   const d = data();
   sig = sigOf(d);
-  const keep = document.activeElement && box.contains(document.activeElement) ? keyOf(document.activeElement) : '';
-  view.innerHTML = `<div class="m-page hm-page">${headHTML(d)}${dropHTML()}
+  const html = `<div class="m-page hm-page">${headHTML(d)}${dropHTML()}
     ${d.blank ? startHTML() : `<div class="hm-cards">${gmHTML(d)}${lessonHTML(d)}${campHTML(d)}</div>${contHTML(d)}`}</div>`;
+  // 바뀐 것이 없으면 그대로 둠(들어올 때·브리핑을 다 모았을 때 같은 내용으로 다시 그려 끌어 오던 칸·누르던 단추가 바뀌지 않게)
+  if (html === shown && view.firstChild) return;
+  shown = html;
+  const keep = document.activeElement && box.contains(document.activeElement) ? keyOf(document.activeElement) : '';
+  view.innerHTML = html;
   if (keep) { const el = box.querySelector(keep); if (el) el.focus(); }
 }
 /* 다시 그린 뒤에도 누르던 단추에 초점이 남게 */
@@ -190,6 +194,7 @@ function onClick(e) {
 function mount(section) {
   box = document.createElement('div');
   box.className = 'hm-box';
+  shown = '';
   // 파일 고르기 칸은 다시 그리는 곳 밖에 둠(고르는 창이 닫힐 때 창이 앞에 와 다시 그려도 고른 파일이 사라지지 않게)
   view = document.createElement('div');
   picker = Object.assign(document.createElement('input'), { type: 'file', id: 'hmFile', multiple: true, hidden: true });
