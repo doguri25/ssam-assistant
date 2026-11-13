@@ -154,3 +154,30 @@ section[data-menu="evaluate"][hidden]{display:none}
 .evd-src{flex:1 0 100%;list-style:none;margin:0 0 6px;padding:6px 10px;display:flex;flex-direction:column;gap:2px;min-width:0;border-left:3px solid var(--accent-soft);border-radius:var(--r-s);background:var(--surface2);color:var(--ink2)}
 .evd-src[hidden]{display:none}
 .evd-k{display:inline-block;margin-right:6px;padding:0 6px;border-radius:4px;background:var(--surface3);color:var(--ink2);font-size:11.5px;font-weight:600}
+
+/* ---------- 화면 정리 공통 부품(core/ui-parts.js, 스펙 2026-11-14-ui-tidy) ---------- */
+/* 머리말 설명: 처음 몇 번은 펼침, 그 뒤엔 작은 「화면 설명」 */
+.intro{margin:0;font-size:13.5px;line-height:1.6;color:var(--ink3)}
+.intro-sum{display:inline-flex;align-items:center;gap:6px;min-height:32px;cursor:pointer;list-style:none;color:var(--ink3);font-size:12.5px;font-weight:600;border-radius:var(--r-s)}
+.intro-sum::-webkit-details-marker{display:none}
+.intro[open] .intro-sum{display:none}
+.intro-text{margin:0;max-width:72ch}
+.intro-sum:focus-visible,.ai-note-sum:focus-visible,.fold-sum:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* 「AI로 가는 것」: 접힌 작은 줄, 펼치면 무엇을 보내는지 + [AI로 보낸 글 보기] */
+.ai-note{margin:0;font-size:13px;color:var(--ink3)}
+.ai-note-sum{display:inline-flex;align-items:center;gap:6px;min-height:44px;cursor:pointer;list-style:none;font-weight:600;color:var(--ink2)}
+.ai-note-sum::-webkit-details-marker{display:none}
+.ai-note-sum::after{content:'▸';font-size:11px;color:var(--ink3)}
+.ai-note[open] .ai-note-sum::after{content:'▾'}
+.ai-note-body{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:2px 0 6px 22px}
+.ai-note-body p{margin:0;max-width:72ch;line-height:1.6}
+/* 설정 접기: 요약 한 줄 + [바꾸기] */
+.fold{border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface)}
+.fold-sum{display:flex;align-items:center;gap:12px;min-height:44px;padding:4px 14px;cursor:pointer;list-style:none}
+.fold-sum::-webkit-details-marker{display:none}
+.fold-text{flex:1 1 auto;min-width:0;color:var(--ink2);font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fold-act{flex:none;color:var(--accent-ink);font-size:13px;font-weight:700}
+.fold[open] .fold-act{color:var(--ink3)}
+.fold[open] .fold-act::before{content:'접기 · '}
+.fold-body{padding:4px 14px 14px;border-top:1px solid var(--line2)}
+@media (max-width:760px){ .fold-text{white-space:normal} }

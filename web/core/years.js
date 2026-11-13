@@ -8,7 +8,7 @@ const PREFIX = 'ssam:';
 // testkey:told(시험용 키 알림을 보였음)·queue(차례로 붙여넣기 설정)·queueCalc(산출 내역 넣는 방식)는 화면 설정이라 학년도 자료가 아님
 // chat(「쌤」 채팅 기록 30개)·chat:open(바탕화면 버튼이 채팅을 열라고 적은 때)·nav:tabs(메뉴마다 마지막으로 연 탭)도 학년도와 상관없음
 // demo: 3분 둘러보기 중 { from: 원래 학년도, at, ... } (core/tour.js) — 학년도를 옮겨도 남아야 끝낼 때 돌아갈 곳을 앎
-export const GLOBAL = ['engine', 'theme', 'nav', 'nav:tabs', 'mode', 'updSkip', 'years', 't', 'backupAt', 'inbox', 'bubble', 'export', 'ai-roles', 'purchase:view', 'purchase:flow', 'camp:attView', 'msg:sender', 'testkey:told', 'queue', 'queueCalc', 'slips', 'chat', 'chat:open', 'demo'];
+export const GLOBAL = ['engine', 'theme', 'nav', 'nav:tabs', 'mode', 'updSkip', 'years', 't', 'backupAt', 'inbox', 'bubble', 'export', 'ai-roles', 'purchase:view', 'purchase:flow', 'camp:attView', 'ui:intro', 'msg:sender', 'testkey:told', 'queue', 'queueCalc', 'slips', 'chat', 'chat:open', 'demo'];
 export const isYearKey = k => !!k && !GLOBAL.includes(k) && !k.startsWith('mig:');
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const pad = n => String(n).padStart(2, '0');
