@@ -1992,6 +1992,7 @@ function renderPane() {
       <div class="left"><label class="switch"><input type="checkbox" id="remainOnly" ${S.remainOnly ? 'checked' : ''}>안 쓴 문장만 보기</label></div>
       <div class="right">
         <button class="btn" type="button" data-act="copyAll">${ICON.copy}모두 복사</button>
+        <button class="btn text" type="button" data-eval-check="py">기재 점검</button>
         <button class="btn" type="button" data-act="more">${ICON.plus}10개 더</button>
         <button class="btn" type="button" data-act="regen">${ICON.redo}다시 만들기</button>
       </div>
@@ -2647,7 +2648,7 @@ $('#driveList').addEventListener('click', async e => {
 
 /* ---------- 시작 ---------- */
 renderAll();
-storeReady.then(async () => {
+const planReady = storeReady.then(async () => {
   const sn = $('#storeNote');
   if (sn) sn.textContent = Store.mode === 'db'
     ? '학생 이름이나 개인정보는 들어가지 않아요. 평가계획과 만든 평어는 선생님 Claude 계정에 저장돼요.'
@@ -3152,7 +3153,7 @@ function renderHKList() {
         <span class="mid"><b>${esc(s.label || s.no + '번')}</b><small>${esc((s.memo || '').trim().slice(0, 40) || '메모를 넣어 주세요')}</small></span>
         <span class="st">${k === 'run' || k === 'wait' ? '<span class="spin"></span>' : k === 'done' ? ICON.check : ''}${label}</span></button></li>`;
     }).join('')}</ul>
-    <div class="row" style="justify-content:space-between"><button class="btn text" type="button" data-hk="addOne">${ICON.plus}학생 더하기</button><span class="row"><button class="btn" type="button" data-hk="copyAll">${ICON.copy}완료한 글 모두 복사</button><button class="btn text" type="button" data-hk="reset" style="color:var(--err)">새로 시작</button></span></div>`;
+    <div class="row" style="justify-content:space-between"><button class="btn text" type="button" data-hk="addOne">${ICON.plus}학생 더하기</button><span class="row"><button class="btn text" type="button" data-eval-check="hk">기재 점검</button><button class="btn" type="button" data-hk="copyAll">${ICON.copy}완료한 글 모두 복사</button><button class="btn text" type="button" data-hk="reset" style="color:var(--err)">새로 시작</button></span></div>`;
 }
 function renderHKEditor() {
   const box = $('#hkEditor'); if (!box) return;
@@ -4428,7 +4429,8 @@ function renderGRResults() {
         ${hasLevels && !busy ? `<button class="btn" type="button" data-gr="reassign">비율대로 다시 나누기</button>` : ''}
         ${done.some(s => s.text) && !busy ? `<button class="btn" type="button" data-gr="rewriteAll">${ICON.redo}평어 모두 다시 쓰기</button>` : ''}
         ${done.some(s => s.text) ? `<button class="btn" type="button" data-gr="copyTable" title="번호·수준·평어를 엑셀에 붙여넣기 좋게 복사">표로 복사</button>
-          <button class="btn tonal" type="button" data-gr="copyAll" ${busy ? 'disabled' : ''} title="${IN_APP ? '나이스 학생 칸에 1번부터 차례로 붙여넣기' : '번호순으로 한 줄에 한 명씩 복사'}">${ICON.copy}전체복사</button>` : ''}
+          <button class="btn tonal" type="button" data-gr="copyAll" ${busy ? 'disabled' : ''} title="${IN_APP ? '나이스 학생 칸에 1번부터 차례로 붙여넣기' : '번호순으로 한 줄에 한 명씩 복사'}">${ICON.copy}전체복사</button>
+          <button class="btn text" type="button" data-eval-check="gr">기재 점검</button>` : ''}
         ${GR.phase === 'partial' && done.some(s => s.level && (!s.text || s.stale)) ? `<button class="btn primary" type="button" data-gr="writeRest">남은 평어 쓰기</button>` : ''}
       </div>
     </div>
@@ -5569,7 +5571,8 @@ function renderCCResults() {
         ${busy ? `<button class="btn" type="button" data-cc="stop">멈추기</button>` : `<button class="btn primary" type="button" data-cc="gen" ${need ? '' : 'disabled'}>${ICON.spark}${made ? `남은 학생 쓰기${need ? ` (${need})` : ''}` : '만들기'}</button>`}
         ${made && !busy ? `<button class="btn" type="button" data-cc="fresh">${ICON.redo}모두 다시 쓰기</button>` : ''}
         ${made ? `<button class="btn" type="button" data-cc="copyTable" title="번호와 글을 엑셀에 붙여넣기 좋게 복사">표로 복사</button>
-          <button class="btn tonal" type="button" data-cc="copyAll" ${busy ? 'disabled' : ''} title="${IN_APP ? '나이스 학생 칸에 1번부터 차례로 붙여넣기' : '번호순으로 한 줄에 한 명씩 복사'}">${ICON.copy}전체복사</button>` : ''}
+          <button class="btn tonal" type="button" data-cc="copyAll" ${busy ? 'disabled' : ''} title="${IN_APP ? '나이스 학생 칸에 1번부터 차례로 붙여넣기' : '번호순으로 한 줄에 한 명씩 복사'}">${ICON.copy}전체복사</button>
+          <button class="btn text" type="button" data-eval-check="cc">기재 점검</button>` : ''}
       </div></div>` : ''}
     ${body}`;
 }
@@ -5800,7 +5803,7 @@ document.addEventListener('keydown', e => {
   const el = e.target;
   if ((e.key === 'Enter' || e.key === ' ') && el.matches && el.matches('[data-cccopy]')) { e.preventDefault(); el.click(); }
 });
-CCStore.load();
+const ccReady = CCStore.load();
 
 /* ===== 대명사 줄이기: 이미 만든 글 중 아직 쓰지 않은 것에서 꼭 필요하지 않은 대명사를 AI로 고쳐 씀 =====
    교과 평어(모든 평가계획)·평가지 채점 평어(모든 채점 기록)·행특 후보 글이 대상. 사용함(완료)으로 표시한 글은 그대로 둠 */
@@ -6009,6 +6012,128 @@ storeReady.then(() => setTimeout(() => {
   openPronounSheet(true).catch(() => {});
 }, 1500));
 
+/* ===== 생기부 기재 점검 다리 (평가 › 기재 점검 — check/check.js, 스펙 2026-11-13 §4) =====
+   이 화면들이 쥐고 있는 글을 읽고(items), 고친 글은 그 화면의 상태에 넣고 그 저장소로 바로 씀(apply) — 저장소에 바로 쓰면 이 화면의 다음 저장이 덮어씀.
+   ref: py:평가계획:평가요소:수준:번호 · cc:영역:번호:활동 · hk:학생:번호 · gr:채점 기록:학생 (칸마다 encodeURIComponent).
+   from이 지금 글과 다르면(그새 고치거나 다시 씀) 쓰지 않음. 근거(ev)는 그대로 둠 → 고친 글은 「고친 글」로 보임 */
+const ckRef = (...p) => p.map(x => encodeURIComponent(x)).join(':');
+const ckParse = ref => String(ref || '').split(':').map(decodeURIComponent);
+const ckPick = (list, i, from, f = 't') => (list[i] && list[i][f] === from ? list[i] : list.find(o => o && o[f] === from)) || null;
+const grLenFor = unitId => { const u = unitId && unitById(unitId); return u || S.settings.len !== 'auto' ? lengthRange(u || { crit: {} }) : [50, 75]; };
+async function checkItems() {
+  await storeReady;
+  await Promise.all([planReady, HKStore.ready, ccReady, classReady].map(p => Promise.resolve(p).catch(() => {})));
+  const out = [];
+  // 교과 평어: 평가요소·수준마다 문장 묶음(학생 글이 아니라 같은 문장은 보지 않음, 화면에 한도가 없어 글자 수도 보지 않음)
+  let plans = [];
+  try { plans = await Store.listPlans(); } catch (e) {}
+  for (const p of plans) {
+    const cur = p.id === S.planId, plan = cur ? S.plan : await Store.getPlan(p.id);
+    if (!plan) continue;
+    const sets = cur ? S.sets : await Store.loadSets(p.id);
+    for (const sub of plan.subjects || []) for (const u of sub.units || []) for (const l of LV) {
+      const set = sets.get(setKey(u.id, l.k));
+      ((set && set.items) || []).forEach((x, i) => { if (x && x.t) out.push({ ref: ckRef('py', p.id, u.id, l.k, i), src: 'py', label: ['교과 평어', sub.name, u.elem || u.unit, LVNAME[l.k]].filter(Boolean).join(' · '), text: x.t }); });
+    }
+  }
+  // 창체: 영역·학생·활동마다 한 문장
+  for (const a of CC_AREAS) {
+    const A = ccArea(a.k), acts = ccActs(a.k);
+    for (const no of Object.keys(A.items).map(Number).filter(n => n > 0 && inClass(n)).sort((x, y) => x - y)) for (const act of acts) {
+      const pt = A.items[no].parts && A.items[no].parts[act.id];
+      if (pt && pt.t) out.push({ ref: ckRef('cc', a.k, no, act.id), src: 'cc', label: `창의적 체험활동 · ${a.name} · ${no}번${acts.length > 1 ? ' · ' + ((act.name || '').trim() || '활동') : ''}`, who: no, group: 'cc:' + a.k, text: pt.t });
+    }
+  }
+  // 행특: 고른 글·후보, 한도는 행특 설정(글자 수·나이스 바이트)
+  for (const s of hkShown()) (s.results || []).forEach((r, i) => {
+    if (r && r.t) out.push({ ref: ckRef('hk', s.id, i), src: 'hk', label: `행동특성 · ${s.no}번${s.results.length > 1 ? (r.d ? ' · 고른 글' : ` · 후보 ${i + 1}`) : ''}`, who: s.no, group: 'hk', text: r.t, limit: { max: HK.settings.max, unit: HK.settings.unit } });
+  });
+  // 평가지 채점: 기록마다(지금 연 기록은 화면의 것), 한도는 그 화면이 표시하는 평어 길이
+  await GRStore.list();
+  for (const h of GR.history) {
+    const open = h.id === GR.id, b = open ? null : await GRStore.get(h.id);
+    const list = open ? GR.students : ((b && b.students) || []);
+    const hi = grLenFor(open ? GR.unitId : b && b.unitId)[1];
+    for (const s of list) if (!s.skip && s.text) out.push({ ref: ckRef('gr', h.id, s.id), src: 'gr', label: `평가지 채점 · ${h.title || '수행평가'} · ${s.no > 0 ? s.no + '번' : '번호 없음'}`, who: s.no > 0 ? s.no : null, group: 'gr:' + h.id, text: s.text, limit: { max: hi, unit: 'char' } });
+  }
+  return out;
+}
+async function checkApply(ref, from, to) {
+  const p = ckParse(ref), t = String(to == null ? '' : to).replace(/\s+/g, ' ').trim();
+  if (!t || S.wiping) return false;
+  if (p[0] === 'py') {
+    const [, pid, uid, lv, i] = p, key = setKey(uid, lv), cur = pid === S.planId;
+    const sets = cur ? S.sets : await Store.loadSets(pid), set = cur ? getSet(uid, lv) : sets.get(key);
+    const x = set && ckPick(set.items, +i, from);
+    if (!x || (cur && S.running.has(key))) return false;
+    x.t = t; delete x.rv;
+    Store.saveSet(pid, key, set, sets);
+    if (Store._lf && Store._lf[pid]) { clearTimeout(Store._lt[pid]); Store._lf[pid](); }
+    if (cur && S.mode === 'pyeongeo') { renderList(); renderTabs(); }
+    return true;
+  }
+  if (p[0] === 'hk') {
+    const s = hkStudent(p[1]), r = s && ckPick(s.results || [], +p[2], from);
+    if (!r || r.busy || r.edit || HK.running.has(s.id)) return false;
+    r.t = t; delete r.rv;
+    clearTimeout(HKStore.t); HKStore.write();
+    if (S.mode === 'hk') renderHK();
+    return true;
+  }
+  if (p[0] === 'cc') {
+    const it = ccArea(p[1]) && ccArea(p[1]).items[+p[2]], pt = it && it.parts && it.parts[p[3]];
+    if (!pt || pt.t !== from || ccAreaBusy(p[1])) return false;
+    pt.t = t; delete pt.rv;
+    clearTimeout(CCStore.t); CCStore.write();
+    if (S.mode === 'cc') renderCCResults();
+    return true;
+  }
+  if (p[0] === 'gr') {
+    const [, gid, sid] = p;
+    if (gid === GR.id) {
+      const s = grStudent(sid);
+      if (!s || s.text !== from || s.writing) return false;
+      s.text = t; delete s.trv;
+      clearTimeout(GRStore.t); await GRStore.write();
+      if (S.mode === 'gr') renderGRResults();
+      return true;
+    }
+    const b = await GRStore.get(gid), s = b && (b.students || []).find(x => x.id === sid);
+    if (!s || s.text !== from || GR.id === gid) return false;
+    s.text = t; delete s.trv;
+    if (Store.mode === 'db') writeDoc(Store.base() + '/g_' + gid, b);
+    else if (Store.mode === 'local' && !Store.lsSet('ssam:gr:' + gid, b)) return false;
+    return true;
+  }
+  return false;
+}
+/* [그 글로 가기]: 창 틀이 그 탭으로 옮긴 뒤 부름 — 그 학생(문장)을 열고 초점 */
+async function checkShow(ref) {
+  const p = ckParse(ref);
+  const focus = sels => setTimeout(() => { const el = sels.map(q => document.querySelector(q)).find(Boolean); if (el) { el.scrollIntoView({ block: 'center' }); el.focus({ preventScroll: true }); } }, 0);
+  if (p[0] === 'py') {
+    if (p[1] !== S.planId) { if (S.running.size || S.queue.length) { toast('평어를 만드는 중이라 그 평가계획은 열지 않았어요'); return; } await openPlan(p[1]); }
+    const sub = S.plan && S.plan.subjects.find(x => x.units.some(u => u.id === p[2]));
+    if (!sub) return;
+    S.subject = sub.name; S.unitId = p[2]; S.lv = p[3]; S.showPane = true; S.remainOnly = false;
+    renderAll(); focus([`#listBox [data-i="${+p[4]}"]`]);
+  } else if (p[0] === 'hk') {
+    if (!hkStudent(p[1])) return;
+    HK.sel = p[1]; HK.showEditor = true; $('#hkView').classList.add('show-pane'); renderHK();
+    focus([`#hkEditor [data-ri="${+p[2]}"] .hk-text`, `#hkEditor [data-edit="${+p[2]}"]`]);
+  } else if (p[0] === 'cc') {
+    if (!ccInfo(p[1])) return;
+    CHE.view = p[1]; CHE.showRes = true; $('#ccView').classList.add('show-pane'); renderCC();
+    focus([`#ccResults [data-cccopy="${+p[2]}"]`]);
+  } else if (p[0] === 'gr') {
+    if (p[1] !== GR.id) {
+      if (GR.running.size || ['grading', 'ranking', 'writing'].includes(GR.phase)) { toast('채점하는 중이라 그 기록은 열지 않았어요'); return; }
+      await grOpenHistory(p[1]);
+    } else { GR.showRes = true; $('#grView').classList.add('show-pane'); renderGR(); }
+    focus([`#grResults [data-grcopy="${CSS.escape(p[2])}"]`]);
+  }
+}
+
 /* ===== 쌤비서 틀(core/shell.js)과 새 메뉴가 쓰는 다리 =====
    평가 화면 바꾸기, AI 부르기, 학급 명단, 알림·시트를 밖에 내보냄 */
 var modeHooks = [];
@@ -6062,6 +6187,8 @@ window.SSAM = {
     async memoOf(no) { await HKStore.ready; const s = HK.students.find(x => x.no === no); return s ? String(s.memo || '') : null; },
     select(no) { const s = HK.students.find(x => x.no === no); if (s) { HK.sel = s.id; renderHK(); } }
   },
+  // 생기부 기재 점검(check/check.js): 글 모으기·고친 글 쓰기·그 글로 가기 (위 「생기부 기재 점검 다리」)
+  evalCheck: { items: checkItems, apply: checkApply, show: checkShow },
   // 평가지 채점 한꺼번에 넣기(gr-bundle.js)
   gr: { putBundle: b => grPutBundle(b), refresh: () => { if (S.mode === 'gr') renderGRSetup(); }, mask: () => (GR.settings.maskOn ? GR.settings.mask : []) },
   // 평가 영역 이음(활동지·단원평가 → 평가지 채점): 지금 평가계획의 영역 [{ id, subject, label }]

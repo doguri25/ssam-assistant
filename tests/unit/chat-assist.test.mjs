@@ -6,7 +6,7 @@ import { assistPrompt, assistGuide, stateLines, parseAssist, replyHTML, mentione
 import { GUIDE, guideText, searchGuide, offlineAnswer } from '../../web/core/chat-knowledge.js';
 import { routeText, isSure, isQuestion, INTENT_IDS } from '../../web/core/chat-route.js';
 // core/shell.js MENUS와 같은 메뉴·탭(shell.js는 화면이 있어야 읽힘)
-const MENUS = [['평가', ['교과 평어', '창의적 체험활동', '행동특성', '평가지 채점', '단원평가', '활동지']], ['연수', ['내 필수연수', '연수 현황판']],
+const MENUS = [['평가', ['교과 평어', '창의적 체험활동', '행동특성', '평가지 채점', '단원평가', '활동지', '기재 점검']], ['연수', ['내 필수연수', '연수 현황판']],
   ['계획', ['연간계획', '행사계획', '학급운영계획', '결과 보고']], ['학급', ['오늘 수업', '진도표·시수', '주간학습안내', '기초학력']], ['품의', ['새 품의', '저장한 템플릿', '최근 작성']],
   ['기타', ['쪽지 작성', '가정통신문', '공문 처리', '인수인계서', '다면평가']], ['설정', ['학급 명단', 'AI', '화면', '학교 정보', '학년도', '품의 기준']]];
 
@@ -104,7 +104,8 @@ test('쌤비서 안내: 메뉴·탭을 모두 다루고, 낱말로 찾으면 맞
   for (const s of ['2027. 3. 31.', '하루 400번', 'Windows 앱만', '저장·결재·상신']) assert.ok(all.includes(s), s);
   for (const [q, id] of [['단원평가 결과지 어떻게 뽑아?', 'unit-sheet'], ['AI 키 없이 써도 돼?', 'trial'], ['행특 잘 쓰는 법 알려줘', 'hk'], ['품의 사유는 어떻게 써?', 'purchase-reason'],
     ['이번 주 할 일 정리해줘', 'briefing'], ['윈도우 앱이랑 웹판 차이가 뭐야?', 'platform'], ['개인정보 안전해?', 'privacy'], ['에듀파인에 어떻게 붙여 넣어?', 'edufine'],
-    ['가정통신문 양식 어떻게 넣어?', 'letter'], ['백업은 어떻게 해?', 'years'], ['채점 정확도는?', 'accuracy'], ['진도표 넣는 법', 'class']])
+    ['가정통신문 양식 어떻게 넣어?', 'letter'], ['백업은 어떻게 해?', 'years'], ['채점 정확도는?', 'accuracy'], ['진도표 넣는 법', 'class'],
+    ['생기부에 쓰면 안 되는 말 점검은 어떻게 해?', 'check'], ['기재 점검이 뭐야?', 'check']])
     assert.equal((searchGuide(q)[0] || {}).id, id, q);
   assert.deepEqual(searchGuide('안녕'), []);
   const a = offlineAnswer('단원평가 결과지 어떻게 뽑아?');

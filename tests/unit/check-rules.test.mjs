@@ -209,6 +209,8 @@ test('글자 수·바이트 초과: 한도를 넘는 곳부터 끝까지 표시'
   assert.deepEqual(got, [{ kind: 'len', start: 12, end: 14, word: '나다', why: '최대 12자보다 2자 길어요' }]);
   assert.equal(checkText('가나다라', { limit: { max: 9, unit: 'byte' } })[0].why, '최대 9바이트보다 3바이트 길어요');
   assert.deepEqual(checkText(t, { limit: { max: 0 } }), [], '한도 없음');
+  const sp = checkText('가'.repeat(12) + ' 나다', { limit: { max: 12, unit: 'char' } })[0];
+  assert.deepEqual([sp.start, sp.end, sp.word], [13, 15, '나다'], '넘친 곳 앞 빈칸은 표시하지 않음');
 });
 
 test('checkItems: 글마다 표시 + 같은 문장(다른 학생 번호) + 모두 센 수', () => {

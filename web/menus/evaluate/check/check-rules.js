@@ -139,7 +139,9 @@ export function checkText(text, { limit = null } = {}) {
   const o = overLimit(t, limit);
   if (o) {
     const u = o.unit === 'byte' ? '바이트' : '자';
-    out.push(issue(t, 'len', o.cut, t.length, `최대 ${o.max.toLocaleString()}${u}보다 ${(o.n - o.max).toLocaleString()}${u} 길어요`));
+    let at = o.cut;
+    while (at < t.length - 1 && /\s/.test(t[at])) at++; // 넘친 곳 앞 빈칸은 표시하지 않음
+    out.push(issue(t, 'len', at, t.length,`최대 ${o.max.toLocaleString()}${u}보다 ${(o.n - o.max).toLocaleString()}${u} 길어요`));
   }
   return sortIssues(merge(out).map(x => { const { _m, ...y } = x; return _m ? { ...y, word: t.slice(y.start, y.end) } : y; }));
 }
