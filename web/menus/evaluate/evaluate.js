@@ -786,12 +786,15 @@ function uiFillIntros() {
 /* 「AI로 가는 것」: 무엇을 보내는지(부품이 없으면 회색 글 한 줄) */
 const PY_AI_NOTE = '평가계획 내용(학년·과목·성취기준·평가기준 등)만 보내요. 학생 정보는 보내지 않아요.'; // 교과 평어(넣기 화면·평가요소 화면)
 function uiAiNote(text) { const u = UIP(); return u ? u.aiNoteHTML(text) : `<p class="muted">${esc(text)}</p>`; }
-/* 자주 안 바꾸는 설정: 요약 한 줄 + [바꾸기]. need: 비어 있어 꼭 정해야 하면 펼침(부품이 없으면 설정 칸 그대로) */
+/* 자주 안 바꾸는 설정: 요약 한 줄 + [바꾸기]. need: 비어 있어 꼭 정해야 하면 펼침(부품이 없으면 설정 칸 그대로).
+   지금 화면에 펼쳐 있으면 다시 그려도 펼친 채(펼친 바로 뒤 toggle 알림이 오기 전에 다시 그려도) */
 function uiFold(key, summary, body, need) {
   const u = UIP();
   if (!u) return body;
+  const cur = document.querySelector(`details[data-fold="${key}"]`);
+  const open = !!need || (cur ? cur.open : UI_FOLD_KEEP.has(key));
   if (need) UI_FOLD_KEEP.add(key);
-  return u.foldHTML({ key, summary, body, open: UI_FOLD_KEEP.has(key) });
+  return u.foldHTML({ key, summary, body, open });
 }
 /* 다시 그리지 않고 요약 한 줄만 고침(입력하는 칸의 초점을 지키려고) */
 function uiFoldText(key, summary) { const el = document.querySelector(`[data-fold="${key}"] .fold-text`); if (el) el.textContent = summary; }
@@ -3258,6 +3261,9 @@ const hkKwCount = (n) => (n ? ` · ${n}개 골랐어요` : '');
 function hkKwHTML(s) {
   const got = hkKwPicked(s);
   return `<div class="kw-groups">${KW_GROUPS.map(([g, ks], gi) => {
+    // 지금 화면의 펼침이 먼저(누른 바로 뒤 toggle 알림이 오기 전에 다시 그려도), 없으면 기억, 처음이면 첫 묶음만
+    const cur = document.querySelector(`#hkEditor details[data-kwg="${CSS.escape(g)}"]`);
+    if (cur) KWG_OPEN.set(g, cur.open);
     const open = KWG_OPEN.has(g) ? KWG_OPEN.get(g) : gi === 0;
     const n = ks.filter(k => got.has(k)).length;
     return `<details class="kwg" data-kwg="${esc(g)}"${open ? ' open' : ''}><summary class="kwg-sum"><span class="kwg-name">${esc(g)}</span><span class="kwg-n">${hkKwCount(n)}</span></summary>
