@@ -76,11 +76,13 @@ await page.click(`${V} [data-unv="results"]`);
 await page.click(`${V} [data-rv="pyeongeo"]`);
 
 await run('evidence', [
-  ['단원평가 교과 평어: AI 요청에 학생마다 근거 목록(평가 이름·평가 내용·정답률, 이름 없음)과 근거 규칙', async () => {
+  ['단원평가 교과 평어: AI 요청에 학생마다 근거 목록(평가 이름·평가 내용·잘함/보완 필요 — 정답률 숫자·이름 없음)과 근거 규칙', async () => {
     await page.click(`${V} [data-un="pyAI"]`);
     await page.waitForFunction(() => { const el = document.querySelector('textarea[data-py="1"]'); return el && el.value === '곱셈하기를 정확하게 해냄. 수업 시간에 늘 성실하게 참여함.'; });
     const p = calls.filter(c => c.startsWith('[단원평가 평어]')).at(-1);
-    assert(p.includes('- 1번 | 수준') && p.includes('  [근거 목록]\n  e1) 「3학년 수학 3단원」 곱셈하기 100%'), p.slice(0, 600));
+    assert(p.includes('- 1번 | 수준') && p.includes('  [근거 목록]\n  e1) 「3학년 수학 3단원」 곱셈하기 — 잘함'), p.slice(0, 600));
+    assert(!/\d\s*%/.test(p), '정답률 숫자는 AI에 보내지 않음(화면 근거에만)');
+    assert((await page.textContent(V)).includes('AI에는 번호·수준·평가 내용만 보내요. 점수와 이름은 보내지 않아요.'), '안내 글');
     assert(p.includes('근거 목록에 있는 사실만 쓰고') && p.includes('"sentences"'), '규칙·답 모양');
     assert(!/\d+\s*점/.test(p), '점수(○점)');
   }],
@@ -128,6 +130,7 @@ await run('evidence', [
       for (const b of await page.$$(`${V} .evd-btn[aria-expanded="false"]`)) await b.click();
       assert(await page.locator(`${V} .evd-btn[aria-expanded="false"]`).count() === 0, '모두 펼침');
       assert(await noOverflow(`${V} .evd, ${V} .evd-src`), '넘침');
+      assert(await page.$eval(`${V} .evd-none .evd-t`, e => getComputedStyle(e).whiteSpace) === 'normal', '「근거 없음」 문장은 한 줄로 자르지 않고 줄바꿈');
     } finally { await page.setViewportSize({ width: 1280, height: 860 }); }
   }],
 
@@ -184,14 +187,14 @@ await run('evidence', [
     assert(await page.locator('#grResults .evd-btn').count() === 2 && await page.locator('#grResults .evd-none').count() === 1, '다시 열어도 근거');
   }],
 
-  ['행동특성: 요청에 메모 조각 근거 목록(m1…, 날짜 앞머리 그대로, 이름 칸 없음)·근거 규칙, 답은 JSON', async () => {
+  ['행동특성: 요청에 메모 조각 근거 목록(m1…, 날짜 앞머리 그대로, 이름 칸 없음)·메모 규칙, 답은 JSON', async () => {
     await page.click('#menuTabs [data-tab="hk"]');
     await page.click('[data-hkstu="a"]');
     await page.click('[data-hk="gen"]');
     await page.waitForSelector('#hkEditor .hk-res[data-ri="1"]');
     const p = calls.filter(c => c.includes("'행동특성 및 종합의견'을 쓰는")).at(-1);
     assert(p.includes('[근거 목록]\nm1) 1인 1역(우유 당번) 성실함\nm2) 친구를 잘 도와줌\nm3) [11. 6.] 토론에서 근거를 들어 반론함'), p);
-    assert(p.includes('근거 목록에 있는 사실만 쓰고') && p.includes('{"results":[{"sentences"'), '규칙·답 모양');
+    assert(p.includes('메모를 바탕으로 쓰고(메모에 없는 사실은 쓰지 않음)') && !p.includes('근거 목록에 있는 사실만') && p.includes('{"results":[{"sentences"'), '규칙(메모를 풀어 씀)·답 모양');
   }],
   ['행동특성: 후보마다 문장별 「근거 n」·「근거 없음」, 펼치면 메모 조각, 눌러 복사·모두 복사는 글만', async () => {
     const r0 = '#hkEditor .hk-res[data-ri="0"]';
@@ -216,7 +219,7 @@ await run('evidence', [
     await page.click('#hkEditor [data-hkr="shorter"][data-i="0"]');
     await until(async () => calls.length > n0 && String((((await ls('ssam:hk')).students[0].results || [])[0] || {}).t).startsWith('우유 당번을'), 8000);
     const fp = calls.slice(n0).find(c => c.startsWith('아래 행동특성 및 종합의견을'));
-    assert(fp.includes('[근거 목록]\nm1) ') && fp.includes('근거 목록에 있는 사실만 쓰고') && fp.includes('"sentences"'), fp);
+    assert(fp.includes('[근거 목록]\nm1) ') && fp.includes('메모를 바탕으로 쓰고') && !fp.includes('근거 목록에 있는 사실만') && fp.includes('"sentences"'), fp);
     await page.waitForTimeout(700);
     const r = (await ls('ssam:hk')).students[0].results[0];
     assert(r.t === HK_SHORT.slice(0, 2).map(x => x[0]).join(' ') && r.ev.sentences.length === 2 && r.ev.sentences[1].src.join() === 'm2,m3', JSON.stringify(r));

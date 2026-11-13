@@ -34,15 +34,15 @@
 ## 5. 근거가 보이는 평어
 
 ### 공통 모듈 `web/core/evidence.js` (순수 + 작은 화면 도우미)
-- `evidenceList(items)` → `[{ id: 'e1', kind: 'unit'|'activity'|'gr'|'ref'|'memo', label }]` (학생마다 12개까지, label 80자까지, 같은 글은 하나).
-- `evidencePrompt(list)` → 「[근거 목록]\ne1) 단원평가 「3학년 수학 3단원」 덧셈 문항 90%\n…」 한 학생 몫.
+- `evidenceList(items)` → `[{ id: 'e1', kind: 'unit'|'activity'|'gr'|'ref'|'memo', label, ai? }]` (학생마다 12개까지, label 300자까지, 같은 글은 하나). `ai`가 있으면 AI에는 그 글을 보냄(화면은 label).
+- `evidencePrompt(list)` → 「[근거 목록]\ne1) 「3학년 수학 3단원」 덧셈 문항 — 잘함\n…」 한 학생 몫(`ai || label`).
 - `EVIDENCE_RULE` → 「근거 목록에 있는 사실만 쓰고, 문장마다 기대는 근거 번호를 src에 적어요. 근거가 없는 문장은 src를 비워요(지어내지 않음).」
 - `normSentences(v, list)` → `[{ t, src: [유효한 id] }]` (빈 문장 빼고, 목록에 없는 id 빼고). `joinSentences(ss)` → 평어 글.
 - `evidenceHTML({ sentences, list, text })` → 문장마다 `근거 n` 단추(누르면 그 근거 줄이 펼쳐짐, `aria-expanded`), src가 빈 문장은 주황 **「근거 없음」**(글자도 함께). 지금 글(`text`)이 `joinSentences(sentences)`와 다르면 위에 「고친 글 · 근거는 처음 쓴 글 기준이에요」.
 - 저장: 평어 옆에 `ev: { list, sentences }`. 근거가 없는 옛 평어는 표시 없이 지금처럼.
 
 ### 5-1. 단원평가 교과 평어 (`unit-results.js`·`unit-ai.js`)
-- 근거: 그 학생의 평가 내용별 점수율(잘한 것 rate ≥ 0.8·보완할 것 < 0.6, 지금 `writePyeongeo`가 쓰는 것) → `kind: 'unit'`, 「「3학년 수학 3단원」 세 자리 수 덧셈 90%」.
+- 근거: 그 학생의 평가 내용별 점수율(잘한 것 rate ≥ 0.8·보완할 것 < 0.6, 지금 `writePyeongeo`가 쓰는 것) → `kind: 'unit'`, 화면 「「3학년 수학 3단원」 세 자리 수 덧셈 90%」, AI에는 숫자 없이 「… — 잘함」「… — 보완 필요」(안내 글 「AI에는 번호·수준·평가 내용만 보내요」 그대로).
 - `pyeongeoPrompt`에 학생마다 근거 목록 + `EVIDENCE_RULE`, 답 `{"students":[{"no":1,"sentences":[{"t":"…","src":["e1"]}]}]}`. `normPyeongeo`는 예전 `text` 답도 받음.
 - 저장 `unit:pyeongeo:<교과>`의 `students[no].ev`. 화면 `pyHTML`: 고치는 칸(textarea) 아래 근거 표시.
 
@@ -52,7 +52,8 @@
 - 저장 `ssam:gr:<id>` 학생마다 `ev`. 화면 `renderGRResults` 학생 줄 평어 아래 근거 표시. [전체복사]·표로 복사는 글만.
 
 ### 5-3. 행동특성 (`evaluate.js` mode 'hk')
-- 근거: 교사 메모를 줄·쉼표로 나눈 조각(이름 칸 뺀 `memoForAI` 결과, 날짜 「[11. 6.]」 앞머리 그대로) → `memo`, 「m1) [11. 6.] 토론에서 근거를 들어 반론함」.
+- 근거: 교사 메모를 줄·쉼표로 나눈 조각(이름 칸 뺀 `memoForAI` 결과, 날짜 「[11. 6.]」 앞머리 그대로) → `memo`, 「m1) [11. 6.] 토론에서 근거를 들어 반론함」. 40조각까지(넘으면 최근 조각).
+- 규칙은 `MEMO_RULE`(「메모를 바탕으로 쓰고(메모에 없는 사실은 쓰지 않음), 문장마다 기댄 메모 조각 번호를 src에…」) — 메모를 학교생활 모습으로 풀어 쓰는 글이라 「목록에 있는 사실만」으로 좁히지 않음.
 - `hkPrompt`·`hkFixPrompt`(조금 길게/짧게) 답을 JSON `{"results":[{"sentences":[{"t":"…","src":["m1"]}]}]}`로(후보 수만큼). 길이 맞추기·`hkTrim` 뒤에도 문장과 근거를 함께 둠(잘린 문장은 빠짐).
 - 저장 `ssam:hk` 후보마다 `ev`. 화면 `renderHKEditor` 후보 글 아래 근거 표시. 고치기(textarea)로 고치면 「고친 글」.
 

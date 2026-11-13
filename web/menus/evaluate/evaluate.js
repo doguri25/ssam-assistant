@@ -2959,7 +2959,7 @@ function hkPrompt(s, count, others, list) {
     `6. 학교 밖 대회 수상, 자격증·인증시험, 사교육, 부모의 직업이나 경제 형편은 쓰지 않습니다.`,
     `7. 상투적인 시작과 끝을 피하고, ${count > 1 ? '글마다 시작하는 말과 구성, 강조하는 특성의 순서를 서로 다르게 씁니다.' : '자연스럽게 이어지는 한 편의 글로 씁니다.'}`,
     `8. ${pronounRule()}`,
-    ev ? `9. ${ev.EVIDENCE_RULE}` : null,
+    ev ? `9. ${ev.MEMO_RULE || ev.EVIDENCE_RULE}` : null,
     others && others.length ? `\n[이미 쓴 글] 아래 글과 표현이 겹치지 않게 씁니다.\n${others.map(x => '- ' + x).join('\n')}` : null,
     ``,
     ev ? `[출력 형식] JSON 하나만 출력합니다. 글 ${count}개를 results에 담고, 글마다 문장을 sentences에 차례대로 나눠 담습니다(문장을 이으면 한 문단). 다른 말은 쓰지 않습니다.\n{"results":[{"sentences":[{"t":"문장","src":["m1"]}]}]}`
@@ -2977,7 +2977,7 @@ function hkFixPrompt(s, text, dir, list) {
   if (ev) return [
     `아래 행동특성 및 종합의견을 공백 포함 ${goal}로 고쳐 써 주세요. 지금은 ${now}자입니다.`,
     how,
-    `${hkEndRule()} ${pronounRule()} 줄바꿈 없는 한 문단으로 씁니다. ${ev.EVIDENCE_RULE}`,
+    `${hkEndRule()} ${pronounRule()} 줄바꿈 없는 한 문단으로 씁니다. ${ev.MEMO_RULE || ev.EVIDENCE_RULE}`,
     ``,
     `[교사 메모]`, hkMemoOut(s), ``, ev.evidencePrompt(list || []), ``, `[고칠 글]`, text,
     ``, `[출력 형식] JSON 하나만 출력합니다. 고친 글의 문장을 sentences에 차례대로 나눠 담습니다.`, `{"results":[{"sentences":[{"t":"문장","src":["m1"]}]}]}`

@@ -121,7 +121,7 @@ function pyHTML(all) {
       <label class="cls-inline">중 <input class="field num" type="number" id="unCutMid" min="0" max="100" value="${c.mid}"></label><span class="muted">이상</span></div>
     ${aiRowHTML('writing')}
     <div class="row"><button class="btn primary" type="button" data-un="pyAI"${R.pyRun ? ' disabled' : ''}>${R.pyRun ? '<span class="spin"></span>쓰는 중…' : '평어 쓰기'}</button><button class="btn" type="button" data-un="pyCopyAll">모두 복사</button>
-      <span class="muted">AI에는 번호·수준·평가 내용과 그 정답률만 보내요. 이름은 보내지 않아요.</span></div>
+      <span class="muted">AI에는 번호·수준·평가 내용만 보내요. 점수와 이름은 보내지 않아요.</span></div>
     <ul class="un-pys">${st.students.map(s => `<li class="un-py"><div class="row"><b>${s.no}번</b><span class="muted">평균 ${s.avg}점</span>${lvSel(s)}<span class="grow"></span><button class="btn text" type="button" data-un="pyCopy" data-no="${s.no}">복사</button></div>
       <textarea class="field" data-py="${s.no}" rows="2" placeholder="[평어 쓰기]를 누르거나 직접 써요">${esc(s.text)}</textarea><div class="un-pyev" data-pyev="${s.no}">${pyEvHTML(s)}</div></li>`).join('')}</ul>
   </div>`;
@@ -154,7 +154,7 @@ async function writePyeongeo() {
       const chunk = todo.slice(i, i + 10).map(s => {
         const rates = contentRates(st.chosen, s.no);
         const good = rates.filter(r => r.rate >= 0.8).sort((a, b) => b.rate - a.rate).slice(0, 3), weak = rates.filter(r => r.rate < 0.6).sort((a, b) => a.rate - b.rate).slice(0, 3);
-        // 근거: 잘한 것·보완할 것 평가 내용과 그 정답률(번호·평가 이름·평가 내용만, 이름 없음)
+        // 근거: 잘한 것·보완할 것 평가 내용(화면엔 정답률도, AI에는 평가 이름·평가 내용·잘함/보완 필요만, 이름 없음)
         return { no: s.no, level: s.level, good: good.map(r => r.content), weak: weak.map(r => r.content), ev: pyeongeoEvidence([...good, ...weak]) };
       });
       const lists = Object.fromEntries(chunk.map(c => [c.no, c.ev]));

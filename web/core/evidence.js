@@ -3,23 +3,28 @@
    저장은 평어 옆 ev: { list, sentences }. 복사·전체복사·나이스 붙여넣기에는 평어 글만 들어감(근거는 화면에만).
    단원평가 결과(unit-results.js)는 그대로 부르고, 기존 평가 화면(evaluate.js)은 window.SSAM.evidence로 씀 */
 
-export const EVIDENCE_MAX = 12, LABEL_MAX = 80;
+/* 근거 글은 300자까지(평가지 채점의 요약·잘한 점이 80자에서 잘려 AI에 가던 것). 행특 메모 조각은 40개까지(넘으면 최근 조각) */
+export const EVIDENCE_MAX = 12, LABEL_MAX = 300, MEMO_MAX = 40;
 export const EVIDENCE_RULE = '근거 목록에 있는 사실만 쓰고, 문장마다 기대는 근거 번호를 src에 적어요. 근거가 없는 문장은 src를 비워요(지어내지 않음).';
+/* 행동특성: 메모를 학교생활 모습으로 풀어 쓰는 글이라 「목록에 있는 사실만」으로 좁히지 않음 */
+export const MEMO_RULE = '메모를 바탕으로 쓰고(메모에 없는 사실은 쓰지 않음), 문장마다 기댄 메모 조각 번호를 src에 적어요. 기댄 조각이 없는 문장은 src를 비워요.';
 const KINDS = ['unit', 'activity', 'gr', 'ref', 'memo'];
 const KIND_NAME = { unit: '단원평가', activity: '활동지', gr: '채점', ref: '참고', memo: '메모' };
 const one = s => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-/* items: [{ kind, label }] → [{ id: 'e1'(메모는 'm1'), kind, label }] — 학생마다 12개까지, 글은 80자까지, 같은 글은 하나 */
-export function evidenceList(items) {
+/* items: [{ kind, label, ai? }] → [{ id: 'e1'(메모는 'm1'), kind, label, ai? }] — 학생마다 max(12)개까지, 글은 300자까지, 같은 글은 하나.
+   ai: AI에 보낼 글이 화면 글과 다를 때(단원평가 정답률 숫자는 화면에만) */
+export function evidenceList(items, max = EVIDENCE_MAX) {
   const out = [], seen = new Set(), n = { e: 0, m: 0 };
   for (const x of Array.isArray(items) ? items : []) {
-    if (out.length >= EVIDENCE_MAX) break;
+    if (out.length >= max) break;
     const label = one(x && x.label).slice(0, LABEL_MAX).trim();
     if (!label || seen.has(label)) continue;
     seen.add(label);
     const kind = KINDS.includes(x.kind) ? x.kind : 'ref', p = kind === 'memo' ? 'm' : 'e';
-    out.push({ id: p + ++n[p], kind, label });
+    const ai = one(x.ai).slice(0, LABEL_MAX).trim();
+    out.push({ id: p + ++n[p], kind, label, ...(ai && ai !== label ? { ai } : {}) });
   }
   return out;
 }
@@ -28,7 +33,7 @@ export function evidenceList(items) {
 export function evidencePrompt(list, indent = '') {
   const l = Array.isArray(list) ? list : [];
   if (!l.length) return `${indent}[근거 목록] 없음`;
-  return [`${indent}[근거 목록]`, ...l.map(e => `${indent}${e.id}) ${e.label}`)].join('\n');
+  return [`${indent}[근거 목록]`, ...l.map(e => `${indent}${e.id}) ${e.ai || e.label}`)].join('\n');
 }
 
 /* AI 답의 문장들 → [{ t, src: [목록에 있는 id] }] (빈 문장은 빼고, 목록에 없는 id는 빼고, 겹친 id는 하나) */
@@ -76,7 +81,7 @@ export function alignSentences(ss, text) {
 }
 
 /* 행특 교사 메모 → 근거 목록: 줄·쉼표로 나눈 조각(괄호·낫표 안 쉼표는 나누지 않음). 줄 앞 날짜 「[11. 6.]」는 그 줄 조각마다 그대로.
-   memo는 이름 칸을 뺀 글(core/bundle.js memoForAI)을 줌 */
+   memo는 이름 칸을 뺀 글(core/bundle.js memoForAI)을 줌. 같은 조각은 하나, 40개가 넘으면 최근(아래) 조각을 남김 */
 const MASKED = /^(?:(?:이\s?름|성\s?명|학생\s?이름)\s*[:：]?\s*)?[○◯●*]+$/;
 export function memoEvidence(memo) {
   const items = [];
@@ -94,7 +99,8 @@ export function memoEvidence(memo) {
     }
     cut();
   }
-  return evidenceList(items);
+  const seen = new Set(), uniq = items.filter(x => !seen.has(x.label) && seen.add(x.label));
+  return evidenceList(uniq.slice(-MEMO_MAX), MEMO_MAX);
 }
 
 /* 펼친 근거(다시 그려도 그대로): 「key:문장 번호」 */
@@ -136,5 +142,5 @@ function onToggle(e) {
 if (globalThis.document && !globalThis.__ssamEvidence) { globalThis.__ssamEvidence = 1; document.addEventListener('click', onToggle); }
 if (globalThis.window) {
   window.SSAM = window.SSAM || {};
-  window.SSAM.evidence = { evidenceList, evidencePrompt, EVIDENCE_RULE, normSentences, joinSentences, alignSentences, memoEvidence, evidenceHTML };
+  window.SSAM.evidence = { evidenceList, evidencePrompt, EVIDENCE_RULE, MEMO_RULE, normSentences, joinSentences, alignSentences, memoEvidence, evidenceHTML };
 }

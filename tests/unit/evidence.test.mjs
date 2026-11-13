@@ -2,20 +2,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  evidenceList, evidencePrompt, EVIDENCE_RULE, normSentences, joinSentences, alignSentences, memoEvidence, evidenceHTML, EVIDENCE_MAX
+  evidenceList, evidencePrompt, EVIDENCE_RULE, MEMO_RULE, normSentences, joinSentences, alignSentences, memoEvidence, evidenceHTML, EVIDENCE_MAX, MEMO_MAX, LABEL_MAX
 } from '../../web/core/evidence.js';
 
-test('근거 목록: 번호(e1…, 메모는 m1…), 같은 글은 하나, 80자까지, 12개까지, 빈 글은 뺌', () => {
+test('근거 목록: 번호(e1…, 메모는 m1…), 같은 글은 하나, 300자까지, 12개까지, 빈 글은 뺌', () => {
   const l = evidenceList([
     { kind: 'unit', label: '「3학년 수학 3단원」 세 자리 수 덧셈 90%' },
     { kind: 'unit', label: '  「3학년 수학 3단원」  세 자리 수 덧셈 90% ' },
     { kind: 'gr', label: '' },
-    { kind: 'gr', label: '잘한 점: ' + '가'.repeat(120) }
+    { kind: 'gr', label: '잘한 점: ' + '가'.repeat(120) },
+    { kind: 'gr', label: '요약: ' + '나'.repeat(400) }
   ]);
-  assert.deepEqual(l.map(x => x.id), ['e1', 'e2']);
+  assert.deepEqual(l.map(x => x.id), ['e1', 'e2', 'e3']);
   assert.equal(l[0].kind, 'unit');
   assert.equal(l[0].label, '「3학년 수학 3단원」 세 자리 수 덧셈 90%');
-  assert.equal(l[1].label.length, 80);
+  assert.equal(l[1].label, '잘한 점: ' + '가'.repeat(120), '평가지 채점 사실은 80자에서 자르지 않음(AI에 다 감)');
+  assert.equal(LABEL_MAX, 300);
+  assert.equal(l[2].label.length, 300);
   const m = evidenceList([{ kind: 'memo', label: '[11. 6.] 토론에서 근거를 들어 반론함' }, { kind: 'memo', label: '발표 잘함' }]);
   assert.deepEqual(m.map(x => x.id), ['m1', 'm2']);
   const many = evidenceList(Array.from({ length: 20 }, (_, i) => ({ kind: 'gr', label: `근거 ${i}` })));
@@ -68,6 +71,32 @@ test('문장 맞추기: 앞·뒤를 고친 글·잘린 글(행특 길이 맞추�
   assert.deepEqual(alignSentences([{ t: '덧셈을 함', src: ['e1'] }], '덧셈을 함.'), [{ t: '덧셈을 함.', src: ['e1'] }], '한 문장은 늘 맞춤');
   assert.equal(alignSentences(ss, '전혀 다른 글임. 또 다른 글임.'), null, '맞출 수 없으면 null');
   assert.deepEqual(alignSentences([], '글'), []);
+});
+
+test('AI 글 따로(ai): 프롬프트는 ai, 화면은 label — 정답률 숫자는 화면에만', () => {
+  const l = evidenceList([{ kind: 'unit', label: '「3학년 수학 3단원」 덧셈 90%', ai: '「3학년 수학 3단원」 덧셈 — 잘함' }, { kind: 'gr', label: '잘한 점: 꼼꼼함' }]);
+  assert.deepEqual(l[0], { id: 'e1', kind: 'unit', label: '「3학년 수학 3단원」 덧셈 90%', ai: '「3학년 수학 3단원」 덧셈 — 잘함' });
+  assert.ok(!('ai' in l[1]), 'ai가 없으면 넣지 않음');
+  assert.equal(evidencePrompt(l), '[근거 목록]\ne1) 「3학년 수학 3단원」 덧셈 — 잘함\ne2) 잘한 점: 꼼꼼함');
+  const h = evidenceHTML({ sentences: [{ t: '덧셈을 잘함.', src: ['e1'] }], list: l });
+  assert.ok(h.includes('덧셈 90%') && !h.includes('— 잘함'), h);
+});
+
+test('메모 조각은 40개까지, 넘으면 최근(아래) 조각을 남김(12개에서 잘려 뒤 메모가 근거에 없던 것)', () => {
+  const memo = Array.from({ length: 45 }, (_, i) => `메모 ${i + 1}`).join('\n');
+  const l = memoEvidence(memo);
+  assert.equal(MEMO_MAX, 40);
+  assert.equal(l.length, 40);
+  assert.equal(l[0].label, '메모 6');
+  assert.equal(l[39].label, '메모 45');
+  assert.deepEqual([l[0].id, l[39].id], ['m1', 'm40']);
+  assert.equal(memoEvidence('발표 잘함\n발표 잘함, 정리정돈').length, 2, '같은 조각은 하나');
+  assert.equal(memoEvidence(Array.from({ length: 17 }, (_, i) => `조각 ${i}`).join(', ')).length, 17, '17조각은 모두');
+});
+
+test('행특 규칙(MEMO_RULE): 메모를 바탕으로 풀어 쓰되 메모에 없는 사실은 쓰지 않음, 조각 번호를 src에', () => {
+  assert.ok(!MEMO_RULE.includes('근거 목록에 있는 사실만'), '글을 메모 조각만으로 좁히지 않음');
+  assert.ok(MEMO_RULE.includes('메모에 없는 사실은 쓰지 않') && MEMO_RULE.includes('src'), MEMO_RULE);
 });
 
 test('메모 조각: 줄·쉼표로 나누고 날짜 「[11. 6.]」 앞머리는 그대로, 괄호 안 쉼표는 나누지 않음', () => {

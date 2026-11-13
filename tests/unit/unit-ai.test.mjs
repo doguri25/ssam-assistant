@@ -67,15 +67,16 @@ test('평어 근거(스펙 §5-1): 평가 내용별 정답률 → 「「3학년 
   assert.equal(evTitle({ subject: '국어' }), '국어');
   const l = pyeongeoEvidence([{ name: '세 자리 수 덧셈', rate: 0.9, titles: ['3학년 수학 3단원'] }, { name: '3번 문항', rate: 0.333, titles: ['3학년 수학 3단원', '3학년 수학 4단원'] }]);
   assert.deepEqual(l, [
-    { id: 'e1', kind: 'unit', label: '「3학년 수학 3단원」 세 자리 수 덧셈 90%' },
-    { id: 'e2', kind: 'unit', label: '「3학년 수학 3단원 외 1개」 3번 문항 33%' }
+    { id: 'e1', kind: 'unit', label: '「3학년 수학 3단원」 세 자리 수 덧셈 90%', ai: '「3학년 수학 3단원」 세 자리 수 덧셈 — 잘함' },
+    { id: 'e2', kind: 'unit', label: '「3학년 수학 3단원 외 1개」 3번 문항 33%', ai: '「3학년 수학 3단원 외 1개」 3번 문항 — 보완 필요' }
   ]);
 });
 
 test('평어 프롬프트(근거): 학생마다 근거 목록(학생 줄 아래 들여 씀)·근거 규칙, 답은 문장마다 src', () => {
   const ev = pyeongeoEvidence([{ name: '글의 내용 파악하기', rate: 1, titles: ['3학년 국어 1단원'] }, { name: '생각 쓰기', rate: 0.25, titles: ['3학년 국어 1단원'] }]);
   const p = pyeongeoPrompt('국어', [{ no: 2, level: 'high', good: ['글의 내용 파악하기'], weak: ['생각 쓰기'], ev }, { no: 3, level: 'mid', good: [], weak: [], ev: [] }]);
-  assert.ok(p.includes('- 2번 | 수준 상') && p.includes('  [근거 목록]\n  e1) 「3학년 국어 1단원」 글의 내용 파악하기 100%\n  e2) 「3학년 국어 1단원」 생각 쓰기 25%'), p);
+  assert.ok(p.includes('- 2번 | 수준 상') && p.includes('  [근거 목록]\n  e1) 「3학년 국어 1단원」 글의 내용 파악하기 — 잘함\n  e2) 「3학년 국어 1단원」 생각 쓰기 — 보완 필요'), p);
+  assert.ok(!/\d\s*%/.test(p), '정답률 숫자는 AI에 보내지 않음(화면 근거에만)');
   assert.ok(p.includes('- 3번 | 수준 중') && p.includes('  [근거 목록] 없음'), '근거 없는 학생');
   assert.ok(p.includes(EVIDENCE_RULE), '근거 규칙');
   assert.ok(p.includes('{"students":[{"no":1,"sentences":[{"t":"문장","src":["e1"]}]}]}'), '답 모양');

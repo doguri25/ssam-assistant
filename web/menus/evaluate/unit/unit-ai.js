@@ -115,12 +115,14 @@ export function normFeedback(v) {
 export function evTitle(m = {}) {
   return [m.grade ? `${m.grade}학년` : '', m.subject || '', m.unitNo ? `${m.unitNo}단원` : ''].filter(Boolean).join(' ') || makeTitle({ ...m, sample: false });
 }
-/* 그 학생의 잘한·보완할 평가 내용 정답률 [{ name, rate, titles }] → 근거 목록 「「3학년 수학 3단원」 세 자리 수 덧셈 90%」 */
+/* 그 학생의 잘한·보완할 평가 내용 정답률 [{ name, rate, titles }] → 근거 목록. 화면은 「「3학년 수학 3단원」 세 자리 수 덧셈 90%」,
+   AI에는 정답률 숫자 없이 「… — 잘함」「… — 보완 필요」(평어에 숫자가 들어가지 않게) */
 export function pyeongeoEvidence(rates) {
   return evidenceList((rates || []).map(r => {
     const ts = [...new Set(r.titles || [])];
     const where = ts.length ? `「${ts[0]}${ts.length > 1 ? ` 외 ${ts.length - 1}개` : ''}」 ` : '';
-    return { kind: 'unit', label: `${where}${r.name} ${Math.round(r.rate * 100)}%` };
+    const how = r.rate >= 0.8 ? '잘함' : r.rate < 0.6 ? '보완 필요' : '보통';
+    return { kind: 'unit', label: `${where}${r.name} ${Math.round(r.rate * 100)}%`, ai: `${where}${r.name} — ${how}` };
   }));
 }
 
@@ -135,7 +137,7 @@ export function pyeongeoPrompt(subject, list) {
     '- 1~2문장, 80~150자. 끝맺음은 「~함.」「~임.」처럼 씁니다.',
     '- 학생 이름·대명사·점수를 쓰지 않습니다. 잘한 것은 구체적으로, 보완할 것은 「~하면 더 나아질 것임」처럼 성장 중심으로 씁니다.',
     '- 수준이 같아도 학생마다 다른 문장으로 씁니다.',
-    `- ${EVIDENCE_RULE} 근거 번호는 그 학생 줄 아래 [근거 목록]의 번호이고, 정답률 숫자는 평어에 쓰지 않습니다.`,
+    `- ${EVIDENCE_RULE} 근거 번호는 그 학생 줄 아래 [근거 목록]의 번호입니다.`,
     '', '[출력] JSON 하나만 출력합니다. 학생마다 평어 문장을 sentences에 차례대로 나눠 담습니다.',
     '{"students":[{"no":1,"sentences":[{"t":"문장","src":["e1"]}]}]}'
   ].join('\n');
