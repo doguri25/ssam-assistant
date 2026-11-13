@@ -43,7 +43,7 @@ export function pctIn(v) {
   const n = typeof v === 'string' ? (v.trim() ? Number(v.trim().replace(/\s*%$/, '')) : NaN) : typeof v === 'number' ? v : NaN;
   return Number.isFinite(n) && n >= 0 && n <= 100 ? Math.round(n * 10) / 10 : null;
 }
-const normRefs = v => (Array.isArray(v) ? v : []).filter(isObj).map(t => ({ id: str(t.id).trim().slice(0, 40), title: str(t.title).trim().slice(0, 120) })).filter(t => t.id || t.title).slice(0, 12);
+const normRefs = v => (Array.isArray(v) ? v : []).filter(isObj).map(t => ({ id: str(t.id).trim().slice(0, 40), title: str(t.title).trim().slice(0, 120) })).filter(t => t.id || t.title).slice(0, 60);
 function normGrowthEntry(v) {
   if (!isObj(v)) return null;
   const p = isObj(v.pre) ? v.pre : {}, q = isObj(v.post) ? v.post : null, qp = q ? pctIn(q.pct) : null;

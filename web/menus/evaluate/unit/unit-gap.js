@@ -14,8 +14,10 @@ export function normCut(v) {
 }
 const doms = it => [...new Set(String((it && it.domain) || '').split('·').map(s => s.trim()).filter(Boolean))];
 const flat = s => String(s || '').replace(/\s+/g, '');
-const pctOf = (got, full) => Math.round(got / full * 100);
-const okTest = t => t && t.key && Array.isArray(t.key.items) && Array.isArray(t.students) && t.meta;
+/* 점수율: 소수 한 자리(59.5%가 60%로 보여 기준 아래인데 빠져 보이지 않게). 기준과는 반올림 전 값으로 견줌 */
+const pctOf = (got, full) => Math.round(got / full * 1000) / 10;
+/* 예시(「예시로 채우기」) 평가는 셈에서 뺌 — 진짜 학생의 결손·사후 점수가 되지 않게 */
+const okTest = t => t && t.key && Array.isArray(t.key.items) && Array.isArray(t.students) && t.meta && !t.meta.sample;
 const hasDomains = t => t.key.items.some(it => doms(it).length > 0);
 /* 영역이 없는 평가의 영역 이름: 평가 이름에서 회차·(예시)를 뺌 */
 export const areaTitle = meta => makeTitle({ ...(meta || {}), round: null, sample: false });
@@ -25,7 +27,7 @@ function areasOf(t, s) {
   const subject = String(t.meta.subject || '').trim();
   if (!hasDomains(t)) {
     const tot = studentTotal(t, s);
-    return tot.total ? [{ subject, name: areaTitle(t.meta), got: tot.score, full: tot.total }] : [];
+    return tot.total ? [{ subject, name: areaTitle(t.meta), got: tot.score, full: tot.total, byTitle: true }] : [];
   }
   const m = new Map();
   for (const it of t.key.items) {
@@ -52,7 +54,7 @@ export function gapStudents(tests, { cut } = {}) {
       const b = by.get(s.no) || { no: s.no, tests: new Set(), areas: new Map() };
       b.tests.add(t.id);
       for (const a of list) {
-        const k = `${flat(a.subject)}\u0000${flat(a.name)}`, v = b.areas.get(k) || { subject: a.subject, name: a.name, got: 0, full: 0, tests: [] };
+        const k = `${flat(a.subject)}\u0000${flat(a.name)}`, v = b.areas.get(k) || { subject: a.subject, name: a.name, got: 0, full: 0, tests: [], byTitle: !!a.byTitle };
         v.got += a.got; v.full += a.full;
         if (!v.tests.includes(t.id)) v.tests.push(t.id);
         b.areas.set(k, v);
@@ -62,8 +64,7 @@ export function gapStudents(tests, { cut } = {}) {
   }
   const out = [];
   for (const b of by.values()) {
-    const low = [...b.areas.values()].filter(a => a.full > 0).map(a => ({ name: a.name, subject: a.subject, pct: pctOf(a.got, a.full), tests: a.tests }))
-      .filter(a => a.pct < c)
+    const low = [...b.areas.values()].filter(a => a.full > 0 && a.got / a.full * 100 < c).map(a => ({ name: a.name, subject: a.subject, pct: pctOf(a.got, a.full), tests: a.tests, ...(a.byTitle ? { byTitle: true } : {}) }))
       .sort((x, y) => x.pct - y.pct || x.subject.localeCompare(y.subject, 'ko') || x.name.localeCompare(y.name, 'ko'));
     if (low.length) out.push({ no: b.no, areas: low, worst: low[0].pct, n: b.tests.size });
   }
@@ -82,7 +83,7 @@ export function areaPct(t, no, area) {
     const tot = studentTotal(t, s);
     return tot.total ? pctOf(tot.score, tot.total) : null;
   }
-  const names = new Set(want.split(/[·,、/]/).map(flat).filter(Boolean));
+  const names = new Set(want.split('·').map(flat).filter(Boolean)); // 문항 영역(doms)과 같은 규칙 — 「자료/가능성」은 한 영역
   let got = 0, full = 0;
   for (const it of t.key.items) {
     if (!doms(it).some(d => names.has(flat(d)))) continue;

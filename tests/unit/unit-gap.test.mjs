@@ -57,7 +57,7 @@ test('기준을 바꾸면 그 아래만: 40이면 25%만, 90이면 낮은 차례
 test('영역이 없는 평가는 평가 이름(회차 뺌) 한 영역으로 셈', () => {
   assert.equal(areaTitle({ subject: '수학', grade: 3, unitNo: 5, unitName: '분수', round: 2, sample: true }), '3학년 수학 5단원 분수');
   const g = gapStudents([t3()], { cut: 60 });
-  assert.deepEqual(g, [{ no: 1, areas: [{ name: '3학년 수학 5단원 분수', subject: '수학', pct: 50, tests: ['t3'] }], worst: 50, n: 1 }]);
+  assert.deepEqual(g, [{ no: 1, areas: [{ name: '3학년 수학 5단원 분수', subject: '수학', pct: 50, tests: ['t3'], byTitle: true }], worst: 50, n: 1 }]);
   // 같은 단원 다른 회차는 한 영역으로 모임
   const r2 = T('t3b', { subject: '수학', unitNo: 5, unitName: '분수', round: 2, date: '2026-10-08' }, [[1, '', 50], [2, '', 50]], { 1: [50, 50] });
   const g2 = gapStudents([t3(), r2], { cut: 80 });
@@ -90,4 +90,23 @@ test('영역 하나 점수율(사후 점수): 영역·여러 영역(·)·평가 
   assert.equal(areaPct(t3(), 1, '3학년 수학 5단원 분수'), 50, '영역이 없는 평가는 평가 이름으로');
   assert.equal(areaPct(t3(), 1, '도형'), null);
   assert.equal(areaPct(t1(), 4, '도형'), null, '채점 안 함 학생');
+});
+
+test('검토 고침: 기준은 반올림 전 점수율로 — 119/200(59.5%)은 60% 아래로 찾음(60%로 보이지 않게 소수 한 자리)', () => {
+  const t = T('r1', { subject: '수학', unitNo: 3, unitName: '나눗셈', date: '2026-09-10' }, [[1, '수와 연산', 100], [2, '수와 연산', 100]], { 1: [100, 19] });
+  const g = gapStudents([t], { cut: 60 });
+  assert.equal(g.length, 1, '59.5%는 60% 아래');
+  assert.ok(g[0].areas[0].pct < 60, '보이는 점수율도 60 아래: ' + g[0].areas[0].pct);
+});
+
+test('검토 고침: 예시(「예시로 채우기」) 평가는 셈에서 뺌', () => {
+  const s = T('s1', { subject: '국어', unitNo: 1, unitName: '시', date: '2026-10-20', sample: true }, [[1, '이해', 100]], { 1: [10] });
+  assert.equal(gapStudents([s], { cut: 60 }).length, 0);
+  assert.equal(areaPct(s, 1, '이해'), null, '사후 점수로도 쓰지 않음');
+});
+
+test('검토 고침: 영역 이름에 「/」「,」가 있어도 그 영역 하나로 맞춤(나누는 것은 「·」만)', () => {
+  const t = T('d1', { subject: '수학', unitNo: 3, unitName: '자료', date: '2026-09-10' }, [[1, '자료/가능성', 50], [2, '도형', 50]], { 1: [10, 50] });
+  assert.equal(areaPct(t, 1, '자료/가능성'), 20);
+  assert.equal(areaPct(t, 1, '자료/가능성·도형'), 60);
 });

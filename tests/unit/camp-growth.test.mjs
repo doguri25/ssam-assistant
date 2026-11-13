@@ -170,3 +170,53 @@ test('결과 보고서 문서: 끝에 「사전·사후 성취」 표(학생 | �
   assert.equal(growthRows(newCamp()), null);
   assert.ok(!reportDoc(newCamp()).blocks.some(b => b.type === 'table'));
 });
+
+test('검토 고침: 사전에 쓴 평가·학생을 넣기 전에 본 평가는 사후로 쓰지 않음(사전 평가가 12개를 넘어도)', () => {
+  // 1년짜리 프로그램(첫 수업 3/2), 9/25에 넣은 학생: 사전은 3~9월 평가 14개. 9/20 평가가 사후로 잡히면 안 됨
+  const tests = [];
+  for (let i = 0; i < 14; i++) {
+    const m = String(3 + Math.floor(i / 2)).padStart(2, '0'), d = i % 2 ? '20' : '05';
+    tests.push(T('t' + i, '국어', `2026-${m}-${d}`, { 5: [i === 13 ? 95 : 44, 90] }, i + 1));
+  }
+  const c0 = newCamp({ name: '1년 기초학력', sessions: [{ id: 's0', date: '2026-03-02', start: '14:00', end: '14:40', subject: '국어', content: '' }] });
+  const titles = Object.fromEntries(tests.map(t => [t.id, makeTitle(t.meta)]));
+  const { camp } = addGapStudents(c0, gapStudents(tests, { cut: 60 }), { grade: 3, cls: 2, date: '2026-09-25', titles });
+  const sid = camp.students[0].id;
+  assert.equal(applyAutoPost(camp, tests, { info: INFO }).camp.growth[sid].post, null, '사전 기간 평가는 사후가 아님');
+  const later = T('late', '국어', '2026-10-10', { 5: [70, 90] }, 20);
+  assert.equal(applyAutoPost(camp, [...tests, later], { info: INFO }).camp.growth[sid].post.pct, 70, '넣은 뒤 본 평가는 사후');
+});
+
+test('검토 고침: 영역이 없는 두 단원이 같은 점수로 가장 낮으면 첫 단원만 영역으로(그 단원 재평가로 사후가 채워짐)', () => {
+  const U = (id, unitNo, date, a) => { const t = newTest({ meta: { subject: '수학', grade: 3, term: 2, unitNo, unitName: '', round: 1, date }, key: { domains: [], items: [{ no: 1, content: '1번', domain: '', type: 'short', answer: '', points: 100 }] } }); t.id = id; t.done = true; t.students = [{ no: 5, skip: false, status: 'done', items: { 1: C(a) } }]; return t; };
+  const pre = [U('u3', 3, '2026-10-01', 50), U('u4', 4, '2026-10-08', 50)];
+  const c0 = newCamp({ name: 'p', sessions: SESS });
+  const { camp } = addGapStudents(c0, gapStudents(pre, { cut: 60 }), { grade: 3, cls: 2, date: '2026-10-09', titles: {} });
+  const e = camp.growth[camp.students[0].id];
+  assert.ok(!e.area.includes('·'), '한 영역: ' + e.area);
+  const re = U('u3b', 3, '2026-11-12', 80); re.meta.round = 2;
+  assert.equal(applyAutoPost(camp, [...pre, re], { info: INFO }).camp.growth[camp.students[0].id].post.pct, 80);
+});
+
+test('검토 고침: 보고서 AI 줄의 교과·영역은 학생 이름 짐작으로 바꾸지 않음(「도형」이 학생A가 되지 않게), 성까지 쓴 이름만 가림', () => {
+  let c = newCamp({ name: 'p', students: [{ id: 'x', grade: 3, cls: 2, no: 7, name: '김도형' }, { id: 'y', grade: 3, cls: 2, no: 8, name: '이바다' }] });
+  c = setGrowth(c, 'x', 'subject', '수학'); c = setGrowth(c, 'x', 'area', '도형'); c = setGrowth(c, 'x', 'pre', '40'); c = setGrowth(c, 'x', 'post', '70');
+  c = setGrowth(c, 'y', 'area', '이바다 받침'); c = setGrowth(c, 'y', 'pre', '30');
+  const lines = growthLines(c).join('\n');
+  assert.ok(lines.includes('학생A · 수학 도형 40% → 70%(+30)'), lines);
+  assert.ok(!lines.includes('이바다'), '성까지 쓴 이름은 가림: ' + lines);
+});
+
+test('검토 고침: 예시 평가는 사후로 쓰지 않음', () => {
+  const s = T('smp', '수학', '2026-11-15', { 5: [99, 99] }, 6); s.meta.sample = true;
+  const { camp } = added();
+  assert.equal(applyAutoPost(camp, [p1(), s], { info: INFO }).camp.growth[sidOf(camp, 5)].post, null);
+});
+
+test('검토 고침: 다시 넣어도 선생님이 적은 교과·영역은 그대로, 학년·반이 비어 있는 같은 번호 학생은 겹쳐 넣지 않음', () => {
+  let c = newCamp({ name: 'p', students: [{ id: 'z', grade: null, cls: null, no: 5, name: '' }] });
+  c = setGrowth(c, 'z', 'subject', '수학'); c = setGrowth(c, 'z', 'area', '선생님이 적은 영역');
+  const r = addGapStudents(c, gapStudents([p1()], { cut: 60 }), { grade: 3, cls: 2, date: '2026-10-21', titles: {} });
+  assert.equal(r.camp.students.filter(s => s.no === 5).length, 1, '5번은 하나');
+  assert.equal(r.camp.growth.z.area, '선생님이 적은 영역');
+});

@@ -5,7 +5,7 @@
      직접 넣은 사후(source 'manual')는 덮지 않음. 다른 반 학생과 번호가 헷갈리지 않게 결손 찾기에서 넣은 학생이나 학급 학년·반이 같은 학생만
    - setGrowth: 칸 직접 고치기(사전·사후 숫자는 'manual', 사후를 비우면 다시 자동)
    - growthLines(보고서 AI 줄, 학생A) · growthRows(결과 보고서 표, 이름 그대로) */
-import { newStudent, normCamp, aliasMap, toAlias, campDates, studentLabel, pctIn } from './camp-model.js';
+import { newStudent, normCamp, aliasMap, campDates, studentLabel, pctIn } from './camp-model.js';
 import { areaPct } from '../evaluate/unit/unit-gap.js';
 import { makeTitle } from '../evaluate/unit/unit-model.js';
 
@@ -15,9 +15,10 @@ const flat = s => String(s || '').replace(/\s+/g, '').replace(/과$/, '');
 const blank = () => ({ subject: '', area: '', pre: { pct: null, tests: [], date: '', source: 'manual' }, post: null });
 
 /* ---------- 넣기 ---------- */
-/* 결손 찾기 한 줄 → 사전 점수: 가장 낮은 영역(같은 점수·같은 교과면 함께 「도형·측정」), 쓴 평가 id·이름, 날짜 */
+/* 결손 찾기 한 줄 → 사전 점수: 가장 낮은 영역(같은 점수·같은 교과 문항 영역이면 함께 「도형·측정」 — 영역이 없는 평가(평가 이름이 영역)는
+   합치면 그 단원 재평가와 맞지 않으므로 첫 것만), 쓴 평가 id·이름, 날짜(넣은 날 — 사후는 이 날 뒤 평가에서) */
 export function preFromGap(g, { titles = {}, date = '' } = {}) {
-  const a0 = g.areas[0], low = g.areas.filter(a => a.pct === a0.pct && a.subject === a0.subject);
+  const a0 = g.areas[0], low = a0.byTitle ? [a0] : g.areas.filter(a => a.pct === a0.pct && a.subject === a0.subject && !a.byTitle);
   const ids = [...new Set(low.flatMap(a => a.tests || []))];
   return { subject: a0.subject || '', area: low.map(a => a.name).join('·'), pre: { pct: a0.pct, tests: ids.map(id => ({ id, title: titles[id] || '' })), date, source: 'auto' }, post: null };
 }
@@ -29,19 +30,25 @@ export function addGapStudents(camp, gaps, { grade = null, cls = null, date = ''
   let added = 0, existed = 0, over = 0;
   for (const g of gaps || []) {
     if (!g || !g.areas || !g.areas.length) continue;
-    let st = c.students.find(s => s.no === g.no && sameNull(s.grade, grade) && sameNull(s.cls, cls));
+    // 같은 학년·반·번호, 또는 학년·반을 비워 둔 같은 번호 학생(직접 넣은 학생 — 겹쳐 넣지 않게)
+    let st = c.students.find(s => s.no === g.no && ((sameNull(s.grade, grade) && sameNull(s.cls, cls)) || (s.grade == null && s.cls == null)));
     if (st) existed++;
     else if (c.students.length >= 60) { over++; continue; }
     else { st = newStudent({ grade, cls, no: g.no, name: '' }); c.students.push(st); added++; }
     const e = c.growth[st.id];
-    if (!e || e.pre.pct == null) c.growth[st.id] = { ...preFromGap(g, { titles, date }), post: e ? e.post : null };
+    // 빈 줄일 때만 채움: 선생님이 적은 교과·영역·점수는 그대로
+    if (!e || (!String(e.subject || '').trim() && !String(e.area || '').trim() && e.pre.pct == null)) c.growth[st.id] = { ...preFromGap(g, { titles, date }), post: e ? e.post : null };
   }
   return { camp: normCamp(c), added, existed, over };
 }
 
 /* ---------- 사후 자동 ---------- */
-/* 사후 점수를 찾기 시작하는 날(이 날 뒤): 첫 수업 날, 없으면 학생을 넣은 날(사전 날짜) */
-export const growthSince = (camp, e) => campDates(camp)[0] || (e && e.pre && e.pre.date) || '';
+/* 사후 점수를 찾기 시작하는 날(이 날 뒤): 첫 수업 날과 결손 찾기로 넣은 날 가운데 늦은 날(넣기 전 평가는 사전 기간 — 사전 평가 목록이 잘려도
+   사후로 잡히지 않게), 수업 날이 없으면 넣은 날(사전 날짜) */
+export function growthSince(camp, e) {
+  const first = campDates(camp)[0] || '', pre = (e && e.pre) || {}, added = pre.source === 'auto' ? pre.date || '' : '';
+  return [first, added].filter(Boolean).sort().pop() || pre.date || '';
+}
 /* 학생 st(번호)의 사후 자동 점수 { pct, source: 'auto', tests: [{ id, title }], date } 또는 null. 사전에 쓴 평가는 뺌 */
 export function autoPost(e, st, tests, since) {
   if (!e || !st || !st.no || !since || !String(e.area || '').trim() || !flat(e.subject)) return null;
@@ -103,7 +110,8 @@ export function growthLines(camp) {
   return camp.students.map(st => {
     const e = camp.growth[st.id];
     if (!has(e)) return '';
-    const what = toAlias(whatOf(e), camp), d = growthChange(e);
+    // 교과·영역 글은 이름 짐작(「도형」→ 학생A)을 하지 않고, 성까지 쓴 학생 이름만 학생A로
+    const what = camp.students.reduce((w, s) => { const n = String(s.name || '').trim(); return n.length >= 2 ? w.split(n).join(al[s.id]) : w; }, whatOf(e)), d = growthChange(e);
     return `${al[st.id]} · ${what ? `${what} ` : ''}${e.pre.pct != null ? fmtPct(e.pre.pct) : '사전 점수 없음'} → ${e.post ? fmtPct(e.post.pct) : '사후 점수 없음'}${d == null ? '' : `(${d > 0 ? '+' : ''}${num(d)})`}`;
   }).filter(Boolean);
 }
