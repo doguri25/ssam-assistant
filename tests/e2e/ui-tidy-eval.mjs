@@ -247,6 +247,18 @@ await run('ui-tidy-eval', [
     assert(small === 0, '44px보다 작은 누르는 칸 ' + small);
     await page.setViewportSize({ width: 1280, height: 860 });
   }],
+  ['앱을 켠 직후 부품이 늦게 준비돼 화면을 다시 그려도, 치던 칸의 글과 커서는 그대로(느린 컴퓨터에서 예외 번호가 사라지던 것)', async () => {
+    await enter(page, 'evaluate', 'gr');
+    await openFold('#grSetup', 'gr-pages');
+    await page.fill('#grExcept', '');
+    await page.click('#grExcept'); await page.keyboard.type('3');
+    await page.evaluate(() => window.dispatchEvent(new Event('ssam:ui-ready')));
+    await page.waitForTimeout(200);
+    const v = await page.evaluate(() => { const el = document.getElementById('grExcept'); return [el && el.value, document.activeElement && document.activeElement.id]; });
+    assert(v[0] === '3' && v[1] === 'grExcept', '치던 글·커서가 사라짐 ' + JSON.stringify(v));
+    await page.dispatchEvent('#grExcept', 'change');
+    await until(async () => (await fold('#grSetup', 'gr-pages')).sum.includes('3번 제외'));
+  }],
   ['페이지 오류 없음', async () => { assert(!errors.length, errors.join('\n')); }]
 ]);
 await t.close();

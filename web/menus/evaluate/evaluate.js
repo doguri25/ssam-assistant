@@ -804,9 +804,11 @@ document.addEventListener('menu:go', e => {
   uiFillIntros();
 });
 window.addEventListener('ssam:ui-ready', () => {
-  try {
-    if (S.mode === 'hk') renderHK(); else if (S.mode === 'gr') renderGR(); else if (S.mode === 'cc') renderCC(); else renderAll();
-  } catch (e) {}
+  const redraw = () => { try { if (S.mode === 'hk') renderHK(); else if (S.mode === 'gr') renderGR(); else if (S.mode === 'cc') renderCC(); else renderAll(); } catch (e) {} };
+  // 앱을 켠 직후 칸에 치는 중이면(느린 컴퓨터에서 부품이 늦게 준비됨) 다시 그리지 않고 그 칸을 떠난 뒤에 — 치던 글이 예전 값으로 돌아가지 않게
+  const a = document.activeElement, sec = document.querySelector('section[data-menu="evaluate"]');
+  if (a && sec && sec.contains(a) && a.matches('input, textarea, select, [contenteditable="true"]')) a.addEventListener('blur', () => setTimeout(redraw, 0), { once: true });
+  else redraw();
 });
 const cap = { db: null, uid: null, sample: undefined, mcp: undefined, perms: null };
 const useCap = name => {
