@@ -2329,6 +2329,14 @@ document.addEventListener('click', async e => {
 document.addEventListener('change', e => {
   if (e.target && e.target.id === 'pySubject' && S.mode === 'pyeongeo') { PYR.sub = e.target.value; PYR.edit = false; PYR.sel = 0; renderPyRec(); }
 });
+/* 다른 탭(기재 점검·평가지 채점 등)에 갔다 돌아오면 학생별 글을 다시 읽어 그림 — 옛 글을 보이다가 [직접 고치기]·[문장 빼기]로 그 옛 글을 저장해
+   그새 고친 글을 되돌리지 않게. 직접 고치는 중이면 그대로 둠(치던 글을 지키려고) */
+document.addEventListener('menu:go', e => {
+  const d = (e && e.detail) || {};
+  if (d.menu !== 'evaluate' || d.tab !== 'pyeongeo' || PYR.edit) return;
+  PYR.recs = null;
+  if (S.mode === 'pyeongeo' && pyMode() === 'stu') renderPyRec();
+});
 /* 넣기 화면 머리말 아래 설명(index.html의 글)을 「화면 설명」으로: 처음 몇 번만 펼쳐 보임 */
 function heroIntro() {
   const hero = $('#importView .hero'); if (!hero) return;

@@ -7,6 +7,7 @@ await t.ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: ur
 const L = [{ id: 'e1', kind: 'unit', label: '「3학년 수학 3단원」 곱셈하기 100%' }, { id: 'e2', kind: 'unit', label: '「3학년 수학 3단원」 곱셈의 뜻 50%' }];
 const P1 = '곱셈하기를 정확하게 해냄.', P2 = '방과 후 학원에서 배운 방법으로 곱셈의 뜻을 설명함.', P3 = '수업 시간에 성실하게 참여함.';
 const T2 = '곱셈을 꾸준히 연습하며 실수를 줄여 감.';
+const G1 = '과학 학원에서 배운 실험으로 자석의 성질을 설명함.', FIXED = '실험으로 자석의 같은 극끼리 밀어내는 성질을 설명함.';
 await page.addInitScript(() => {
   if (localStorage.getItem('seeded')) return;
   localStorage.setItem('seeded', '1');
@@ -18,6 +19,7 @@ let gate = null;
 const hold = () => { let open; gate = new Promise(r => { open = r; }); return open; };
 await mockClaude(page, async ({ prompt }) => {
   if (gate) await gate;
+  if (prompt.startsWith('[생기부 글 고치기]')) return JSON.stringify({ text: FIXED });
   return prompt.startsWith('[생기부 문장 하나]') ? JSON.stringify({ t: '곱셈의 뜻을 그림으로 나타내며 설명함.', src: ['e2'] }) : '[]';
 });
 const until = async (fn, ms = 6000) => { const end = Date.now() + ms; while (!(await fn())) { if (Date.now() > end) throw new Error('시간 초과'); await new Promise(r => setTimeout(r, 80)); } };
@@ -70,6 +72,35 @@ await run('fix1114-record', [
     const lines = (await page.evaluate(() => navigator.clipboard.readText())).split('\n');
     const v = await ls('ssam:unit:pyeongeo:수학');
     assert(JSON.stringify(lines) === JSON.stringify([v.students[1].text, T2, '', '구구단을 차근차근 익혀 감.']), JSON.stringify(lines));
+  }],
+  ['교과 평어 학생별(평가지 채점 글)을 본 뒤 기재 점검에서 그 글을 고치고 돌아오면 고친 글이 보이고, [직접 고치기]·저장이 고친 글을 옛 글로 되돌리지 않음', async () => {
+    await page.evaluate(G1 => {
+      localStorage.setItem('ssam:grset', JSON.stringify({ maskOn: false, mask: [] }));
+      localStorage.setItem('ssam:grs', JSON.stringify(['g1']));
+      localStorage.setItem('ssam:gr:g1', JSON.stringify({ kind: 'gr', title: '자석의 성질', unitId: '', criteria: '', critDocs: [], createdAt: 1, settings: { maskOn: false, mask: [], ratio: { top: 10, high: 30, mid: 40, low: 20 } }, students: [
+        { id: 's1', no: 1, n: 1, skip: 0, score: 90, level: 'high', manual: 0, summary: '', evidence: [], strengths: '', improve: '', unreadable: 0, text: G1, d: 0 }] }));
+    }, G1);
+    await page.reload(); await page.waitForTimeout(400);
+    await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'pyeongeo');
+    await page.waitForSelector('#pySubject option[value=""]', { state: 'attached' });
+    await page.selectOption('#pySubject', '');
+    await page.waitForFunction(G1 => document.querySelector('#pyRecView .rw-art').textContent.includes(G1), G1);
+    await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'check');
+    const ref = '[data-chk-ref="gr:g1:s1"]';
+    await page.waitForSelector(`${ref} [data-chk-ai]`);
+    await page.click(`${ref} [data-chk-ai]`);
+    await page.waitForSelector(`${ref} [data-chk-apply]`);
+    await page.click(`${ref} [data-chk-apply]`);
+    await until(async () => (await ls('ssam:gr:g1')).students[0].text === FIXED);
+    await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'pyeongeo');
+    await page.waitForFunction(F => { const a = document.querySelector('#pyRecView .rw-art'); return a && a.textContent.includes(F); }, FIXED, { timeout: 3000 }).catch(() => {});
+    const shown = await page.textContent('#pyRecView .rw-art');
+    await page.click(`${V} [data-py="edit"]`);
+    await page.click(`${V} [data-py="save"]`);
+    await page.waitForTimeout(300);
+    const now = (await ls('ssam:gr:g1')).students[0].text;
+    assert(now === FIXED, `고친 글이 옛 글로 돌아감: ${now}`);
+    assert(shown.includes(FIXED), `옛 글이 보임: ${shown}`);
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
