@@ -3,6 +3,7 @@ import { open, run, assert, mockClaude } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
+await t.ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: url.replace(/\/$/, '') });
 const L = [{ id: 'e1', kind: 'unit', label: '「3학년 수학 3단원」 곱셈하기 100%' }, { id: 'e2', kind: 'unit', label: '「3학년 수학 3단원」 곱셈의 뜻 50%' }];
 const P1 = '곱셈하기를 정확하게 해냄.', P2 = '방과 후 학원에서 배운 방법으로 곱셈의 뜻을 설명함.', P3 = '수업 시간에 성실하게 참여함.';
 const T2 = '곱셈을 꾸준히 연습하며 실수를 줄여 감.';
@@ -51,6 +52,24 @@ await run('fix1114-record', [
     assert(v.students[2].text === T2, `2번 글이 바뀜: ${v.students[2].text}`);
     assert(v.students[1].text === `${P1} 곱셈의 뜻을 그림으로 나타내며 설명함. ${P3}`, `1번 글: ${v.students[1].text}`);
     assert(v.students[2].level === 'mid' && v.students[2].manual === true && !v.students[2].ev, JSON.stringify(v.students[2]));
+  }],
+  ['교과 평어 학생별 [나이스 차례로 복사]: 글이 없는 학생은 빈 줄로 칸을 지키고(뒤 학생이 앞 칸으로 밀리지 않게), 예외 번호(전출)는 넣지 않음', async () => {
+    await page.evaluate(async T2 => {
+      localStorage.setItem('ssam:class', JSON.stringify({ count: 5, except: [4] }));
+      const m = await import('./menus/evaluate/unit/unit-model.js');
+      const v = m.getPyeongeo('수학');
+      v.students = { ...v.students, 4: { level: 'mid', text: '전출 전에 쓴 평어임.', manual: true }, 5: { level: 'low', text: '구구단을 차근차근 익혀 감.', manual: true } };
+      m.savePyeongeo('수학', v);
+    }, T2);
+    await page.reload(); await page.waitForTimeout(400);
+    await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'pyeongeo');
+    await page.waitForSelector(`${V} [data-py="neis"]`);
+    await page.evaluate(() => navigator.clipboard.writeText(''));
+    await page.click(`${V} [data-py="neis"]`);
+    await until(async () => !!(await page.evaluate(() => navigator.clipboard.readText())));
+    const lines = (await page.evaluate(() => navigator.clipboard.readText())).split('\n');
+    const v = await ls('ssam:unit:pyeongeo:수학');
+    assert(JSON.stringify(lines) === JSON.stringify([v.students[1].text, T2, '', '구구단을 차근차근 익혀 감.']), JSON.stringify(lines));
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

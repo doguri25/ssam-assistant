@@ -2283,6 +2283,13 @@ async function pyOneSentence(x, { row = -1, add = '' } = {}) {
   } catch (e) { toast(errMsg((e && e.code) || 'upstream_error', e), 4500); }
   finally { PYR.busyRow = null; renderPyRec(); }
 }
+/* 나이스에 넣을 번호: 학급 명단 차례 그대로(글이 없는 학생은 빈 칸으로 넘어가 뒤 학생이 앞 칸으로 밀리지 않게, 예외 번호·명단 밖 번호는 나이스에 칸이 없어 뺌).
+   명단이 없으면 1번부터 글이 있는 마지막 번호까지(빈 번호는 빈 칸 — 평가지 채점의 빈 번호 채우기와 같게) */
+function pyNeisNos(nos) {
+  if (CLASS.count) return classNos();
+  const ex = new Set(CLASS.except), max = Math.max(0, ...nos);
+  return Array.from({ length: max }, (_, i) => i + 1).filter(n => !ex.has(n));
+}
 function pyNeisSrc(map) {
   return { key: 'py', what: '교과 평어', field: '교과 학습 발달 상황', title: pySubName(PYR.sub),
     text: id => { const x = pyCur(map, +id); return x ? x.text.trim() : ''; }, no: id => +id,
@@ -2313,7 +2320,7 @@ document.addEventListener('click', async e => {
   else if (a === 'cancel') { PYR.edit = false; renderPyRec(); }
   else if (a === 'save' && x) { const v = ($('#pyEdit') || {}).value || ''; if (await pySave(x, v, x.ev)) { PYR.edit = false; toast('고친 글을 저장했어요'); } else toast('저장하지 못했어요'); renderPyRec(); }
   else if (a === 'copy' && x) copyText(x.text).then(ok => toast(ok ? `${PYR.sel}번 교과 평어를 복사했어요` : '복사가 막혔어요.'));
-  else if (a === 'neis') neisCopyAll(pyNeisSrc(map), nos.map(String));
+  else if (a === 'neis') neisCopyAll(pyNeisSrc(map), pyNeisNos(nos).map(String));
   else if (a === 'redo' && x) {
     if (x.src === 'unit') { R.pyOpenUnit(PYR.sub, PYR.sel); toast('단원평가 결과에서 [평어 쓰기]로 다시 써요', 4000); }
     else { if (x.gid !== GR.id) await grOpenHistory(x.gid); setMode('gr'); const s = grStudent(x.sid); if (s) { if (s.level && s.status === 'done' && !['grading', 'ranking', 'writing'].includes(GR.phase)) { s.stale = true; grWrite([s.id]); toast(`${s.no}번 평어를 다시 써요`); } } }
