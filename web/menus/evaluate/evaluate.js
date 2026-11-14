@@ -1744,16 +1744,21 @@ document.addEventListener('click', e => {
   e.stopPropagation(); e.preventDefault();
   if (b.dataset.rvNext != null) { const op = view.querySelector('.rv-op'); if (op) { op.scrollIntoView({ block: 'center', behavior: 'smooth' }); const x = op.querySelector('button'); if (x) x.focus({ preventScroll: true }); } return; }
   const use = b.dataset.rvUse != null, key = use ? b.dataset.rvUse : b.dataset.rvKeep;
-  if (GR_RV.handle(key, use)) return;
+  rvDecide(key, use);
+}, true);
+/* 두 의견 고르기(의견 칸의 단추·평가지 채점 확인 화면이 같이 씀): use면 검토 의견을 씀, 아니면 그대로 둠 */
+function rvDecide(key, use) {
+  if (GR_RV.handle(key, use)) return true;
   const tg = rvTarget(key);
-  if (!tg) return;
+  if (!tg) return false;
   const k = tg.rv || 'rv';
-  if (!rvOpen(tg.o, k)) return;
+  if (!rvOpen(tg.o, k)) return false;
   if (use) { tg.o[tg.f] = tg.o[k].fix; if (k === 'trv') tg.o.stale = false; }
   tg.o[k] = { ...tg.o[k], done: use ? 'review' : 'main' };
   tg.save(); tg.render();
   toast(use ? '고친 문장을 썼어요' : '그대로 두었어요');
-}, true);
+  return true;
+}
 async function run(job) {
   const u = unitById(job.unitId);
   const key = setKey(job.unitId, job.lv);
@@ -4656,8 +4661,142 @@ function grStatusChip(s) {
     run: '<span class="chip run"><span class="spin"></span>채점 중</span>', err: '<span class="chip err">오류</span>', done: ''
   }[s.status] || '';
 }
+/* ---------- 채점 확인 — 판단을 미룬 것만 하나씩 (스펙 2026-11-14-eval-redesign §4, 공통 모양 eval-ui.css .ev-rv) ----------
+   볼 학생은 한눈에 「선생님 차례」와 같은 규칙(record-model grReviewItems ← eval-stage grPending). 학생마다 볼 것:
+   read(알아보기 어려움 → 수준 정하기) · score(검토 AI 점수와 10점 넘게 다름) · text(검토 AI가 고친 평어).
+   정하기는 지금 결과 화면과 같은 함수(grSetLevel · GR_RV.handle · rvDecide). ← → 는 이 화면 안에 초점이 있을 때만 */
+const GR_RV_KIND = { read: '알아보기 어려움', score: '점수 다시 보기', text: '평어 검토' };
+function grRvItems() { const R = REC(); return R ? R.grReviewItems(GR.students) : []; }
+function grRvOpen() {
+  const items = grRvItems();
+  if (!items.length) { toast('확인할 것이 없어요'); GR.rvw = null; renderGRResults(); return false; }
+  GR.rvw = { items, at: 0, done: [] };
+  GR.showRes = true; const v = $('#grView'); if (v) v.classList.add('show-pane');
+  renderGRResults(); grRvFocus();
+  return true;
+}
+function grRvClose() { GR.rvw = null; renderGR(); const b = $('#grResults [data-grrv="open"]') || $('#grResults .gr-top h2'); if (b && b.focus) b.focus({ preventScroll: true }); }
+const grRvKey = x => `${x.id}:${x.kind}`;
+// 그 칸이 아직 정할 것인지(다른 곳에서 정했으면 끝난 칸)
+function grRvOpenItem(x) {
+  const s = grStudent(x.id);
+  if (!s) return false;
+  return x.kind === 'read' ? !!(s.unreadable && !s.manual) : x.kind === 'score' ? !!(s.rv && !s.rv.done) : !!(s.trv && !s.trv.done);
+}
+function grRvGo(i) { const r = GR.rvw; if (!r) return; r.at = Math.max(0, Math.min(r.items.length, i)); renderGRResults(); grRvFocus(); }
+function grRvFocus() { setTimeout(() => { const el = $('#grResults .ev-rv-item[aria-current="true"]') || $('#grResults .gr-rvw-end button') || $('#grResults .gr-rvw'); if (el) el.focus({ preventScroll: true }); }, 0); }
+/* 정한 뒤: 이 칸을 끝으로 두고 다음 안 끝난 칸으로(없으면 끝 화면) */
+function grRvNext() {
+  const r = GR.rvw; if (!r) return;
+  const cur = r.items[r.at];
+  if (cur && !r.done.includes(grRvKey(cur))) r.done.push(grRvKey(cur));
+  const left = i => r.items[i] && grRvOpenItem(r.items[i]) && !r.done.includes(grRvKey(r.items[i]));
+  let n = -1;
+  for (let k = 1; k <= r.items.length; k++) { const i = (r.at + k) % r.items.length; if (left(i)) { n = i; break; } }
+  r.at = n < 0 ? r.items.length : n;
+  renderGRResults(); grRvFocus();
+}
+function grRvDecide(x, how) {
+  const s = grStudent(x.id); if (!s) return;
+  if (x.kind === 'read') grSetLevel(s, how);
+  else if (x.kind === 'score') GR_RV.handle('grs:' + encodeURIComponent(s.id), how === 'review');
+  else rvDecide('gr:' + encodeURIComponent(s.id), how === 'review');
+  grRvNext();
+}
+function grRvHTML() {
+  const r = GR.rvw, act = grActive(), x = r.items[r.at];
+  const title = grUnit() ? (grUnit().elem || grUnit().unit) : (GR.title || '수행평가');
+  const need = new Set(r.items.map(i => i.id)), auto = act.filter(s => s.status === 'done' && !need.has(s.id)).length;
+  const left = r.items.filter(i => grRvOpenItem(i) && !r.done.includes(grRvKey(i))).length;
+  const list = r.items.map((it, i) => {
+    const done = r.done.includes(grRvKey(it)) || !grRvOpenItem(it);
+    return `<button type="button" class="ev-rv-item${done ? ' done' : ''}" data-grrv-go="${i}" aria-current="${i === r.at}"><span><b class="ev-num">${it.no > 0 ? it.no + '번' : '번호 없음'}</b> · ${GR_RV_KIND[it.kind]}${done ? ' · 정함' : ''}</span></button>`;
+  }).join('');
+  let main, side;
+  if (!x) {
+    main = `<div class="ev-card gr-rvw-end"><p class="ev-h">다 확인했어요</p><p class="ev-sub">쌤비서가 판단을 미룬 ${r.items.length}개를 모두 봤어요. 정한 수준·점수·평어는 결과에 그대로 저장했어요.</p>
+      <div class="row"><button class="btn primary" type="button" data-grrv="close">결과 보기</button>${r.items.length ? '<button class="btn" type="button" data-grrv-go="0">처음부터 다시 보기</button>' : ''}</div></div>`;
+    side = '';
+  } else {
+    const s = grStudent(x.id) || {}, open = grRvOpenItem(x), c = (grUnit() && grUnit().crit) || {};
+    const scan = s.pages && s.pages.length ? `<button class="btn" type="button" data-grview1="${esc(s.id)}">스캔 원본</button>` : '';
+    const ev = (s.evidence || []).length ? `<ul class="gr-rvw-ev">${s.evidence.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : '';
+    const fb = [s.strengths && s.strengths !== '-' ? `<p><b>잘한 점</b> ${esc(s.strengths)}</p>` : '', s.improve && s.improve !== '-' ? `<p><b>보완할 점</b> ${esc(s.improve)}</p>` : ''].join('');
+    main = `<article class="ev-card gr-rvw-card" aria-label="${s.no}번">
+        <div class="ev-rv-q"><div><span class="ev-sub">${s.no > 0 ? s.no + '번' : '번호 없음'} · ${s.score ?? '-'}점${s.level ? ' · ' + LVNAME[s.level] : ''}${s.manual ? ' · 직접 정함' : ''}</span>
+          <b class="gr-rvw-what">${x.kind === 'text' ? '검토 AI가 평어에서 고칠 곳을 찾았어요' : '쌤비서가 읽은 학생 답'}</b></div>${scan}</div>
+        <div class="ev-rv-answer">${esc(x.kind === 'text' ? (s.text || '') : (s.summary || '읽은 내용이 없어요'))}</div>
+        ${x.kind === 'text' ? '' : ev ? `<div class="gr-rvw-sub"><span class="ev-sub">답에서 찾은 근거</span>${ev}</div>` : ''}
+        ${!scan && x.kind !== 'text' ? '<p class="ev-sub gr-rvw-sub">스캔은 저장하지 않아서 지난 기록에서는 원본을 볼 수 없어요.</p>' : ''}
+      </article>
+      ${fb && x.kind !== 'text' ? `<section class="ev-card gr-rvw-fb" aria-label="피드백"><span class="ev-sub">${s.no}번에게 줄 피드백</span>${fb}</section>` : ''}`;
+    let opts = '', why = '', btns = '';
+    if (x.kind === 'read') {
+      opts = `<h3 class="ev-h">수준 기준</h3>${LV.map(l => `<button type="button" class="ev-rv-opt${l.k === s.level ? ' ai' : ''}" data-grrv-pick="${l.k}" aria-pressed="${!!(s.manual && l.k === s.level)}"${open ? '' : ' disabled'}>
+        <span class="ev-num">${l.name}</span><span><b>${l.name}</b>${l.k === s.level ? ' <span class="gr-rvw-ai">쌤비서 생각</span>' : ''}${c[l.k] ? `<span class="gr-rvw-crit">${esc(c[l.k])}</span>` : ''}</span></button>`).join('')}`;
+      why = '글씨를 알아보기 어려워 점수를 확신하지 못했어요. 스캔 원본이나 읽은 내용을 보고 수준을 정해 주세요.';
+      btns = `<button class="ev-turn-btn" type="button" data-grrv-pick="${esc(s.level || 'mid')}"${open ? '' : ' disabled'}>${LVNAME[s.level] || '중'}(으)로 정하기</button>`;
+    } else if (x.kind === 'score') {
+      const rv = s.rv || {};
+      opts = `<h3 class="ev-h">두 AI의 점수</h3>
+        <button type="button" class="ev-rv-opt ai" data-grrv-pick="main"${open ? '' : ' disabled'}><span class="ev-num">${s.score ?? '-'}</span><span><b>채점 AI</b> <span class="gr-rvw-ai">쌤비서 생각</span><span class="gr-rvw-crit">${esc(s.summary || '')}</span></span></button>
+        <button type="button" class="ev-rv-opt" data-grrv-pick="review"${open ? '' : ' disabled'}><span class="ev-num">${rv.score ?? '-'}</span><span><b>검토 AI</b><span class="gr-rvw-crit">${esc(rv.summary || '')}</span></span></button>`;
+      why = `두 AI의 점수가 10점 넘게 달라요(${s.score ?? '-'}점 · ${rv.score ?? '-'}점). 학생 답을 보고 어느 점수로 할지 정해 주세요. 검토 점수를 쓰면 수준을 다시 나눠요.`;
+      btns = `<button class="ev-turn-btn" type="button" data-grrv-pick="main"${open ? '' : ' disabled'}>${s.score ?? '-'}점으로 정하기</button><button class="btn gr-rvw-alt" type="button" data-grrv-pick="review"${open ? '' : ' disabled'}>${rv.score ?? '-'}점으로</button>`;
+    } else {
+      const t = s.trv || {};
+      opts = `<h3 class="ev-h">평어</h3>
+        <button type="button" class="ev-rv-opt ai" data-grrv-pick="main"${open ? '' : ' disabled'}><span class="ev-num">지금</span><span><b>지금 평어</b> <span class="gr-rvw-ai">쌤비서 생각</span><span class="gr-rvw-crit">${esc(s.text || '')}</span></span></button>
+        <button type="button" class="ev-rv-opt" data-grrv-pick="review"${open ? '' : ' disabled'}><span class="ev-num">고침</span><span><b>검토 AI가 고친 평어</b><span class="gr-rvw-crit">${esc(t.fix || '')}</span></span></button>`;
+      why = t.problem || '검토 AI가 고칠 곳을 찾았어요.';
+      btns = `<button class="ev-turn-btn" type="button" data-grrv-pick="main"${open ? '' : ' disabled'}>지금 평어 그대로</button><button class="btn gr-rvw-alt" type="button" data-grrv-pick="review"${open ? '' : ' disabled'}>고친 평어 쓰기</button>`;
+    }
+    side = `<section class="ev-card gr-rvw-opts">${opts}</section>
+      <section class="ev-ink-card gr-rvw-think"><span class="ev-sub">${open ? '왜 미뤘나요' : '이미 정했어요'}</span><p class="ev-rv-why">${esc(why)}</p>
+        ${open ? `<div class="gr-rvw-btns">${btns}</div>` : ''}<span class="ev-rv-keys">정하면 다음 것으로 넘어가요 · ← → 로 앞뒤</span></section>`;
+  }
+  return `<div class="gr-rvw" tabindex="-1" role="region" aria-label="채점 확인">
+    <div class="gr-rvw-head"><div><span class="ev-sub">수행평가 · ${act.length}명</span><h2>「${esc(title)}」 채점 확인</h2></div>
+      <p class="ev-sub">쌤비서가 ${auto}명을 채점했어요${left ? ` · <b class="gr-rvw-turn">판단을 미룬 것 ${left}개</b>만 봐 주세요` : ''}</p>
+      <button class="btn" type="button" data-grrv="close">${ICON.back}결과로 돌아가기</button></div>
+    <div class="ev-rv">
+      <aside class="ev-rv-list" aria-label="확인할 것"><div class="ev-rv-lh"><span>확인할 것</span><span class="ev-num gr-rvw-pos">${Math.min(r.at + 1, r.items.length)} / ${r.items.length}</span></div>${list}
+        <div class="gr-rvw-auto"><span>쌤비서가 채점</span><b class="ev-num">${auto}</b></div>
+        <button class="btn" type="button" data-grrv="close">${act.filter(s => s.status === 'done').length}명 점수 훑어보기</button></aside>
+      <div class="ev-rv-main">${main}</div>
+      ${side ? `<aside class="ev-rv-side" aria-label="기준과 쌤비서 생각">${side}</aside>` : ''}
+    </div></div>`;
+}
+document.addEventListener('click', e => {
+  if (S.mode !== 'gr' || !evalShown()) return;
+  const t = e.target;
+  if (t.closest && t.closest('#grResults [data-grrv="open"]')) { grRvOpen(); return; }
+  const host = GR.rvw && t.closest && t.closest('#grResults .gr-rvw');
+  if (!host) return;
+  const c = t.closest('[data-grrv="close"]'); if (c) { grRvClose(); return; }
+  const g = t.closest('[data-grrv-go]'); if (g) { grRvGo(+g.dataset.grrvGo); return; }
+  const p = t.closest('[data-grrv-pick]');
+  if (p && !p.disabled) { const x = GR.rvw.items[GR.rvw.at]; if (x && grRvOpenItem(x)) grRvDecide(x, p.dataset.grrvPick); }
+});
+// ← → : 이 화면 안에 초점이 있을 때만(글 칸·고르기 칸에서는 그대로) — 문서 전체가 아니라 결과 칸에만 귀를 댐
+$('#grResults').addEventListener('keydown', e => {
+  if (!GR.rvw || S.mode !== 'gr' || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || e.altKey || e.ctrlKey || e.metaKey) return;
+  const t = e.target;
+  if (!t || !t.closest || !t.closest('#grResults .gr-rvw') || t.matches('input, textarea, select, [contenteditable="true"]')) return;
+  e.preventDefault();
+  const r = GR.rvw;
+  grRvGo(e.key === 'ArrowRight' ? Math.min(r.at + 1, r.items.length) : Math.max(0, r.at - 1));
+});
 function renderGRResults() {
   const box = $('#grResults'); if (!box) return;
+  const view = $('#grView'); if (view) view.classList.toggle('rvw', !!GR.rvw);
+  if (GR.rvw && REC()) {
+    // 다시 그려도(저장·다른 일로) 화면 안의 초점은 지금 칸에 그대로(← → 가 이어지게)
+    const had = box.contains(document.activeElement);
+    box.innerHTML = grRvHTML();
+    if (had) { const el = box.querySelector('.ev-rv-item[aria-current="true"]') || box.querySelector('.gr-rvw-end button') || box.querySelector('.gr-rvw'); if (el) el.focus({ preventScroll: true }); }
+    return;
+  }
   const act = grActive();
   if (!GR.students.length) {
     box.innerHTML = `<button class="btn text back" type="button" data-gr="back">${ICON.back}채점 설정</button>
@@ -4677,6 +4816,7 @@ function renderGRResults() {
     partial: `${graded}/${total}명 채점함`, done: '채점과 평어를 마쳤어요', setup: `학생 ${total}명`
   }[GR.phase] || '';
   const busy = ['grading', 'ranking', 'writing'].includes(GR.phase);
+  const rvwN = grRvItems().length; // 채점 확인 화면으로(스펙 2026-11-14-eval-redesign §4)
   let list = GR.students.slice();
   if (GR.view === 'lv' && hasLevels) list.sort((a, b) => (LV_KEYS.indexOf(a.level) - LV_KEYS.indexOf(b.level)) || ((b.score ?? -1) - (a.score ?? -1)));
   const [lo, hi] = grLength();
@@ -4688,6 +4828,7 @@ function renderGRResults() {
         ${GR.aiUse && window.SSAM_WIRE && window.SSAM_WIRE.useText(GR.aiUse) ? `<p class="muted" id="grAiUse">${GR.usedNow ? '' : '지난 채점 '}${esc(window.SSAM_WIRE.useText(GR.aiUse))}</p>` : ''}</div>
       ${busy ? `<div class="meter big"><i style="width:${GR.phase === 'grading' ? Math.round(graded / Math.max(1, total) * 100) : GR.phase === 'writing' ? Math.round(done.filter(s => s.text && !s.stale).length / Math.max(1, graded) * 100) : 100}%"></i></div>` : ''}
     </div>
+    ${rvwN && !busy ? `<div class="ev-band gr-turn" role="region" aria-label="선생님 차례"><p><b>선생님 차례 ${rvwN}개</b> · 쌤비서가 판단을 미룬 것만 하나씩 봐 주세요</p><button class="ev-turn-btn" type="button" data-grrv="open">확인할 것만 보기</button></div>` : ''}
     ${hasLevels ? `<div class="dist">${LV.map(l => `<span class="dchip ${l.cls} ${lvCount[l.k] !== tg[l.k] ? 'off' : ''}"><span class="sw"></span>${l.name} <b class="num">${lvCount[l.k]}</b><small class="num">/ ${tg[l.k]}명</small></span>`).join('')}</div>` : ''}
     <div class="tools">
       <div class="left">
@@ -4908,7 +5049,7 @@ function grNew(keepPages) {
   if (GRStore.t) { clearTimeout(GRStore.t); GRStore.write(); } // 미뤄 둔 저장은 지금 기록에 먼저
   if (neisIsGr()) neisClose();
   grStop();
-  GR.id = null; GR.createdAt = 0; GR.calibrated = false; GR.err = ''; GR._critCache = null; GR.aiUse = null; GR.meter = null; GR.usedNow = false; GR.noMaskOk = false;
+  GR.id = null; GR.createdAt = 0; GR.calibrated = false; GR.err = ''; GR._critCache = null; GR.aiUse = null; GR.meter = null; GR.usedNow = false; GR.noMaskOk = false; GR.rvw = null;
   if (!keepPages) { grFreePages(); GR.pages = []; GR.students = []; GR.settings.startNo = 1; }
   else GR.students.forEach(s => Object.assign(s, { status: 'idle', score: null, score0: null, level: null, manual: false, summary: '', evidence: [], strengths: '', improve: '', text: '', d: 0, stale: false, err: '', ev: null }));
   GR.phase = 'setup'; GR.showRes = false;
@@ -5062,9 +5203,15 @@ document.addEventListener('change', e => {
   else if (/^grR_/.test(id)) { GR.settings.ratio[id.slice(4)] = Math.max(0, Math.min(100, Math.round(+el.value || 0))); grSaveSettings(); renderGRSetup(); }
   else if (el.matches('[data-grlv]')) {
     const s = grStudent(el.dataset.grlv); if (!s) return;
-    if (s.level !== el.value) { s.level = el.value; s.manual = true; s.stale = true; GRStore.save(); renderGRResults(); grWrite([s.id]); toast(`${s.no}번을 ${LVNAME[s.level]}(으)로 옮겼어요. 평어를 다시 써요`); }
+    if (s.level !== el.value) grSetLevel(s, el.value);
   }
 });
+/* 수준 정하기(결과의 수준 고르기·채점 확인 화면이 같이 씀): 다른 수준이면 옮기고 평어를 다시 씀, 같은 수준이면 「직접 정함」으로만 */
+function grSetLevel(s, v) {
+  if (!s || !LVNAME[v]) return;
+  if (s.level === v) { if (!s.manual) { s.manual = true; GRStore.save(); renderGRResults(); } toast(`${s.no}번을 ${LVNAME[v]}(으)로 정했어요`); return; }
+  s.level = v; s.manual = true; s.stale = true; GRStore.save(); renderGRResults(); grWrite([s.id]); toast(`${s.no}번을 ${LVNAME[s.level]}(으)로 옮겼어요. 평어를 다시 써요`);
+}
 /* ---------- 전체복사 → 나이스 학생 칸에 차례로 붙여넣기 (Windows 앱) ----------
    전체복사를 누르면 앱이 Ctrl+V를 잠깐 맡아 둠. 나이스(브라우저)에서 첫 학생 칸을 누르고 Ctrl+V를 누르면
    학생마다 평어 넣기 → Tab을 정한 횟수만큼 눌러 다음 학생 칸으로 옮기기를 되풀이함.
@@ -6470,7 +6617,15 @@ window.SSAM = {
   // 평가지 채점 한꺼번에 넣기(gr-bundle.js)
   gr: { putBundle: b => grPutBundle(b), refresh: () => { if (S.mode === 'gr') renderGRSetup(); }, mask: () => (GR.settings.maskOn ? GR.settings.mask : []),
     // 평가 › 한눈에서 지난 채점 열기(채점·순위·평어 쓰는 중이면 열지 않음 — 지난 채점 목록 단추와 같은 규칙)
-    open: id => { if (id && !['grading', 'ranking', 'writing'].includes(GR.phase)) return grOpenHistory(id); } },
+    open: id => { if (id && !['grading', 'ranking', 'writing'].includes(GR.phase)) return grOpenHistory(id); },
+    // 평가 › 한눈에 [선생님 차례]: 그 채점 기록의 「채점 확인」(판단을 미룬 것만 하나씩, 스펙 2026-11-14-eval-redesign §4) — 확인할 것이 있으면 true
+    async review(id) {
+      if (['grading', 'ranking', 'writing'].includes(GR.phase) || GR.running.size) return false;
+      if (id && id !== GR.id) await grOpenHistory(id);
+      if ((id && GR.id !== id) || !GR.students.length) return false;
+      return grRvOpen();
+    },
+    reviewOpen: () => !!GR.rvw },
   // 평가 영역 이음(활동지·단원평가 → 평가지 채점): 지금 평가계획의 영역 [{ id, subject, label }]
   planUnits: () => allUnits().map(u => ({ id: u.id, subject: u.subject, label: [u.area, u.elem || u.unit].filter(Boolean).join(' · ') })),
   onModeChange: fn => { modeHooks.push(fn); },

@@ -461,6 +461,49 @@ input.field.num.sm{width:84px}
 @media (max-width:1100px){
   .rw-grid{grid-template-columns:minmax(0,1fr)}
 }
+/* ---------- 평가지 채점 확인(스펙 §4, 공통 모양 .ev-rv): 설정 칸을 접고 결과 칸 전체에 ---------- */
+.gr.rvw{grid-template-columns:minmax(0,1fr)}
+.gr.rvw .gr-setup{display:none}
+.gr-turn{margin:2px 0}
+.gr-rvw{display:grid;gap:16px;outline:none}
+.gr-rvw-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:8px 16px}
+.gr-rvw-head h2{margin:2px 0 0;font:800 clamp(22px,2.6vw,28px)/1.25 var(--f-display);letter-spacing:-.02em}
+.gr-rvw-head > p{margin:0;flex:1 1 260px;text-align:right}
+.gr-rvw-head .btn,.gr-rvw .ev-rv-list .btn,.gr-rvw-end .btn{min-height:44px;border-radius:12px;font-size:14px}
+.gr-rvw-turn{color:var(--turn-ink)}
+.gr-rvw .ev-rv-list .btn{width:100%;margin-top:6px}
+.gr-rvw-auto{display:flex;justify-content:space-between;padding:10px 6px 0;margin-top:6px;border-top:1px solid var(--line);font-size:14px;color:var(--ink3)}
+.gr-rvw-auto b{color:var(--accent-ink)}
+.gr-rvw .gr-rvw-card{padding:0;overflow:hidden}
+.gr-rvw-card .ev-rv-q{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px}
+.gr-rvw-card .ev-rv-q > div{display:grid;gap:2px;min-width:0}
+.gr-rvw-what{font-size:16px}
+.gr-rvw-card .btn{min-height:44px;border-radius:12px}
+.gr-rvw-sub{display:grid;gap:4px;margin:0;padding:14px 24px;border-top:1px solid var(--line2)}
+.gr-rvw-ev{margin:0;padding-left:18px;font-size:14.5px;line-height:1.6}
+.gr-rvw-fb{display:grid;gap:6px}
+.gr-rvw-fb p{margin:0;font-size:15px;line-height:1.6}
+.gr-rvw-opts{display:grid;gap:10px}
+.gr-rvw-opts .ev-h{margin-bottom:2px}
+.gr-rvw-opts .ev-rv-opt{min-height:56px}
+.gr-rvw-opts .ev-rv-opt > span:last-child{display:grid;gap:2px;min-width:0}
+.gr-rvw-opts .ev-rv-opt:disabled{cursor:default;opacity:.7}
+.gr-rvw-ai{font-size:12.5px;font-weight:700;color:var(--turn-ink)}
+.gr-rvw-crit{font-size:13.5px;color:var(--ink2);line-height:1.5;overflow-wrap:anywhere}
+.gr-rvw-think{display:grid;gap:12px}
+.gr-rvw-btns{display:flex;flex-wrap:wrap;gap:8px}
+.gr-rvw-btns .ev-turn-btn{min-height:48px;font-size:15px}
+.gr-rvw-alt.btn{min-height:48px;border-radius:12px;background:transparent;border-color:#5c6170;color:#fff;font-size:15px}
+.gr-rvw-alt.btn:hover{background:rgba(255,255,255,.08)}
+.gr-rvw .ev-rv-keys{color:#c9ced6}
+.gr-rvw-end{display:grid;gap:10px}
+.gr-rvw-end p{margin:0}
+@media (max-width:720px){
+  .gr-rvw-head > p{text-align:left}
+  .gr-rvw .ev-rv-list{flex:1 1 100%}
+  .gr-rvw .ev-rv-answer{padding:16px;font-size:16px}
+  .gr-rvw-sub{padding:12px 16px}
+}
 @media (max-width:720px){
   .hk-left,.hk-right{background:transparent}
   .rw-head,.rw-foot,.rw-body,.rw-tools{padding-left:14px;padding-right:14px}
