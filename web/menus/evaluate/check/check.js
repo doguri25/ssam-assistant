@@ -103,7 +103,7 @@ function diffHTML(x, f) {
   const line = ops.map(o => (o.op === 'eq' ? esc(o.t) : o.op === 'del' ? `<del><span class="sr-only">지운 말: </span>${esc(o.t)}</del>` : `<ins><span class="sr-only">더한 말: </span>${esc(o.t)}</ins>`)).join(' ');
   return `<div class="chk-diff" role="group" aria-label="${f.legacy ? '검토 AI가 고친 글' : 'AI가 고친 글'}">
       <p class="chk-dtext">${line}</p>
-      <p class="chk-dnote">${f.legacy ? '검토 AI가 이미 고친 글이에요' : 'AI가 고친 글이에요'} · 지운 말은 줄을 긋고 더한 말은 밑줄로 보여요${left.length ? ` · <b>고친 글에도 고칠 곳이 ${left.length}곳 있어요</b>` : ''}</p>
+      <p class="chk-dnote">${f.legacy ? '검토 AI가 이미 고친 글이에요' : 'AI가 고친 글이에요'}${left.length ? ` · <b>고친 글에도 고칠 곳이 ${left.length}곳 있어요</b>` : ''}</p>
       <details class="chk-pair"><summary>지금 글과 나란히 보기</summary>
         <div class="chk-fix" role="group" aria-label="고친 안">
           <div class="chk-col"><small class="lab">지금 글</small><p>${esc(f.from)}</p></div>
