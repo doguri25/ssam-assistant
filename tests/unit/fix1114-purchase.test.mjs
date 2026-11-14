@@ -30,6 +30,12 @@ test('쉼표로 이은 품목 여럿: 「총」으로 적은 금액은 조각마
   assert.equal(r.fields.total, undefined);
 });
 
+test('「5,000원짜리 알코올램프 10개」「3천원짜리 공책」: 「짜리」는 품명에 남지 않음(산출 근거에 「짜리 공책」으로 나오던 것)', () => {
+  assert.deepEqual(parseLines('5,000원짜리 알코올램프 10개').items.map(row), [['알코올램프', '개', '10', '5000']]);
+  assert.deepEqual(parseLines('3천원짜리 공책 20권').items.map(row), [['공책', '권', '20', '3000']]);
+  assert.deepEqual(parseLines('공책 20권 1,000원짜리').items.map(row), [['공책', '권', '20', '1000']]);
+});
+
 test('견적서·엑셀 머리줄의 괄호 붙은 열 이름(「수량(개)」「단가(원)」「금액(원)」「수량(EA)」)도 읽음', () => {
   assert.deepEqual(findItems([['품명', '규격', '수량(개)', '단가(원)', '금액(원)'], ['비커', '500ml', '8', '4,500', '36,000']]),
     [{ name: '비커', spec: '500ml', qty: 8, price: 4500 }]);

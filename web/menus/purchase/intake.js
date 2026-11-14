@@ -97,8 +97,8 @@ function parseLine(raw) {
   // 「강사 시간당 5만원」「다과 1인당 5천원」처럼 수량이 없으면 「~당」의 단위를 단위 칸에(인 → 명). 「~당」 말은 품명에서 뺌(plainItemName)
   const per = new RegExp(`(?:^|\\s|\\()\\s*(?:\\d+\\s*)?(${PER_UNIT})\\s*당`).exec(s);
   if (!unit && per) unit = per[1] === '인' ? '명' : per[1];
-  // 「내가 필요한 책」·「A4 용지 사주세요」 같은 1인칭·구어는 품명에서 뺌
-  const name = plainItemName(s.replace(/[=@×*]|\(\s*\)|\[\s*\]/g, ' ').replace(/(^|\s)(?:x|X|각|개당|단가|금액|씩)(?=\s|$)/g, ' ')
+  // 「내가 필요한 책」·「A4 용지 사주세요」 같은 1인칭·구어는 품명에서 뺌, 금액 뒤 「짜리」(「5천원짜리 공책」)도
+  const name = plainItemName(s.replace(/[=@×*]|\(\s*\)|\[\s*\]/g, ' ').replace(/(^|\s)(?:x|X|각|개당|단가|금액|씩|짜리)(?=\s|$)/g, ' ')
     .replace(/(^|\s)[,，;]+(?=\s|$)/g, ' ').replace(/[,:\-–·]+\s*$/, '').replace(/\s+/g, ' ').trim());
   if (!name || price == null || !Number.isFinite(price)) return null;
   if (!unit && SHIP.test(name)) unit = '건';
