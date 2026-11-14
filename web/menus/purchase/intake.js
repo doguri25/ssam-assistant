@@ -23,7 +23,8 @@ const SHIP = /^(배송비|택배비|운송비|배달비)$/;
 /* 「알코올램프 10개 5,000원, 다음 주 화요일 과학실 실험」: 쉼표로 이은 조각 중 수량·금액이 없는 조각(일시·장소·목적)은 품명에서 뺌.
    숫자 속 쉼표(5,000)·괄호 속 쉼표(볼펜(검정, 빨강))는 나누지 않음. 일시·장소·목적은 AI가 넣기 글 전체에서 따로 채움 */
 const hasNumber = p => new RegExp(QTY.source).test(p) || new RegExp(WON.source).test(p) || /[×xX*]\s*[\d,]+/.test(p) || /(?:^|\s)[\d,]{2,}\s*$/.test(p.trim());
-function dropContext(s) {
+/* 쉼표·쌍반점으로 나눈 조각(숫자 속·괄호 속 쉼표는 나누지 않음) */
+function clauses(s) {
   const parts = [];
   let depth = 0, cur = '';
   for (let i = 0; i < s.length; i++) {
@@ -34,6 +35,10 @@ function dropContext(s) {
     cur += c;
   }
   parts.push(cur);
+  return parts;
+}
+function dropContext(s) {
+  const parts = clauses(s);
   if (parts.length < 2) return s;
   const keep = parts.filter(hasNumber);
   return keep.length && keep.length < parts.length ? keep.join(', ') : s;
@@ -100,6 +105,13 @@ function parseLine(raw) {
   return { it: { ...emptyItem(), name, spec, unit, qty: String(qty), price: String(price) }, stated: total };
 }
 
+/* 「색종이 10묶음 3,000원, 풀 20개 500원」: 쉼표로 이은 조각 중 숫자가 있는 조각이 둘 이상이고 모두 품명과 금액을 갖춘 품목이면 조각마다 한 품목
+   (한 품목으로 읽으면 앞 품목의 수량·단가가 사라져 합계가 틀렸음). 「A4 용지 5박스, 2만원」「간식 2,500원, 420명」처럼 품목 하나를 나눠 쓴 줄과
+   숫자 없는 조각(일시·장소·목적)만 붙은 줄은 그대로 한 줄 */
+function itemClauses(line) {
+  const nums = clauses(line).filter(hasNumber);
+  return nums.length >= 2 && nums.every(p => parseLine(p)) ? nums : [line];
+}
 /* 합계만 적은 줄(「합계 36,000원」·「총액 3만원」) → 총액 칸 */
 const TOTAL_LINE = /^\s*(?:[-•·*]\s*)?(?:합\s*계|총\s*합\s*계|총\s*액|총\s*금\s*액|총)\s*:?\s*([\d,]+(?:\.\d+)?)\s*(만)?\s*원?\s*$/;
 export function parseLines(text) {
@@ -109,11 +121,14 @@ export function parseLines(text) {
     if (!raw.trim()) continue;
     const line = koWon(raw), t = TOTAL_LINE.exec(line);
     if (t) { said = money(t[1], t[2]); continue; }
-    const p = parseLine(line);
-    if (!p || findPersonal(p.it.name)) { missed.push(raw.trim()); continue; }
-    items.push(p.it);
-    const q = toNumber(p.it.qty) || 1, amt = Math.round(q * toNumber(p.it.price));
-    if (p.stated != null) { sum += p.stated; if (p.stated !== amt) inexact = true; } else sum += amt;
+    const parts = itemClauses(line);
+    for (const part of parts) {
+      const p = parseLine(part);
+      if (!p || findPersonal(p.it.name)) { missed.push((parts.length > 1 ? part : raw).trim()); continue; }
+      items.push(p.it);
+      const q = toNumber(p.it.qty) || 1, amt = Math.round(q * toNumber(p.it.price));
+      if (p.stated != null) { sum += p.stated; if (p.stated !== amt) inexact = true; } else sum += amt;
+    }
   }
   // 「총 1만원」을 3개로 나누면 9,999원이 되니 적은 총액을 총액 칸에(확인 목록이 다르다고 알려 줌)
   const fields = said != null ? { total: String(said) } : inexact ? { total: String(sum) } : {};
@@ -227,9 +242,17 @@ export function splitByVendor(form) {
    이름 모양(흔한 성 + 세 글자, 두 글자 성 + 두 글자)만 가림 — 「담임교사」「체육 강사님」은 그대로 */
 const ROLE_AFTER = /(^|[^가-힣])([가-힣]{3,4})(\s*)(강사님|강사|선생님|선생|교수님|교수|교사|님|씨)(?=[^가-힣]|$|께|이|가|은|는|을|를|의|과|와)/g;
 const ROLE_BEFORE = /(강사님?|선생님|교수님?|교사)(\s*[:：]\s*|\s+)([가-힣]{3,4})(?![가-힣])/g;
+/* 학생·보호자 이름도: 「김하늘 학생」「한가람 학생의」「이바다 어머니」「학생 이바다」 → ○○○ (학생 이름은 AI로 보내지 않음).
+   「성실한·신청한 학생」 같은 꾸미는 말, 「학생 인솔비」 같은 「~비·~회·~생」 낱말은 이름이 아님(core/privacy.js의 홀로 쓴 이름 규칙과 같게) */
+const KIN_AFTER = /(^|[^가-힣○])([가-힣]{3,4})(\s*)(학생|학부모|어머니|어머님|아버지|아버님|부모님|보호자)(?=$|[^가-힣]|[은는이가을를과와의에도께랑만])/g;
+const KIN_BEFORE = /((?:학생|학부모|보호자)(?:\s*[:：]\s*|\s+))([가-힣]{3,4})(?![가-힣])/g;
+const NOT_NAME_END = /[도감력화회권별제법실부생들표단방작비장품물집책판함증점식터반란이가는을를의에만와과로한할된던운간친른막움님기상왕년자]$/;
+const kinName = n => nameCell(n) && !NOT_NAME_END.test(n);
 export const maskNames = t => String(t || '')
   .replace(ROLE_AFTER, (m, pre, n, sp, role) => (nameCell(n) ? `${pre}${MASK}${sp || ' '}${role}` : m))
-  .replace(ROLE_BEFORE, (m, role, sp, n) => (nameCell(n) ? `${role}${sp}${MASK}` : m));
+  .replace(ROLE_BEFORE, (m, role, sp, n) => (nameCell(n) ? `${role}${sp}${MASK}` : m))
+  .replace(KIN_AFTER, (m, pre, n, sp, who) => (kinName(n) ? `${pre}${MASK}${sp || ' '}${who}` : m))
+  .replace(KIN_BEFORE, (m, pre, n) => (kinName(n) ? `${pre}${MASK}` : m));
 
 /* 넣기: { text } | { file } → { items(배송비 줄 포함), fields, by: 'rule'|'table'|'ai', missed }
    noAI: 강사 수당 품의 — 글은 앱 규칙으로만 읽고, 그림·글 없는 PDF는 읽지 않음(강사 이름이 AI로 가지 않게) */
@@ -251,6 +274,8 @@ export async function readIntake({ text, file, noAI = false } = {}) {
     }
     const q = await readQuote(file, { aiRead: images => { if (noAI) throw { code: 'NO_AI_LECTURER' }; return aiRead('image', { images }); } });
     if (q.by === 'ai' && q.fields) return q;
+    // 한글 파일에 품명·단가 머리줄이 없는 표(칸은 「 | 」)나 줄글로 쓴 목록: 글 넣기처럼 읽음(표 칸은 탭으로)
+    if (!q.items.length && /\.hwpx?$/i.test(String(file.name || ''))) return readIntake({ text: (await readText(file)).replace(/[ \t]*\|[ \t]*/g, '\t'), noAI });
     return { items: q.items.map(it => ({ ...emptyItem(), name: it.name, spec: it.spec || '', unit: it.unit || '', qty: String(it.qty), price: String(it.price), vendor: it.vendor || '' })), fields: q.fields || {}, by: q.by, missed: [] };
   }
   // 주민번호·계좌 모양이 있는 줄은 읽지 않고(AI로도 보내지 않음) 수만 알려 줌

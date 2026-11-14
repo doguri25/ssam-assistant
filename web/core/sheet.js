@@ -98,7 +98,8 @@ const HEAD = {
   tax: /^(세액|부가세|부가가치세)$/
 };
 const SKIP = /합계|소계|총계|부가세|VAT/i;
-const normHead = v => String(v == null ? '' : v).replace(/\s|\(원\)|\(₩\)/g, '');
+// 열 이름 뒤 괄호(「수량(개)」「수량(EA)」「단가(원)」「금액（원）」)는 빼고 봄 — 「수량(개)」를 못 읽으면 수량이 모두 1이 됐음
+const normHead = v => String(v == null ? '' : v).replace(/\s|[(（][^)）]*[)）]/g, '');
 
 /* 머리줄(위 15줄 안, 품명 열 + 단가나 금액 열)을 찾아 품목만 뽑음 */
 export function findItems(rows) {

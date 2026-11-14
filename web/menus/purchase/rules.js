@@ -75,7 +75,8 @@ export function findPersonal(text) {
   return null;
 }
 
-const TEXT_FIELDS = ['project', 'purpose', 'date', 'target', 'place', 'budget', 'memo'];
+// 관련(계획·공문) 칸도 사유 첫 줄과 초안 AI로 가서 같이 봄
+const TEXT_FIELDS = ['related', 'project', 'purpose', 'date', 'target', 'place', 'budget', 'memo'];
 const unitOf = (it, type) => (blank(it.unit) ? defaultUnit(type) : String(it.unit).trim());
 
 /* 금액 한글 읽기: 75000 → 금칠만오천원 */
