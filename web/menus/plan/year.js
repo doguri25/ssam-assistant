@@ -10,6 +10,7 @@ import { stripPersonal, readStripped, personalMsg } from '../../core/survey.js';
 import { getSchool } from '../../core/settings.js';
 import { toast, copyText } from '../../core/ui.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
+import { formSlotHTML, registerFormDoc } from '../../core/school-form.js';
 import { listEvents, setEvents, removeEvents, dayIssues, suggestDates, weekday } from '../../core/calendar.js';
 import { stepsHTML } from '../../core/steps.js';
 import { keepFiles } from '../../core/keep-files.js';
@@ -261,7 +262,7 @@ function step5() {
       <h3>내보내기와 확정</h3>
       <p class="muted">확정하면 일정이 학사일정에 들어가고, 다음 해 「작년 계획서」로 불러올 수 있어요.</p>
       ${fin ? '<p class="banner ok"><span class="grow">확정한 계획이에요. 고치면 다시 「작성 중」이 돼요.</span></p>' : ''}
-      <div class="row yp-out">${exportButton('data-y="hwpx"')}<button class="btn" type="button" data-copy="schedule">일정 복사</button><span class="grow"></span>
+      <div class="row yp-out">${formSlotHTML('year', exportButton('data-y="hwpx"'))}<button class="btn" type="button" data-copy="schedule">일정 복사</button><span class="grow"></span>
         <button class="btn primary" type="button" data-y="final">${fin ? '다시 확정' : '확정'}</button></div>
     </div>`;
 }
@@ -369,6 +370,9 @@ async function runGuide() {
   } catch (e) { errs[id] = ai.errorMessage(e && e.code, e); }
   finish(id, 'guide');
 }
+
+/* 학교 계획서 양식(.hwpx)으로 내려받기: 지금 계획 */
+registerFormDoc('year', () => (plan && plan.draft ? { doc: planDoc(plan), name: `${plan.year}학년도 ${plan.name || '업무'} 운영 계획` } : null));
 
 /* ---------- AI: 초안 ---------- */
 function draftPrompt(p) {

@@ -144,7 +144,14 @@ export function findRoles(lines) {
     // 인사가 없으면: 머리(표·「가정통신문」 줄) 다음의 첫 줄이 제목, 그다음부터 본문. 못 찾으면 -1(양식 맞추기)
     const head = Math.max(headEnd, lines.findIndex(l => /가정통신문|가\s*정\s*통\s*신\s*문/.test(l.text)));
     for (let k = head + 1; k < end; k++) if (filled(k) && !CONTACT.test(lines[k].text) && !(head < 0 && lines[k].inBox)) { r.title = k; break; }
-    for (let k = r.title + 1; r.title >= 0 && k < end; k++) if (filled(k)) { r.bodyStart = k; break; }
+    // 본문: 제목 다음 첫 줄. 단 제목 바로 아래 결재란 같은 표(상자) 줄은 건너뛰고 상자 밖 첫 줄 — 상자 밖 줄이 없으면(본문이 통째로 상자 안) 상자 안 첫 줄
+    let boxed = -1;
+    for (let k = r.title + 1; r.title >= 0 && k < end; k++) {
+      if (!filled(k)) continue;
+      if (!lines[k].inBox) { r.bodyStart = k; break; }
+      if (boxed < 0) boxed = k;
+    }
+    if (r.bodyStart < 0 && boxed >= 0) r.bodyStart = boxed;
   }
   if (r.bodyStart >= 0) {
     for (let k = end - 1; k >= r.bodyStart; k--) if (filled(k) && lines[k].box === lines[r.bodyStart].box) { r.bodyEnd = k; break; }

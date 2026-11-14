@@ -190,3 +190,7 @@ section[data-menu="evaluate"][hidden]{display:none}
 .fold[open] .fold-act::before{content:'접기 · '}
 .fold-body{padding:4px 14px 14px;border-top:1px solid var(--line2)}
 @media (max-width:760px){ .fold-text{white-space:normal} }
+
+/* 학교 양식으로 내려받기 칸(core/school-form.js): 단추 줄 안에서 그대로 늘어서게 */
+.sf-slot{display:contents}
+.sf-pick{min-width:180px;max-width:100%}

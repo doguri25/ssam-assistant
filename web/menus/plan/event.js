@@ -9,6 +9,7 @@ import { readText, fileMessage } from '../../core/files.js';
 import { getSchool } from '../../core/settings.js';
 import { toast, copyText, saveFile } from '../../core/ui.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
+import { formSlotHTML, registerFormDoc } from '../../core/school-form.js';
 import { openPurchase } from '../purchase/purchase.js';
 import { stepsHTML } from '../../core/steps.js';
 import { keepFiles } from '../../core/keep-files.js';
@@ -290,7 +291,7 @@ function step3() {
     body += `<div id="evLetterBox">${letterBoxHTML(miss)}</div><div class="ev-qr" id="evLetterQr">${letterQrHTML()}</div>`;
   }
   return `${refNotesHTML(ev.refNotes.docs, ev.refNotes.stale)}<div id="evRvBox">${rvBox()}</div><div class="yp-card">${tabs}${body}
-      <div class="row yp-out"><button class="btn" type="button" data-e="copyDoc">복사</button>${exportButton('data-e="hwpx"')}<span class="grow"></span>
+      <div class="row yp-out"><button class="btn" type="button" data-e="copyDoc">복사</button>${formSlotHTML('event', exportButton('data-e="hwpx"'))}<span class="grow"></span>
         <button class="btn text" type="button" data-e="docs">다시 만들기 (고친 내용은 사라져요)</button></div></div>
     <div class="yp-card"><h3>품의로 이어 가기</h3><p class="muted">품의 › 새 품의로 넘어가며 행사 정보와 고른 안의 예산 줄을 채워요.</p>
       <div class="row"><button class="btn" type="button" data-e="purchase">품의로 이어 가기</button></div></div>`;
@@ -491,6 +492,8 @@ function updateRv(id) {
   const r = box.querySelector('#evRain'); if (r) r.classList.toggle('rv-mark', hasOpen(ev, 'rain'));
 }
 
+/* 학교 양식(.hwpx)으로 내려받기: 보고 있는 문서(계획서·안전 점검표·가정통신문) */
+registerFormDoc('event', () => { if (!ev || !ev.docs) return null; const doc = docDoc(ev, curDoc); return { doc, name: doc.title }; });
 async function downloadDoc() {
   const doc = docDoc(ev, curDoc);
   try { toast(await exportDoc(doc, doc.title), 6000); }
