@@ -366,3 +366,7 @@ section[data-menu="evaluate"].ev-new > :not(.unit-box):not(.act-box):not(.chk-bo
   .un-tcards{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(190px,70%);overflow-x:auto;overscroll-behavior-x:contain;padding-bottom:4px}
   .un-rv-keys{display:none}
 }
+@media (max-width:760px){
+  .un-steps{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(132px,46%);overflow-x:auto;overscroll-behavior-x:contain;padding:2px 2px 6px;scrollbar-width:thin}
+}
+.un-pyview .m-head h2:focus{outline:none}

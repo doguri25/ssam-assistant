@@ -129,6 +129,8 @@ await run('unit-key', [
     await page.click('nav.app-side [data-menu-go="evaluate"]');
     assert(await page.locator('#menuTabs [data-tab="unit"][aria-current="page"]').count() === 1, '탭');
     assert(await page.isVisible(B), '화면');
+    assert(await page.isVisible(`${B} .un-one`), '마친 평가가 있으면 첫 화면은 결과 한 화면');
+    await page.click(`${B} [data-unv="list"]`);
     assert(await cards() === 4, '카드');
   }],
   ['다듬기: [예시 지우기]는 예시 평가만 지움', async () => {

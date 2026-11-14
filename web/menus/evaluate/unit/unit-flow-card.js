@@ -104,8 +104,8 @@ function reveal(el) {
 function goRecord(t) {
   if (!t.done) { toast('[채점 마치기]를 누르면 교과 평어로 넘길 수 있어요', 5000); return; }
   showPyeongeo(t.meta.subject || '');
-  const h = getBox().querySelector('.un-pyview .un-title');
-  if (h) { h.setAttribute('tabindex', '-1'); h.focus({ preventScroll: true }); }
+  const h = getBox().querySelector('.un-pyview h2');
+  if (h) h.focus({ preventScroll: true });
 }
 function go(g, from) {
   if (!g) return;

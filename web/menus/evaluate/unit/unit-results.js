@@ -226,14 +226,14 @@ function headHTML(all, tests) {
   return `<div class="un-rhead"><div class="un-rhead-t"><h2>단원평가</h2>
       <p class="ev-sub">${esc(where)} · 채점 끝난 평가 ${tests.length}개${nos.size ? ` · ${nos.size}명` : ''} · 점수는 모두 100점으로 바꿔 보여요</p></div>
     <div class="un-racts"><button class="btn" type="button" data-un="csv" title="엑셀(CSV)로 내려받기"${tests.length ? '' : ' disabled'}>엑셀로</button>${exportButton('data-un="tableHwpx"', { disabled: !tests.length })}${downloadsButton()}<button class="btn primary" type="button" id="unNew">새 단원평가</button></div></div>
-    ${introLine()}<div class="row un-rbar">${viewSeg()}${filtersHTML(all)}</div>`;
+    <div class="m-head un-rintro">${introLine()}</div><div class="row un-rbar">${viewSeg()}${filtersHTML(all)}</div>`;
 }
 const EMPTY = '<div class="yp-card"><p class="muted" style="margin:0">마친 단원평가가 없어요. 평가 목록에서 채점을 마치면 여기에 모여요. 바로 보려면 [예시로 채우기].</p></div>';
 function html() {
   const all = doneTests(), list = filterTests(all, { subject: R.subject, term: R.term }), tests = loaded(list);
   if (R.rv === 'pyeongeo') {
     const body = all.length ? pyHTML(loaded(all)) : '';
-    return `<div class="un-results un-pyview"><div class="un-top"><button class="btn text" type="button" data-rv="table">‹ 결과</button><b class="un-title">교과 평어로 넘기기</b></div>${body || EMPTY}</div>`;
+    return `<div class="un-results un-pyview"><div class="un-top"><button class="btn text" type="button" data-rv="table">‹ 결과</button></div><div class="m-head"><h2 tabindex="-1">교과 평어로 넘기기</h2><p class="ev-sub">채점을 마친 단원평가로 학생마다 수준과 평어를 써요.</p></div>${body || EMPTY}</div>`;
   }
   if (R.stuNo != null && !summaryTable(tests).rows.some(r => r.no === R.stuNo)) R.stuNo = null;
   const main = tests.length ? `<div class="un-rgrid">${tableHTML(tests)}<aside class="un-rside" aria-label="반 전체">${domainHTML(tests)}${gapHTML(tests, { subject: R.subject })}${pyCardHTML(tests)}</aside></div>` : EMPTY;

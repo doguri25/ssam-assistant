@@ -183,11 +183,14 @@ function testHTML(t) {
     ${band ? band.html(t) : ''}${stepsHTML(STEPS, U.step, reach(t))}<div class="un-body">${body}</div>`;
 }
 /* 휴대폰에서 한 줄로 밀어 넘기는 단계 탭: 지금 단계가 보이게 탭 줄만 옆으로 밂(화면은 위아래로 움직이지 않음) */
+/* 평가 화면 단계 줄(.un-steps, 휴대폰에서 한 줄로 밀어 넘김)도 지금 칸이 보이게 */
 export function stepsInView(root) {
-  const ol = root && root.querySelector('.steps'), li = ol && ol.querySelector('li.cur');
-  if (!li || ol.scrollWidth <= ol.clientWidth) return;
-  const d = li.getBoundingClientRect().right - ol.getBoundingClientRect().right;
-  if (d > 0) ol.scrollLeft += d + 12;
+  for (const [list, cur] of [['.steps', 'li.cur'], ['.un-steps', 'li[aria-current]']]) {
+    const ol = root && root.querySelector(list), li = ol && ol.querySelector(cur);
+    if (!li || ol.scrollWidth <= ol.clientWidth) continue;
+    const d = li.getBoundingClientRect().right - ol.getBoundingClientRect().right;
+    if (d > 0) ol.scrollLeft += d + 12;
+  }
 }
 /* 그리는 중에 지워지는 입력 칸의 blur→change가 다시 그리기를 부르면, 끝난 뒤 한 번 더 그림 */
 let rendering = false, again = false;
