@@ -15,11 +15,11 @@ import { stepsHTML } from '../../core/steps.js';
 import { keepFiles } from '../../core/keep-files.js';
 import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import { rvBoxHTML, runPlanReview, onRvClick, markDone, dropOpen, hasOpen, clearState } from './plan-review.js';
-import { SECTIONS, TEXT_SECTIONS, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent, normReview, normGuide, normDraft, overlap, guideStatus, insertSentence, planDoc, planText, textForAI, ownerForAI, fitSchedule } from './year-model.js';
+import { SECTIONS, TEXT_SECTIONS, yearOutline, textKeys, isExtra, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent, normReview, normGuide, normDraft, overlap, guideStatus, insertSentence, planDoc, planText, textForAI, ownerForAI, fitSchedule } from './year-model.js';
 
 const STEPS = ['자료 넣기', '작년 평가', '지침 점검', '초안', '일정'];
 const SRC = [
-  ['lastPlan', '작년 계획서', '.hwp·.hwpx·PDF 파일을 넣거나 붙여넣어 주세요. (선택)'],
+  ['lastPlan', '작년(기존) 계획서', '.hwp·.hwpx·PDF 파일을 넣거나 붙여넣어 주세요. 초안이 이 계획서의 목차·짜임을 그대로 따라요. (선택)'],
   ['lastResult', '작년 결과', '만족도 설문, 실적, 반성 메모 — 파일(.hwp·.hwpx·PDF·CSV·엑셀)이나 붙여넣기 (선택)'],
   ['guide', '올해 지침·공문', '교육청 지침·공문을 넣거나 붙여넣어 주세요. (선택)']
 ];
@@ -208,12 +208,15 @@ function overlapHTML() {
 function step4() {
   if (busy[plan.id] === 'draft') return `<div class="yp-card"><p class="muted"><span class="spin"></span> 초안을 쓰고 있어요. 다른 메뉴로 가도 계속 써요…</p></div>`;
   const d = plan.draft;
+  const O = yearOutline(plan.sources.lastPlan);
   if (!d) return `<div class="yp-card"><h3>초안</h3><p class="muted">작년 문장은 옮기지 않고 올해 목표·지침에 맞게 새로 써요(법령·근거는 그대로).</p>
+    ${O.items.length ? `<p class="banner info" id="ypOutlineNote"><span class="grow">작년(기존) 계획서 목차 그대로 써요(${O.items.length}칸): ${esc(O.items.map(o => o.title).join(' · '))}</span></p>` : ''}
     <div class="row"><button class="btn primary" type="button" data-y="draft">초안 만들기</button></div></div>`;
   const copy = k => `<button class="btn text" type="button" data-copy="${k}">복사</button>`;
   const sum = d.budget.reduce((s, b) => s + b.amount, 0);
+  const ROMAN = 'ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ';
   const sec = ([k, label], i) => {
-    const h = `<div class="yp-sec-h"><h3>${i + 1}. ${label}</h3>${copy(k)}</div>`;
+    const h = `<div class="yp-sec-h"><h3>${d.roman ? (ROMAN[i] || i + 1) : i + 1}. ${esc(label)}</h3>${copy(k)}</div>`;
     if (k === 'schedule') return `<section class="yp-sec">${h}<div class="yp-tbl-wrap"><table class="yp-tbl" id="ypSched"><thead><tr><th>날짜</th><th>내용</th></tr></thead><tbody>${d.schedule.map(x => `<tr><td class="num">${esc(x.date || (x.month ? x.month + '월' : '날짜 미정'))}</td><td>${esc(x.title)}</td></tr>`).join('') || '<tr><td colspan="2" class="muted">없어요</td></tr>'}</tbody></table></div><p class="muted">날짜는 5단계 「일정」에서 정하고 겹치는 날을 확인해요.</p></section>`;
     if (k === 'budget') return `<section class="yp-sec">${h}<div class="yp-tbl-wrap"><table class="yp-tbl" id="ypBudget"><thead><tr><th>항목</th><th>금액(원)</th><th>비고</th><th></th></tr></thead><tbody>${d.budget.map((b, j) => `<tr>
         <td><input class="field" data-bud="${j}" data-f="name" value="${esc(b.name)}" aria-label="항목"></td>
@@ -222,10 +225,13 @@ function step4() {
         <td><button class="icon-btn" type="button" data-budel="${j}" aria-label="이 항목 빼기">×</button></td></tr>`).join('')}</tbody>
         <tfoot><tr><td>합계</td><td class="num" id="ypBudSum">${won(sum)}</td><td colspan="2"></td></tr></tfoot></table></div>
         <div class="row"><button class="btn text" type="button" data-y="budAdd">+ 항목 더하기</button></div></section>`;
-    return `<section class="yp-sec">${h}<textarea class="field${hasOpen(plan, k) ? ' rv-mark' : ''}" data-sec="${k}" rows="${k === 'details' ? 8 : 4}" aria-label="${label}">${esc(d[k])}</textarea></section>`;
+    return `<section class="yp-sec">${h}<textarea class="field${hasOpen(plan, k) ? ' rv-mark' : ''}" data-sec="${k}" rows="${k === 'details' ? 8 : 4}" aria-label="${esc(label)}">${esc(d[k] || '')}</textarea></section>`;
   };
+  // 작년(기존) 계획서 목차로 쓴 초안은 그 차례·제목 그대로
+  const order = d.outline && d.outline.length ? d.outline.map(o => [o.key, o.title]) : SECTIONS;
   return `<div id="ypOverlapBox">${overlapHTML()}</div><div id="ypRvBox">${rvBox()}</div>
-    <div class="yp-card" id="ypDraft">${SECTIONS.map(sec).join('')}
+    ${d.outline && d.outline.length ? '<p class="muted" id="ypOutlineUsed">작년(기존) 계획서 목차 그대로예요. 한글 파일도 이 차례로 나가요.</p>' : ''}
+    <div class="yp-card" id="ypDraft">${order.map(sec).join('')}
       <div class="row"><button class="btn text" type="button" data-y="draft">다시 만들기 (고친 내용은 사라져요)</button></div></div>`;
 }
 
@@ -378,13 +384,17 @@ function draftPrompt(p) {
     picked.length && `올해 반영할 개선 방향: ${picked.join(' / ')}`,
     p.guide && p.guide.length && `지침에서 꼭 넣을 항목:\n${p.guide.map(g => `- ${g.item}: ${g.sentence}`).join('\n')}`
   ].filter(Boolean).join('\n');
+  const O = yearOutline(p.sources.lastPlan);
   return `[연간계획 초안]\n학교 업무 연간계획서 초안을 써 주세요.\n\n${lines}\n\n`
-    + (p.sources.lastPlan.trim() ? `작년 계획서(참고만):\n"""\n${stripPersonal(p.sources.lastPlan).text.slice(0, 12000)}\n"""\n\n` : '')
-    + '규칙:\n- purpose(목적)·policy(방침)·details(세부 추진 계획)·evaluation(평가 계획)은 학교 계획서 문체(「~한다」, 「가.」「1)」 목록)로 씀\n'
+    + (p.sources.lastPlan.trim() ? `작년(기존) 계획서${O.items.length ? ' — 이 계획서의 목차·짜임·문체를 그대로 따름' : '(참고만)'}:\n"""\n${stripPersonal(p.sources.lastPlan).text.slice(0, 12000)}\n"""\n\n` : '')
+    + (O.items.length ? `작년(기존) 계획서 목차(이 차례·제목 그대로 씀. 제목은 앱이 붙이니 칸에는 그 제목 아래 내용만):\n${O.items.map((o, i) => `${i + 1}. ${o.title} → ${o.key}`).join('\n')}\n\n` : '')
+    + '규칙:\n- purpose(목적)·policy(방침)·details(세부 추진 계획)·evaluation(평가 계획)'
+    + O.items.filter(o => isExtra(o.key)).map(o => `·${o.key}(${o.title})`).join('')
+    + (O.items.length ? '은 작년(기존) 계획서의 그 제목 아래 글과 같은 짜임(「가.」「1)」 목록 차례·줄 수)과 문체(「~한다」)로 씀\n' : '은 학교 계획서 문체(「~한다」, 「가.」「1)」 목록)로 씀\n')
     + '- 작년 계획서 문장을 그대로 옮기지 말고 올해 목표·지침 표현으로 새로 씀. 단, 법령·근거 문장(「~법 제○조」 등)은 그대로 둠\n'
     + `- schedule: 6~12개, 각 일정의 date는 ${p.year}-03-01 ~ ${p.year + 1}-02-28 사이 평일 'YYYY-MM-DD'\n`
     + '- budget: 항목·금액(원, 숫자)·비고. 예산이 주어지면 합계를 그 안으로\n- 메모에 없는 숫자·사실은 지어내지 않음\n\n'
-    + '답은 JSON 하나만: {"purpose":"…","policy":"…","details":"…","schedule":[{"title":"…","date":"YYYY-MM-DD"}],"budget":[{"name":"…","amount":0,"note":"…"}],"evaluation":"…"}';
+    + `답은 JSON 하나만: {"purpose":"…","policy":"…","details":"…","schedule":[{"title":"…","date":"YYYY-MM-DD"}],"budget":[{"name":"…","amount":0,"note":"…"}],"evaluation":"…"${O.items.filter(o => isExtra(o.key)).map(o => `,"${o.key}":"…"`).join('')}}`;
 }
 async function runDraft() {
   const id = plan.id;
@@ -399,7 +409,9 @@ async function runDraft() {
     let moved = 0, year = 0;
     apply(id, p => {
       // 작년 계획서 날짜를 그대로 옮긴 일정은 이 계획 학년도의 같은 달·날로
-      const d = normDraft(v), f = fitSchedule(d.schedule, p.year);
+      // 작년(기존) 계획서 목차 그대로(없으면 기본 차례)
+      const O = yearOutline(p.sources.lastPlan);
+      const d = normDraft({ ...v, outline: O.items, roman: O.roman }), f = fitSchedule(d.schedule, p.year);
       moved = f.moved; year = p.year;
       p.draft = { ...d, schedule: f.schedule }; p.rv = []; unconfirm(p);
     });
@@ -413,19 +425,21 @@ async function runDraft() {
 }
 /* 검토 AI: 초안 칸(목적·방침·세부 추진 계획·평가 계획)을 한 번 봄 */
 const SEC_LABEL = Object.fromEntries(SECTIONS);
+/* 칸 이름: 작년(기존) 계획서 목차로 쓴 초안은 그 제목 */
+const labelOf = (d, k) => (((d && d.outline) || []).find(o => o.key === k) || {}).title || SEC_LABEL[k] || k;
 function reviewDraft(id) {
   const p = getPlan(id);
   if (!p || !p.draft) return;
   runPlanReview(id, {
     title: `${p.year}학년도 ${p.name || '업무'} 연간계획`,
-    sections: TEXT_SECTIONS.map(k => ({ key: k, label: SEC_LABEL[k], text: p.draft[k] })),
+    sections: textKeys(p.draft).map(k => ({ key: k, label: labelOf(p.draft, k), text: p.draft[k] })),
     guide: (p.guide || []).map(g => `- ${g.item}: ${g.sentence}`).join('\n'),
     current: () => { flushSave(); const q = getPlan(id); return q && q.draft; },
     save: items => apply(id, q => { q.rv = items; }),
     update: () => updateRv(id)
   });
 }
-const rvBox = () => rvBoxHTML(plan, { text: k => (plan.draft && plan.draft[k]) || '', label: k => SEC_LABEL[k] || k });
+const rvBox = () => rvBoxHTML(plan, { text: k => (plan.draft && plan.draft[k]) || '', label: k => labelOf(plan.draft, k) });
 function updateRv(id) {
   if (!visible() || plan.id !== id || plan.step !== 4) return;
   const b = box.querySelector('#ypRvBox');

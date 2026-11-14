@@ -99,7 +99,7 @@ test('저장된 설문 결과가 망가져도 읽을 수 있는 것만, 서술�
 });
 
 test('참고 자료: 종류·이름·10개·합쳐 6만 자', () => {
-  assert.deepEqual(REF_KINDS.map(k => k[0]), ['upper', 'official', 'other']);
+  assert.deepEqual(REF_KINDS.map(k => k[0]), ['upper', 'official', 'other', 'last']);
   const r = normRefs([{ id: 'a', kind: 'bad', name: '', text: '가' }, { kind: 'official', name: '공문', text: '' }, 'x', { id: 'b', kind: 'upper', name: '계획', text: 'x'.repeat(35000) }, { id: 'c', kind: 'official', name: '공문 2', text: 'y'.repeat(35000) }]);
   assert.deepEqual(r.map(x => [x.id, x.kind, x.name]), [['a', 'other', '참고 자료'], ['b', 'upper', '계획'], ['c', 'official', '공문 2']]);
   assert.equal(r.reduce((n, x) => n + x.text.length, 0), 60000);

@@ -5,12 +5,37 @@ import { isDate, schoolYearOf, yearOfMonth } from '../../core/calendar.js';
 import { getSchool } from '../../core/settings.js';
 import { maskContacts, maskStaff, staffName, nameCell, MASK } from '../../core/privacy.js';
 import { normRv } from './plan-rv.js';
+import { parseOutline } from './classplan-model.js';
 
 const LIST_KEY = 'yearplans', CUR_KEY = 'yearplan:current';
 
 export const SECTIONS = [['purpose', '목적'], ['policy', '방침'], ['details', '세부 추진 계획'], ['schedule', '월별 추진 일정'], ['budget', '예산'], ['evaluation', '평가 계획']];
 export const TEXT_SECTIONS = ['purpose', 'policy', 'details', 'evaluation'];
 const SRC = ['lastPlan', 'lastResult', 'guide'];
+
+/* ---------- 작년(기존) 계획서 목차 그대로 ----------
+   작년 계획서의 큰 제목(Ⅰ.·1.)을 차례대로: 목적·방침·세부 추진·일정·예산·평가에 맞는 제목은 그 칸, 맞지 않는 제목(추진 근거·현황 등)은 덧붙임 칸(x1, x2 …).
+   큰 제목이 셋보다 적으면 앱의 기본 차례(SECTIONS). 일정·예산 칸은 표로 */
+const SECTION_KEYS = SECTIONS.map(x => x[0]);
+const ROLE = [['purpose', /목적|필요성|배경|취지/], ['policy', /방침|방향/], ['schedule', /일정|월별|시기/], ['budget', /예산|경비|재원|사업비|소요\s*액/],
+  ['evaluation', /평가|환류|기대\s*효과|성과/], ['details', /세부|추진|운영|실천|내용|활동|방법|계획/]];
+const NOT_ROLE = /근거|관련|현황|개요|실태|분석/;
+export const isExtra = k => /^x\d{1,2}$/.test(String(k || ''));
+export function yearOutline(src) {
+  const top = parseOutline(src).filter(x => x.level === 1).slice(0, 12);
+  if (top.length < 3) return { items: [], roman: false };
+  const used = new Set();
+  let n = 0;
+  const items = top.map(x => {
+    const r = !NOT_ROLE.test(x.title) && ROLE.find(([k, re]) => !used.has(k) && re.test(x.title));
+    if (r) { used.add(r[0]); return { key: r[0], title: x.title }; }
+    return { key: 'x' + (++n), title: x.title };
+  });
+  return { items, roman: /^\s*[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]\.\s*\S/m.test(String(src || '')) };
+}
+const ROMAN = 'ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ';
+/* 초안의 글 칸: 기본 넷 + 목차의 덧붙임 칸 */
+export const textKeys = d => [...TEXT_SECTIONS, ...((d && d.outline) || []).map(o => o.key).filter(isExtra)];
 
 const str = v => (typeof v === 'string' ? v : v == null ? '' : typeof v === 'number' ? String(v) : '');
 // AI가 섹션을 목록(배열)으로 주면 줄로 이음
@@ -99,6 +124,16 @@ export function normDraft(v) {
     return { title: str(s.title).trim(), date, month: m };
   });
   d.budget = (Array.isArray(v.budget) ? v.budget : []).filter(b => isObj(b) && str(b.name).trim()).map(b => ({ name: str(b.name).trim(), amount: num(b.amount), note: str(b.note).trim() }));
+  // 작년(기존) 계획서 목차(없으면 빈 목록 — 기본 차례). 덧붙임 칸 글은 목차에 있는 것만
+  const seen = new Set();
+  d.outline = [];
+  for (const o of Array.isArray(v.outline) ? v.outline : []) {
+    const k = isObj(o) ? str(o.key) : '', t = isObj(o) ? str(o.title).trim() : '';
+    if (!t || seen.has(k) || !(SECTION_KEYS.includes(k) || isExtra(k))) continue;
+    seen.add(k); d.outline.push({ key: k, title: t.slice(0, 60) });
+  }
+  d.roman = !!v.roman && d.outline.length > 0;
+  for (const o of d.outline) if (isExtra(o.key)) d[o.key] = text(v[o.key]);
   return d;
 }
 
@@ -128,7 +163,7 @@ export function fitSchedule(schedule, year) {
 /* ---------- 글 계산 ---------- */
 export function draftText(draft) {
   if (!draft) return '';
-  return [...TEXT_SECTIONS.map(k => draft[k] || ''), ...(draft.schedule || []).map(s => s.title), ...(draft.budget || []).map(b => b.name)].join('\n');
+  return [...textKeys(draft).map(k => draft[k] || ''), ...(draft.schedule || []).map(s => s.title), ...(draft.budget || []).map(b => b.name)].join('\n');
 }
 
 /* 줄과 문장 끝(. ! ?)에서 나눔. 「가.」「1)」 같은 번호만 있는 조각은 뒤 문장 앞에 붙임 */
@@ -165,7 +200,7 @@ export function overlap(lastText, draft) {
   const last = sentences(lastText).filter(s => !LAW.test(s)).map(norm).filter(Boolean);
   const exact = new Set(last);
   const lastB = last.map(s => ({ len: s.length, b: bigrams(s) }));
-  const mine = sentences(typeof draft === 'string' ? draft : TEXT_SECTIONS.map(k => (draft && draft[k]) || '').join('\n')).filter(s => !LAW.test(s));
+  const mine = sentences(typeof draft === 'string' ? draft : textKeys(draft).map(k => (draft && draft[k]) || '').join('\n')).filter(s => !LAW.test(s));
   const same = [];
   for (const s of mine) {
     const n = norm(s);
@@ -201,8 +236,10 @@ export function insertSentence(draft, section, sentence) {
 export function planDoc(plan) {
   const d = plan.draft || normDraft({});
   const blocks = [];
-  SECTIONS.forEach(([k, label], i) => {
-    blocks.push({ type: 'h', text: `${i + 1}. ${label}` });
+  // 작년(기존) 계획서 목차가 있으면 그 차례·제목·번호 꼴(Ⅰ.·1.) 그대로, 없으면 앱의 기본 차례
+  const order = d.outline && d.outline.length ? d.outline.map(o => [o.key, o.title]) : SECTIONS;
+  order.forEach(([k, label], i) => {
+    blocks.push({ type: 'h', text: `${d.roman ? (ROMAN[i] || i + 1) : i + 1}. ${label}` });
     if (k === 'schedule') {
       if (d.schedule.length) blocks.push({ type: 'table', head: true, rows: [['날짜', '내용'], ...d.schedule.map(s => [s.date || (s.month ? `${s.month}월` : ''), s.title])] });
       else blocks.push({ type: 'p', text: '(없음)' });

@@ -1,5 +1,6 @@
 /* 행사계획 자료와 계산 (화면 없음 — Node 시험에서도 씀).
    행사 목록은 ssam:events, 보고 있는 행사는 ssam:event:current. 학사일정 출처는 'event:<id>' */
+import { parseOutline } from './classplan-model.js';
 import { get, set } from '../../core/store.js';
 import { isDate } from '../../core/calendar.js';
 import { personalColumn } from '../../core/survey.js';
@@ -11,7 +12,7 @@ const LIST_KEY = 'events', CUR_KEY = 'event:current';
 export const KINDS = [['sports', '운동회'], ['arts', '학예회'], ['field', '현장체험학습'], ['other', '기타']];
 // 역할 분담표는 뺐음(참여 교직원 이름을 AI로 보내지 않게 — 선생님 요청 2026-11-10)
 export const DOCS = [['plan', '계획서'], ['safety', '안전 점검표'], ['letter', '가정통신문']];
-export const REF_KINDS = [['upper', '상위 계획'], ['official', '교육청 공문'], ['other', '기타']];
+export const REF_KINDS = [['upper', '상위 계획'], ['official', '교육청 공문'], ['other', '기타'], ['last', '작년·기존 계획서']];
 
 const str = v => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
 const strs = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim()) : []);
@@ -58,7 +59,17 @@ export function normRefs(v) {
     .map(r => { const text = r.text.slice(0, Math.max(0, left)); left -= text.length; return { ...r, text }; })
     .filter(r => r.text.trim());
 }
-export const guessKind = name => (/공문|교육청|교육지원청|교육부/.test(name) ? 'official' : /계획/.test(name) ? 'upper' : 'other');
+export const guessKind = name => (/작년|전년|지난\s*해|기존/.test(name) ? 'last' : /공문|교육청|교육지원청|교육부/.test(name) ? 'official' : /계획/.test(name) ? 'upper' : 'other');
+/* 참고 자료 「작년·기존 계획서」가 있으면 계획서(plan)가 그 목차(큰 제목의 차례·이름·번호 꼴)와 짜임·문체를 그대로 따르게 하는 규칙 줄. 없으면 '' (기본 차례) */
+const ROMAN = 'ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ';
+export function planOutlineRule(refs) {
+  const last = (refs || []).find(r => r && r.kind === 'last' && String(r.text || '').trim());
+  if (!last) return '';
+  const top = parseOutline(last.text).filter(x => x.level === 1).slice(0, 12);
+  if (top.length < 3) return '- plan: 「작년·기존 계획서」의 짜임·문체(「가.」「1)」 목록)를 따라 올해 행사 내용으로 씀\n';
+  const roman = /^\s*[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]\.\s*\S/m.test(last.text);
+  return `- plan: 「작년·기존 계획서」의 목차를 그대로 따름(이 제목·차례·번호 꼴): ${top.map((x, i) => `${roman ? (ROMAN[i] || i + 1) : i + 1}. ${x.title}`).join(' / ')}. 각 제목 아래는 그 계획서 글의 짜임(「가.」「1)」 목록)과 문체로 올해 행사 내용을 씀\n`;
+}
 const refKindName = k => (REF_KINDS.find(x => x[0] === k) || REF_KINDS[2])[1];
 /* AI에 보낼 참고 자료 글: 합쳐 budget자 안에서, 짧은 자료는 다 넣고 긴 자료는 남은 몫까지 */
 export function refsBlock(refs, budget = 24000) {

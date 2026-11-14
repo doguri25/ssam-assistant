@@ -22,7 +22,7 @@ import { putReportSources } from './report.js';
 import { putLetterDraft } from '../etc/letter.js';
 import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import { letterBodyFromEvent } from '../etc/letter-ai.js';
-import { KINDS, DOCS, REF_KINDS, normRefs, guessKind, refsBlock, normRefNotes, newEvent, listEventPlans, getEvent, saveEvent, deleteEvent, currentEventId, setCurrentEvent, normOptions, letterMissing, docDoc, confirmBlockers, normItems, maskResult } from './event-model.js';
+import { KINDS, DOCS, REF_KINDS, normRefs, guessKind, planOutlineRule, refsBlock, normRefNotes, newEvent, listEventPlans, getEvent, saveEvent, deleteEvent, currentEventId, setCurrentEvent, normOptions, letterMissing, docDoc, confirmBlockers, normItems, maskResult } from './event-model.js';
 
 const STEPS = ['행사 정보', '구성안', '문서', '설문·결과'];
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -443,7 +443,7 @@ function docsPrompt(e) {
     + `종류: ${kindName(e.kind)}\n행사명: ${e.name}\n목적: ${e.purpose || '(없음)'}\n대상: ${e.grades}\n날짜: ${e.date}\n장소: ${e.place} (${e.outdoor ? '야외' : '실내'})\n예산: ${e.budget || '(정하지 않음)'}\n학교: ${s.name || '(학교명 없음)'}\n`
     + (o ? `\n고른 구성안(${o.label}): ${o.summary}\n시간표:\n${o.timetable.map(t => `- ${t.time} ${t.activity}${t.place ? ' (' + t.place + ')' : ''}`).join('\n')}\n필요 인력: ${o.staffNeed || '-'}\n예산 내역: ${o.budget.map(b => `${b.name} ${b.amount}원`).join(', ') || '-'}\n` : '')
     + refsPart(e)
-    + '\n규칙:\n- plan: 학교 계획서 문체(「가.」「1)」 목록), 개요·운영 방침·세부 운영·안전 대책·평가 순\n'
+    + '\n규칙:\n' + (planOutlineRule(e.refs) || '- plan: 학교 계획서 문체(「가.」「1)」 목록), 개요·운영 방침·세부 운영·안전 대책·평가 순\n')
     + '- safety: 「- 」로 시작하는 점검 항목 목록\n'
     + '- letter: 학부모가 읽기 쉬운 말로. 날짜(일시)·준비물·복장·문의처(학교 교무실 전화)를 꼭 넣음\n'
     + (e.outdoor ? '- rain: 비가 오면 어떻게 할지(장소·시간 바꾸기) 두세 줄\n' : '- rain: 빈 글\n')
