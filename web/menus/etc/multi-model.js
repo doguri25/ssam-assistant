@@ -92,10 +92,11 @@ export function remapQuant(quant, criteria) {
   const dropped = Object.entries(quant.evidence || {}).filter(([id]) => !moved.has(id)).flatMap(([, list]) => arr(list));
   return { quant: out, dropped };
 }
-/* 기준 고치기에서 지표를 지움: 고른 지표 차례를 당기고, 지운 지표를 골랐으면 비움 */
-export function shiftPick(values, itemId, delIndex) {
+/* 기준 고치기에서 지표를 지움: 고른 지표 차례를 당기고, 지운 지표를 골랐으면 비움.
+   kind(지우기 전 항목 꼴)가 고르기가 아니면 v는 넣은 수(22시간)라 그대로 둠 */
+export function shiftPick(values, itemId, delIndex, kind = 'choice') {
   const e = values && values[itemId];
-  if (!e || e.v === undefined || !/^\d+$/.test(str(e.v))) return values;
+  if (kind !== 'choice' || !e || e.v === undefined || !/^\d+$/.test(str(e.v))) return values;
   const v = +e.v;
   if (v === delIndex) delete e.v; else if (v > delIndex) e.v = String(v - 1);
   return values;

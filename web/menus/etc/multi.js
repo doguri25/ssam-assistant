@@ -468,7 +468,7 @@ function editAct(a, b) {
     dropItems([it], () => g.items.splice(g.items.indexOf(it), 1)); return;
   }
   else if (a === 'ceAddTier' && it) { it.tiers.push({ label: '새 지표', points: 0 }); Object.assign(it, deriveItem(it)); }
-  else if (a === 'ceDelTier' && it) { if (it.tiers.length < 2) { toast('지표가 하나는 있어야 해요.'); return; } it.tiers.splice(+b.dataset.t, 1); shiftPick(st.quant.values, it.id, +b.dataset.t); Object.assign(it, deriveItem(it)); }
+  else if (a === 'ceDelTier' && it) { if (it.tiers.length < 2) { toast('지표가 하나는 있어야 해요.'); return; } const kind = it.kind; it.tiers.splice(+b.dataset.t, 1); shiftPick(st.quant.values, it.id, +b.dataset.t, kind); Object.assign(it, deriveItem(it)); }
   else return;
   c.total = c.groups.reduce((s, x) => s + (x.max || 0), 0);
   if (save()) render();

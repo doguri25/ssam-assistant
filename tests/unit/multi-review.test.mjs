@@ -71,6 +71,17 @@ test('지표를 지우면 고른 차례를 당기고, 지운 지표를 골랐으
   assert.deepEqual(values, { a: { v: '1' }, b: {}, c: { v: '0', deduct: '1' } });
 });
 
+test('수 넣기·횟수 항목의 지표를 지워도 넣은 수(22시간)는 그대로 — 고르기 항목만 차례를 당김', () => {
+  const values = { h: { v: '22', count: '', deduct: '' }, k: { v: '1', count: '', deduct: '' }, c: { v: '', count: '3', deduct: '' }, p: { v: '2' } };
+  shiftPick(values, 'h', 1, 'range'); shiftPick(values, 'k', 1, 'range'); shiftPick(values, 'c', 0, 'count'); shiftPick(values, 'p', 1, 'choice');
+  assert.deepEqual(values, { h: { v: '22', count: '', deduct: '' }, k: { v: '1', count: '', deduct: '' }, c: { v: '', count: '3', deduct: '' }, p: { v: '1' } });
+  // 예시 기준 「주당 수업시수」에 22시간 → 「20시간 미만」 지표를 지워도 22시간·25점
+  const it = allItems(defaultQuant()).find(i => i.name === '주당 수업시수'), vals = { [it.id]: { v: '22' } };
+  shiftPick(vals, it.id, 2, it.kind);
+  assert.equal(vals[it.id].v, '22');
+  assert.equal(itemScore(it, vals[it.id]), 25);
+});
+
 test('근거자료 제목 줄: 시행이 줄 가운데여도 시행 번호·날짜(관련 공문 번호가 아님), COVID-19는 번호 아님, 「제 2025-12345 호」', () => {
   const a = evidenceLabel('제목 교원 연수 안내\n1. 관련: 교육지원과-12345(2025. 2. 10.)\n협조자 | 시행 푸른솔초등학교-7777 (2025. 4. 10.)', 'x.pdf');
   assert.deepEqual([a.no, a.date], ['7777', '2025.04.10.']);
