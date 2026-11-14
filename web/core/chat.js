@@ -474,11 +474,14 @@ export function initChat(d = {}) {
   window.addEventListener('storage', e => { if (e.key === 'ssam:' + FLAG && e.newValue) fromBubble(); });
   window.addEventListener('focus', fromBubble);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') fromBubble(); });
-  // Esc: 확인 카드(시트)가 떠 있으면 시트만 닫히게(먼저 봄)
+  // Esc: 확인 카드(시트)가 떠 있으면 시트만 닫히게(먼저 봄), 3분 둘러보기 말풍선(core/tour.js)에 초점이 있으면 말풍선만.
+  // 채팅을 닫으면 그 Esc로 말풍선까지 닫히지 않게 표시함(defaultPrevented — 한 번에 하나씩)
   window.addEventListener('keydown', e => {
     if (e.key !== 'Escape' || !isChatOpen()) return;
-    const root = document.getElementById('sheetRoot');
+    const root = document.getElementById('sheetRoot'), pop = document.getElementById('tourPop');
     if (root && root.childElementCount) return;
+    if (pop && pop.contains(document.activeElement)) return;
+    e.preventDefault();
     closeChat();
   }, true);
   fromBubble();
