@@ -6,6 +6,24 @@
 import * as model from './record-model.js';
 import * as ai from './record-ai.js';
 import { evidenceRowsHTML } from '../../../core/evidence.js';
+import { listTests, getPyeongeo, savePyeongeo, LEVEL_NAME } from '../unit/unit-model.js';
+import { showPyeongeo } from '../unit/unit-results.js';
+import { go } from '../../../core/shell.js';
+
+/* ---------- 교과 평어 학생별: 단원평가 교과 평어(unit:pyeongeo:<교과>)를 읽고 그 자리에 고친 글을 씀(모양 그대로) ---------- */
+const ko = (a, b) => a.localeCompare(b, 'ko');
+// 단원평가 교과 평어 글이 있는 교과
+export const pyUnitSubjects = () => [...new Set(listTests().map(s => s.subject).filter(Boolean))].filter(sub => Object.values(getPyeongeo(sub).students || {}).some(v => v && String(v.text || '').trim())).sort(ko);
+export const pyUnit = sub => (sub ? getPyeongeo(sub) : { students: {} });
+export function pyUnitSave(sub, no, { text, ev }) {
+  const v = getPyeongeo(sub), cur = (v.students || {})[no] || {};
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  v.students = { ...(v.students || {}), [no]: { level: cur.level || '', text: t, manual: !!cur.manual, ...(ev && t ? { ev } : {}) } };
+  return savePyeongeo(sub, v);
+}
+export const pyLevelName = k => LEVEL_NAME[k] || '';
+// [AI로 다시 쓰기](단원평가 평어): 단원평가 결과 › 교과 평어로 넘기기의 그 학생 칸으로
+export function pyOpenUnit(sub, no) { go('evaluate', 'unit'); showPyeongeo(sub, no); }
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const KIND = { unit: '단원평가', activity: '활동지', gr: '채점', ref: '참고', memo: '관찰 메모', act: '활동', sheet: '학습지' };
@@ -61,6 +79,6 @@ export const segHTML = (label, opts) => (opts.length > 1 ? `<div class="rw-seg" 
 
 if (typeof window !== 'undefined') {
   window.SSAM = window.SSAM || {};
-  window.SSAM.record = { ...model, ...ai, KIND, listHTML, articleHTML, footHTML, rowsHTML, sideHTML, segHTML, esc };
+  window.SSAM.record = { ...model, ...ai, KIND, listHTML, articleHTML, footHTML, rowsHTML, sideHTML, segHTML, esc, pyUnitSubjects, pyUnit, pyUnitSave, pyLevelName, pyOpenUnit };
   try { window.dispatchEvent(new Event('ssam:record-ready')); } catch (e) {}
 }

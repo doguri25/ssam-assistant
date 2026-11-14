@@ -340,7 +340,7 @@ input.field.num.sm{width:84px}
 
 /* ---------- 생활기록부 글 쓰기 틀(스펙 2026-11-14-eval-redesign §6, record/record.js) ----------
    왼쪽 학생 목록(.rw-stus) · 가운데 글 카드(.rw-art: 문장 줄 · 글자 수 · 단추) · 오른쪽 근거(.rw-side). 파랑 = 쌤비서가 한 일, 주황 = 선생님 차례 */
-.hk-body{grid-template-columns:minmax(196px,220px) minmax(0,1fr)}
+.hk-body{grid-template-columns:minmax(180px,200px) minmax(0,1fr)}
 .hk-left{padding:16px 12px 40px;gap:8px;background:var(--bg)}
 .hk-right{padding:16px 20px 80px;background:var(--bg)}
 .rw-lh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:2px 8px 4px;font-size:13px;color:var(--ink3)}
@@ -367,7 +367,7 @@ input.field.num.sm{width:84px}
 .rw-stu[aria-current="true"] .st,.rw-stu[aria-current="true"] .rw-sub{color:#c9ced6}
 .rw-stu:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
 /* 가운데·오른쪽 */
-.rw-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(250px,300px);gap:16px;align-items:start}
+.rw-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,280px);gap:16px;align-items:start}
 .rw-main{min-width:0;display:grid;gap:14px;align-content:start}
 .rw-side{min-width:0;display:grid;gap:14px;align-content:start}
 .rw-grid .btn{min-height:44px;font-size:14px;padding:0 16px;border-radius:12px}
@@ -460,6 +460,25 @@ input.field.num.sm{width:84px}
 .rw-ai{margin:0;padding:0 4px}
 @media (max-width:1100px){
   .rw-grid{grid-template-columns:minmax(0,1fr)}
+}
+/* 교과 평어 학생별(문장 모음은 [문장 모음 만들기]) */
+.pyrec[hidden],.py-poolbar[hidden]{display:none !important}
+.py-page{max-width:1240px;gap:16px}
+.py-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px}
+.py-head .ev-sub{flex:1 1 260px}
+.py-head .btn{min-height:44px;border-radius:12px;font-size:14px}
+.py-sub{display:flex;align-items:center;gap:8px;font-weight:700}
+.py-sub select{min-height:44px;min-width:160px}
+.rw-frame{display:grid;grid-template-columns:minmax(168px,188px) minmax(0,1fr);gap:16px;align-items:start}
+.rw-frame > .rw-list{overflow:visible;padding:12px;border:1px solid var(--line);border-right:1px solid var(--line);border-radius:var(--r-l,20px);background:var(--surface);display:grid;gap:8px;align-content:start}
+.rw-frame .rw-stu:hover{background:var(--surface2)}
+.py-poolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;max-width:1120px;margin:0 auto;padding:16px 32px 0;box-sizing:border-box}
+.py-poolbar .ev-sub{flex:1 1 240px}
+.py-poolbar .btn{min-height:44px;border-radius:12px;font-size:14px}
+@media (max-width:720px){
+  .rw-frame{grid-template-columns:minmax(0,1fr)}
+  .rw-frame > .rw-list{max-height:none}
+  .py-poolbar{padding:12px 16px 0}
 }
 /* ---------- 평가지 채점 확인(스펙 §4, 공통 모양 .ev-rv): 설정 칸을 접고 결과 칸 전체에 ---------- */
 .gr.rvw{grid-template-columns:minmax(0,1fr)}

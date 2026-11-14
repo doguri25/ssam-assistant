@@ -2111,16 +2111,213 @@ function renderList() {
 
 function renderAll() {
   const has = !!S.plan, hk = S.mode === 'hk', gr = S.mode === 'gr', cc = S.mode === 'cc', other = hk || gr || cc;
+  // 교과 평어: 학생별 글(생활기록부 글 쓰기 틀) 또는 문장 모음(평가요소 × 수준, 예전 화면) — 아래 「교과 평어 학생별」
+  const stu = !other && pyMode() === 'stu';
   $('#hkView').hidden = !hk;
   $('#grView').hidden = !gr;
   $('#ccView').hidden = !cc;
-  $('#importView').hidden = other || has;
-  $('#planView').hidden = other || !has;
+  $('#importView').hidden = other || has || stu;
+  $('#planView').hidden = other || !has || stu;
+  pyRecView().hidden = !stu;
+  pyPoolBar(!other && !stu);
+  if (stu) { $('#planTitle').textContent = '교과학습발달상황 · 학생별 교과 평어'; renderPyRec(); updateGen(); return; }
   $('#planTitle').textContent = cc ? '창의적 체험활동 · 공통 활동으로 학생별 특기사항 쓰기' : hk ? '행동특성 및 종합의견 · 메모로 글 완성하기' : gr ? '평가지 채점 · 스캔한 수행평가지로 수준과 평어 정하기' : has ? S.plan.title : '교과학습발달상황 · 평가계획으로 수준별 평어 만들기';
   if (has && !other) { renderNav(); renderUnits(); renderPane(); $('#planView').classList.toggle('show-pane', S.showPane); }
   if (!has && !other) heroIntro();
   updateGen();
 }
+/* ---------- 교과 평어 학생별 (생활기록부 글 쓰기 틀, 스펙 2026-11-14-eval-redesign §6) ----------
+   학생별 글은 단원평가 교과 평어(unit:pyeongeo:<교과>)와 평가지 채점 글(그 기록의 학생 text)에서 모아 보여 줌(교과 고르기).
+   고친 글은 그 자리(단원평가 평어·그 채점 기록)에 씀 — 모양은 그대로. 문장 모음(평가요소 × 수준)은 [문장 모음 만들기]로.
+   처음 보는 화면: 평가계획(문장 모음)을 쓰는 중이면 문장 모음, 아니면 학생별 글이 있을 때 학생별. 고른 화면은 이번 실행 동안 그대로 */
+// 글 쓰기 틀 조각(record/record.js → window.SSAM.record) — 아래 행특 「생활기록부 글 쓰기 틀」 설명
+const REC = () => (window.SSAM && window.SSAM.record) || null;
+const PYR = { view: '', sub: null, sel: 0, pick: {}, recs: null, loading: false, busyRow: null, edit: false };
+function pyRecView() {
+  let v = $('#pyRecView');
+  if (!v) { v = document.createElement('section'); v.id = 'pyRecView'; v.className = 'pyrec'; v.hidden = true; $('#planView').after(v); }
+  return v;
+}
+// 문장 모음 화면 위의 띠: 학생별 교과 평어로
+function pyPoolBar(show) {
+  let b = $('#pyPoolBar');
+  if (!b) { b = document.createElement('div'); b.id = 'pyPoolBar'; b.className = 'py-poolbar'; $('#importView').before(b); }
+  b.hidden = !show;
+  if (show) b.innerHTML = `<span class="ev-sub"><b>문장 모음</b> · 평가요소마다 수준별 평어 문장을 만들어요</span><button class="btn" type="button" data-pyv="stu">학생별 교과 평어 보기</button>`;
+}
+// 학생별 글이 있는지(채점 기록은 이 기기 저장소만 봄 — 계정 저장소면 단원평가 평어만)
+function pyHasStudents() {
+  const R = REC();
+  if (R && R.pyUnitSubjects().length) return true;
+  if (Store.mode !== 'local') return false;
+  return Store.lsGet('ssam:grs', []).some(id => ((Store.lsGet('ssam:gr:' + id, null) || {}).students || []).some(s => s && !s.skip && s.text));
+}
+const pyMode = () => PYR.view || (S.plan ? 'pool' : pyHasStudents() ? 'stu' : 'pool');
+async function pyLoadRecs() {
+  if (PYR.loading) return;
+  PYR.loading = true;
+  try {
+    await storeReady; await GRStore.list();
+    const out = [];
+    for (const h of GR.history) {
+      const open = h.id === GR.id, b = open ? null : await GRStore.get(h.id);
+      const unitId = open ? GR.unitId : (b && b.unitId) || '', u = unitId ? unitById(unitId) : null;
+      out.push({ id: h.id, title: h.title || '수행평가', subject: u ? u.subject : '', students: open ? GR.students : ((b && b.students) || []) });
+    }
+    PYR.recs = out;
+  } finally { PYR.loading = false; }
+  if (S.mode === 'pyeongeo' && pyMode() === 'stu') renderPyRec();
+}
+// 교과 목록: 단원평가 평어가 있는 교과 + 평가지 채점 글이 있는 교과(교과를 모르는 채점은 「교과를 정하지 않은 수행평가」)
+function pySubjects() {
+  const R = REC(), subs = new Set(R ? R.pyUnitSubjects() : []);
+  let none = false;
+  for (const r of PYR.recs || []) if (r.students.some(s => !s.skip && s.text)) { if (r.subject) subs.add(r.subject); else none = true; }
+  return [...[...subs].sort((a, b) => a.localeCompare(b, 'ko')), ...(none ? [''] : [])];
+}
+const pySubName = sub => sub || '교과를 정하지 않은 수행평가';
+function pyData() {
+  const R = REC(), subs = pySubjects();
+  if (PYR.sub == null || !subs.includes(PYR.sub)) PYR.sub = subs.length ? subs[0] : null;
+  const sub = PYR.sub;
+  const unit = sub ? R.pyUnit(sub) : { students: {} };
+  const grs = (PYR.recs || []).filter(r => (r.subject || '') === (sub || ''));
+  const map = sub == null ? new Map() : R.pySources(unit, grs);
+  return { subs, sub, map };
+}
+// 그 학생의 지금 글(고른 출처, 없으면 글이 있는 첫 출처)
+function pyCur(map, no) {
+  const xs = map.get(no) || [];
+  const k = PYR.pick[`${PYR.sub}:${no}`];
+  return xs.find(x => x.key === k) || xs.find(x => x.text.trim()) || xs[0] || null;
+}
+const pyGrStu = x => { const r = (PYR.recs || []).find(y => y.id === x.gid); return r ? r.students.find(s => s.id === x.sid) : null; };
+const pySrcName = x => (x.src === 'unit' ? '단원평가 평어' : `평가지 채점 「${x.title}」`);
+function pyLevel(x) {
+  if (x.src === 'unit') return x.level ? `수준 · ${REC().pyLevelName(x.level)}` : '';
+  const s = pyGrStu(x); return s && s.level ? `수준 · ${LVNAME[s.level]}${s.score != null ? ` (${s.score}점)` : ''}` : '';
+}
+const pyDone = x => !!(x && x.text.trim() && (x.src === 'unit' || (pyGrStu(x) || {}).d));
+function renderPyRec() {
+  const v = pyRecView(), R = REC();
+  if (!R) { v.innerHTML = '<div class="m-page"><div class="skel" style="height:200px"></div></div>'; return; }
+  if (!PYR.recs) { v.innerHTML = '<div class="m-page"><div class="skel" style="height:200px"></div></div>'; pyLoadRecs(); return; }
+  const { subs, sub, map } = pyData();
+  const head = `<div class="py-head"><label class="py-sub"><span>교과</span><select class="field" id="pySubject" ${subs.length ? '' : 'disabled'}>${subs.map(s => `<option value="${esc(s)}"${s === sub ? ' selected' : ''}>${esc(pySubName(s))}</option>`).join('') || '<option>아직 없어요</option>'}</select></label>
+    <span class="ev-sub">단원평가 평어와 평가지 채점 글을 학생마다 모아요. 고친 글은 그 자리에 저장돼요.</span>
+    <button class="btn" type="button" data-pyv="pool">문장 모음 만들기</button></div>`;
+  if (!map.size) {
+    v.innerHTML = `<div class="m-page py-page">${head}<div class="ev-card"><p class="ev-h">아직 학생별 교과 평어가 없어요</p>
+      <p class="ev-sub">단원평가 결과의 [교과 평어로 넘기기]나 평가지 채점에서 평어를 쓰면 여기 학생마다 모여요. 평가요소마다 수준별 문장을 만들려면 [문장 모음 만들기]를 눌러요.</p></div></div>`;
+    return;
+  }
+  const nos = [...map.keys()];
+  if (!nos.includes(PYR.sel)) PYR.sel = nos[0];
+  const dups = R.dupKeys(nos.map(no => ({ who: no, text: (pyCur(map, no) || {}).text || '' })));
+  const sts = nos.map(no => {
+    const x = pyCur(map, no), rows = x && x.text.trim() ? R.sentenceRows(x.text, x.ev, { dups }) : null;
+    return [no, R.recState({ text: x && x.text, done: pyDone(x), rows })];
+  });
+  const list = R.listHTML({ items: sts.map(([no, st]) => ({ attr: `data-pystu="${no}"`, no, st, cur: no === PYR.sel })), doneN: sts.filter(([, st]) => st.k === 'done').length, fixN: sts.filter(([, st]) => st.k === 'fix').length, total: nos.length,
+    bottom: `<div class="rw-lfoot"><button class="btn text" type="button" data-eval-check="unit">기재 점검</button></div>` });
+  const no = PYR.sel, xs = map.get(no) || [], x = pyCur(map, no), i0 = nos.indexOf(no), next = nos[i0 + 1];
+  const rr = x && x.text.trim() ? R.sentenceRows(x.text, x.ev, { dups }) : null;
+  const busy = PYR.busyRow && PYR.busyRow.no === no ? PYR.busyRow : null;
+  const lv = x ? pyLevel(x) : '';
+  const acts = i => `<button type="button" class="ev-turn-btn rw-fix" data-pyrow="fix" data-row="${i}" ${busy ? 'disabled' : ''}>${busy && busy.row === i ? '<span class="spin"></span>고치는 중' : '고치기'}</button><button type="button" class="btn rw-del" data-pyrow="del" data-row="${i}" ${busy ? 'disabled' : ''}>문장 빼기</button>`;
+  const art = R.articleHTML({
+    attrs: `data-pykey="${esc(x ? x.key : '')}"`, where: `${esc(pySubName(sub))} · 교과 학습 발달 상황`, who: `${no}번`,
+    chips: lv ? `<span class="ev-chip">${esc(lv)}</span>` : '',
+    seg: R.segHTML('평어 출처', xs.map(y => ({ attr: `data-pycand="${esc(y.key)}"`, label: esc(pySrcName(y)), on: x && y.key === x.key }))) || (x ? `<p class="rw-cand ev-sub">${esc(pySrcName(x))}</p>` : ''),
+    note: rr && rr.edited && !PYR.edit ? '<p class="evd-edit rw-note"><b>고친 글</b> · 근거는 처음 쓴 글 기준이에요</p>' : '',
+    body: !x || !x.text.trim() ? `<p class="rw-emptyp">아직 글이 없어요. ${x && x.src === 'unit' ? '단원평가 결과에서 [평어 쓰기]를 누르거나 직접 써요.' : ''}</p>${x ? `<textarea class="field hk-edit" id="pyEdit" rows="4" aria-label="${no}번 교과 평어 쓰기"></textarea>` : ''}`
+      : PYR.edit ? `<textarea class="field hk-edit" id="pyEdit" rows="5" aria-label="${no}번 교과 평어 고치기">${esc(x.text)}</textarea>`
+      : `<div class="rw-text" tabindex="-1">${R.rowsHTML({ rows: rr.rows, list: x.ev ? x.ev.list : [], key: `py:${sub}:${no}:${x.key}`, label: `${no}번 문장`, acts })}</div>`,
+    foot: R.footHTML({ n: charCount(x ? x.text : ''), unit: '자', acts: `<button class="btn" type="button" data-py="redo">AI로 다시 쓰기</button><button class="btn" type="button" data-py="neis">나이스 차례로 복사</button>${next ? `<button class="btn dark" type="button" data-py="next">다음 학생 ${next}번</button>` : ''}` }),
+    tools: x ? `<span class="rw-grow"></span>${PYR.edit || !x.text.trim() ? `<button class="btn primary" type="button" data-py="save">고친 내용 저장</button>${x.text.trim() ? '<button class="btn" type="button" data-py="cancel">그만 고치기</button>' : ''}` : `<button class="btn" type="button" data-py="copy">${ICON.copy}복사</button><button class="btn" type="button" data-py="edit">직접 고치기</button>`}` : ''
+  });
+  const evl = x && x.ev ? x.ev.list || [] : [];
+  const side = R.sideHTML({ who: `${no}번`, from: evl.length ? [...new Set(evl.map(e => R.KIND[e.kind] || '참고'))].join(' · ') : '', uses: R.evidenceUse(evl, rr && rr.known ? rr.rows : []), known: !!(rr && rr.known && !PYR.edit),
+    addAttr: x && !PYR.edit ? e => `data-pyadd="${esc(e.id)}"` : null, busy: busy ? (busy.add || 'x') : '',
+    note: x && rr && !rr.known ? '<p class="ev-sub rw-evnote">이 글은 문장마다 근거를 맞추지 않았어요.</p>' : '', empty: '이 글에는 근거 목록이 없어요', ai: 'AI에는 이름 없이 근거만 보내요.' });
+  v.innerHTML = `<div class="m-page py-page">${head}<div class="rw-frame"><aside class="rw-list hk-left" aria-label="학생">${list}</aside>
+    <div class="rw-grid"><div class="rw-main">${art}</div><aside class="rw-side" aria-label="${no}번 근거">${side}</aside></div></div></div>`;
+}
+/* 고친 글을 그 자리에: 단원평가 평어 → unit:pyeongeo:<교과>, 평가지 채점 → 그 기록(연 기록이면 화면의 학생). AI가 바꾼 채점 글은 사용함 표시를 지움 */
+async function pySave(x, text, ev, { ai = false, mark = false } = {}) {
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  if (x.src === 'unit') { if (!REC().pyUnitSave(PYR.sub, Number(PYR.sel), { text: t, ev })) return false; }
+  else {
+    let s = x.gid === GR.id ? grStudent(x.sid) : null, b = null;
+    if (!s) { b = await GRStore.get(x.gid); s = b && (b.students || []).find(y => y.id === x.sid); }
+    if (!s || s.writing) return false;
+    if (s.text !== t) delete s.trv;
+    s.text = t; if (ev && t) s.ev = ev; else delete s.ev; if (ai) s.d = 0; if (mark) s.d = 1;
+    if (b) { if (Store.mode === 'db') writeDoc(Store.base() + '/g_' + x.gid, b); else if (Store.mode === 'local' && !Store.lsSet('ssam:gr:' + x.gid, b)) return false; }
+    else { GRStore.save(); if (S.mode === 'gr') renderGRResults(); }
+    const c = pyGrStu(x); if (c && c !== s) { c.text = t; if (ev && t) c.ev = ev; else delete c.ev; c.d = s.d; if (!s.trv) delete c.trv; }
+  }
+  return true;
+}
+async function pyOneSentence(x, { row = -1, add = '' } = {}) {
+  const R = REC(); if (!R || !x || PYR.busyRow) return;
+  if (!engineReady()) { openSettings(); return; }
+  const list = (x.ev && x.ev.list) || [], rr = R.sentenceRows(x.text, x.ev);
+  const r = row >= 0 ? rr.rows[row] : null, target = add ? list.find(e => e.id === add) : null;
+  if ((row >= 0 && !r) || (add && !target)) return;
+  PYR.busyRow = { no: PYR.sel, row, add }; renderPyRec();
+  const before = x.text;
+  try {
+    const out = await generate(R.sentencePrompt({ mode: add ? 'add' : 'fix', field: 'py', text: x.text, sentence: r ? r.t : '', target, list, da: S.settings.ending === 'da',
+      why: r ? [...(r.none ? ['이 문장을 받치는 근거가 없어요'] : []), ...r.issues.map(i => i.why)] : [] }), { fresh: true, task: 'writing' });
+    const one = R.normOne(out.text, list);
+    if (!one) throw { code: 'empty_completion' };
+    if (x.text !== before) return;
+    if (add && !one.src.length) one.src = [add];
+    const o = add ? R.appendSentence(x.text, x.ev, one) : R.replaceSentence(x.text, x.ev, row, [one]);
+    if (await pySave(x, o.t, o.ev, { ai: true })) toast(add ? '근거로 문장을 더했어요' : '문장을 고쳤어요'); else toast('저장하지 못했어요. 그 글을 쓰는 중인지 확인해 주세요.');
+  } catch (e) { toast(errMsg((e && e.code) || 'upstream_error', e), 4500); }
+  finally { PYR.busyRow = null; renderPyRec(); }
+}
+function pyNeisSrc(map) {
+  return { key: 'py', what: '교과 평어', field: '교과 학습 발달 상황', title: pySubName(PYR.sub),
+    text: id => { const x = pyCur(map, +id); return x ? x.text.trim() : ''; }, no: id => +id,
+    mark: id => { const x = pyCur(map, +id); if (x && x.src === 'gr' && x.text.trim()) pySave(x, x.text, x.ev, { mark: true }); },
+    saved: () => { if (GR.id) GRStore.save(); if (S.mode === 'pyeongeo') renderPyRec(); } };
+}
+document.addEventListener('click', async e => {
+  const t = e.target; if (!t || !t.closest) return;
+  const pv = t.closest('[data-pyv]');
+  if (pv && evalShown() && S.mode === 'pyeongeo') { PYR.view = pv.dataset.pyv; PYR.edit = false; if (PYR.view === 'stu') PYR.recs = null; renderAll(); window.scrollTo && window.scrollTo(0, 0); return; }
+  if (S.mode !== 'pyeongeo' || !evalShown() || !t.closest('#pyRecView')) return;
+  const R = REC(); if (!R || !PYR.recs) return;
+  const { map } = pyData(), x = pyCur(map, PYR.sel);
+  const stu = t.closest('[data-pystu]'); if (stu) { PYR.sel = +stu.dataset.pystu; PYR.edit = false; renderPyRec(); return; }
+  const cand = t.closest('[data-pycand]'); if (cand) { PYR.pick[`${PYR.sub}:${PYR.sel}`] = cand.dataset.pycand; PYR.edit = false; renderPyRec(); return; }
+  const rowb = t.closest('[data-pyrow]');
+  if (rowb && !rowb.disabled && x) {
+    if (rowb.dataset.pyrow === 'fix') { pyOneSentence(x, { row: +rowb.dataset.row }); return; }
+    const o = R.removeSentence(x.text, x.ev, +rowb.dataset.row);
+    if (await pySave(x, o.t, o.ev)) toast('문장을 뺐어요');
+    renderPyRec(); return;
+  }
+  const addb = t.closest('[data-pyadd]'); if (addb && !addb.disabled && x) { pyOneSentence(x, { add: addb.dataset.pyadd }); return; }
+  const b = t.closest('[data-py]'); if (!b || b.disabled) return;
+  const a = b.dataset.py, nos = [...map.keys()];
+  if (a === 'next') { const n = nos[nos.indexOf(PYR.sel) + 1]; if (n) { PYR.sel = n; PYR.edit = false; renderPyRec(); const el = document.querySelector(`#pyRecView [data-pystu="${n}"]`); if (el) el.scrollIntoView({ block: 'nearest' }); } }
+  else if (a === 'edit') { PYR.edit = true; renderPyRec(); const ta = $('#pyEdit'); if (ta) ta.focus(); }
+  else if (a === 'cancel') { PYR.edit = false; renderPyRec(); }
+  else if (a === 'save' && x) { const v = ($('#pyEdit') || {}).value || ''; if (await pySave(x, v, x.ev)) { PYR.edit = false; toast('고친 글을 저장했어요'); } else toast('저장하지 못했어요'); renderPyRec(); }
+  else if (a === 'copy' && x) copyText(x.text).then(ok => toast(ok ? `${PYR.sel}번 교과 평어를 복사했어요` : '복사가 막혔어요.'));
+  else if (a === 'neis') neisCopyAll(pyNeisSrc(map), nos.map(String));
+  else if (a === 'redo' && x) {
+    if (x.src === 'unit') { R.pyOpenUnit(PYR.sub, PYR.sel); toast('단원평가 결과에서 [평어 쓰기]로 다시 써요', 4000); }
+    else { if (x.gid !== GR.id) await grOpenHistory(x.gid); setMode('gr'); const s = grStudent(x.sid); if (s) { if (s.level && s.status === 'done' && !['grading', 'ranking', 'writing'].includes(GR.phase)) { s.stale = true; grWrite([s.id]); toast(`${s.no}번 평어를 다시 써요`); } } }
+  }
+});
+document.addEventListener('change', e => {
+  if (e.target && e.target.id === 'pySubject' && S.mode === 'pyeongeo') { PYR.sub = e.target.value; PYR.edit = false; PYR.sel = 0; renderPyRec(); }
+});
 /* 넣기 화면 머리말 아래 설명(index.html의 글)을 「화면 설명」으로: 처음 몇 번만 펼쳐 보임 */
 function heroIntro() {
   const hero = $('#importView .hero'); if (!hero) return;
@@ -3029,7 +3226,6 @@ const hkEvHTML = (r, s, i) => (r.ev && EV() ? EV().evidenceHTML({ ...r.ev, text:
 /* ---------- 생활기록부 글 쓰기 틀 (record/record.js가 window.SSAM.record로 줌, 스펙 2026-11-14-eval-redesign §6) ----------
    교과 평어·창체·행특이 같은 틀. 그리는 조각·문장 줄·근거 맞추기는 그 모듈이, 상태·저장·AI 부르기는 이 파일이 함.
    이 파일은 모듈보다 먼저 돌아서 틀이 아직 없으면 빈 자리만 그리고, 준비되면(ssam:record-ready) 지금 화면을 다시 그림 */
-const REC = () => (window.SSAM && window.SSAM.record) || null;
 window.addEventListener('ssam:record-ready', () => {
   const redraw = () => { try { if (S.mode === 'hk') { renderHKList(); renderHKEditor(); } else if (S.mode === 'cc') renderCCResults(); else if (S.mode === 'gr') renderGRResults(); else if (S.mode === 'pyeongeo') renderPyRec(); } catch (e) {} };
   const a = document.activeElement, sec = document.querySelector('section[data-menu="evaluate"]');
@@ -3047,7 +3243,6 @@ function hkCur(s) {
   return d >= 0 ? d : 0;
 }
 const hkCurRes = s => { const i = hkCur(s); return i < 0 ? null : s.results[i]; };
-function renderPyRec() {} // TODO 교과 평어 학생별 틀
 const hkLimit = () => ({ max: HK.settings.max, unit: HK.settings.unit });
 // 학생끼리 같은 문장(기재 점검과 같은 규칙): 학생마다 지금 글
 const hkDups = () => (REC() ? REC().dupKeys(hkShown().map(s => ({ who: s.no, text: (hkCurRes(s) || {}).t || '' }))) : null);
