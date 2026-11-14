@@ -40,10 +40,10 @@ export const defaultUnit = type => (type === 'lecturer' ? '시간' : type === 'm
 const blank = v => String(v == null ? '' : v).trim() === '';
 const won = n => Number(n).toLocaleString('ko-KR');
 
-/* 「12,000원」「 2.5 」 → 숫자. 못 읽으면 0 */
+/* 「12,000원」「 2.5 」「￦12,000」 → 숫자. 못 읽으면 0. 원 표시는 ₩·전각 ￦·한글 윈도 CSV의 \ 모두 */
 export function toNumber(v) {
   if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
-  const n = Number(String(v == null ? '' : v).replace(/[,\s원₩]/g, ''));
+  const n = Number(String(v == null ? '' : v).replace(/[,\s원₩￦\\]/g, ''));
   return Number.isFinite(n) ? n : 0;
 }
 

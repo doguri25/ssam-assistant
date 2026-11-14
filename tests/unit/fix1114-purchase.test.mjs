@@ -37,6 +37,14 @@ test('견적서·엑셀 머리줄의 괄호 붙은 열 이름(「수량(개)」�
   assert.deepEqual(tableItems('품명\t수량(개)\t단가(원)\n공책\t20\t1,000').items.map(row), [['공책', '', '20', '1000']]);
 });
 
+test('원 표시 「￦3,000」(전각)·「\\3,000」(한글 윈도 CSV)·「₩3,000」 금액을 0원이나 수량으로 읽지 않음', async () => {
+  const { toNumber } = await import('../../web/menus/purchase/rules.js');
+  for (const v of ['\\3,000', '￦3,000', '₩3,000', '￦ 3,000']) assert.equal(toNumber(v), 3000, v);
+  assert.deepEqual(findItems([['품명', '수량', '단가'], ['비커', '4', '\\3,000'], ['스포이트', '20', '￦500']]).map(x => [x.name, x.qty, x.price]), [['비커', 4, 3000], ['스포이트', 20, 500]]);
+  assert.deepEqual(tableItems('비커\t4\t￦3,000\n스포이트\t20\t\\500').items.map(it => [it.name, it.spec, it.qty, it.price]), [['비커', '', '4', '3000'], ['스포이트', '', '20', '500']]);
+  assert.deepEqual(parseLines('비커 4개 ￦3,000\n스포이트 20개 ₩500').items.map(row), [['비커', '개', '4', '3000'], ['스포이트', '개', '20', '500']]);
+});
+
 test('AI로 보내는 글의 학생·보호자 이름(「김하늘 학생」「학생 이바다」「한가람 어머니」)은 ○○○로 가림', () => {
   assert.equal(maskNames('김하늘 학생 상장 액자 1개 5,000원'), '○○○ 학생 상장 액자 1개 5,000원');
   assert.equal(maskNames('학생 이바다 체험학습비 1명 30,000원'), '학생 ○○○ 체험학습비 1명 30,000원');

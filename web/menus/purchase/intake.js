@@ -119,7 +119,8 @@ export function parseLines(text) {
   let said = null, sum = 0, inexact = false;
   for (const raw of String(text || '').split(/\r?\n/)) {
     if (!raw.trim()) continue;
-    const line = koWon(raw), t = TOTAL_LINE.exec(line);
+    // 「₩3,000」「￦3,000」은 「3,000원」으로
+    const line = koWon(raw.replace(/[₩￦]\s*(\d[\d,]*(?:\.\d+)?)/g, '$1원')), t = TOTAL_LINE.exec(line);
     if (t) { said = money(t[1], t[2]); continue; }
     const parts = itemClauses(line);
     for (const part of parts) {
@@ -137,7 +138,7 @@ export function parseLines(text) {
 
 /* 엑셀·한글 표에서 복사한 칸(탭으로 나뉜 글): 머리줄이 있으면 그 열대로, 없으면 칸 모양으로(글 = 품명·규격, 단위, 수 = 수량·단가·금액) */
 const UNIT_CELL = new RegExp(`^(${UNITS})$`);
-const NUM_CELL = /^[₩\s]*\d[\d,]*(?:\.\d+)?\s*원?$/;
+const NUM_CELL = /^[₩￦\\\s]*\d[\d,]*(?:\.\d+)?\s*원?$/;
 function rowItem(cells) {
   const at = cells.findIndex(c => c && !NUM_CELL.test(c) && !UNIT_CELL.test(c));
   if (at < 0) return null;
