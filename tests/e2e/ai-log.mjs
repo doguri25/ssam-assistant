@@ -50,7 +50,7 @@ await run('ai-log', [
     assert(!(await page.locator(`${CARD} [data-set="aiLogClear"]`).count()), '빈데 [비우기]');
   }],
   ['행특 쓰기(실제 AI 일) → 줄: 「11:02 · 평어·행특·창체 · Claude Sonnet 5.5 · 글 n자」(그림 없음)', async () => {
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="hk"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'hk');
     await page.click('#hkList [data-hkstu]');
     await page.waitForSelector('#hkEditor [data-hk="gen"]');
     await page.click('#hkEditor [data-hk="gen"]');

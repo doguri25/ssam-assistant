@@ -41,7 +41,7 @@ await page.waitForTimeout(500);
 const openFold = async key => { await page.waitForSelector(`[data-fold="${key}"]`); if (!(await page.$eval(`[data-fold="${key}"]`, d => d.open))) await page.click(`[data-fold="${key}"] > summary`); };
 await run('review-writing', [
   ['교과 평어: 한 수준 50문장 → 검토 5번(10개씩, Opus, 성취기준 포함) → 문장마다 의견(노란 표시)', async () => {
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="pyeongeo"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'pyeongeo');
     await page.click('#srcPaste');
     await page.fill('#pasteBox', await page.getAttribute('#pasteBox', 'placeholder'));
     await page.click('#pasteGo');
@@ -68,7 +68,7 @@ await run('review-writing', [
     assert(saved.includes('PY 고친 문장 10.') && saved.includes('"rv"'), '저장');
   }],
   ['행특: 후보 2개 → 검토 1번 → 두 의견 → [그대로 두기]·손으로 고치면 사라짐', async () => {
-    await page.click('#menuTabs [data-tab="hk"]');
+    await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'hk');
     await page.waitForTimeout(300);
     if (!(await page.locator('#hkList [data-hkstu]').count())) { await page.fill('#hkCount', '1'); await page.click('#hkList [data-hk="roster"]'); }
     await page.click('#hkList [data-hkstu]');
@@ -113,7 +113,7 @@ await run('review-writing', [
   }],
   ['문장 검토를 끄면 행특을 다시 만들어도 검토 요청 없음', async () => {
     await page.evaluate(() => { const r = JSON.parse(localStorage.getItem('ssam:ai-roles')); r.tasks.writing.reviewOn = false; localStorage.setItem('ssam:ai-roles', JSON.stringify(r)); });
-    await page.click('#menuTabs [data-tab="hk"]');
+    await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'hk');
     await page.click('#hkList [data-hkstu]');
     await page.waitForSelector('#hkEditor [data-hk="gen"]');
     const n = reviews().length, m = calls.length;

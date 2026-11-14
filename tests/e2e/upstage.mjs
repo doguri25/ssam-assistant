@@ -59,7 +59,7 @@ await run('upstage', [
     assert(nm.includes('업스테이지'), '세로 메뉴 AI: ' + nm);
   }],
   ['교과 평어는 업스테이지 채팅 주소로 키를 실어 보내고 문장이 나옴', async () => {
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="pyeongeo"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'pyeongeo');
     await page.click('#srcPaste');
     await page.fill('#pasteBox', await page.getAttribute('#pasteBox', 'placeholder'));
     await page.click('#pasteGo');
@@ -72,7 +72,7 @@ await run('upstage', [
   ['창체·평가지 채점 화면에 손글씨 권장 안내 한 줄', async () => {
     await page.click('#menuTabs [data-tab="gr"]');
     assert((await page.textContent('#grView')).includes('손글씨 이미지는 Claude·Gemini·GPT를 권장해요'), '평가지 채점 안내 없음');
-    await page.click('#menuTabs [data-tab="cc"]');
+    await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'cc');
     assert((await page.textContent('#ccView')).includes('손글씨 이미지는 Claude·Gemini·GPT를 권장해요'), '창체 안내 없음');
   }],
   ['창체 학습지: 글자 읽기가 먼저, 읽은 글이 채팅 본문에 들어감', async () => {

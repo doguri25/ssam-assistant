@@ -46,7 +46,7 @@ await run('years', [
   ['평가 메뉴도 저장 멈춤을 따름', async () => {
     const before = await ls('hk');
     await page.evaluate(() => window.SSAM.freeze(true));
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="hk"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'hk');
     await page.waitForTimeout(300);
     await page.waitForSelector('#hkMemo');
     await page.fill('#hkMemo', '멈춘 동안 쓴 메모');
@@ -105,7 +105,7 @@ await run('years', [
   ['다른 탭이 학년도를 옮기면 이 탭도 다시 열려 지난 자료를 새 학년도에 쓰지 않음', async () => {
     const other = await t.ctx.newPage();
     await other.goto(url); await other.waitForTimeout(500);
-    await other.click('nav.app-side [data-menu-go="evaluate"]'); await other.click('#menuTabs [data-tab="hk"]');
+    await other.click('nav.app-side [data-menu-go="evaluate"]'); await other.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'hk');
     await other.waitForSelector('#hkMemo');
     await yearsTab();
     await page.click(`${S} [data-set="newYear"]`);

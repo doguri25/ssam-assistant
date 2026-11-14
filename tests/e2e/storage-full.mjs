@@ -53,7 +53,7 @@ await run('storage-full', [
     assert((await toast()).includes('저장 공간이 모자라'), await toast());
   }],
   ['평가계획을 넣는데 저장하지 못하면 「찾았어요」에 묻히지 않고 알림, 다음에 또 실패해도 다시 알림', async () => {
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="pyeongeo"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'pyeongeo');
     await page.click('#srcPaste');
     await page.fill('#pasteBox', await page.getAttribute('#pasteBox', 'placeholder'));
     await full('^ssam:plan');
@@ -65,7 +65,7 @@ await run('storage-full', [
     await page.evaluate(() => { const n = Date.now; Date.now = () => n() + 120000; });
     await page.keyboard.press('Escape'); // AI 키 창이 열렸으면 닫음
     await page.waitForTimeout(150);
-    await page.click('#menuTabs [data-tab="hk"]');
+    await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'hk');
     await page.waitForSelector('#hkMemo');
     await full('^ssam:hk$');
     await page.fill('#hkMemo', '메모');

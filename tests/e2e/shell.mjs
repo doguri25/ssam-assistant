@@ -93,7 +93,7 @@ await run('shell', [
   }],
   ['평어를 만드는 동안 메뉴를 옮겨도 계속 만들고 진행 표시가 보임', async () => {
     await page.click('nav.app-side [data-menu-go="evaluate"]'); // 새로 고친 뒤라 오늘부터
-    await page.click('header.app-top nav.app-tabs [data-tab="pyeongeo"]');
+    await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'pyeongeo');
     await page.click('#srcPaste');
     await page.fill('#pasteBox', await page.getAttribute('#pasteBox', 'placeholder'));
     await page.click('#pasteGo');

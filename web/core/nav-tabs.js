@@ -11,7 +11,7 @@ export function parseTabs(text) {
 }
 
 /* 열 탭: 부른 쪽이 정한 탭 → 그 메뉴에서 마지막으로 연 탭 → 첫 탭. 이제 없는 탭은 버림.
-   평가는 기존 앱 화면(legacy: 교과 평어·창체·행특·채점)이 마지막이면 기존 앱이 지금 보이는 화면(mode)을 따름
+   평가는 기존 앱 화면(legacy: 교과 평어·창체·행특·채점)이 마지막이면 기존 앱이 지금 보이는 화면(mode)을 따름(처음이면 첫 탭)
    (기존 앱이 스스로 화면을 바꿨을 수 있어서). menu = { id, tabs: [{ id }] }. 탭이 없는 메뉴(오늘)는 '' */
 export function pickTab(menu, asked, last, { legacy = [], mode } = {}) {
   if (!menu.tabs.length) return '';
@@ -19,6 +19,7 @@ export function pickTab(menu, asked, last, { legacy = [], mode } = {}) {
   if (has(asked)) return asked;
   const r = last && typeof last === 'object' ? last[menu.id] : null;
   if (has(r) && !legacy.includes(r)) return r;
-  if (has(mode) && legacy.includes(mode)) return mode;
+  // 마지막이 기존 앱 화면이었을 때만 지금 mode(기존 앱이 스스로 바꿨을 수 있음). 처음이면 첫 탭(평가는 한눈에 — 스펙 2026-11-14-eval-redesign §1)
+  if (has(r) && legacy.includes(r) && has(mode) && legacy.includes(mode)) return mode;
   return has(r) ? r : menu.tabs[0].id;
 }

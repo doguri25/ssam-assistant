@@ -2,7 +2,7 @@
    평가 메뉴의 가로 메뉴는 기존 앱의 화면(mode)과 같음: window.SSAM.setMode로 바꿈.
    휴대폰(≤760px, shell.css): 세로 메뉴 대신 아래 탭 5칸(오늘·평가·학급·품의·더보기 — 더보기는 시트: 계획·연수·문서·소통·설정, 학년도·사용 중인 AI),
    가로 메뉴는 한 줄 가로 스크롤 칩. 앱을 켜면(열기·새로 고침) 늘 「오늘」 (스펙 2026-11-11 §1).
-   평가 탭은 두 묶음(스펙 2026-11-14 §4): 「채점」 단원평가·활동지 | 「생활기록부」 평가지 채점(교과 평어로 이어짐)·교과 평어·창체·행특·기재 점검 — 탭 줄 안에 묶음 이름(작은 글)과 구분선.
+   평가 탭(스펙 2026-11-14-eval-redesign §1): 한눈에·단원평가·활동지·평가지 채점·생활기록부(교과 평어·창체·행특을 한 칸으로 접음)·기재 점검.
    메뉴 id `etc`의 이름은 「문서·소통」(전에는 「기타」) */
 import { icon } from './icons.js';
 import { renderPlaceholder } from '../menus/placeholder.js';
@@ -13,15 +13,15 @@ import './file-drop.js'; // 파일 고르기 단추(data-drop-pick)가 있는 �
 
 export const MENUS = [
   { id: 'home', label: '오늘', tabs: [] },
-  { id: 'evaluate', label: '평가', tabs: [['unit', '단원평가', '채점'], ['activity', '활동지', '채점'], ['gr', '평가지 채점', '생활기록부'],
-    ['pyeongeo', '교과 평어', '생활기록부'], ['cc', '창의적 체험활동', '생활기록부'], ['hk', '행동특성', '생활기록부'], ['check', '기재 점검', '생활기록부']] },
+  { id: 'evaluate', label: '평가', tabs: [['board', '한눈에'], ['unit', '단원평가'], ['activity', '활동지'], ['gr', '평가지 채점'],
+    ['pyeongeo', '교과 평어', 'rec'], ['cc', '창의적 체험활동', 'rec'], ['hk', '행동특성', 'rec'], ['check', '기재 점검']] },
   { id: 'training', label: '연수', tabs: [['mine', '내 필수연수'], ['board', '연수 현황판']] },
   { id: 'plan', label: '계획', tabs: [['year', '연간계획'], ['event', '행사계획'], ['class', '학급운영계획'], ['report', '결과 보고']] },
   { id: 'class', label: '학급', tabs: [['today', '오늘 수업'], ['progress', '진도표·시수'], ['weekly', '주간학습안내'], ['camp', '기초학력']] },
   { id: 'purchase', label: '품의', tabs: [['new', '새 품의'], ['templates', '저장한 템플릿'], ['recent', '최근 작성']] },
   { id: 'etc', label: '문서·소통', tabs: [['message', '쪽지 작성'], ['letter', '가정통신문'], ['gongmun', '공문 처리'], ['handover', '인수인계서'], ['multi', '다면평가']] },
   { id: 'settings', label: '설정', tabs: [['roster', '학급 명단'], ['ai', 'AI'], ['screen', '화면'], ['school', '학교 정보'], ['years', '학년도'], ['purchase', '품의 기준']] }
-].map(m => ({ ...m, icon: m.id, tabs: m.tabs.map(([id, label, group]) => (group ? { id, label, group } : { id, label })) }));
+].map(m => ({ ...m, icon: m.id, tabs: m.tabs.map(([id, label, fold]) => (fold ? { id, label, fold } : { id, label })) }));
 
 const NAV_KEY = 'ssam:nav'; // 마지막 메뉴·탭(채팅 도우미가 「보고 있는 화면」으로 읽음). 켤 때는 쓰지 않음 — 늘 「오늘」
 /* 휴대폰 아래 탭: 이 넷 + 더보기(MORE — 아래 탭에 없는 메뉴, 시트에 이 차례로) */
@@ -90,6 +90,12 @@ export function setActions(html) {
 }
 
 const LEGACY = ['pyeongeo', 'cc', 'hk', 'gr'];
+/* 평가 「생활기록부」(스펙 2026-11-14-eval-redesign §1): 교과 평어·창체·행특은 가로 메뉴에서 한 칸으로 접히고, 칸 안의 전환(eval-board.js)으로 바꿈.
+   탭 id는 그대로라 다른 곳(채팅·떠 있는 버튼·둘러보기)은 go('evaluate', 'hk')처럼 그대로 씀 */
+export const REC = ['pyeongeo', 'cc', 'hk'];
+const FOLD = { rec: '생활기록부' };
+let lastRec = '';
+const recNow = () => (REC.includes(lastRec) ? lastRec : SSAM().getMode && REC.includes(SSAM().getMode()) ? SSAM().getMode() : 'pyeongeo');
 /* 탭을 정하지 않으면(세로 메뉴를 누름 등) 그 메뉴에서 마지막으로 연 탭. 평가의 기존 앱 화면은 기존 앱의 mode를 따름 */
 export function go(menuId, tabId) {
   const m = find(menuId) || MENUS[0];
@@ -98,6 +104,7 @@ export function go(menuId, tabId) {
   // 다른 메뉴로 가면 본문을 맨 위부터 (본문 칸 하나를 메뉴가 같이 써서, 아래로 내린 채 다른 메뉴가 열리지 않게)
   if (cur && cur.menu !== m.id && $('#app')) $('#app').scrollTop = 0;
   cur = { menu: m.id, tab };
+  if (m.id === 'evaluate' && REC.includes(tab)) lastRec = tab;
   document.querySelectorAll('section[data-menu]').forEach(s => { s.hidden = s.dataset.menu !== m.id; });
   document.querySelectorAll('[data-menu-go]').forEach(b => {
     if (b.dataset.menuGo === m.id) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
@@ -130,11 +137,14 @@ function drawTabs(m) {
   const el = $('#menuTabs');
   el.setAttribute('aria-label', `${m.label} 메뉴`);
   el.hidden = !m.tabs.length; // 오늘은 탭 없음
-  // 묶음이 있는 메뉴(평가): 묶음이 바뀌는 곳에 구분선, 묶음 앞에 이름(작은 글 — 누르는 칸이 아님)
-  el.innerHTML = m.tabs.map((t, i) => {
-    const prev = m.tabs[i - 1], head = t.group && (!prev || prev.group !== t.group)
-      ? `${prev ? '<span class="tab-sep" aria-hidden="true"></span>' : ''}<span class="tab-grp">${esc(t.group)}</span>` : '';
-    return `${head}<button type="button" data-tab="${t.id}"${t.id === cur.tab ? ' aria-current="page"' : ''}>${esc(t.label)}</button>`;
+  // 접는 탭(평가 생활기록부): 같은 묶음은 첫 자리에 한 칸만 — 지금 그 묶음이면 지금 탭, 아니면 마지막으로 연 탭으로 감
+  const seen = new Set();
+  el.innerHTML = m.tabs.map(t => {
+    if (!t.fold) return `<button type="button" data-tab="${t.id}"${t.id === cur.tab ? ' aria-current="page"' : ''}>${esc(t.label)}</button>`;
+    if (seen.has(t.fold)) return '';
+    seen.add(t.fold);
+    const on = m.tabs.some(x => x.fold === t.fold && x.id === cur.tab);
+    return `<button type="button" data-tab="${on ? cur.tab : recNow()}" data-fold="${t.fold}"${on ? ' aria-current="page"' : ''}>${esc(FOLD[t.fold] || t.label)}</button>`;
   }).join('');
   // 휴대폰의 가로 스크롤 칩: 지금 탭이 보이게 (넘칠 때만 — 페이지는 움직이지 않음)
   const b = el.querySelector('[aria-current="page"]');
@@ -226,9 +236,11 @@ function init() {
   if (SSAM().onModeChange) SSAM().onModeChange(mode => {
     if (!cur || cur.menu !== 'evaluate' || cur.tab === mode) return;
     if (!LEGACY.includes(cur.tab)) { go('evaluate', mode); return; }
-    cur.tab = mode; drawTabs(find('evaluate'));
+    cur.tab = mode; if (REC.includes(mode)) lastRec = mode;
+    drawTabs(find('evaluate'));
     try { localStorage.setItem(NAV_KEY, JSON.stringify(cur)); } catch (e) {}
     keepTab('evaluate', mode);
+    document.dispatchEvent(new CustomEvent('eval:tab', { detail: { tab: mode } })); // 생활기록부 칸 안 전환·선생님 차례를 맞춤
   });
   // 다른 탭에서 학년도를 옮기면 이 탭은 저장을 멈추고 다시 엶 (지난 학년도 자료를 새 학년도에 쓰지 않게)
   window.addEventListener('storage', e => {

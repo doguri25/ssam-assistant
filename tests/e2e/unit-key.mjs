@@ -42,7 +42,7 @@ await run('unit-key', [
     await go();
     assert(await page.isVisible(B), '단원평가 화면이 안 보임');
     assert(!(await page.isVisible('#importView')) && !(await page.isVisible('#grView')), '기존 화면이 보임');
-    await page.click('#menuTabs [data-tab="pyeongeo"]');
+    await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'pyeongeo');
     assert(await page.isVisible('#importView') || await page.isVisible('#planView'), '교과 평어 화면이 안 보임');
     assert(!(await page.isVisible(B)), '단원평가 화면이 남음');
     await page.click('#menuTabs [data-tab="gr"]');

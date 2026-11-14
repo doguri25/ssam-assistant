@@ -188,7 +188,7 @@ await run('evidence', [
   }],
 
   ['행동특성: 요청에 메모 조각 근거 목록(m1…, 날짜 앞머리 그대로, 이름 칸 없음)·메모 규칙, 답은 JSON', async () => {
-    await page.click('#menuTabs [data-tab="hk"]');
+    await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'hk');
     await page.click('[data-hkstu="a"]');
     await page.click('[data-hk="gen"]');
     await page.waitForSelector('#hkEditor .hk-res[data-ri="1"]');

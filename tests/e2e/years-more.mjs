@@ -22,7 +22,7 @@ await page.reload(); await page.waitForTimeout(500);
 
 await run('years-more', [
   ['행특 메모를 쓰자마자 학년도를 옮겨도 메모가 지난 학년도에 남음', async () => {
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="hk"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'hk');
     await page.waitForSelector('#hkMemo');
     await Promise.all([
       page.waitForEvent('load'),

@@ -78,7 +78,7 @@ const press = async (sel, i = 0) => {
 };
 const infoOf = p => p.slice(p.indexOf('[평가 정보]'), p.indexOf('\n', p.indexOf('[수행평가]')));
 const hkOpen = async () => {
-  await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="hk"]');
+  await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'hk');
   await page.waitForSelector('[data-hk="bulk"]');
 };
 const hkBulk = async text => {

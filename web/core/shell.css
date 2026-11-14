@@ -6,6 +6,8 @@
   --frame:#15171c; --frame-line:#262932; --frame-ink:#c3c7d0; --frame-ink2:#9ea3ad; --frame-strong:#ffffff;
   --frame-active:#2a2d36; --frame-active-ink:#ffffff; --frame-icon-active:#a5b4fc; --frame-box:#1f2229;
   --page:#f5f6f8; --top-line:#dfe1e7; --logo:#4f46e5; --on-logo:#ffffff; --side-w:240px; --top-h:76px; --bottom-h:0px;
+  /* 「선생님 차례」(스펙 2026-11-14-eval-redesign): 주황 — 채움 글자는 진한 글(--ink)과 7:1, 글자색 --turn-ink는 흰 바탕과 5.5:1 */
+  --turn:#ff7a1f; --turn-ink:#9a3f0a; --turn-soft:#fff1e6; --turn-line:#ffd2b0;
 }
 body{background:var(--page)}
 .app-shell{position:relative;flex:1;min-height:0;display:flex}

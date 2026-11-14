@@ -1,0 +1,50 @@
+/* 평가 한눈에(스펙 2026-11-14-eval-redesign §2, 화면 없음 — Node 시험에서도 씀).
+   평가마다 단계: prep 준비 · grade 채점 · result 결과 확인 · help 보충 · record 생활기록부 · done 끝(한눈에서는 접음).
+   확인할 수(선생님 차례): 쌤비서가 판단을 미뤘거나 다시 보기 AI와 다른 칸·학생 중 선생님이 아직 정하지 않은 것.
+   - 단원평가: 채점한 학생 0 → 준비. 그다음은 평가 한 바퀴(flowSteps)의 첫 안 끝난 칸 — 채점 → 채점, 틀린 까닭 → 결과 확인,
+     복습 문제·도달하지 못한 학생·기초학력·사전사후 → 보충, 모두 끝 → 생활기록부(그 교과 평어를 다 썼으면 끝).
+     예시 평가는 결손·기초학력·사전사후 칸을 보지 않음(그 칸은 예시에서 늘 「예시는 빼요」라 끝나지 않음).
+   - 활동지: 채점 0 → 준비, 채점 중(마치기 전) → 채점, 마침 → 결과 확인, 교과 평어로 넘김(link) → 끝(평어는 교과 평어에서 씀).
+   - 평가지 채점: 점수 0 → 준비, 점수 일부 → 채점, 모두 점수·글 없음 → 결과 확인, 글 일부 → 생활기록부, 글 모두 → 끝. */
+export const STAGES = [['prep', '준비'], ['grade', '채점'], ['result', '결과 확인'], ['help', '보충'], ['record', '생활기록부']];
+export const stageLabel = id => (STAGES.find(s => s[0] === id) || [id, '끝'])[1];
+
+const live = list => (Array.isArray(list) ? list : []).filter(s => s && !s.skip);
+const gradedOf = t => live(t && t.students).filter(s => s.status === 'done');
+const SAMPLE_SKIP = ['gap', 'camp', 'post'];
+
+export function unitStage(t, steps = [], { pyDone = false } = {}) {
+  if (!t || !gradedOf(t).length) return 'prep';
+  const sample = !!(t.meta && t.meta.sample);
+  const first = (steps || []).find(n => n && !n.done && !(sample && SAMPLE_SKIP.includes(n.id)));
+  if (!first) return pyDone ? 'done' : 'record';
+  return first.id === 'grade' ? 'grade' : first.id === 'miss' ? 'result' : 'help';
+}
+const unitNeeds = c => !!(c && ((c.flag && !c.ok) || (c.rv && !c.rv.agree && !c.rv.done)));
+export function unitPending(t) {
+  if (!t || !t.key) return 0;
+  const items = Array.isArray(t.key.items) ? t.key.items : [];
+  return gradedOf(t).reduce((n, s) => n + items.filter(it => unitNeeds(s.items && s.items[it.no])).length, 0);
+}
+
+export function activityStage(a) {
+  if (!a || !live(a.students).some(s => s.status === 'done')) return 'prep';
+  if (!a.done) return 'grade';
+  return a.link ? 'done' : 'result';
+}
+export function activityPending(a) {
+  if (!a) return 0;
+  return live(a.students).reduce((n, s) => n + Object.values(s.marks || {}).filter(c => c && c.chk).length, 0);
+}
+
+export function grStage(b) {
+  const st = live(b && b.students);
+  const scored = st.filter(s => s.score != null).length;
+  if (!scored) return 'prep';
+  if (scored < st.length) return 'grade';
+  const texts = st.filter(s => s.text).length;
+  return !texts ? 'result' : texts < st.length ? 'record' : 'done';
+}
+export function grPending(b) {
+  return live(b && b.students).filter(s => (s.unreadable && !s.manual) || (s.rv && !s.rv.done) || (Array.isArray(s.trv) ? s.trv.length : s.trv) && !s.trvd).length;
+}

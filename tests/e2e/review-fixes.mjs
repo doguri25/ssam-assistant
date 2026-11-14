@@ -43,7 +43,7 @@ await page.waitForTimeout(500);
 const openFold = async key => { await page.waitForSelector(`[data-fold="${key}"]`); if (!(await page.$eval(`[data-fold="${key}"]`, d => d.open))) await page.click(`[data-fold="${key}"] > summary`); };
 await run('review-fixes', [
   ['검토를 끈 채 교과 평어 50문장(수준 4개) → 검토 요청 없음', async () => {
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="pyeongeo"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'pyeongeo');
     await page.click('#srcPaste');
     await page.fill('#pasteBox', await page.getAttribute('#pasteBox', 'placeholder'));
     await page.click('#pasteGo');
@@ -74,7 +74,7 @@ await run('review-fixes', [
   }],
   ['행특: 검토하는 동안에도 후보가 이미 저장됨', async () => {
     slowReview = 2500;
-    await page.click('#menuTabs [data-tab="hk"]');
+    await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'hk');
     await page.waitForTimeout(300);
     if (!(await page.locator('#hkList [data-hkstu]').count())) { await page.fill('#hkCount', '1'); await page.click('#hkList [data-hk="roster"]'); }
     await page.click('#hkList [data-hkstu]');

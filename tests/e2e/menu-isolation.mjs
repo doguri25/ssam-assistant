@@ -50,7 +50,7 @@ await run('menu-isolation', [
     assert(!/행특|복사/.test(await page.textContent('#toast')), '행특 알림이 뜸: ' + await page.textContent('#toast'));
   }],
   ['평가 › 행특에서는 그대로 눌러서 복사·완료', async () => {
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="hk"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'hk');
     await page.waitForTimeout(300);
     await okClip();
     const n = await page.locator('section[data-menu="evaluate"] [data-pick]').count();

@@ -1,0 +1,105 @@
+/* 평가 공통 모양(스펙 2026-11-14-eval-redesign): 파랑(테마 --accent) = 쌤비서가 한 일, 주황(--turn) = 선생님 차례.
+   한눈에·단원평가·활동지·평가지 채점·생활기록부·기재 점검이 같이 씀 */
+.ev-num{font-variant-numeric:tabular-nums;font-weight:800;letter-spacing:-.01em}
+.ev-card{background:var(--surface,#fff);border:1px solid var(--line,#e4e6eb);border-radius:var(--r-l,20px);padding:16px}
+.ev-card.turn{border:2px solid var(--turn);padding:15px}
+.ev-card.turn-dash{border:2px dashed var(--turn);padding:15px}
+.ev-ink-card{background:var(--ink,#16181d);color:#fff;border-radius:var(--r-l,20px);padding:20px 22px}
+.ev-ink-card .ev-sub{color:#c9ced6}
+.ev-sub{font-size:13.5px;color:var(--ink3,#5c6170)}
+.ev-h{margin:0;font:800 17px/1.35 var(--f-display,inherit);color:var(--ink,#16181d)}
+/* 숫자 타일(누르면 거름) */
+.ev-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.ev-tile{min-height:68px;padding:8px 16px;border-radius:16px;border:1px solid var(--line,#e4e6eb);background:var(--surface,#fff);color:var(--ink,#16181d);
+  font:inherit;text-align:left;cursor:pointer;display:flex;flex-direction:column;justify-content:center;gap:2px}
+.ev-tile .ev-tl{font-size:13px;font-weight:700;color:var(--ink2,#3f4350)}
+.ev-tile .ev-num{font-size:26px;line-height:1.1}
+.ev-tile.ok .ev-tl{color:var(--accent-ink,#3730a3)}
+.ev-tile.turn{border:2px solid var(--turn);background:var(--turn-soft)}
+.ev-tile.turn .ev-tl{color:var(--turn-ink)}
+.ev-tile[aria-pressed="true"]{background:var(--ink,#16181d);border-color:var(--ink,#16181d);color:#fff}
+.ev-tile[aria-pressed="true"] .ev-tl{color:#c9ced6}
+.ev-tile:focus-visible{outline:3px solid var(--accent,#4f46e5);outline-offset:2px}
+/* 선생님 차례 단추·칩 */
+.ev-turn-btn{min-height:44px;padding:0 14px;border-radius:12px;border:0;background:var(--turn);color:var(--ink,#16181d);font:inherit;font-size:14px;font-weight:800;cursor:pointer;text-align:left}
+.ev-turn-btn:hover{filter:brightness(.96)}
+.ev-turn-btn:focus-visible{outline:3px solid var(--ink,#16181d);outline-offset:2px}
+.ev-chip{display:inline-flex;align-items:center;gap:6px;min-height:26px;padding:0 10px;border-radius:999px;background:var(--surface2,#f3f4f6);color:var(--ink2,#3f4350);font-size:12.5px;font-weight:700;white-space:nowrap}
+.ev-chip.done{background:var(--accent-soft,#eef0ff);color:var(--accent-ink,#3730a3)}
+.ev-chip.turn{background:var(--turn);color:var(--ink,#16181d)}
+.ev-chip.turn-soft{background:var(--turn-soft);color:var(--turn-ink)}
+.ev-dot{width:8px;height:8px;border-radius:50%;background:var(--accent,#4f46e5);flex:none}
+.ev-dot.turn{background:var(--turn)}
+/* 진행 막대 */
+.ev-bar{height:8px;border-radius:999px;background:var(--accent-soft,#eef0ff);overflow:hidden}
+.ev-bar > i{display:block;height:100%;background:var(--accent,#4f46e5);border-radius:999px}
+.ev-bar.turn > i{background:var(--turn)}
+/* 가로 단계 줄(단원평가 평가 하나) */
+.ev-steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px}
+.ev-steps button{width:100%;min-height:52px;padding:6px 12px;border-radius:12px;border:1px solid var(--line,#e4e6eb);background:var(--surface,#fff);color:var(--ink2,#3f4350);
+  font:inherit;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left}
+.ev-steps .done button{background:var(--accent-soft,#eef0ff);border-color:transparent;color:var(--accent-ink,#3730a3);font-weight:800}
+.ev-steps [aria-current="step"] button,.ev-steps button[aria-current="step"]{background:var(--accent,#4f46e5);border-color:var(--accent,#4f46e5);color:var(--on-accent,#fff);font-weight:800}
+.ev-steps .next button{border:2px solid var(--turn);color:var(--ink,#16181d);font-weight:800}
+.ev-steps .next .ev-st{color:var(--turn-ink)}
+/* 학생 × 문항 지도 칸 */
+.ev-heat{display:grid;gap:4px;align-items:center;font-size:13px}
+.ev-heat .hc{height:24px;border-radius:5px;border:0;padding:0;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+.ev-heat .hc-ok{background:var(--accent-soft,#eef0ff);color:var(--accent-ink,#3730a3)}
+.ev-heat .hc-no{background:var(--turn);color:var(--ink,#16181d)}
+.ev-heat .hc-part{background:var(--turn-line);color:var(--turn-ink)}
+.ev-heat .hc-wait{background:transparent;border:1.5px dashed var(--line,#c9ced6)}
+.ev-heat .hc-chk{box-shadow:inset 0 0 0 2px var(--turn-ink)}
+.ev-heat .hc:focus-visible{outline:3px solid var(--accent,#4f46e5);outline-offset:1px}
+.ev-heat .hh{text-align:center;font-weight:700;color:var(--ink3,#5c6170);border-radius:6px;padding:2px 0}
+.ev-heat .hh.low{background:var(--turn-soft);color:var(--turn-ink)}
+/* 「선생님 차례」 띠 */
+.ev-band{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;padding:12px 14px 12px 18px;border-radius:18px;background:var(--turn-soft);border:1px solid var(--turn-line)}
+.ev-band > p{margin:0;flex:1 1 220px;font-size:15px}
+.ev-band b{font-weight:800}
+/* 가로 메뉴 끝 「선생님 차례 n」 (#menuTabs 안, 누르면 한눈에) */
+#menuTabs .ev-turn-pill{margin-left:auto;display:inline-flex;align-items:center;gap:8px;min-height:36px;align-self:center;padding:0 12px;border-radius:10px;border:0;
+  background:var(--turn-soft);color:var(--turn-ink);font-weight:800;white-space:nowrap}
+#menuTabs .ev-turn-pill::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--turn)}
+#menuTabs .ev-turn-pill[aria-current]{border-bottom-color:transparent}
+/* 생활기록부 칸 안 전환(교과 평어·창체·행특) */
+.rec-switch{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;max-width:1120px;margin:0 auto;padding:24px 32px 0;box-sizing:border-box}
+.rec-switch[hidden]{display:none !important}
+.rec-switch .rs-seg{display:inline-flex;gap:4px;padding:4px;border-radius:999px;background:var(--surface3,#e6e8ec)}
+.rec-switch .rs-seg button{min-height:40px;padding:0 18px;border-radius:999px;border:0;background:transparent;color:var(--ink2,#3f4350);font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+.rec-switch .rs-seg button[aria-pressed="true"]{background:var(--ink,#16181d);color:#fff;font-weight:800}
+.rec-switch .rs-seg button:focus-visible{outline:3px solid var(--accent,#4f46e5);outline-offset:2px}
+.rec-switch .ev-sub{flex:1 1 220px}
+
+/* ---------- 한눈에 ---------- */
+.board-box[hidden]{display:none !important}
+.eb-page{gap:16px}
+.eb-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+.eb-head h2{margin:0;font:800 26px/1.2 var(--f-display,inherit);letter-spacing:-.02em}
+.eb-head .ev-sub{margin-top:4px;font-size:14.5px}
+.eb-acts{display:flex;flex-wrap:wrap;gap:8px}
+.eb-scroll{overflow-x:auto;padding-bottom:4px}
+.eb-cols{display:grid;grid-template-columns:repeat(5,minmax(172px,1fr));gap:10px;align-items:start;min-width:900px}
+.eb-col{background:var(--surface3,#e9ebef);border-radius:20px;padding:12px;display:flex;flex-direction:column;gap:10px;min-height:280px}
+.eb-col-h{display:flex;align-items:center;justify-content:space-between;padding:4px 6px 2px;margin:0;font:800 15.5px/1.3 var(--f-display,inherit)}
+.eb-col-h .ev-num{font-size:14px;color:var(--ink3,#5c6170);font-weight:700}
+.eb-empty{font-size:13px;color:var(--ink3,#5c6170);padding:6px 6px 0}
+.eb-card{display:flex;flex-direction:column;gap:8px;padding:14px;border-radius:16px;background:var(--surface,#fff);border:1px solid var(--line,#e4e6eb)}
+.eb-card.turn{border:2px solid var(--turn);padding:13px}
+.eb-card .eb-kind{align-self:flex-start}
+.eb-card h4{margin:0;font-size:15.5px;line-height:1.4;font-weight:800}
+.eb-card h4 button{all:unset;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line,#c9ced6);text-underline-offset:4px}
+.eb-card h4 button:focus-visible{outline:3px solid var(--accent,#4f46e5);outline-offset:2px;border-radius:4px}
+.eb-card .eb-line{margin:0;font-size:13.5px;color:var(--ink2,#3f4350);line-height:1.45}
+.eb-card .eb-prog{display:flex;flex-direction:column;gap:5px}
+.eb-card .eb-prog span{display:flex;justify-content:space-between;font-size:12.5px;color:var(--accent-ink,#3730a3);font-weight:700}
+.eb-done{margin:0}
+.eb-done summary{cursor:pointer;font-weight:800;color:var(--accent-ink,#3730a3);min-height:44px;display:flex;align-items:center}
+.eb-done ul{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.eb-done li button{min-height:40px;padding:0 12px;border-radius:12px;border:1px solid var(--line,#e4e6eb);background:var(--surface,#fff);font:inherit;font-size:14px;cursor:pointer;color:var(--ink,#16181d)}
+.eb-none{display:flex;flex-direction:column;gap:12px;align-items:flex-start}
+@media (max-width:760px){
+  .eb-head h2{font-size:22px}
+  .rec-switch{padding:16px 16px 0}
+  .rec-switch .rs-seg{width:100%;overflow-x:auto}
+}

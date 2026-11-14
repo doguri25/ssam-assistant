@@ -10,7 +10,7 @@ await enter(page, 'evaluate'); // 켜면 「오늘」이라 평가로 들어감
 await run('smoke', [
   ['페이지 오류 없이 열림', async () => { assert(errors.length === 0, '페이지 오류: ' + errors.join(' | ')); }],
   ['창의적 체험활동 화면으로 바뀜', async () => {
-    await page.click('#menuTabs [data-tab="cc"]');
+    await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'cc');
     assert(await page.isVisible('#ccView'), '#ccView가 보이지 않음');
   }],
   ['평가지 채점 화면으로 바뀜', async () => {

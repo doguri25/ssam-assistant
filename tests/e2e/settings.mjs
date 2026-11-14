@@ -13,7 +13,7 @@ await run('settings', [
     await tab('roster');
     await page.fill(`${S} [data-cls="count"]`, '24'); await page.press(`${S} [data-cls="count"]`, 'Tab');
     await page.fill(`${S} [data-cls="except"]`, '7'); await page.press(`${S} [data-cls="except"]`, 'Tab');
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="cc"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'cc');
     const txt = await page.textContent('#ccResults');
     assert(txt.includes('학생 23명 (7번 제외)'), '창체 결과 머리: ' + txt.slice(0, 120));
   }],

@@ -6335,7 +6335,9 @@ window.SSAM = {
   evalCheck: { items: checkItems, apply: checkApply, show: checkShow },
   storeMode: () => Store.mode, // 둘러보기: 평가 자료가 계정 저장소(db)면 체험 학년도로 나뉘지 않음
   // 평가지 채점 한꺼번에 넣기(gr-bundle.js)
-  gr: { putBundle: b => grPutBundle(b), refresh: () => { if (S.mode === 'gr') renderGRSetup(); }, mask: () => (GR.settings.maskOn ? GR.settings.mask : []) },
+  gr: { putBundle: b => grPutBundle(b), refresh: () => { if (S.mode === 'gr') renderGRSetup(); }, mask: () => (GR.settings.maskOn ? GR.settings.mask : []),
+    // 평가 › 한눈에서 지난 채점 열기(채점·순위·평어 쓰는 중이면 열지 않음 — 지난 채점 목록 단추와 같은 규칙)
+    open: id => { if (id && !['grading', 'ranking', 'writing'].includes(GR.phase)) return grOpenHistory(id); } },
   // 평가 영역 이음(활동지·단원평가 → 평가지 채점): 지금 평가계획의 영역 [{ id, subject, label }]
   planUnits: () => allUnits().map(u => ({ id: u.id, subject: u.subject, label: [u.area, u.elem || u.unit].filter(Boolean).join(' · ') })),
   onModeChange: fn => { modeHooks.push(fn); },

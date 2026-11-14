@@ -265,7 +265,7 @@ await run('fix1105-evallegacy', [
   ['[hk-bulk-name-4] 엑셀 번호·이름·메모 칸을 붙여넣으면 이름 칸은 빼고 메모만 넣고 알림, 만들 때 AI로 이름이 가지 않음', async () => {
     await page.evaluate(() => localStorage.removeItem('ssam:hk'));
     await page.goto(url, { timeout: 30000 }); await page.waitForTimeout(500);
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="hk"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'hk');
     await page.waitForSelector('[data-hk="bulk"]');
     await page.click('[data-hk="bulk"]');
     await page.waitForSelector('#sheetRoot #hkBulkBox');
@@ -280,7 +280,7 @@ await run('fix1105-evallegacy', [
     // 예전에 이름 칸까지 들어간 메모(3번)도 AI로는 이름을 빼고 보냄
     await page.evaluate(() => { const h = JSON.parse(localStorage.getItem('ssam:hk')); h.students.find(s => s.no === 3).memo = '최하은\t정리정돈 잘함'; localStorage.setItem('ssam:hk', JSON.stringify(h)); });
     await page.goto(url, { timeout: 30000 }); await page.waitForTimeout(500);
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="hk"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'hk');
     await page.waitForSelector('[data-hk="all"]:not([disabled])');
     const c0 = calls.length;
     await page.click('[data-hk="all"]');
@@ -316,7 +316,7 @@ await run('fix1105-evallegacy', [
     await gradeAll();
     await page.waitForTimeout(800);
     assert(!calls.slice(c0).some(c => c.prompt.startsWith('[문장 검토]')), '채점 검토를 껐는데 평어 검토');
-    await page.click('#menuTabs [data-tab="hk"]');
+    await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'hk');
     await page.waitForSelector('[data-hkstu]');
     await page.click('[data-hkstu]');
     await page.waitForSelector('[data-hk="gen"]');
@@ -330,7 +330,7 @@ await run('fix1105-evallegacy', [
   // ---------- 기능 요청 2: 행특 특성 버튼 ----------
   ['[기능-특성] 행특 특성 버튼이 44개 넘게(생활·학습·관계·특기·성장 중 묶음), 예전 버튼도 그대로, 새 버튼을 누르면 메모 끝에 들어감', async () => {
     await page.goto(url, { timeout: 30000 }); await page.waitForTimeout(500);
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="hk"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'hk');
     await page.waitForSelector('[data-hkstu]');
     await page.click('[data-hkstu]');
     await page.waitForSelector('#hkEditor [data-kw]');

@@ -6,7 +6,7 @@ import { isYearKey } from '../../web/core/years.js';
 
 const menu = (id, ...tabs) => ({ id, tabs: tabs.map(t => ({ id: t })) });
 const plan = menu('plan', 'year', 'event', 'class', 'report');
-const evaluate = menu('evaluate', 'pyeongeo', 'cc', 'hk', 'gr', 'unit', 'activity');
+const evaluate = menu('evaluate', 'board', 'unit', 'activity', 'gr', 'pyeongeo', 'cc', 'hk', 'check');
 const LEGACY = ['pyeongeo', 'cc', 'hk', 'gr'];
 
 test('저장된 값: 망가졌거나 없으면 빈 것, 글자가 아닌 탭은 버림', () => {
@@ -39,10 +39,11 @@ test('평가: 새 탭(단원평가·활동지)은 마지막 탭, 기존 앱 화�
   assert.equal(pickTab(evaluate, undefined, { evaluate: 'activity' }, o('pyeongeo')), 'activity');
   assert.equal(pickTab(evaluate, undefined, { evaluate: 'hk' }, o('gr')), 'gr', '기존 앱이 스스로 화면을 바꿨으면 그 화면');
   assert.equal(pickTab(evaluate, undefined, { evaluate: 'hk' }, o('hk')), 'hk');
-  assert.equal(pickTab(evaluate, undefined, {}, o('cc')), 'cc', '처음이면 기존 앱 화면(예전과 같음)');
-  assert.equal(pickTab(evaluate, undefined, {}, o(undefined)), 'pyeongeo');
+  assert.equal(pickTab(evaluate, undefined, {}, o('cc')), 'board', '처음이면 한눈에(스펙 2026-11-14-eval-redesign §1) — 기존 앱의 처음 화면을 따르지 않음');
+  assert.equal(pickTab(evaluate, undefined, {}, o(undefined)), 'board');
   assert.equal(pickTab(evaluate, undefined, { evaluate: 'hk' }, o(undefined)), 'hk', '기존 앱이 아직 없으면 마지막 탭');
-  assert.equal(pickTab(evaluate, undefined, { evaluate: 'gone' }, o('unit')), 'pyeongeo', 'mode가 기존 앱 화면이 아니면 쓰지 않음');
+  assert.equal(pickTab(evaluate, undefined, { evaluate: 'gone' }, o('unit')), 'board', 'mode가 기존 앱 화면이 아니면 쓰지 않음');
+  assert.equal(pickTab(evaluate, undefined, { evaluate: 'gone' }, o('hk')), 'board', '마지막 탭이 기존 앱 화면이 아니면 mode를 쓰지 않음');
 });
 
 test('탭이 없는 메뉴(오늘)는 빈 탭', () => {
