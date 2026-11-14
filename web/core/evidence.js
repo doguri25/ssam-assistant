@@ -8,8 +8,9 @@ export const EVIDENCE_MAX = 12, LABEL_MAX = 300, MEMO_MAX = 40;
 export const EVIDENCE_RULE = '근거 목록에 있는 사실만 쓰고, 문장마다 기대는 근거 번호를 src에 적어요. 근거가 없는 문장은 src를 비워요(지어내지 않음).';
 /* 행동특성: 메모를 학교생활 모습으로 풀어 쓰는 글이라 「목록에 있는 사실만」으로 좁히지 않음 */
 export const MEMO_RULE = '메모를 바탕으로 쓰고(메모에 없는 사실은 쓰지 않음), 문장마다 기댄 메모 조각 번호를 src에 적어요. 기댄 조각이 없는 문장은 src를 비워요.';
-const KINDS = ['unit', 'activity', 'gr', 'ref', 'memo'];
-const KIND_NAME = { unit: '단원평가', activity: '활동지', gr: '채점', ref: '참고', memo: '메모' };
+// act·sheet: 창체 근거(활동·학습지에서 읽은 내용 — 생활기록부 글 쓰기 틀, 스펙 2026-11-14-eval-redesign §6)
+const KINDS = ['unit', 'activity', 'gr', 'ref', 'memo', 'act', 'sheet'];
+const KIND_NAME = { unit: '단원평가', activity: '활동지', gr: '채점', ref: '참고', memo: '메모', act: '활동', sheet: '학습지' };
 const one = s => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -127,6 +128,25 @@ export function evidenceHTML({ sentences, list, text, key } = {}) {
   return `<div class="evd" data-evd>${edited ? '<p class="evd-edit"><b>고친 글</b> · 근거는 처음 쓴 글 기준이에요</p>' : ''}<ol class="evd-ss" aria-label="문장별 근거">${rows}</ol></div>`;
 }
 
+/* 생활기록부 글 쓰기 틀(스펙 2026-11-14-eval-redesign §6, record/): 지금 글의 문장 줄. evidenceHTML과 같은 칩·펼침(같은 단추·같은 기억)을 쓰되
+   - 문장이 하나여도 글을 보임, 칩에는 근거 수 대신 목록 번호(「근거 1·2」 — 오른쪽 근거 목록의 번호와 같음)
+   - rows: [{ t, src: [id] | null(근거를 모름 — 칩 없음), bad(고칠 곳), why: [까닭 글], acts: 단추 html }] — src가 빈 배열이면 「근거 없음」 */
+export function evidenceRowsHTML({ rows, list, key, label } = {}) {
+  const l = Array.isArray(list) ? list : [];
+  const by = new Map(l.map((e, i) => [e.id, { ...e, n: i + 1 }]));
+  const out = (Array.isArray(rows) ? rows : []).filter(r => r && one(r.t)).map((r, i) => {
+    const known = Array.isArray(r.src), src = known ? r.src.map(id => by.get(id)).filter(Boolean) : [];
+    const k = key ? `${key}:${i}` : '', open = !!(k && OPEN.has(k) && src.length), id = `evd-${++seq}`;
+    const chip = !known ? '' : !src.length ? '<span class="evd-no"><span aria-hidden="true">!</span> 근거 없음</span>'
+      : `<button type="button" class="evd-btn" data-evd-toggle${k ? ` data-evd-key="${esc(k)}"` : ''} aria-expanded="${open}" aria-controls="${id}"><span class="evd-pill">근거 ${src.map(e => e.n).join('·')}<span class="evd-chev" aria-hidden="true">▾</span></span></button>`;
+    const why = Array.isArray(r.why) && r.why.length ? `<ul class="evd-why">${r.why.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : '';
+    const cls = ['evd-s', 'evd-row', r.bad ? 'evd-bad' : '', known && !src.length ? 'evd-none' : '', !known ? 'evd-unk' : '', open ? 'open' : ''].filter(Boolean).join(' ');
+    return `<li class="${cls}" data-evd-i="${i}"><span class="evd-n" aria-hidden="true">${i + 1}</span><span class="evd-t">${esc(r.t)}</span>${chip}${why}${r.acts ? `<span class="evd-acts">${r.acts}</span>` : ''}`
+      + (src.length ? `<ul class="evd-src" id="${id}"${open ? '' : ' hidden'}>${src.map(e => `<li><span class="evd-k">${esc(KIND_NAME[e.kind] || '참고')} ${e.n}</span>${esc(e.label)}</li>`).join('')}</ul>` : '') + '</li>';
+  }).join('');
+  return out ? `<ol class="evd-ss evd-rows" aria-label="${esc(label || '문장별 근거')}">${out}</ol>` : '';
+}
+
 /* 「근거 n」 단추: 그 근거 줄을 펴고 접음(다시 그리지 않음) */
 function onToggle(e) {
   const b = e.target && e.target.closest && e.target.closest('[data-evd-toggle]');
@@ -142,5 +162,5 @@ function onToggle(e) {
 if (globalThis.document && !globalThis.__ssamEvidence) { globalThis.__ssamEvidence = 1; document.addEventListener('click', onToggle); }
 if (globalThis.window) {
   window.SSAM = window.SSAM || {};
-  window.SSAM.evidence = { evidenceList, evidencePrompt, EVIDENCE_RULE, MEMO_RULE, normSentences, joinSentences, alignSentences, memoEvidence, evidenceHTML };
+  window.SSAM.evidence = { evidenceList, evidencePrompt, EVIDENCE_RULE, MEMO_RULE, normSentences, joinSentences, alignSentences, memoEvidence, evidenceHTML, evidenceRowsHTML };
 }

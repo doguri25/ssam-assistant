@@ -76,10 +76,13 @@ await run('review-writing', [
     if (!(await page.inputValue('#hkMemo'))) { await page.fill('#hkMemo', '우유 당번을 성실히 함'); await page.waitForTimeout(500); }
     const n = reviews().length;
     await page.click('#hkEditor [data-hk="gen"]');
-    await until(async () => reviews().length === n + 1 && await page.locator('#hkEditor .rv-op').count() === 2);
+    // 생활기록부 글 쓰기 틀: 가운데 후보의 의견은 펼쳐 보이고, 다른 후보는 「검토 의견」 표시(누르면 가운데로)
+    await until(async () => reviews().length === n + 1 && await page.locator('#hkEditor .rv-op').count() === 1 && await page.locator('#hkEditor .rw-alt .ev-chip').count() === 1);
     const p = reviews().at(-1).prompt;
     assert(p.includes('행동특성') && !p.includes('우유 당번'), '메모가 들어감: ' + p.slice(0, 300));
     await page.locator('#hkEditor [data-rv-keep]').first().click();
+    await until(async () => await page.locator('#hkEditor .rv-op').count() === 0);
+    await page.click('#hkEditor .rw-alt [data-hkcand]');
     await until(async () => await page.locator('#hkEditor .rv-op').count() === 1);
     const i = await page.getAttribute('#hkEditor .rv-op [data-rv-use]', 'data-rv-use');
     const ri = i.split(':').pop();

@@ -233,7 +233,7 @@ await run('background-jobs', [
     const hk = await ls('ssam:hk');
     for (const s of hk.students) assert(s.results.length === 2 && s.results.every(r => r.t.includes('-' + 'ABC'[s.no - 1])), `${s.no}번 글: ${JSON.stringify(s.results.map(r => r.t.slice(0, 12)))}`);
     await goTo('evaluate', 'hk');
-    assert((await page.textContent('#hkList')).includes('완료 0 / 3') && (await page.locator('#hkList .hk-stu .spin').count()) === 0, '돌아와도 쓰는 중');
+    assert((await page.textContent('#hkList')).includes('다 씀 0 / 3') && (await page.locator('#hkList .hk-stu .spin').count()) === 0, '돌아와도 쓰는 중');
     assert((await page.textContent('#hkEditor')).includes('후보1-'), '글이 안 보임');
     delay = 0;
   }],

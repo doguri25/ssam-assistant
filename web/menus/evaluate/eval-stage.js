@@ -46,5 +46,6 @@ export function grStage(b) {
   return !texts ? 'result' : texts < st.length ? 'record' : 'done';
 }
 export function grPending(b) {
-  return live(b && b.students).filter(s => (s.unreadable && !s.manual) || (s.rv && !s.rv.done) || (Array.isArray(s.trv) ? s.trv.length : s.trv) && !s.trvd).length;
+  // 글 검토 제안은 trv.done이 생길 때까지(trvd는 「검토를 돌렸다」 표시라 셈과 상관없음 — evaluate.js 평가지 채점 확인과 같은 규칙)
+  return live(b && b.students).filter(s => (s.unreadable && !s.manual) || (s.rv && !s.rv.done) || (s.trv && !s.trv.done)).length;
 }

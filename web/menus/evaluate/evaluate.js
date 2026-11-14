@@ -1744,16 +1744,21 @@ document.addEventListener('click', e => {
   e.stopPropagation(); e.preventDefault();
   if (b.dataset.rvNext != null) { const op = view.querySelector('.rv-op'); if (op) { op.scrollIntoView({ block: 'center', behavior: 'smooth' }); const x = op.querySelector('button'); if (x) x.focus({ preventScroll: true }); } return; }
   const use = b.dataset.rvUse != null, key = use ? b.dataset.rvUse : b.dataset.rvKeep;
-  if (GR_RV.handle(key, use)) return;
+  rvDecide(key, use);
+}, true);
+/* 두 의견 고르기(의견 칸의 단추·평가지 채점 확인 화면이 같이 씀): use면 검토 의견을 씀, 아니면 그대로 둠 */
+function rvDecide(key, use) {
+  if (GR_RV.handle(key, use)) return true;
   const tg = rvTarget(key);
-  if (!tg) return;
+  if (!tg) return false;
   const k = tg.rv || 'rv';
-  if (!rvOpen(tg.o, k)) return;
+  if (!rvOpen(tg.o, k)) return false;
   if (use) { tg.o[tg.f] = tg.o[k].fix; if (k === 'trv') tg.o.stale = false; }
   tg.o[k] = { ...tg.o[k], done: use ? 'review' : 'main' };
   tg.save(); tg.render();
   toast(use ? '고친 문장을 썼어요' : '그대로 두었어요');
-}, true);
+  return true;
+}
 async function run(job) {
   const u = unitById(job.unitId);
   const key = setKey(job.unitId, job.lv);
@@ -2106,16 +2111,213 @@ function renderList() {
 
 function renderAll() {
   const has = !!S.plan, hk = S.mode === 'hk', gr = S.mode === 'gr', cc = S.mode === 'cc', other = hk || gr || cc;
+  // 교과 평어: 학생별 글(생활기록부 글 쓰기 틀) 또는 문장 모음(평가요소 × 수준, 예전 화면) — 아래 「교과 평어 학생별」
+  const stu = !other && pyMode() === 'stu';
   $('#hkView').hidden = !hk;
   $('#grView').hidden = !gr;
   $('#ccView').hidden = !cc;
-  $('#importView').hidden = other || has;
-  $('#planView').hidden = other || !has;
+  $('#importView').hidden = other || has || stu;
+  $('#planView').hidden = other || !has || stu;
+  pyRecView().hidden = !stu;
+  pyPoolBar(!other && !stu);
+  if (stu) { $('#planTitle').textContent = '교과학습발달상황 · 학생별 교과 평어'; renderPyRec(); updateGen(); return; }
   $('#planTitle').textContent = cc ? '창의적 체험활동 · 공통 활동으로 학생별 특기사항 쓰기' : hk ? '행동특성 및 종합의견 · 메모로 글 완성하기' : gr ? '평가지 채점 · 스캔한 수행평가지로 수준과 평어 정하기' : has ? S.plan.title : '교과학습발달상황 · 평가계획으로 수준별 평어 만들기';
   if (has && !other) { renderNav(); renderUnits(); renderPane(); $('#planView').classList.toggle('show-pane', S.showPane); }
   if (!has && !other) heroIntro();
   updateGen();
 }
+/* ---------- 교과 평어 학생별 (생활기록부 글 쓰기 틀, 스펙 2026-11-14-eval-redesign §6) ----------
+   학생별 글은 단원평가 교과 평어(unit:pyeongeo:<교과>)와 평가지 채점 글(그 기록의 학생 text)에서 모아 보여 줌(교과 고르기).
+   고친 글은 그 자리(단원평가 평어·그 채점 기록)에 씀 — 모양은 그대로. 문장 모음(평가요소 × 수준)은 [문장 모음 만들기]로.
+   처음 보는 화면: 평가계획(문장 모음)을 쓰는 중이면 문장 모음, 아니면 학생별 글이 있을 때 학생별. 고른 화면은 이번 실행 동안 그대로 */
+// 글 쓰기 틀 조각(record/record.js → window.SSAM.record) — 아래 행특 「생활기록부 글 쓰기 틀」 설명
+const REC = () => (window.SSAM && window.SSAM.record) || null;
+const PYR = { view: '', sub: null, sel: 0, pick: {}, recs: null, loading: false, busyRow: null, edit: false };
+function pyRecView() {
+  let v = $('#pyRecView');
+  if (!v) { v = document.createElement('section'); v.id = 'pyRecView'; v.className = 'pyrec'; v.hidden = true; $('#planView').after(v); }
+  return v;
+}
+// 문장 모음 화면 위의 띠: 학생별 교과 평어로
+function pyPoolBar(show) {
+  let b = $('#pyPoolBar');
+  if (!b) { b = document.createElement('div'); b.id = 'pyPoolBar'; b.className = 'py-poolbar'; $('#importView').before(b); }
+  b.hidden = !show;
+  if (show) b.innerHTML = `<span class="ev-sub"><b>문장 모음</b> · 평가요소마다 수준별 평어 문장을 만들어요</span><button class="btn" type="button" data-pyv="stu">학생별 교과 평어 보기</button>`;
+}
+// 학생별 글이 있는지(채점 기록은 이 기기 저장소만 봄 — 계정 저장소면 단원평가 평어만)
+function pyHasStudents() {
+  const R = REC();
+  if (R && R.pyUnitSubjects().length) return true;
+  if (Store.mode !== 'local') return false;
+  return Store.lsGet('ssam:grs', []).some(id => ((Store.lsGet('ssam:gr:' + id, null) || {}).students || []).some(s => s && !s.skip && s.text));
+}
+const pyMode = () => PYR.view || (S.plan ? 'pool' : pyHasStudents() ? 'stu' : 'pool');
+async function pyLoadRecs() {
+  if (PYR.loading) return;
+  PYR.loading = true;
+  try {
+    await storeReady; await GRStore.list();
+    const out = [];
+    for (const h of GR.history) {
+      const open = h.id === GR.id, b = open ? null : await GRStore.get(h.id);
+      const unitId = open ? GR.unitId : (b && b.unitId) || '', u = unitId ? unitById(unitId) : null;
+      out.push({ id: h.id, title: h.title || '수행평가', subject: u ? u.subject : '', students: open ? GR.students : ((b && b.students) || []) });
+    }
+    PYR.recs = out;
+  } finally { PYR.loading = false; }
+  if (S.mode === 'pyeongeo' && pyMode() === 'stu') renderPyRec();
+}
+// 교과 목록: 단원평가 평어가 있는 교과 + 평가지 채점 글이 있는 교과(교과를 모르는 채점은 「교과를 정하지 않은 수행평가」)
+function pySubjects() {
+  const R = REC(), subs = new Set(R ? R.pyUnitSubjects() : []);
+  let none = false;
+  for (const r of PYR.recs || []) if (r.students.some(s => !s.skip && s.text)) { if (r.subject) subs.add(r.subject); else none = true; }
+  return [...[...subs].sort((a, b) => a.localeCompare(b, 'ko')), ...(none ? [''] : [])];
+}
+const pySubName = sub => sub || '교과를 정하지 않은 수행평가';
+function pyData() {
+  const R = REC(), subs = pySubjects();
+  if (PYR.sub == null || !subs.includes(PYR.sub)) PYR.sub = subs.length ? subs[0] : null;
+  const sub = PYR.sub;
+  const unit = sub ? R.pyUnit(sub) : { students: {} };
+  const grs = (PYR.recs || []).filter(r => (r.subject || '') === (sub || ''));
+  const map = sub == null ? new Map() : R.pySources(unit, grs);
+  return { subs, sub, map };
+}
+// 그 학생의 지금 글(고른 출처, 없으면 글이 있는 첫 출처)
+function pyCur(map, no) {
+  const xs = map.get(no) || [];
+  const k = PYR.pick[`${PYR.sub}:${no}`];
+  return xs.find(x => x.key === k) || xs.find(x => x.text.trim()) || xs[0] || null;
+}
+const pyGrStu = x => { const r = (PYR.recs || []).find(y => y.id === x.gid); return r ? r.students.find(s => s.id === x.sid) : null; };
+const pySrcName = x => (x.src === 'unit' ? '단원평가 평어' : `평가지 채점 「${x.title}」`);
+function pyLevel(x) {
+  if (x.src === 'unit') return x.level ? `수준 · ${REC().pyLevelName(x.level)}` : '';
+  const s = pyGrStu(x); return s && s.level ? `수준 · ${LVNAME[s.level]}${s.score != null ? ` (${s.score}점)` : ''}` : '';
+}
+const pyDone = x => !!(x && x.text.trim() && (x.src === 'unit' || (pyGrStu(x) || {}).d));
+function renderPyRec() {
+  const v = pyRecView(), R = REC();
+  if (!R) { v.innerHTML = '<div class="m-page"><div class="skel" style="height:200px"></div></div>'; return; }
+  if (!PYR.recs) { v.innerHTML = '<div class="m-page"><div class="skel" style="height:200px"></div></div>'; pyLoadRecs(); return; }
+  const { subs, sub, map } = pyData();
+  const head = `<div class="py-head"><label class="py-sub"><span>교과</span><select class="field" id="pySubject" ${subs.length ? '' : 'disabled'}>${subs.map(s => `<option value="${esc(s)}"${s === sub ? ' selected' : ''}>${esc(pySubName(s))}</option>`).join('') || '<option>아직 없어요</option>'}</select></label>
+    <span class="ev-sub">단원평가 평어와 평가지 채점 글을 학생마다 모아요. 고친 글은 그 자리에 저장돼요.</span>
+    <button class="btn" type="button" data-pyv="pool">문장 모음 만들기</button></div>`;
+  if (!map.size) {
+    v.innerHTML = `<div class="m-page py-page">${head}<div class="ev-card"><p class="ev-h">아직 학생별 교과 평어가 없어요</p>
+      <p class="ev-sub">단원평가 결과의 [교과 평어로 넘기기]나 평가지 채점에서 평어를 쓰면 여기 학생마다 모여요. 평가요소마다 수준별 문장을 만들려면 [문장 모음 만들기]를 눌러요.</p></div></div>`;
+    return;
+  }
+  const nos = [...map.keys()];
+  if (!nos.includes(PYR.sel)) PYR.sel = nos[0];
+  const dups = R.dupKeys(nos.map(no => ({ who: no, text: (pyCur(map, no) || {}).text || '' })));
+  const sts = nos.map(no => {
+    const x = pyCur(map, no), rows = x && x.text.trim() ? R.sentenceRows(x.text, x.ev, { dups }) : null;
+    return [no, R.recState({ text: x && x.text, done: pyDone(x), rows })];
+  });
+  const list = R.listHTML({ items: sts.map(([no, st]) => ({ attr: `data-pystu="${no}"`, no, st, cur: no === PYR.sel })), doneN: sts.filter(([, st]) => st.k === 'done').length, fixN: sts.filter(([, st]) => st.k === 'fix').length, total: nos.length,
+    bottom: `<div class="rw-lfoot"><button class="btn text" type="button" data-eval-check="unit">기재 점검</button></div>` });
+  const no = PYR.sel, xs = map.get(no) || [], x = pyCur(map, no), i0 = nos.indexOf(no), next = nos[i0 + 1];
+  const rr = x && x.text.trim() ? R.sentenceRows(x.text, x.ev, { dups }) : null;
+  const busy = PYR.busyRow && PYR.busyRow.no === no ? PYR.busyRow : null;
+  const lv = x ? pyLevel(x) : '';
+  const acts = i => `<button type="button" class="ev-turn-btn rw-fix" data-pyrow="fix" data-row="${i}" ${busy ? 'disabled' : ''}>${busy && busy.row === i ? '<span class="spin"></span>고치는 중' : '고치기'}</button><button type="button" class="btn rw-del" data-pyrow="del" data-row="${i}" ${busy ? 'disabled' : ''}>문장 빼기</button>`;
+  const art = R.articleHTML({
+    attrs: `data-pykey="${esc(x ? x.key : '')}"`, where: `${esc(pySubName(sub))} · 교과 학습 발달 상황`, who: `${no}번`,
+    chips: lv ? `<span class="ev-chip">${esc(lv)}</span>` : '',
+    seg: R.segHTML('평어 출처', xs.map(y => ({ attr: `data-pycand="${esc(y.key)}"`, label: esc(pySrcName(y)), on: x && y.key === x.key }))) || (x ? `<p class="rw-cand ev-sub">${esc(pySrcName(x))}</p>` : ''),
+    note: rr && rr.edited && !PYR.edit ? '<p class="evd-edit rw-note"><b>고친 글</b> · 근거는 처음 쓴 글 기준이에요</p>' : '',
+    body: !x || !x.text.trim() ? `<p class="rw-emptyp">아직 글이 없어요. ${x && x.src === 'unit' ? '단원평가 결과에서 [평어 쓰기]를 누르거나 직접 써요.' : ''}</p>${x ? `<textarea class="field hk-edit" id="pyEdit" rows="4" aria-label="${no}번 교과 평어 쓰기"></textarea>` : ''}`
+      : PYR.edit ? `<textarea class="field hk-edit" id="pyEdit" rows="5" aria-label="${no}번 교과 평어 고치기">${esc(x.text)}</textarea>`
+      : `<div class="rw-text" tabindex="-1">${R.rowsHTML({ rows: rr.rows, list: x.ev ? x.ev.list : [], key: `py:${sub}:${no}:${x.key}`, label: `${no}번 문장`, acts })}</div>`,
+    foot: R.footHTML({ n: charCount(x ? x.text : ''), unit: '자', acts: `<button class="btn" type="button" data-py="redo">AI로 다시 쓰기</button><button class="btn" type="button" data-py="neis">나이스 차례로 복사</button>${next ? `<button class="btn dark" type="button" data-py="next">다음 학생 ${next}번</button>` : ''}` }),
+    tools: x ? `<span class="rw-grow"></span>${PYR.edit || !x.text.trim() ? `<button class="btn primary" type="button" data-py="save">고친 내용 저장</button>${x.text.trim() ? '<button class="btn" type="button" data-py="cancel">그만 고치기</button>' : ''}` : `<button class="btn" type="button" data-py="copy">${ICON.copy}복사</button><button class="btn" type="button" data-py="edit">직접 고치기</button>`}` : ''
+  });
+  const evl = x && x.ev ? x.ev.list || [] : [];
+  const side = R.sideHTML({ who: `${no}번`, from: evl.length ? [...new Set(evl.map(e => R.KIND[e.kind] || '참고'))].join(' · ') : '', uses: R.evidenceUse(evl, rr && rr.known ? rr.rows : []), known: !!(rr && rr.known && !PYR.edit),
+    addAttr: x && !PYR.edit ? e => `data-pyadd="${esc(e.id)}"` : null, busy: busy ? (busy.add || 'x') : '',
+    note: x && rr && !rr.known ? '<p class="ev-sub rw-evnote">이 글은 문장마다 근거를 맞추지 않았어요.</p>' : '', empty: '이 글에는 근거 목록이 없어요', ai: 'AI에는 이름 없이 근거만 보내요.' });
+  v.innerHTML = `<div class="m-page py-page">${head}<div class="rw-frame"><aside class="rw-list hk-left" aria-label="학생">${list}</aside>
+    <div class="rw-grid"><div class="rw-main">${art}</div><aside class="rw-side" aria-label="${no}번 근거">${side}</aside></div></div></div>`;
+}
+/* 고친 글을 그 자리에: 단원평가 평어 → unit:pyeongeo:<교과>, 평가지 채점 → 그 기록(연 기록이면 화면의 학생). AI가 바꾼 채점 글은 사용함 표시를 지움 */
+async function pySave(x, text, ev, { ai = false, mark = false } = {}) {
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  if (x.src === 'unit') { if (!REC().pyUnitSave(PYR.sub, Number(PYR.sel), { text: t, ev })) return false; }
+  else {
+    let s = x.gid === GR.id ? grStudent(x.sid) : null, b = null;
+    if (!s) { b = await GRStore.get(x.gid); s = b && (b.students || []).find(y => y.id === x.sid); }
+    if (!s || s.writing) return false;
+    if (s.text !== t) delete s.trv;
+    s.text = t; if (ev && t) s.ev = ev; else delete s.ev; if (ai) s.d = 0; if (mark) s.d = 1;
+    if (b) { if (Store.mode === 'db') writeDoc(Store.base() + '/g_' + x.gid, b); else if (Store.mode === 'local' && !Store.lsSet('ssam:gr:' + x.gid, b)) return false; }
+    else { GRStore.save(); if (S.mode === 'gr') renderGRResults(); }
+    const c = pyGrStu(x); if (c && c !== s) { c.text = t; if (ev && t) c.ev = ev; else delete c.ev; c.d = s.d; if (!s.trv) delete c.trv; }
+  }
+  return true;
+}
+async function pyOneSentence(x, { row = -1, add = '' } = {}) {
+  const R = REC(); if (!R || !x || PYR.busyRow) return;
+  if (!engineReady()) { openSettings(); return; }
+  const list = (x.ev && x.ev.list) || [], rr = R.sentenceRows(x.text, x.ev);
+  const r = row >= 0 ? rr.rows[row] : null, target = add ? list.find(e => e.id === add) : null;
+  if ((row >= 0 && !r) || (add && !target)) return;
+  PYR.busyRow = { no: PYR.sel, row, add }; renderPyRec();
+  const before = x.text;
+  try {
+    const out = await generate(R.sentencePrompt({ mode: add ? 'add' : 'fix', field: 'py', text: x.text, sentence: r ? r.t : '', target, list, da: S.settings.ending === 'da',
+      why: r ? [...(r.none ? ['이 문장을 받치는 근거가 없어요'] : []), ...r.issues.map(i => i.why)] : [] }), { fresh: true, task: 'writing' });
+    const one = R.normOne(out.text, list);
+    if (!one) throw { code: 'empty_completion' };
+    if (x.text !== before) return;
+    if (add && !one.src.length) one.src = [add];
+    const o = add ? R.appendSentence(x.text, x.ev, one) : R.replaceSentence(x.text, x.ev, row, [one]);
+    if (await pySave(x, o.t, o.ev, { ai: true })) toast(add ? '근거로 문장을 더했어요' : '문장을 고쳤어요'); else toast('저장하지 못했어요. 그 글을 쓰는 중인지 확인해 주세요.');
+  } catch (e) { toast(errMsg((e && e.code) || 'upstream_error', e), 4500); }
+  finally { PYR.busyRow = null; renderPyRec(); }
+}
+function pyNeisSrc(map) {
+  return { key: 'py', what: '교과 평어', field: '교과 학습 발달 상황', title: pySubName(PYR.sub),
+    text: id => { const x = pyCur(map, +id); return x ? x.text.trim() : ''; }, no: id => +id,
+    mark: id => { const x = pyCur(map, +id); if (x && x.src === 'gr' && x.text.trim()) pySave(x, x.text, x.ev, { mark: true }); },
+    saved: () => { if (GR.id) GRStore.save(); if (S.mode === 'pyeongeo') renderPyRec(); } };
+}
+document.addEventListener('click', async e => {
+  const t = e.target; if (!t || !t.closest) return;
+  const pv = t.closest('[data-pyv]');
+  if (pv && evalShown() && S.mode === 'pyeongeo') { PYR.view = pv.dataset.pyv; PYR.edit = false; if (PYR.view === 'stu') PYR.recs = null; renderAll(); window.scrollTo && window.scrollTo(0, 0); return; }
+  if (S.mode !== 'pyeongeo' || !evalShown() || !t.closest('#pyRecView')) return;
+  const R = REC(); if (!R || !PYR.recs) return;
+  const { map } = pyData(), x = pyCur(map, PYR.sel);
+  const stu = t.closest('[data-pystu]'); if (stu) { PYR.sel = +stu.dataset.pystu; PYR.edit = false; renderPyRec(); return; }
+  const cand = t.closest('[data-pycand]'); if (cand) { PYR.pick[`${PYR.sub}:${PYR.sel}`] = cand.dataset.pycand; PYR.edit = false; renderPyRec(); return; }
+  const rowb = t.closest('[data-pyrow]');
+  if (rowb && !rowb.disabled && x) {
+    if (rowb.dataset.pyrow === 'fix') { pyOneSentence(x, { row: +rowb.dataset.row }); return; }
+    const o = R.removeSentence(x.text, x.ev, +rowb.dataset.row);
+    if (await pySave(x, o.t, o.ev)) toast('문장을 뺐어요');
+    renderPyRec(); return;
+  }
+  const addb = t.closest('[data-pyadd]'); if (addb && !addb.disabled && x) { pyOneSentence(x, { add: addb.dataset.pyadd }); return; }
+  const b = t.closest('[data-py]'); if (!b || b.disabled) return;
+  const a = b.dataset.py, nos = [...map.keys()];
+  if (a === 'next') { const n = nos[nos.indexOf(PYR.sel) + 1]; if (n) { PYR.sel = n; PYR.edit = false; renderPyRec(); const el = document.querySelector(`#pyRecView [data-pystu="${n}"]`); if (el) el.scrollIntoView({ block: 'nearest' }); } }
+  else if (a === 'edit') { PYR.edit = true; renderPyRec(); const ta = $('#pyEdit'); if (ta) ta.focus(); }
+  else if (a === 'cancel') { PYR.edit = false; renderPyRec(); }
+  else if (a === 'save' && x) { const v = ($('#pyEdit') || {}).value || ''; if (await pySave(x, v, x.ev)) { PYR.edit = false; toast('고친 글을 저장했어요'); } else toast('저장하지 못했어요'); renderPyRec(); }
+  else if (a === 'copy' && x) copyText(x.text).then(ok => toast(ok ? `${PYR.sel}번 교과 평어를 복사했어요` : '복사가 막혔어요.'));
+  else if (a === 'neis') neisCopyAll(pyNeisSrc(map), nos.map(String));
+  else if (a === 'redo' && x) {
+    if (x.src === 'unit') { R.pyOpenUnit(PYR.sub, PYR.sel); toast('단원평가 결과에서 [평어 쓰기]로 다시 써요', 4000); }
+    else { if (x.gid !== GR.id) await grOpenHistory(x.gid); setMode('gr'); const s = grStudent(x.sid); if (s) { if (s.level && s.status === 'done' && !['grading', 'ranking', 'writing'].includes(GR.phase)) { s.stale = true; grWrite([s.id]); toast(`${s.no}번 평어를 다시 써요`); } } }
+  }
+});
+document.addEventListener('change', e => {
+  if (e.target && e.target.id === 'pySubject' && S.mode === 'pyeongeo') { PYR.sub = e.target.value; PYR.edit = false; PYR.sel = 0; renderPyRec(); }
+});
 /* 넣기 화면 머리말 아래 설명(index.html의 글)을 「화면 설명」으로: 처음 몇 번만 펼쳐 보임 */
 function heroIntro() {
   const hero = $('#importView .hero'); if (!hero) return;
@@ -3021,6 +3223,77 @@ function hkOut(o, list, trim) {
 }
 const hkEvHTML = (r, s, i) => (r.ev && EV() ? EV().evidenceHTML({ ...r.ev, text: r.t, key: `hk:${s.id}:${i}` }) : '');
 
+/* ---------- 생활기록부 글 쓰기 틀 (record/record.js가 window.SSAM.record로 줌, 스펙 2026-11-14-eval-redesign §6) ----------
+   교과 평어·창체·행특이 같은 틀. 그리는 조각·문장 줄·근거 맞추기는 그 모듈이, 상태·저장·AI 부르기는 이 파일이 함.
+   이 파일은 모듈보다 먼저 돌아서 틀이 아직 없으면 빈 자리만 그리고, 준비되면(ssam:record-ready) 지금 화면을 다시 그림 */
+window.addEventListener('ssam:record-ready', () => {
+  const redraw = () => { try { if (S.mode === 'hk') { renderHKList(); renderHKEditor(); } else if (S.mode === 'cc') renderCCResults(); else if (S.mode === 'gr') renderGRResults(); else if (S.mode === 'pyeongeo') renderAll(); } catch (e) {} };
+  const a = document.activeElement, sec = document.querySelector('section[data-menu="evaluate"]');
+  if (a && sec && sec.contains(a) && a.matches('input, textarea, select')) a.addEventListener('blur', () => setTimeout(redraw, 0), { once: true });
+  else redraw();
+});
+/* 행특: 가운데에 보일 후보 — 선생님이 고른 후보(HK.cand, 이번 실행 동안), 없으면 고른 글(복사함), 없으면 첫 후보 */
+HK.cand = {};
+function hkCur(s) {
+  const rs = (s && s.results) || [];
+  if (!rs.length) return -1;
+  const c = HK.cand[s.id];
+  if (c != null && rs[c]) return c;
+  const d = rs.findIndex(r => r.d);
+  return d >= 0 ? d : 0;
+}
+const hkCurRes = s => { const i = hkCur(s); return i < 0 ? null : s.results[i]; };
+const hkLimit = () => ({ max: HK.settings.max, unit: HK.settings.unit });
+// 학생끼리 같은 문장(기재 점검과 같은 규칙): 학생마다 지금 글
+const hkDups = () => (REC() ? REC().dupKeys(hkShown().map(s => ({ who: s.no, text: (hkCurRes(s) || {}).t || '' }))) : null);
+function hkState(s, dups) {
+  const R = REC(), r = hkCurRes(s);
+  return R.recState({ text: r && r.t, done: !!s.done, run: HK.running.has(s.id), wait: HK.queue.includes(s.id), err: s.err,
+    rows: r ? R.sentenceRows(r.t, r.ev, { limit: hkLimit(), dups }) : null, none: s.memo && s.memo.trim() ? '메모 있음' : '메모 없음' });
+}
+/* 그 글의 근거 목록 + 글을 쓴 뒤 더한 메모 조각(번호를 이어서) — 새 조각도 「아직 안 쓴 근거」로 문장을 더할 수 있게 */
+function hkEvMerged(s, r) {
+  const base = (r && r.ev && Array.isArray(r.ev.list)) ? r.ev.list : [];
+  let n = base.reduce((m, e) => Math.max(m, +(String(e.id).match(/\d+/) || [0])[0]), 0);
+  const fresh = hkEvList(s).filter(e => !base.some(b => b.label === e.label)).map(e => ({ ...e, id: 'm' + ++n }));
+  return [...base, ...fresh];
+}
+/* 나이스 차례로 복사: 학생마다 지금 글(고른 후보, 없으면 가운데 후보) — 넣은 글은 고른 글(다 씀)로 */
+const HK_NEIS_SRC = {
+  key: 'hk', what: '행특', field: '행동특성 및 종합의견', title: '행동특성',
+  text: id => { const s = hkStudent(id), r = s && hkCurRes(s); return r ? r.t : ''; },
+  no: id => { const s = hkStudent(id); return s ? s.no : 0; },
+  mark: id => { const s = hkStudent(id), r = s && hkCurRes(s); if (r && r.t) { r.d = 1; s.done = 1; } },
+  saved: () => { HKStore.save(); if (S.mode === 'hk') { renderHKList(); renderHKEditor(); } }
+};
+/* [고치기]: 고칠 문장 하나를 근거로 다시 씀(AI 한 문장, 이름은 가려 보냄) · [이 근거로 문장 더하기]: 근거 하나로 끝에 한 문장.
+   AI가 바꾼 글은 고른 글 표시(다 씀)를 지움([조금 길게]처럼) — 나이스에 넣은 글과 달라졌으니 */
+async function hkOneSentence(s, ci, { row = -1, add = '' } = {}) {
+  const R = REC(), r = s && s.results[ci];
+  if (!R || !r || r.busy || HK.busyRow || HK.running.has(s.id)) return;
+  if (!engineReady()) { openSettings(); return; }
+  const list = hkEvMerged(s, r), rr = R.sentenceRows(r.t, r.ev, { limit: hkLimit(), dups: hkDups() });
+  const x = row >= 0 ? rr.rows[row] : null, target = add ? list.find(e => e.id === add) : null;
+  if ((row >= 0 && !x) || (add && !target)) return;
+  HK.busyRow = { id: s.id, row, add }; renderHKEditor();
+  const before = r.t;
+  try {
+    const prompt = R.sentencePrompt({ mode: add ? 'add' : 'fix', field: 'hk', text: r.t, sentence: x ? x.t : '', target, list, da: HK.settings.ending === 'da',
+      why: x ? [...(x.none ? ['이 문장을 받치는 근거가 없어요'] : []), ...x.issues.map(i => i.why)] : [] });
+    const out = await generate(prompt, { fresh: true, task: 'writing' });
+    const one = R.normOne(out.text, list);
+    if (!one) throw { code: 'empty_completion' };
+    if (r.t !== before || !s.results.includes(r)) return; // 그새 글이 바뀜
+    if (add && !one.src.length) one.src = [add];
+    const ev = rr.known ? { ...(r.ev || {}), list } : r.ev;
+    const o = add ? R.appendSentence(r.t, ev, one) : R.replaceSentence(r.t, ev, row, [one]);
+    r.t = o.t; if (o.ev) r.ev = o.ev;
+    delete r.rv; r.d = 0; if (!s.results.some(y => y.d)) s.done = 0;
+    toast(add ? '근거로 문장을 더했어요' : '문장을 고쳤어요');
+  } catch (e) { toast(errMsg((e && e.code) || 'upstream_error', e), 4500); }
+  finally { HK.busyRow = null; HKStore.save(); renderHKEditor(); renderHKList(); }
+}
+
 /* ---------- 프롬프트 ---------- */
 function hkEndRule() {
   return HK.settings.ending === 'da'
@@ -3239,20 +3512,20 @@ function renderHKList() {
       <div class="row" style="justify-content:center"><input class="field num sm" id="hkCount" type="number" min="1" max="60" value="25" aria-label="학생 수"><button class="btn primary" type="button" data-hk="roster">칸 만들기</button></div></div>`;
     return;
   }
-  const shown = hkShown();
-  const doneN = shown.filter(s => s.done).length;
+  const R = REC();
+  if (!R) { box.innerHTML = '<div class="skel" style="height:200px"></div>'; return; } // 글 쓰기 틀이 준비되면(ssam:record-ready) 다시 그림
+  const shown = hkShown(), dups = hkDups();
+  const sts = shown.map(s => [s, hkState(s, dups)]);
   const memoN = shown.filter(s => s.memo && s.memo.trim()).length;
-  box.innerHTML = `<div class="head"><h2>학생</h2><span class="muted num">완료 ${doneN} / ${shown.length}</span></div>
-    <div class="row"><button class="btn primary" type="button" data-hk="all" ${memoN ? '' : 'disabled'}>메모 있는 학생 모두 만들기</button><button class="btn" type="button" data-hk="bulk">한꺼번에 넣기</button></div>
-    ${HK.err ? `<div class="banner err"><span class="grow">${esc(HK.err)}</span><button class="btn" type="button" data-act="settings">평어 쓰는 방식</button></div>` : ''}
-    <ul class="hk-students">${shown.map(s => {
-      const [k, label] = hkStatus(s);
-      return `<li><button type="button" class="hk-stu ${k}" data-hkstu="${esc(s.id)}" aria-current="${s.id === HK.sel}">
-        <span class="no num">${s.no}</span>
-        <span class="mid"><b>${esc(s.label || s.no + '번')}</b><small>${esc((s.memo || '').trim().slice(0, 40) || '메모를 넣어 주세요')}</small></span>
-        <span class="st">${k === 'run' || k === 'wait' ? '<span class="spin"></span>' : k === 'done' ? ICON.check : ''}${label}</span></button></li>`;
-    }).join('')}</ul>
-    <div class="row" style="justify-content:space-between"><button class="btn text" type="button" data-hk="addOne">${ICON.plus}학생 더하기</button><span class="row"><button class="btn text" type="button" data-eval-check="hk">기재 점검</button><button class="btn" type="button" data-hk="copyAll">${ICON.copy}완료한 글 모두 복사</button><button class="btn text" type="button" data-hk="reset" style="color:var(--err)">새로 시작</button></span></div>`;
+  // 생활기록부 글 쓰기 틀(스펙 2026-11-14-eval-redesign §6): 번호 · 다 씀/초안/고칠 곳(쓰는 중·메모 있음/없음)
+  box.innerHTML = R.listHTML({
+    items: sts.map(([s, st]) => ({ attr: `data-hkstu="${esc(s.id)}"`, no: s.no, sub: s.label || '', st, cur: s.id === HK.sel, busy: st.k === 'run' || st.k === 'wait', cls: 'hk-stu' })),
+    doneN: shown.filter(s => s.done).length, fixN: sts.filter(([, st]) => st.k === 'fix').length, total: shown.length,
+    top: `<div class="rw-ltools"><button class="btn primary" type="button" data-hk="all" ${memoN ? '' : 'disabled'}>메모 있는 학생 모두 만들기</button><button class="btn" type="button" data-hk="bulk">한꺼번에 넣기</button></div>
+      ${HK.err ? `<div class="banner err"><span class="grow">${esc(HK.err)}</span><button class="btn" type="button" data-act="settings">평어 쓰는 방식</button></div>` : ''}`,
+    bottom: `<div class="rw-lfoot"><button class="btn text" type="button" data-hk="addOne">${ICON.plus}학생 더하기</button><button class="btn text" type="button" data-eval-check="hk">기재 점검</button>
+      <button class="btn" type="button" data-hk="copyAll">${ICON.copy}다 쓴 글 모두 복사</button><button class="btn text" type="button" data-hk="reset" style="color:var(--err)">새로 시작</button></div>`
+  });
 }
 /* 특성 단추: 묶음(생활·학습·관계·특기·성장 중)마다 접기. 처음엔 첫 묶음만 펼침, 펼치고 접은 것은 이번 실행 동안 기억.
    묶음 머리에 이 학생 메모에 들어 있는 특성 수(「생활 · 2개 골랐어요」) — 메모를 쉼표·줄로 나눈 조각이 단추 글과 같으면 고른 것 */
@@ -3285,48 +3558,78 @@ function renderHKEditor() {
   const box = $('#hkEditor'); if (!box) return;
   const s = hkStudent(HK.sel);
   if (!s) { box.innerHTML = HK.students.length ? `<div class="empty"><h3>학생을 골라 주세요</h3></div>` : ''; return; }
+  const R = REC();
+  if (!R) { box.innerHTML = '<div class="skel" style="height:200px"></div>'; return; }
   const busy = HK.running.has(s.id) || HK.queue.includes(s.id);
   const memoFocused = document.activeElement && document.activeElement.id === 'hkMemo';
   const labelFocused = document.activeElement && document.activeElement.id === 'hkLabel';
-  const res = (s.results || []).map((r, i) => {
-    const cur = r.draft != null ? r.draft : r.t;
-    const ok = rangeOk(cur);
-    return `<div class="hk-res ${r.d ? 'done' : ''}${rvOpen(r) ? ' rv-mark' : ''}" data-ri="${i}">
-      ${r.edit ? `<textarea class="field hk-edit" data-edit="${i}" rows="7">${esc(cur)}</textarea>`
-        : `<div class="hk-text" role="button" tabindex="0" data-pick="${i}" aria-label="${r.d ? '사용함. ' : ''}눌러서 복사">${r.d ? ICON.check : ''}${esc(r.t)}</div>`}
-      ${hkEvHTML(r, s, i)}
-      <div class="hk-meta">
-        <span class="cnt ${ok ? 'ok' : 'warn'} num">${hkCountLabel(cur)}</span>
-        <span class="right">
-          ${r.busy ? '<span class="spin"></span>' : ''}
-          <button class="btn" type="button" data-hkr="edit" data-i="${i}">${r.edit ? '고친 내용 저장' : '고치기'}</button>
-          <button class="btn" type="button" data-hkr="longer" data-i="${i}" ${r.busy ? 'disabled' : ''}>조금 길게</button>
-          <button class="btn" type="button" data-hkr="shorter" data-i="${i}" ${r.busy ? 'disabled' : ''}>조금 짧게</button>
-          <button class="icon-btn" type="button" data-hkr="del" data-i="${i}" aria-label="이 글 지우기" title="이 글 지우기">${ICON.x}</button>
-        </span>
-      </div>
-      ${r.edit ? '' : rvInline(r, ['hk', s.id, i].map(encodeURIComponent).join(':'), `후보 ${i + 1}`)}
-    </div>`;
-  }).join('');
+  // 생활기록부 글 쓰기 틀(스펙 2026-11-14-eval-redesign §6): 가운데 지금 글(고른 후보, 없으면 첫 후보)을 문장마다 근거와 함께,
+  // 고칠 곳(근거 없음·기재 점검 규칙·같은 문장)은 주황 + [고치기]·[문장 빼기], 아래 글자 수·[AI로 다시 쓰기]·[나이스 차례로 복사]·[다음 학생]. 다른 후보는 아래 작게
+  const ci = hkCur(s), r = ci >= 0 ? s.results[ci] : null, next = hkNext(s);
+  const rr = r ? R.sentenceRows(r.t, r.ev, { limit: hkLimit(), dups: hkDups() }) : null;
+  const picked = [...hkKwPicked(s)].filter(k => KW_GROUPS.some(([, ks]) => ks.includes(k)));
+  const chips = `${picked.slice(0, 6).map(k => `<span class="ev-chip done">${esc(k)}</span>`).join('')}<button type="button" class="rw-chip-add" data-hk="traits">특성 더하기</button>`;
+  const who = `<span class="badge num">${s.no}</span>번`;
+  const gen = label => `<button class="btn${r ? '' : ' primary'}" type="button" data-hk="gen" ${busy ? 'disabled' : ''}>${busy ? '<span class="spin"></span>쓰는 중' : label}</button>`;
+  const rowBusy = HK.busyRow && HK.busyRow.id === s.id ? HK.busyRow : null;
+  let art;
+  if (r) {
+    const cur = r.draft != null ? r.draft : r.t, key = ['hk', s.id, ci].map(encodeURIComponent).join(':');
+    const acts = i => `<button type="button" class="ev-turn-btn rw-fix" data-hkrow="fix" data-row="${i}" ${rowBusy || r.busy || busy ? 'disabled' : ''}>${rowBusy && rowBusy.row === i ? '<span class="spin"></span>고치는 중' : '고치기'}</button><button type="button" class="btn rw-del" data-hkrow="del" data-row="${i}" ${rowBusy || r.busy ? 'disabled' : ''}>문장 빼기</button>`;
+    art = R.articleHTML({
+      cls: `hk-res${r.d ? ' done' : ''}${rvOpen(r) ? ' rv-mark' : ''}`, attrs: `data-ri="${ci}"`, headCls: 'hk-top', where: '행동특성 및 종합의견', who, chips,
+      seg: s.results.length > 1 || r.d ? `<p class="rw-cand ev-sub">후보 ${ci + 1}${s.results.length > 1 ? ` / ${s.results.length}` : ''}${r.d ? ' · <b>고른 글</b>(복사함)' : ''}</p>` : '',
+      note: rr.edited && !r.edit ? '<p class="evd-edit rw-note"><b>고친 글</b> · 근거는 처음 쓴 글 기준이에요</p>' : '',
+      body: r.edit ? `<textarea class="field hk-edit" data-edit="${ci}" rows="7" aria-label="${s.no}번 글 고치기">${esc(cur)}</textarea>`
+        : `<div class="hk-text rw-text" tabindex="-1">${R.rowsHTML({ rows: rr.rows, list: r.ev ? hkEvMerged(s, r) : [], key: `hk:${s.id}:${ci}`, label: `${s.no}번 문장`, acts })}</div>`,
+      after: r.edit ? '' : rvInline(r, key, `후보 ${ci + 1}`),
+      foot: R.footHTML({ n: measure(cur), max: HK.settings.max, unit: unitWord(), detail: hkCountDiff(cur), warn: !rangeOk(cur),
+        acts: `${gen('AI로 다시 쓰기')}<button class="btn" type="button" data-hk="neis">나이스 차례로 복사</button>${next ? `<button class="btn dark" type="button" data-hk="next">다음 학생 ${next.no}번</button>` : ''}` }),
+      tools: `<span class="cnt ${rangeOk(cur) ? 'ok' : 'warn'} num">${hkCountLabel(cur)}</span><span class="rw-grow"></span>${r.busy ? '<span class="spin"></span>' : ''}
+        <button class="btn" type="button" data-pick="${ci}" aria-label="${s.no}번 글 복사하고 다 씀으로">${r.d ? ICON.check + '다시 복사' : ICON.copy + '복사하고 다 씀'}</button>
+        <button class="btn" type="button" data-hkr="edit" data-i="${ci}">${r.edit ? '고친 내용 저장' : '직접 고치기'}</button>
+        <button class="btn" type="button" data-hkr="longer" data-i="${ci}" ${r.busy ? 'disabled' : ''}>조금 길게</button>
+        <button class="btn" type="button" data-hkr="shorter" data-i="${ci}" ${r.busy ? 'disabled' : ''}>조금 짧게</button>
+        <button class="icon-btn" type="button" data-hkr="del" data-i="${ci}" aria-label="이 후보 지우기" title="이 후보 지우기">${ICON.x}</button>`
+    });
+  } else {
+    art = R.articleHTML({ cls: 'rw-empty', headCls: 'hk-top', where: '행동특성 및 종합의견', who, chips,
+      body: busy ? '<div class="skel" style="height:120px"></div>' : `<p class="rw-emptyp">${s.memo && s.memo.trim() ? '메모와 특성으로 글을 써요. 문장마다 어느 메모에서 왔는지 근거가 붙어요.' : '아래에 관찰 메모를 넣거나 특성 단추를 눌러 주세요.'}</p>`,
+      foot: `<span class="rw-grow"></span><span class="rw-acts">${gen(ICON.spark + '행특 만들기')}</span>` });
+  }
+  // 다른 후보: 누르면 그 후보를 가운데에(검토 의견이 있으면 표시)
+  const alts = (s.results || []).map((x, i) => (i === ci ? '' : `<li class="hk-res rw-alt${x.d ? ' done' : ''}" data-ri="${i}"><button type="button" class="hk-text rw-alt-t" data-hkcand="${i}">
+      <span class="rw-alt-h">후보 ${i + 1}${x.d ? ' · 고른 글' : ''}${rvOpen(x) ? ' · <span class="ev-chip turn-soft">검토 의견</span>' : ''}<span class="num">${charCount(x.t)}자</span></span><span class="rw-alt-p">${esc(x.t)}</span></button></li>`)).join('');
+  const list = r && r.ev ? hkEvMerged(s, r) : hkEvList(s);
+  const side = R.sideHTML({ who: `${s.no}번`, from: list.length ? `관찰 메모 ${list.length}` : '', uses: R.evidenceUse(list, rr && rr.known ? rr.rows : []), known: !!(rr && rr.known && !r.edit),
+    addAttr: r && !busy && !r.edit ? e => `data-hkadd="${esc(e.id)}"` : null, busy: rowBusy && rowBusy.add ? rowBusy.add : (rowBusy || (r && r.busy) ? 'x' : ''),
+    note: r && rr && !rr.known ? '<p class="ev-sub rw-evnote">이 글은 문장마다 근거를 맞추지 않았어요. [AI로 다시 쓰기]를 누르면 근거가 붙어요.</p>' : '',
+    empty: '메모를 넣으면 메모 조각이 근거가 돼요', ai: 'AI에는 이름 없이 메모 조각만 보내요.' });
   box.innerHTML = `
     <button class="btn text back" type="button" data-hk="back">${ICON.back}학생 목록</button>
-    <div class="hk-top"><span class="badge num">${s.no}</span>
-      <input class="field" id="hkLabel" value="${esc(s.label || '')}" placeholder="${s.no}번 · 별칭 (이름은 쓰지 마세요)" autocomplete="off">
-      ${s.done ? `<span class="chip done">${ICON.check}완료</span>` : ''}</div>
-    <label class="lab" for="hkMemo">교사 메모 · 단어나 짧은 문장 <span class="muted">(이름은 쓰지 마세요)</span></label>
-    <textarea class="field" id="hkMemo" rows="4" placeholder="예) 1인 1역(우유 당번) 한 학기 동안 성실, 친구가 다치면 먼저 도와줌, 발표할 때 목소리가 작았는데 2학기에 자신감 생김, 수학 문제를 끝까지 풀려고 함">${esc(s.memo || '')}</textarea>
-    ${hkKwHTML(s)}
-    <div class="row">
-      <button class="btn primary" type="button" data-hk="gen" ${busy ? 'disabled' : ''}>${busy ? '<span class="spin"></span>쓰는 중' : ICON.spark + (s.results && s.results.length ? '새 후보 만들기' : '행특 만들기')}</button>
-      <span class="muted num">후보 ${HK.settings.variants}개 · ${HK.settings.min}~${HK.settings.max}${unitWord()}${engineReady() ? ' · ' + esc(engineName()) : ''}</span>
-    </div>
-    ${uiAiNote('교사 메모(붙여넣은 이름 칸은 빼고)와 학년을 보내요. 번호·별칭은 보내지 않아요.')}
-    ${s.err ? `<div class="banner err"><span class="grow">${esc(s.err)}</span></div>` : ''}${s.rvErr ? RV_FAIL_HTML : ''}
-    ${!engineReady() ? `<div class="banner info"><span class="grow">글을 만들 AI를 먼저 정해 주세요.</span><button class="btn primary" type="button" data-act="settings">API 키 넣기</button></div>` : ''}
-    <div class="hk-results">${res || (busy ? '<div class="skel" style="height:120px"></div>' : '')}</div>
-    ${res ? '<p class="muted">글을 누르면 복사되고 완료로 표시돼요.</p>' : ''}`;
+    <div class="rw-grid"><div class="rw-main">
+    ${art}
+    ${alts ? `<section class="rw-alts" aria-label="다른 후보"><h4>다른 후보</h4><ul>${alts}</ul></section>` : ''}
+    <section class="rw-memo ev-card" aria-label="${s.no}번 메모">
+      <div class="rw-memo-h"><label class="lab" for="hkMemo">교사 메모 · 단어나 짧은 문장 <span class="muted">(이름은 쓰지 마세요)</span></label>
+        <input class="field rw-alias" id="hkLabel" value="${esc(s.label || '')}" placeholder="${s.no}번 · 별칭 (이름은 쓰지 마세요)" autocomplete="off" aria-label="${s.no}번 별칭"></div>
+      <textarea class="field" id="hkMemo" rows="4" placeholder="예) 1인 1역(우유 당번) 한 학기 동안 성실, 친구가 다치면 먼저 도와줌, 발표할 때 목소리가 작았는데 2학기에 자신감 생김, 수학 문제를 끝까지 풀려고 함">${esc(s.memo || '')}</textarea>
+      ${hkKwHTML(s)}
+      <p class="muted num rw-memo-info">후보 ${HK.settings.variants}개 · ${HK.settings.min}~${HK.settings.max}${unitWord()}${engineReady() ? ' · ' + esc(engineName()) : ''}</p>
+      ${uiAiNote('교사 메모(붙여넣은 이름 칸은 빼고)와 학년을 보내요. 번호·별칭은 보내지 않아요.')}
+      ${s.err ? `<div class="banner err"><span class="grow">${esc(s.err)}</span></div>` : ''}${s.rvErr ? RV_FAIL_HTML : ''}
+      ${!engineReady() ? `<div class="banner info"><span class="grow">글을 만들 AI를 먼저 정해 주세요.</span><button class="btn primary" type="button" data-act="settings">API 키 넣기</button></div>` : ''}
+    </section>
+    </div><aside class="rw-side" aria-label="${s.no}번 근거">${side}</aside></div>`;
   if (memoFocused) { const m = $('#hkMemo'); m.focus(); m.selectionStart = m.selectionEnd = m.value.length; }
   if (labelFocused) $('#hkLabel').focus();
+}
+/* 다음 학생(명단 차례) */
+function hkNext(s) { const l = hkShown(), i = l.indexOf(s); return i >= 0 && i < l.length - 1 ? l[i + 1] : null; }
+/* 글자 수 줄의 자세히: 범위 안 · n자 모자람 · n자 넘침 */
+function hkCountDiff(t) {
+  const n = measure(t);
+  return n < HK.settings.min ? `${(HK.settings.min - n).toLocaleString()}${unitWord()} 모자람` : n > HK.settings.max ? `${(n - HK.settings.max).toLocaleString()}${unitWord()} 넘침` : '범위 안';
 }
 
 /* ---------- 이벤트 ---------- */
@@ -3364,6 +3667,22 @@ document.addEventListener('click', e => {
     });
     return;
   }
+  // 생활기록부 글 쓰기 틀: 다른 후보 보기 · 문장 고치기/빼기 · 근거로 문장 더하기
+  const cand = t.closest('[data-hkcand]');
+  if (cand) { const s = hkStudent(HK.sel); if (s && s.results[+cand.dataset.hkcand]) { HK.cand[s.id] = +cand.dataset.hkcand; renderHKEditor(); const a = $('#hkEditor .rw-art'); if (a) a.scrollIntoView({ block: 'nearest' }); } return; }
+  const rowb = t.closest('[data-hkrow]');
+  if (rowb && !rowb.disabled) {
+    const s = hkStudent(HK.sel), ci = s ? hkCur(s) : -1, r = ci >= 0 ? s.results[ci] : null, i = +rowb.dataset.row;
+    if (!r || !REC()) return;
+    if (rowb.dataset.hkrow === 'fix') { hkOneSentence(s, ci, { row: i }); return; }
+    // 문장 빼기: 손으로 고친 것과 같게(고른 글 표시는 그대로). 마지막 문장을 빼면 그 후보를 지움
+    const o = REC().removeSentence(r.t, r.ev, i);
+    if (!o.t) { s.results.splice(ci, 1); delete HK.cand[s.id]; if (!s.results.some(x => x.d)) s.done = 0; }
+    else { r.t = o.t; if (o.ev) r.ev = o.ev; delete r.rv; }
+    HKStore.save(); renderHKEditor(); renderHKList(); toast('문장을 뺐어요'); return;
+  }
+  const addb = t.closest('[data-hkadd]');
+  if (addb && !addb.disabled) { const s = hkStudent(HK.sel); if (s && hkCur(s) >= 0) hkOneSentence(s, hkCur(s), { add: addb.dataset.hkadd }); return; }
   const rb = t.closest('[data-hkr]');
   if (rb) {
     const s = hkStudent(HK.sel); const i = +rb.dataset.i; const r = s && s.results[i]; if (!r) return;
@@ -3372,7 +3691,7 @@ document.addEventListener('click', e => {
       if (r.edit) { const v = r.draft != null ? r.draft : r.t, nt = v.replace(/\s*\n+\s*/g, ' ').trim(); if (nt !== r.t) delete r.rv; r.t = nt; delete r.draft; delete r.edit; HKStore.save(); renderHKList(); }
       else r.edit = 1;
       renderHKEditor(); if (r.edit) { const ta = document.querySelector(`[data-edit="${i}"]`); ta && ta.focus(); }
-    } else if (a === 'del') { s.results.splice(i, 1); if (!s.results.some(x => x.d)) s.done = 0; HKStore.save(); renderHKEditor(); renderHKList(); }
+    } else if (a === 'del') { s.results.splice(i, 1); delete HK.cand[s.id]; if (!s.results.some(x => x.d)) s.done = 0; HKStore.save(); renderHKEditor(); renderHKList(); }
     else hkAdjust(s.id, i, a);
     return;
   }
@@ -3387,6 +3706,14 @@ document.addEventListener('click', e => {
     renderHK();
   }
   else if (act === 'back') { HK.showEditor = false; $('#hkView').classList.remove('show-pane'); }
+  else if (act === 'next') {
+    const s = hkStudent(HK.sel), n = s && hkNext(s); if (!n) return;
+    HK.sel = n.id; renderHKList(); renderHKEditor();
+    const b = document.querySelector(`#hkList [data-hkstu="${CSS.escape(n.id)}"]`); if (b) b.scrollIntoView({ block: 'nearest' });
+    const top = $('#hkEditor'); if (top) top.scrollTop = 0;
+  }
+  else if (act === 'neis') neisCopyAll(HK_NEIS_SRC, hkShown().map(s => s.id));
+  else if (act === 'traits') { const g = document.querySelector('#hkEditor .kw-groups'); if (g) { g.scrollIntoView({ block: 'center', behavior: 'smooth' }); const sm = g.querySelector('summary'); if (sm) sm.focus({ preventScroll: true }); } }
   else if (act === 'gen') {
     const s = hkStudent(HK.sel); if (!s) return;
     if (!s.memo || !s.memo.trim()) { toast('메모를 먼저 넣어 주세요'); $('#hkMemo') && $('#hkMemo').focus(); return; }
@@ -3420,7 +3747,13 @@ document.addEventListener('input', e => {
   const ed = e.target.closest && e.target.closest('[data-edit]');
   if (ed && s) {
     const r = s.results[+ed.dataset.edit];
-    if (r) { r.draft = ed.value; const c = ed.closest('.hk-res').querySelector('.cnt'); c.textContent = hkCountLabel(r.draft); c.className = 'cnt num ' + (rangeOk(r.draft) ? 'ok' : 'warn'); }
+    if (r) {
+      r.draft = ed.value;
+      const box = ed.closest('.hk-res'), c = box && box.querySelector('.cnt'), n = box && box.querySelector('.rw-count .ev-num'), d = box && box.querySelector('.rw-cdet');
+      if (c) { c.textContent = hkCountLabel(r.draft); c.className = 'cnt num ' + (rangeOk(r.draft) ? 'ok' : 'warn'); }
+      if (n) n.textContent = measure(r.draft).toLocaleString();
+      if (d) { d.textContent = hkCountDiff(r.draft); d.classList.toggle('warn', !rangeOk(r.draft)); }
+    }
   }
   if (e.target.id === 'hkLabel' && s) { s.label = e.target.value.trim(); HKStore.save(); clearTimeout(HK.lt); HK.lt = setTimeout(renderHKList, 400); }
 });
@@ -4523,8 +4856,142 @@ function grStatusChip(s) {
     run: '<span class="chip run"><span class="spin"></span>채점 중</span>', err: '<span class="chip err">오류</span>', done: ''
   }[s.status] || '';
 }
+/* ---------- 채점 확인 — 판단을 미룬 것만 하나씩 (스펙 2026-11-14-eval-redesign §4, 공통 모양 eval-ui.css .ev-rv) ----------
+   볼 학생은 한눈에 「선생님 차례」와 같은 규칙(record-model grReviewItems ← eval-stage grPending). 학생마다 볼 것:
+   read(알아보기 어려움 → 수준 정하기) · score(검토 AI 점수와 10점 넘게 다름) · text(검토 AI가 고친 평어).
+   정하기는 지금 결과 화면과 같은 함수(grSetLevel · GR_RV.handle · rvDecide). ← → 는 이 화면 안에 초점이 있을 때만 */
+const GR_RV_KIND = { read: '알아보기 어려움', score: '점수 다시 보기', text: '평어 검토' };
+function grRvItems() { const R = REC(); return R ? R.grReviewItems(GR.students) : []; }
+function grRvOpen() {
+  const items = grRvItems();
+  if (!items.length) { toast('확인할 것이 없어요'); GR.rvw = null; renderGRResults(); return false; }
+  GR.rvw = { items, at: 0, done: [] };
+  GR.showRes = true; const v = $('#grView'); if (v) v.classList.add('show-pane');
+  renderGRResults(); grRvFocus();
+  return true;
+}
+function grRvClose() { GR.rvw = null; renderGR(); const b = $('#grResults [data-grrv="open"]') || $('#grResults .gr-top h2'); if (b && b.focus) b.focus({ preventScroll: true }); }
+const grRvKey = x => `${x.id}:${x.kind}`;
+// 그 칸이 아직 정할 것인지(다른 곳에서 정했으면 끝난 칸)
+function grRvOpenItem(x) {
+  const s = grStudent(x.id);
+  if (!s) return false;
+  return x.kind === 'read' ? !!(s.unreadable && !s.manual) : x.kind === 'score' ? !!(s.rv && !s.rv.done) : !!(s.trv && !s.trv.done);
+}
+function grRvGo(i) { const r = GR.rvw; if (!r) return; r.at = Math.max(0, Math.min(r.items.length, i)); renderGRResults(); grRvFocus(); }
+function grRvFocus() { setTimeout(() => { const el = $('#grResults .ev-rv-item[aria-current="true"]') || $('#grResults .gr-rvw-end button') || $('#grResults .gr-rvw'); if (el) el.focus({ preventScroll: true }); }, 0); }
+/* 정한 뒤: 이 칸을 끝으로 두고 다음 안 끝난 칸으로(없으면 끝 화면) */
+function grRvNext() {
+  const r = GR.rvw; if (!r) return;
+  const cur = r.items[r.at];
+  if (cur && !r.done.includes(grRvKey(cur))) r.done.push(grRvKey(cur));
+  const left = i => r.items[i] && grRvOpenItem(r.items[i]) && !r.done.includes(grRvKey(r.items[i]));
+  let n = -1;
+  for (let k = 1; k <= r.items.length; k++) { const i = (r.at + k) % r.items.length; if (left(i)) { n = i; break; } }
+  r.at = n < 0 ? r.items.length : n;
+  renderGRResults(); grRvFocus();
+}
+function grRvDecide(x, how) {
+  const s = grStudent(x.id); if (!s) return;
+  if (x.kind === 'read') grSetLevel(s, how);
+  else if (x.kind === 'score') GR_RV.handle('grs:' + encodeURIComponent(s.id), how === 'review');
+  else rvDecide('gr:' + encodeURIComponent(s.id), how === 'review');
+  grRvNext();
+}
+function grRvHTML() {
+  const r = GR.rvw, act = grActive(), x = r.items[r.at];
+  const title = grUnit() ? (grUnit().elem || grUnit().unit) : (GR.title || '수행평가');
+  const need = new Set(r.items.map(i => i.id)), auto = act.filter(s => s.status === 'done' && !need.has(s.id)).length;
+  const left = r.items.filter(i => grRvOpenItem(i) && !r.done.includes(grRvKey(i))).length;
+  const list = r.items.map((it, i) => {
+    const done = r.done.includes(grRvKey(it)) || !grRvOpenItem(it);
+    return `<button type="button" class="ev-rv-item${done ? ' done' : ''}" data-grrv-go="${i}" aria-current="${i === r.at}"><span><b class="ev-num">${it.no > 0 ? it.no + '번' : '번호 없음'}</b> · ${GR_RV_KIND[it.kind]}${done ? ' · 정함' : ''}</span></button>`;
+  }).join('');
+  let main, side;
+  if (!x) {
+    main = `<div class="ev-card gr-rvw-end"><p class="ev-h">다 확인했어요</p><p class="ev-sub">쌤비서가 판단을 미룬 ${r.items.length}개를 모두 봤어요. 정한 수준·점수·평어는 결과에 그대로 저장했어요.</p>
+      <div class="row"><button class="btn primary" type="button" data-grrv="close">결과 보기</button>${r.items.length ? '<button class="btn" type="button" data-grrv-go="0">처음부터 다시 보기</button>' : ''}</div></div>`;
+    side = '';
+  } else {
+    const s = grStudent(x.id) || {}, open = grRvOpenItem(x), c = (grUnit() && grUnit().crit) || {};
+    const scan = s.pages && s.pages.length ? `<button class="btn" type="button" data-grview1="${esc(s.id)}">스캔 원본</button>` : '';
+    const ev = (s.evidence || []).length ? `<ul class="gr-rvw-ev">${s.evidence.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : '';
+    const fb = [s.strengths && s.strengths !== '-' ? `<p><b>잘한 점</b> ${esc(s.strengths)}</p>` : '', s.improve && s.improve !== '-' ? `<p><b>보완할 점</b> ${esc(s.improve)}</p>` : ''].join('');
+    main = `<article class="ev-card gr-rvw-card" aria-label="${s.no}번">
+        <div class="ev-rv-q"><div><span class="ev-sub">${s.no > 0 ? s.no + '번' : '번호 없음'} · ${s.score ?? '-'}점${s.level ? ' · ' + LVNAME[s.level] : ''}${s.manual ? ' · 직접 정함' : ''}</span>
+          <b class="gr-rvw-what">${x.kind === 'text' ? '검토 AI가 평어에서 고칠 곳을 찾았어요' : '쌤비서가 읽은 학생 답'}</b></div>${scan}</div>
+        <div class="ev-rv-answer">${esc(x.kind === 'text' ? (s.text || '') : (s.summary || '읽은 내용이 없어요'))}</div>
+        ${x.kind === 'text' ? '' : ev ? `<div class="gr-rvw-sub"><span class="ev-sub">답에서 찾은 근거</span>${ev}</div>` : ''}
+        ${!scan && x.kind !== 'text' ? '<p class="ev-sub gr-rvw-sub">스캔은 저장하지 않아서 지난 기록에서는 원본을 볼 수 없어요.</p>' : ''}
+      </article>
+      ${fb && x.kind !== 'text' ? `<section class="ev-card gr-rvw-fb" aria-label="피드백"><span class="ev-sub">${s.no}번에게 줄 피드백</span>${fb}</section>` : ''}`;
+    let opts = '', why = '', btns = '';
+    if (x.kind === 'read') {
+      opts = `<h3 class="ev-h">수준 기준</h3>${LV.map(l => `<button type="button" class="ev-rv-opt${l.k === s.level ? ' ai' : ''}" data-grrv-pick="${l.k}" aria-pressed="${!!(s.manual && l.k === s.level)}"${open ? '' : ' disabled'}>
+        <span class="ev-num">${l.name}</span><span><b>${l.name}</b>${l.k === s.level ? ' <span class="gr-rvw-ai">쌤비서 생각</span>' : ''}${c[l.k] ? `<span class="gr-rvw-crit">${esc(c[l.k])}</span>` : ''}</span></button>`).join('')}`;
+      why = '글씨를 알아보기 어려워 점수를 확신하지 못했어요. 스캔 원본이나 읽은 내용을 보고 수준을 정해 주세요.';
+      btns = `<button class="ev-turn-btn" type="button" data-grrv-pick="${esc(s.level || 'mid')}"${open ? '' : ' disabled'}>${LVNAME[s.level] || '중'}(으)로 정하기</button>`;
+    } else if (x.kind === 'score') {
+      const rv = s.rv || {};
+      opts = `<h3 class="ev-h">두 AI의 점수</h3>
+        <button type="button" class="ev-rv-opt ai" data-grrv-pick="main"${open ? '' : ' disabled'}><span class="ev-num">${s.score ?? '-'}</span><span><b>채점 AI</b> <span class="gr-rvw-ai">쌤비서 생각</span><span class="gr-rvw-crit">${esc(s.summary || '')}</span></span></button>
+        <button type="button" class="ev-rv-opt" data-grrv-pick="review"${open ? '' : ' disabled'}><span class="ev-num">${rv.score ?? '-'}</span><span><b>검토 AI</b><span class="gr-rvw-crit">${esc(rv.summary || '')}</span></span></button>`;
+      why = `두 AI의 점수가 10점 넘게 달라요(${s.score ?? '-'}점 · ${rv.score ?? '-'}점). 학생 답을 보고 어느 점수로 할지 정해 주세요. 검토 점수를 쓰면 수준을 다시 나눠요.`;
+      btns = `<button class="ev-turn-btn" type="button" data-grrv-pick="main"${open ? '' : ' disabled'}>${s.score ?? '-'}점으로 정하기</button><button class="btn gr-rvw-alt" type="button" data-grrv-pick="review"${open ? '' : ' disabled'}>${rv.score ?? '-'}점으로</button>`;
+    } else {
+      const t = s.trv || {};
+      opts = `<h3 class="ev-h">평어</h3>
+        <button type="button" class="ev-rv-opt ai" data-grrv-pick="main"${open ? '' : ' disabled'}><span class="ev-num">지금</span><span><b>지금 평어</b> <span class="gr-rvw-ai">쌤비서 생각</span><span class="gr-rvw-crit">${esc(s.text || '')}</span></span></button>
+        <button type="button" class="ev-rv-opt" data-grrv-pick="review"${open ? '' : ' disabled'}><span class="ev-num">고침</span><span><b>검토 AI가 고친 평어</b><span class="gr-rvw-crit">${esc(t.fix || '')}</span></span></button>`;
+      why = t.problem || '검토 AI가 고칠 곳을 찾았어요.';
+      btns = `<button class="ev-turn-btn" type="button" data-grrv-pick="main"${open ? '' : ' disabled'}>지금 평어 그대로</button><button class="btn gr-rvw-alt" type="button" data-grrv-pick="review"${open ? '' : ' disabled'}>고친 평어 쓰기</button>`;
+    }
+    side = `<section class="ev-card gr-rvw-opts">${opts}</section>
+      <section class="ev-ink-card gr-rvw-think"><span class="ev-sub">${open ? '왜 미뤘나요' : '이미 정했어요'}</span><p class="ev-rv-why">${esc(why)}</p>
+        ${open ? `<div class="gr-rvw-btns">${btns}</div>` : ''}<span class="ev-rv-keys">정하면 다음 것으로 넘어가요 · ← → 로 앞뒤</span></section>`;
+  }
+  return `<div class="gr-rvw" tabindex="-1" role="region" aria-label="채점 확인">
+    <div class="gr-rvw-head"><div><span class="ev-sub">수행평가 · ${act.length}명</span><h2>「${esc(title)}」 채점 확인</h2></div>
+      <p class="ev-sub">쌤비서가 ${auto}명을 채점했어요${left ? ` · <b class="gr-rvw-turn">판단을 미룬 것 ${left}개</b>만 봐 주세요` : ''}</p>
+      <button class="btn" type="button" data-grrv="close">${ICON.back}결과로 돌아가기</button></div>
+    <div class="ev-rv">
+      <aside class="ev-rv-list" aria-label="확인할 것"><div class="ev-rv-lh"><span>확인할 것</span><span class="ev-num gr-rvw-pos">${Math.min(r.at + 1, r.items.length)} / ${r.items.length}</span></div>${list}
+        <div class="gr-rvw-auto"><span>쌤비서가 채점</span><b class="ev-num">${auto}</b></div>
+        <button class="btn" type="button" data-grrv="close">${act.filter(s => s.status === 'done').length}명 점수 훑어보기</button></aside>
+      <div class="ev-rv-main">${main}</div>
+      ${side ? `<aside class="ev-rv-side" aria-label="기준과 쌤비서 생각">${side}</aside>` : ''}
+    </div></div>`;
+}
+document.addEventListener('click', e => {
+  if (S.mode !== 'gr' || !evalShown()) return;
+  const t = e.target;
+  if (t.closest && t.closest('#grResults [data-grrv="open"]')) { grRvOpen(); return; }
+  const host = GR.rvw && t.closest && t.closest('#grResults .gr-rvw');
+  if (!host) return;
+  const c = t.closest('[data-grrv="close"]'); if (c) { grRvClose(); return; }
+  const g = t.closest('[data-grrv-go]'); if (g) { grRvGo(+g.dataset.grrvGo); return; }
+  const p = t.closest('[data-grrv-pick]');
+  if (p && !p.disabled) { const x = GR.rvw.items[GR.rvw.at]; if (x && grRvOpenItem(x)) grRvDecide(x, p.dataset.grrvPick); }
+});
+// ← → : 이 화면 안에 초점이 있을 때만(글 칸·고르기 칸에서는 그대로) — 문서 전체가 아니라 결과 칸에만 귀를 댐
+$('#grResults').addEventListener('keydown', e => {
+  if (!GR.rvw || S.mode !== 'gr' || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || e.altKey || e.ctrlKey || e.metaKey) return;
+  const t = e.target;
+  if (!t || !t.closest || !t.closest('#grResults .gr-rvw') || t.matches('input, textarea, select, [contenteditable="true"]')) return;
+  e.preventDefault();
+  const r = GR.rvw;
+  grRvGo(e.key === 'ArrowRight' ? Math.min(r.at + 1, r.items.length) : Math.max(0, r.at - 1));
+});
 function renderGRResults() {
   const box = $('#grResults'); if (!box) return;
+  const view = $('#grView'); if (view) view.classList.toggle('rvw', !!GR.rvw);
+  if (GR.rvw && REC()) {
+    // 다시 그려도(저장·다른 일로) 화면 안의 초점은 지금 칸에 그대로(← → 가 이어지게)
+    const had = box.contains(document.activeElement);
+    box.innerHTML = grRvHTML();
+    if (had) { const el = box.querySelector('.ev-rv-item[aria-current="true"]') || box.querySelector('.gr-rvw-end button') || box.querySelector('.gr-rvw'); if (el) el.focus({ preventScroll: true }); }
+    return;
+  }
   const act = grActive();
   if (!GR.students.length) {
     box.innerHTML = `<button class="btn text back" type="button" data-gr="back">${ICON.back}채점 설정</button>
@@ -4544,6 +5011,7 @@ function renderGRResults() {
     partial: `${graded}/${total}명 채점함`, done: '채점과 평어를 마쳤어요', setup: `학생 ${total}명`
   }[GR.phase] || '';
   const busy = ['grading', 'ranking', 'writing'].includes(GR.phase);
+  const rvwN = grRvItems().length; // 채점 확인 화면으로(스펙 2026-11-14-eval-redesign §4)
   let list = GR.students.slice();
   if (GR.view === 'lv' && hasLevels) list.sort((a, b) => (LV_KEYS.indexOf(a.level) - LV_KEYS.indexOf(b.level)) || ((b.score ?? -1) - (a.score ?? -1)));
   const [lo, hi] = grLength();
@@ -4555,6 +5023,7 @@ function renderGRResults() {
         ${GR.aiUse && window.SSAM_WIRE && window.SSAM_WIRE.useText(GR.aiUse) ? `<p class="muted" id="grAiUse">${GR.usedNow ? '' : '지난 채점 '}${esc(window.SSAM_WIRE.useText(GR.aiUse))}</p>` : ''}</div>
       ${busy ? `<div class="meter big"><i style="width:${GR.phase === 'grading' ? Math.round(graded / Math.max(1, total) * 100) : GR.phase === 'writing' ? Math.round(done.filter(s => s.text && !s.stale).length / Math.max(1, graded) * 100) : 100}%"></i></div>` : ''}
     </div>
+    ${rvwN && !busy ? `<div class="ev-band gr-turn" role="region" aria-label="선생님 차례"><p><b>선생님 차례 ${rvwN}개</b> · 쌤비서가 판단을 미룬 것만 하나씩 봐 주세요</p><button class="ev-turn-btn" type="button" data-grrv="open">확인할 것만 보기</button></div>` : ''}
     ${hasLevels ? `<div class="dist">${LV.map(l => `<span class="dchip ${l.cls} ${lvCount[l.k] !== tg[l.k] ? 'off' : ''}"><span class="sw"></span>${l.name} <b class="num">${lvCount[l.k]}</b><small class="num">/ ${tg[l.k]}명</small></span>`).join('')}</div>` : ''}
     <div class="tools">
       <div class="left">
@@ -4775,7 +5244,7 @@ function grNew(keepPages) {
   if (GRStore.t) { clearTimeout(GRStore.t); GRStore.write(); } // 미뤄 둔 저장은 지금 기록에 먼저
   if (neisIsGr()) neisClose();
   grStop();
-  GR.id = null; GR.createdAt = 0; GR.calibrated = false; GR.err = ''; GR._critCache = null; GR.aiUse = null; GR.meter = null; GR.usedNow = false; GR.noMaskOk = false;
+  GR.id = null; GR.createdAt = 0; GR.calibrated = false; GR.err = ''; GR._critCache = null; GR.aiUse = null; GR.meter = null; GR.usedNow = false; GR.noMaskOk = false; GR.rvw = null;
   if (!keepPages) { grFreePages(); GR.pages = []; GR.students = []; GR.settings.startNo = 1; }
   else GR.students.forEach(s => Object.assign(s, { status: 'idle', score: null, score0: null, level: null, manual: false, summary: '', evidence: [], strengths: '', improve: '', text: '', d: 0, stale: false, err: '', ev: null }));
   GR.phase = 'setup'; GR.showRes = false;
@@ -4929,9 +5398,15 @@ document.addEventListener('change', e => {
   else if (/^grR_/.test(id)) { GR.settings.ratio[id.slice(4)] = Math.max(0, Math.min(100, Math.round(+el.value || 0))); grSaveSettings(); renderGRSetup(); }
   else if (el.matches('[data-grlv]')) {
     const s = grStudent(el.dataset.grlv); if (!s) return;
-    if (s.level !== el.value) { s.level = el.value; s.manual = true; s.stale = true; GRStore.save(); renderGRResults(); grWrite([s.id]); toast(`${s.no}번을 ${LVNAME[s.level]}(으)로 옮겼어요. 평어를 다시 써요`); }
+    if (s.level !== el.value) grSetLevel(s, el.value);
   }
 });
+/* 수준 정하기(결과의 수준 고르기·채점 확인 화면이 같이 씀): 다른 수준이면 옮기고 평어를 다시 씀, 같은 수준이면 「직접 정함」으로만 */
+function grSetLevel(s, v) {
+  if (!s || !LVNAME[v]) return;
+  if (s.level === v) { if (!s.manual) { s.manual = true; GRStore.save(); renderGRResults(); } toast(`${s.no}번을 ${LVNAME[v]}(으)로 정했어요`); return; }
+  s.level = v; s.manual = true; s.stale = true; GRStore.save(); renderGRResults(); grWrite([s.id]); toast(`${s.no}번을 ${LVNAME[s.level]}(으)로 옮겼어요. 평어를 다시 써요`);
+}
 /* ---------- 전체복사 → 나이스 학생 칸에 차례로 붙여넣기 (Windows 앱) ----------
    전체복사를 누르면 앱이 Ctrl+V를 잠깐 맡아 둠. 나이스(브라우저)에서 첫 학생 칸을 누르고 Ctrl+V를 누르면
    학생마다 평어 넣기 → Tab을 정한 횟수만큼 눌러 다음 학생 칸으로 옮기기를 되풀이함.
@@ -5675,6 +6150,7 @@ function renderCCResults() {
   let body;
   if (!nos.length) body = `<div class="empty"><h3>학생 수를 먼저 넣어 주세요</h3><p>왼쪽 「학급 명단」에 학생 수와 예외 번호(전출 등)를 넣으면 번호별로 문장을 써요. 행동특성·평가지 채점과 같은 명단이에요.</p></div>`;
   else if (!acts.length) body = `<div class="empty"><h3>${info.name} 공통 활동을 넣어 주세요</h3><p>왼쪽에 활동 이름이나 내용을 넣고 「만들기」를 누르면 학생마다 다른 문장을 써요. 학생들이 쓴 학습지를 스캔해 넣으면 학생마다 학습지 내용을 살려 써요.</p></div>`;
+  else if (CHE.layout === 'one' && REC()) body = ccFrameHTML(k); // 생활기록부 글 쓰기 틀(한 명씩, 근거와)
   else body = `<ul class="gr-list cc-list ${sheetActs.length ? 'thumbs' : ''}">${nos.map((no, i) => {
       const it = A.items[no], t = ccText(k, no), st = states[i];
       const run = [...CHE.running.values()].find(r => r.k === k && r.job.nos.includes(no));
@@ -5708,7 +6184,7 @@ function renderCCResults() {
     ${upNote()}${CHE.rvErr ? RV_FAIL_HTML : ''}${CHE.reviewing ? '<p class="muted rv-busy"><span class="spin"></span> 검토 AI가 문장을 살펴보고 있어요…</p>' : ''}${rvBarHTML(nos.reduce((n, no) => { const it = A.items[no]; return n + (it && it.parts ? acts.filter(a => rvOpen(it.parts[a.id])).length : 0); }, 0))}
     ${stale && !busy ? `<div class="banner warn"><span class="grow">활동 내용이 바뀐 학생이 ${stale}명 있어요. 「만들기」를 누르면 새 활동으로 고쳐 써요. 사용함으로 표시한 학생은 그대로 둬요.</span></div>` : ''}
     ${sheetN && !busy ? `<div class="banner info"><span class="grow">학습지를 넣은 학생 ${sheetN}명은 아직 학습지 내용이 글에 들어가지 않았어요. 「남은 학생 쓰기」를 누르면 학습지를 읽고 고쳐 써요.</span></div>` : ''}
-    ${nos.length && acts.length ? `<div class="tools"><div class="left">${k === 'club' && (A.club || '').trim() ? `<span class="muted">문장 앞에 <b>(${esc(A.club.trim())})</b>를 붙여요</span>` : ''}</div>
+    ${nos.length && acts.length ? `<div class="tools"><div class="left"><div class="seg" role="group" aria-label="보기"><button type="button" data-cclayout="all" aria-pressed="${CHE.layout !== 'one'}">모두 보기</button><button type="button" data-cclayout="one" aria-pressed="${CHE.layout === 'one'}">한 명씩 근거와</button></div>${k === 'club' && (A.club || '').trim() ? `<span class="muted">문장 앞에 <b>(${esc(A.club.trim())})</b>를 붙여요</span>` : ''}</div>
       <div class="right">
         ${busy ? `<button class="btn" type="button" data-cc="stop">멈추기</button>` : `<button class="btn primary" type="button" data-cc="gen" ${need ? '' : 'disabled'}>${ICON.spark}${made ? `남은 학생 쓰기${need ? ` (${need})` : ''}` : '만들기'}</button>`}
         ${made && !busy ? `<button class="btn" type="button" data-cc="fresh">${ICON.redo}모두 다시 쓰기</button>` : ''}
@@ -5718,6 +6194,85 @@ function renderCCResults() {
       </div></div>` : ''}
     ${body}`;
 }
+
+/* ---------- 생활기록부 글 쓰기 틀 — 창체 한 명씩(스펙 2026-11-14-eval-redesign §6) ----------
+   영역(위 탭)마다 학생 한 명의 글을 문장(활동마다 한 문장)으로, 근거는 그 활동(이름 — 내용)과 학습지에서 읽은 내용(새로, AI 없이).
+   활동이 바뀌었거나 넣은 학습지를 아직 반영하지 않은 문장은 주황 + [다시 쓰기](지금 다시 쓰기와 같은 길), 기재 점검 규칙에 걸린 문장은 [고치기](AI 한 문장)·[문장 빼기].
+   아직 쓰지 않은 활동의 근거는 「아직 안 쓴 근거」 → [이 근거로 문장 더하기](그 학생 글을 활동마다 씀 — 지금 쓰기와 같은 길) */
+CHE.layout = 'all'; CHE.sel = 0;
+function ccFrameData(k) {
+  const R = REC(), A = ccArea(k), acts = ccActs(k), nos = classNos();
+  const data = new Map(nos.map(no => [no, R.ccEvidence(acts, A.items[no], { sig: ccSig, sheetNew: id => ccSheetNew(id, no, ((A.items[no] || {}).parts || {})[id]) })]));
+  const dups = R.dupKeys(nos.map(no => ({ who: no, text: data.get(no).text })));
+  const rows = no => { const d = data.get(no); return d && d.text ? R.sentenceRows(d.text, { list: d.list, sentences: d.sentences }, { dups, extra: d.extra }) : null; };
+  return { A, acts, nos, data, rows };
+}
+const ccRunning = (k, no) => [...CHE.running.values()].some(r => r.k === k && r.job.nos.includes(no)) || CHE.queue.some(j => j.k === k && j.nos.includes(no));
+function ccFrameHTML(k) {
+  const R = REC(), info = ccInfo(k), { A, acts, nos, data, rows } = ccFrameData(k);
+  if (!nos.includes(CHE.sel)) CHE.sel = nos[0];
+  const sts = nos.map(no => [no, R.recState({ text: data.get(no).text, done: !!(A.items[no] && A.items[no].d), run: ccRunning(k, no), rows: rows(no) })]);
+  const list = R.listHTML({ items: sts.map(([no, st]) => ({ attr: `data-ccsel="${no}"`, no, st, cur: no === CHE.sel, busy: st.k === 'run' })),
+    doneN: sts.filter(([, st]) => st.k === 'done').length, fixN: sts.filter(([, st]) => st.k === 'fix').length, total: nos.length });
+  const no = CHE.sel, d = data.get(no), rr = rows(no), it = A.items[no], t = ccText(k, no), next = nos[nos.indexOf(no) + 1], club = k === 'club' ? (A.club || '').trim() : '';
+  const run = ccRunning(k, no), busy = CHE.busyRow && CHE.busyRow.k === k && CHE.busyRow.no === no ? CHE.busyRow : null;
+  const acts2 = (i, r) => (r.issues.some(x => x.kind === 'stale' || x.kind === 'sheet')
+    ? `<button type="button" class="ev-turn-btn" data-ccre="${no}" ${run ? 'disabled' : ''}>다시 쓰기</button>`
+    : `<button type="button" class="ev-turn-btn rw-fix" data-ccrow="fix" data-row="${i}" ${busy || run ? 'disabled' : ''}>${busy && busy.row === i ? '<span class="spin"></span>고치는 중' : '고치기'}</button><button type="button" class="btn rw-del" data-ccrow="del" data-row="${i}" ${busy || run ? 'disabled' : ''}>문장 빼기</button>`);
+  let shot = null;
+  for (const a of acts) { const pg = CHE.sheets[a.id] ? ccSheetPages(a.id, no) : []; if (pg.length) { shot = a; break; } }
+  const art = R.articleHTML({ cls: it && it.d ? 'done' : '', attrs: `data-ccno="${no}"`, where: esc(info.name), who: `${no}번`,
+    chips: club ? `<span class="ev-chip">(${esc(club)}) 앞에 붙어요</span>` : '',
+    body: rr ? `<div class="rw-text">${R.rowsHTML({ rows: rr.rows, list: d.list, key: `cc:${k}:${no}`, label: `${no}번 문장`, acts: acts2 })}</div>` : run ? '<div class="skel" style="height:80px"></div>' : '<p class="rw-emptyp">아직 쓰지 않았어요.</p>',
+    after: it && it.parts ? acts.map(a => rvInline(it.parts[a.id], ['cc', k, no, a.id].map(encodeURIComponent).join(':'), `${no}번${acts.length > 1 ? ' ' + ((a.name || '').trim() || '활동') : ''}`)).join('') : '',
+    foot: R.footHTML({ n: charCount(t), unit: '자', acts: `${engineReady() && !run ? `<button class="btn" type="button" data-ccre="${no}">${t ? 'AI로 다시 쓰기' : 'AI로 쓰기'}</button>` : ''}<button class="btn" type="button" data-cc="copyAll">나이스 차례로 복사</button>${next ? `<button class="btn dark" type="button" data-ccnext>다음 학생 ${next}번</button>` : ''}` }),
+    tools: t ? `<span class="rw-grow"></span>${shot ? `<button class="btn" type="button" data-ccview1="${no}">학습지 보기</button>` : ''}<button class="btn" type="button" data-cccopy="${no}" aria-label="${no}번 ${esc(info.name)} 복사하고 사용함으로">${it && it.d ? ICON.check + '다시 복사' : ICON.copy + '복사하고 사용함'}</button>${it && it.d ? `<button class="btn" type="button" data-ccundo="${no}">사용 표시 지우기</button>` : ''}` : '' });
+  const side = R.sideHTML({ who: `${no}번`, from: d.list.length ? `활동 ${acts.length}${d.list.some(e => e.kind === 'sheet') ? ' · 학습지' : ''}` : '', uses: R.evidenceUse(d.list, rr && rr.known ? rr.rows : []), known: !!(rr && rr.known),
+    addAttr: engineReady() && !run ? e => `data-ccevadd="${esc(e.id)}"` : null, busy: busy ? 'x' : '', empty: '활동을 넣으면 근거가 돼요', ai: 'AI에는 이름 없이 활동·학습지 내용만 보내요.' });
+  return `<div class="cc-frame"><div class="rw-frame"><aside class="rw-list" aria-label="학생">${list}</aside>
+    <div class="rw-grid"><div class="rw-main">${art}</div><aside class="rw-side" aria-label="${no}번 근거">${side}</aside></div></div></div>`;
+}
+/* [고치기]: 기재 점검 규칙에 걸린 활동 문장 하나를 근거로 고쳐 씀(AI 한 문장) — 사용함 표시는 지움(다시 쓰기처럼) */
+async function ccRowFix(k, no, i) {
+  const R = REC(); if (!R || CHE.busyRow || ccAreaBusy(k)) return;
+  if (!engineReady()) { openSettings(); return; }
+  const { acts, data, rows } = ccFrameData(k), it = ccArea(k).items[no], rr = rows(no), r = rr && rr.rows[i];
+  const withParts = acts.filter(a => it && it.parts && it.parts[a.id] && it.parts[a.id].t), act = withParts[i];
+  if (!r || !act) return;
+  const p = it.parts[act.id], before = p.t;
+  CHE.busyRow = { k, no, row: i }; renderCCResults();
+  try {
+    const out = await generate(R.sentencePrompt({ mode: 'fix', field: 'cc', text: data.get(no).text, sentence: r.t, list: data.get(no).list, da: S.settings.ending === 'da',
+      why: [...(r.none ? ['이 문장을 받치는 근거가 없어요'] : []), ...r.issues.map(x => x.why)] }), { fresh: true, task: 'writing' });
+    const one = R.normOne(out.text, data.get(no).list);
+    if (!one) throw { code: 'empty_completion' };
+    if (p.t !== before) return;
+    p.t = one.t; delete p.rv; it.d = 0;
+    toast('문장을 고쳤어요');
+  } catch (e) { toast(errMsg((e && e.code) || 'upstream_error', e), 4500); }
+  finally { CHE.busyRow = null; CCStore.save(); renderCCResults(); }
+}
+document.addEventListener('click', e => {
+  if (S.mode !== 'cc' || !evalShown()) return;
+  const t = e.target; if (!t || !t.closest || !t.closest('#ccResults')) return;
+  const ly = t.closest('[data-cclayout]'); if (ly) { CHE.layout = ly.dataset.cclayout; renderCCResults(); return; }
+  const sel = t.closest('[data-ccsel]'); if (sel) { CHE.sel = +sel.dataset.ccsel; renderCCResults(); return; }
+  if (t.closest('[data-ccnext]')) { const nos = classNos(), n = nos[nos.indexOf(CHE.sel) + 1]; if (n) { CHE.sel = n; renderCCResults(); } return; }
+  const rowb = t.closest('[data-ccrow]');
+  if (rowb && !rowb.disabled) {
+    const k = CHE.view, no = CHE.sel, i = +rowb.dataset.row;
+    if (rowb.dataset.ccrow === 'fix') { ccRowFix(k, no, i); return; }
+    const it = ccArea(k).items[no], act = ccActs(k).filter(a => it && it.parts && it.parts[a.id] && it.parts[a.id].t)[i];
+    if (act) { delete it.parts[act.id]; CCStore.save(); renderCCResults(); toast('문장을 뺐어요. [남은 학생 쓰기]를 누르면 이 활동 문장을 다시 써요'); }
+    return;
+  }
+  const ad = t.closest('[data-ccevadd]');
+  if (ad && !ad.disabled) {
+    if (!engineReady()) { openSettings(); return; }
+    const k = CHE.view, no = CHE.sel;
+    ccAskMask([k], () => { if (ccEnqueue(k, [no])) toast(`${no}번 ${ccInfo(k).name} 글을 활동마다 다시 써요`); }, [no]);
+  }
+});
 
 /* ---------- 나이스 붙여넣기 출처 (영역마다) ---------- */
 const CC_SRC = {};
@@ -6339,7 +6894,15 @@ window.SSAM = {
   // 평가지 채점 한꺼번에 넣기(gr-bundle.js)
   gr: { putBundle: b => grPutBundle(b), refresh: () => { if (S.mode === 'gr') renderGRSetup(); }, mask: () => (GR.settings.maskOn ? GR.settings.mask : []),
     // 평가 › 한눈에서 지난 채점 열기(채점·순위·평어 쓰는 중이면 열지 않음 — 지난 채점 목록 단추와 같은 규칙)
-    open: id => { if (id && !['grading', 'ranking', 'writing'].includes(GR.phase)) return grOpenHistory(id); } },
+    open: id => { if (id && !['grading', 'ranking', 'writing'].includes(GR.phase)) return grOpenHistory(id); },
+    // 평가 › 한눈에 [선생님 차례]: 그 채점 기록의 「채점 확인」(판단을 미룬 것만 하나씩, 스펙 2026-11-14-eval-redesign §4) — 확인할 것이 있으면 true
+    async review(id) {
+      if (['grading', 'ranking', 'writing'].includes(GR.phase) || GR.running.size) return false;
+      if (id && id !== GR.id) await grOpenHistory(id);
+      if ((id && GR.id !== id) || !GR.students.length) return false;
+      return grRvOpen();
+    },
+    reviewOpen: () => !!GR.rvw },
   // 평가 영역 이음(활동지·단원평가 → 평가지 채점): 지금 평가계획의 영역 [{ id, subject, label }]
   planUnits: () => allUnits().map(u => ({ id: u.id, subject: u.subject, label: [u.area, u.elem || u.unit].filter(Boolean).join(' · ') })),
   onModeChange: fn => { modeHooks.push(fn); },

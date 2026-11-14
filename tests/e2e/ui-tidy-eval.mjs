@@ -1,7 +1,9 @@
 // 화면 정리(스펙 2026-11-14-ui-tidy) — 평가 옛 화면: 교과 평어·창의적 체험활동·행동특성·평가지 채점
 // 행특 설정 접기(요약 한 줄·바꾸면 요약이 바뀌고 다시 열어도 그대로), 특성 단추 묶음 접기(고른 수), 채점·창체 설정 접기,
 // 화면 설명은 세 번 연 뒤 접힘(ssam:ui:intro), 「AI로 가는 것」 펼침, 390px에서 넘치지 않음. 글은 모두 지어낸 것
-import { open, run, assert, enter } from './helpers.mjs';
+import { open, run, assert, enter as enterMenu } from './helpers.mjs';
+// 평가 가로 메뉴에서 교과 평어·창체·행특은 「생활기록부」 한 칸으로 접힘(스펙 2026-11-14-eval-redesign §1) — 탭은 바로 감
+const enter = async (page, menu, tab) => { await enterMenu(page, menu); if (tab) await page.evaluate(([m, t]) => import('./core/shell.js').then(s => s.go(m, t)), [menu, tab]); };
 
 const t = await open();
 const { page, url, errors } = t;

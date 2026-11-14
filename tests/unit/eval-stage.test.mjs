@@ -65,10 +65,11 @@ test('평가지 채점 단계: 점수 일부 → 채점, 모두 점수·글 없�
   assert.equal(grStage(b([{ score: 80, text: '가' }, { score: 0, text: '나' }])), 'done');
 });
 
-test('평가지 채점 확인할 학생: 알아보기 어려움(선생님이 안 고침)·점수 검토 다름(아직)·글 검토(아직)', () => {
+test('평가지 채점 확인할 학생: 알아보기 어려움(선생님이 안 고침)·점수 검토 다름(아직)·글 검토 제안(아직 정하지 않음 — trvd는 검토를 돌렸다는 표시라 셈과 상관없음)', () => {
   const b = { students: [
     { unreadable: 1 }, { unreadable: 1, manual: 1 }, { rv: { score: 60 } }, { rv: { score: 60, done: 'main' } },
-    { trv: [{ problem: 'x' }] }, { trv: [{ problem: 'x' }], trvd: 1 }, { skip: 1, unreadable: 1 }, { unreadable: 1, rv: { score: 1 } }] };
-  assert.equal(grPending(b), 4);
+    { trv: { problem: 'x', fix: 'y' } }, { trv: { problem: 'x', fix: 'y' }, trvd: 1 }, { trv: { problem: 'x', done: 'review' }, trvd: 1 },
+    { skip: 1, unreadable: 1 }, { unreadable: 1, rv: { score: 1 } }] };
+  assert.equal(grPending(b), 5);
   assert.equal(grPending(null), 0);
 });

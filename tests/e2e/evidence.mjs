@@ -203,7 +203,10 @@ await run('evidence', [
     await b.click();
     assert(await b.getAttribute('aria-expanded') === 'true' && (await page.locator(`${r0} .evd-src`).nth(2).textContent()).includes('[11. 6.] 토론에서 근거를 들어 반론함'), '펼침');
     assert((await page.locator(`${r0} .evd-none`).textContent()).includes('앞으로 더 큰 성장이 기대됨.'), '근거 없는 문장');
-    assert((await page.locator('#hkEditor .hk-res[data-ri="1"] .evd-btn').nth(1).textContent()).includes('근거 1'), '목록에 없는 m9는 뺌');
+    // 생활기록부 글 쓰기 틀: 가운데에는 한 후보(다른 후보는 아래 작게 — 누르면 가운데로)
+    await page.click('#hkEditor [data-hkcand="1"]');
+    assert((await page.locator('#hkEditor .rw-art.hk-res[data-ri="1"] .evd-btn').nth(1).textContent()).includes('근거 1'), '목록에 없는 m9는 뺌');
+    await page.click('#hkEditor [data-hkcand="0"]');
     await until(async () => (((await ls('ssam:hk')).students[0].results) || []).length === 2, 5000); // 저장(조금 미룸)
     const hk = await ls('ssam:hk'), r = hk.students[0].results[0];
     assert(r.ev && r.ev.sentences.length === 4 && r.t === HK_A.map(x => x[0]).join(' '), JSON.stringify(r).slice(0, 300));
@@ -227,6 +230,7 @@ await run('evidence', [
     assert(await page.locator(`${r0} .evd-btn`).count() === 2 && await page.locator(`${r0} .evd-none`).count() === 0, '잘린 문장은 빠짐');
   }],
   ['행동특성: [고치기]로 고치면 「고친 글」, 예전 모양 답(한 줄에 글 하나)은 근거 없이, AI 요청·저장한 근거에 이름 없음', async () => {
+    await page.click('#hkEditor [data-hkcand="1"]');
     await page.click('#hkEditor [data-hkr="edit"][data-i="1"]');
     await page.fill('#hkEditor [data-edit="1"]', '토론에서 근거를 들어 반론하는 모습이 돋보이며 생각을 차분하게 정리함. 맡은 우유 당번 일을 빠짐없이 해내어 친구들의 믿음을 얻고 어려운 친구를 먼저 챙김.');
     await page.dispatchEvent('#hkEditor [data-edit="1"]', 'input');
@@ -236,7 +240,7 @@ await run('evidence', [
     await page.click('[data-hkstu="b"]');
     await page.click('[data-hk="gen"]');
     await page.waitForSelector('#hkEditor .hk-res[data-ri="1"]');
-    assert(await page.locator('#hkEditor .evd').count() === 0, '예전 모양 답은 근거 없이');
+    assert(await page.locator('#hkEditor .evd-btn, #hkEditor .evd-none').count() === 0, '예전 모양 답은 근거 없이(칩 없음)');
     await until(async () => (((await ls('ssam:hk')).students[1].results) || []).length === 2, 5000);
     const hk = await ls('ssam:hk');
     assert(hk.students[1].results.map(r => r.t).join('\n') === HK_OLD.join('\n') && hk.students[1].results.every(r => !r.ev), JSON.stringify(hk.students[1].results));
