@@ -127,6 +127,45 @@ await run('hunt1114-plan', [
     for (const w of ['박하늘', '이바다', '한가람']) assert(!all.includes(w), w + ' 이(가) AI로 감');
     assert(all.includes('강사 ○○○ 초청') && all.includes('○○○ 선생님 반') && all.includes('○○○ 주무관에게'), '가린 자리');
   }],
+  ['[sf-pick-focus] 계획서 「양식」 고르기를 키보드(화살표)로 바꿔도 초점이 고르기 칸에 남아 이어서 고를 수 있음', async () => {
+    await page.evaluate(async () => {
+      const F = await import('./core/form-store.js');
+      const st = await F.forms();
+      for (const [i, n] of [[1, '새싹초 계획서 양식 가'], [2, '새싹초 계획서 양식 나']]) await st.put({ id: 'fmkey' + i, name: n, kind: 'hwpx', bytes: new Uint8Array([0x50, 0x4b]), roles: {}, savedAt: i });
+      (await import('./core/store.js')).flushAll();
+      const y = await import('./menus/plan/year-model.js');
+      const p = y.getPlan(y.currentId());
+      p.step = 5; p.maxStep = 5; y.savePlan(p);
+    });
+    await page.reload(); await page.waitForTimeout(400);
+    await page.evaluate(() => import('./core/shell.js').then(s => s.go('plan', 'year')));
+    await page.waitForSelector(`${Y} select[data-sf-pick="year"]`);
+    await page.focus(`${Y} select[data-sf-pick="year"]`);
+    await page.keyboard.press('ArrowDown');
+    await page.waitForTimeout(150);
+    const a = await page.evaluate(() => { const e = document.activeElement; return { pick: e && e.dataset ? e.dataset.sfPick || '' : '', value: e && e.value }; });
+    assert(a.pick === 'year', '초점이 사라짐: ' + JSON.stringify(a));
+    assert(await page.locator(`${Y} [data-sf-export="year"]`).count() === 1, '학교 양식 단추');
+    await page.keyboard.press('ArrowDown');
+    await page.waitForTimeout(150);
+    const v = await page.$eval(`${Y} select[data-sf-pick="year"]`, s => s.selectedIndex);
+    assert(v === 2, '두 번째 화살표로 다음 양식이 골라지지 않음: ' + v);
+  }],
+  ['[sf-pick-focus] 결과 보고 「양식」 고르기도 키보드로 바꾼 뒤 초점이 남음', async () => {
+    await page.evaluate(() => import('./core/shell.js').then(s => s.go('plan', 'report')));
+    await page.evaluate(async () => {
+      const m = await import('./menus/plan/report-model.js');
+      m.saveCurrent({ id: 'rpkey', sources: [], memo: '운동회', r: { name: '2027 운동회', related: [], period: { start: '', end: '', time: '' }, place: '', target: '', count: '', summary: '', sections: [], photos: [] }, letter: { title: '', body: '' }, letterEdited: false, captions: [] });
+    });
+    await page.reload(); await page.waitForTimeout(400);
+    await page.evaluate(() => import('./core/shell.js').then(s => s.go('plan', 'report')));
+    await page.waitForSelector(`${Y} #rpForm`);
+    await page.focus(`${Y} #rpForm`);
+    await page.keyboard.press('ArrowDown');
+    await page.waitForTimeout(200);
+    const id = await page.evaluate(() => document.activeElement && document.activeElement.id);
+    assert(id === 'rpForm', '초점이 사라짐: ' + id);
+  }],
   ['페이지 오류 없음', async () => { assert(!errors.length, errors.join('\n')); }]
 ]);
 await t.close();

@@ -366,7 +366,15 @@ document.addEventListener('change', e => {
   if (!mine(e)) return;
   const el = e.target, x = c();
   if (el.id === 'rpFile') { const fs = [...el.files]; el.value = ''; if (fs.length) addFiles(fs); return; }
-  if (el.id === 'rpForm') { R.formId = el.value; set(FORM_KEY, el.value); render(); return; }
+  // 양식 줄만 다시 그리고 고르기 칸에 초점을 둠(키보드 화살표로 바꿔도 이어서 고를 수 있게)
+  if (el.id === 'rpForm') {
+    R.formId = el.value; set(FORM_KEY, el.value);
+    const row = box.querySelector('.rp-out');
+    if (!row) { render(); return; }
+    row.innerHTML = rpOutHTML();
+    const s = row.querySelector('#rpForm'); if (s) s.focus();
+    return;
+  }
   if (el.dataset.rpKind != null) { const s = x.sources[+el.dataset.rpKind]; if (s) { s.kind = el.value; save(); } }
 });
 const R_KEYS = { name: 'name', place: 'place', target: 'target', count: 'count', summary: 'summary' };
