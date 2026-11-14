@@ -3227,7 +3227,7 @@ const hkEvHTML = (r, s, i) => (r.ev && EV() ? EV().evidenceHTML({ ...r.ev, text:
    교과 평어·창체·행특이 같은 틀. 그리는 조각·문장 줄·근거 맞추기는 그 모듈이, 상태·저장·AI 부르기는 이 파일이 함.
    이 파일은 모듈보다 먼저 돌아서 틀이 아직 없으면 빈 자리만 그리고, 준비되면(ssam:record-ready) 지금 화면을 다시 그림 */
 window.addEventListener('ssam:record-ready', () => {
-  const redraw = () => { try { if (S.mode === 'hk') { renderHKList(); renderHKEditor(); } else if (S.mode === 'cc') renderCCResults(); else if (S.mode === 'gr') renderGRResults(); else if (S.mode === 'pyeongeo') renderPyRec(); } catch (e) {} };
+  const redraw = () => { try { if (S.mode === 'hk') { renderHKList(); renderHKEditor(); } else if (S.mode === 'cc') renderCCResults(); else if (S.mode === 'gr') renderGRResults(); else if (S.mode === 'pyeongeo') renderAll(); } catch (e) {} };
   const a = document.activeElement, sec = document.querySelector('section[data-menu="evaluate"]');
   if (a && sec && sec.contains(a) && a.matches('input, textarea, select')) a.addEventListener('blur', () => setTimeout(redraw, 0), { once: true });
   else redraw();
