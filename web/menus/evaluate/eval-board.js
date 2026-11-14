@@ -9,7 +9,7 @@ import { STAGES, unitStage, unitPending, activityStage, activityPending, grStage
 import { listTests, getTest, loadTests, getSet, getPyeongeo, graded } from './unit/unit-model.js';
 import { flowSteps } from './unit/unit-flow.js';
 import { normCut } from './unit/unit-gap.js';
-import { openTest } from './unit/unit.js';
+import { openTest, openReview as openUnitReview } from './unit/unit.js';
 import { listActivities, getActivity } from './activity/activity-model.js';
 import { openActivity, openReview as openActivityReview } from './activity/activity.js';
 import { listCamps, currentCampId } from '../class/camp-model.js';
@@ -73,6 +73,13 @@ export function boardItems() {
   return all.sort((a, b) => (b.at || 0) - (a.at || 0));
 }
 export const turnTotal = (items = boardItems()) => items.reduce((n, x) => n + (x.pending || 0), 0);
+/* 가로 메뉴 「선생님 차례 n」용 가벼운 셈(단계는 셈하지 않음 — 끝난 평가는 확인할 것이 없으므로 같음) */
+export function pendingTotal() {
+  const sums = listTests(), real = sums.filter(s => !s.sample);
+  const units = (real.length ? real : sums).reduce((n, s) => n + unitPending(getTest(s.id)), 0);
+  const acts = listActivities().reduce((n, s) => n + activityPending(getActivity(s.id)), 0);
+  return units + acts + grRecords().reduce((n, b) => n + grPending(b), 0);
+}
 
 /* ---------- 열기 ---------- */
 function openItem(kind, id) {
@@ -82,7 +89,7 @@ function openItem(kind, id) {
 }
 /* 선생님 차례: 판단을 미룬 것만 하나씩 보는 확인 화면으로(활동지), 아직 없으면 확인할 칸이 있는 단계로(단원평가 3단계 표·평가지 채점 결과) */
 function openTurn(kind, id) {
-  if (kind === 'unit') { go('evaluate', 'unit'); openTest(id, 3); }
+  if (kind === 'unit') { go('evaluate', 'unit'); openUnitReview(id); }
   else if (kind === 'activity') { go('evaluate', 'activity'); openActivityReview(id); }
   else openItem(kind, id);
 }
@@ -129,7 +136,7 @@ function drawPill() {
   const old = tabs.querySelector('.ev-turn-pill');
   if (old) old.remove();
   let n = 0;
-  try { n = turnTotal(boardItems().filter(x => x.stage !== 'done')); } catch (e) { n = 0; }
+  try { n = pendingTotal(); } catch (e) { n = 0; }
   if (!n) return;
   tabs.insertAdjacentHTML('beforeend', `<button type="button" class="ev-turn-pill" data-tab="board" aria-label="선생님 차례 ${n}개 — 한눈에서 보기">선생님 차례 ${n}</button>`);
 }
@@ -162,6 +169,14 @@ if (typeof document !== 'undefined') {
     const sec = document.querySelector('section[data-menu="evaluate"]');
     if (sec && e.detail) enter(e.detail.tab, sec);
   });
+  // 확인 화면·채점 표에서 칸을 정하면 「선생님 차례 n」을 다시 셈(평가 칸에서 누른 뒤 잠깐 뒤에 한 번)
+  let pillTimer = 0;
+  document.addEventListener('click', e => {
+    const sec = e.target && e.target.closest && e.target.closest('section[data-menu="evaluate"]');
+    if (!sec) return;
+    clearTimeout(pillTimer);
+    pillTimer = setTimeout(drawPill, 600);
+  }, true);
   document.addEventListener('click', e => {
     const t = e.target;
     if (!t || !t.closest) return;
