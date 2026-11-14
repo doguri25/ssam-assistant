@@ -185,6 +185,38 @@ await run('unit-results', [
     await page.waitForSelector(`${V} textarea[data-py="7"]`);
     assert(await page.inputValue(`${V} textarea[data-py="7"]`) === '7번 평어임.', '다시 넣으면 7번 평어가 없음');
   }],
+  ['키보드: 평가 고르기·교과·학기 거르기·결과/평가 목록을 바꿔도 초점이 그 칸에 남음', async () => {
+    const act = () => page.evaluate(() => { const a = document.activeElement; return !a || a === document.body ? 'BODY' : a.id || (a.dataset && (a.dataset.unv || a.dataset.pytest)) || a.tagName; });
+    await page.focus(`${V} input[data-pytest="only7"]`);
+    await page.keyboard.press('Space');
+    assert(!(await page.isChecked(`${V} input[data-pytest="only7"]`)) && await act() === 'only7', '평가 고르기 뒤 초점: ' + await act());
+    await page.keyboard.press('Space');
+    assert(await page.isChecked(`${V} input[data-pytest="only7"]`), '다시 고름');
+    await page.focus(`${V} #unPySubject`);
+    await page.keyboard.press('ArrowDown');
+    assert(await page.inputValue(`${V} #unPySubject`) === '수학' && await act() === 'unPySubject', '평어 교과 뒤 초점: ' + await act());
+    await page.keyboard.press('ArrowUp');
+    assert(await page.inputValue(`${V} #unPySubject`) === '국어', '국어로');
+    await page.click(`${V} [data-rv="table"]`);
+    await page.focus(`${V} #unFTerm`);
+    await page.keyboard.press('ArrowDown');
+    assert(await page.inputValue(`${V} #unFTerm`) === '1' && await act() === 'unFTerm', '학기 거르기 뒤 초점: ' + await act());
+    await page.keyboard.press('ArrowUp');
+    assert(await page.inputValue(`${V} #unFTerm`) === '0', '학기 전체로');
+    await page.focus(`${V} #unFSubject`);
+    await page.keyboard.press('ArrowDown');
+    assert(await page.inputValue(`${V} #unFSubject`) === '국어' && await act() === 'unFSubject', '교과 거르기 뒤 초점: ' + await act());
+    await page.keyboard.press('ArrowUp');
+    await page.focus(`${V} [data-unv="list"]`);
+    await page.keyboard.press('Enter');
+    await page.waitForSelector(`${V} .un-list`);
+    assert(await act() === 'list', '평가 목록 뒤 초점: ' + await act());
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector(`${V} .un-one`);
+    assert(await act() === 'results', '결과 뒤 초점: ' + await act());
+    await page.click(`${V} [data-rv="pyeongeo"]`); // 다음 시험이 평어 보기에서 시작
+  }],
   ['좁은 화면(360px) 가로 스크롤 없음', async () => {
     await page.click(`${V} [data-rv="table"]`);
     await page.setViewportSize({ width: 360, height: 800 });

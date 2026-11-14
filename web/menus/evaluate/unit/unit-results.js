@@ -278,20 +278,23 @@ document.addEventListener('click', e => {
   else if (a === 'pyCopy') { const s = pyState(loaded(doneTests())).students.find(x => x.no === Number(b.dataset.no)); if (s) copy(s.text); }
   else if (a === 'pyCopyAll') copy(pyState(loaded(doneTests())).students.filter(s => s.text).map(s => `${s.no}번\t${s.text}`).join('\n'));
 });
+/* 고르기 칸·체크 칸을 바꿔 다시 그리면 같은 칸에 초점을 돌려 둠(키보드 화살표·스페이스로 이어서 고치게) */
+const refocus = sel => { const f = getBox() && getBox().querySelector(sel); if (f) f.focus({ preventScroll: true }); };
 document.addEventListener('change', e => {
   const box = getBox();
   if (!box || !box.contains(e.target) || !inView()) return;
   const el = e.target;
-  if (el.id === 'unFSubject') { R.subject = el.value; render(); }
-  else if (el.id === 'unFTerm') { R.term = Number(el.value); render(); }
+  if (el.id === 'unFSubject') { R.subject = el.value; render(); refocus('#unFSubject'); }
+  else if (el.id === 'unFTerm') { R.term = Number(el.value); render(); refocus('#unFTerm'); }
   else if (el.id === 'unStuNo') { R.stuNo = Number(el.value); render(); const f = getBox().querySelector('#unStuNo'); if (f) f.focus(); }
-  else if (el.id === 'unPySubject') { R.pySubject = el.value; render(); }
+  else if (el.id === 'unPySubject') { R.pySubject = el.value; render(); refocus('#unPySubject'); }
   else {
     const st = pyState(loaded(doneTests()));
     if (!R.pySubject) return;
     if (el.dataset.pytest) {
       const ids = new Set(st.ids); if (el.checked) ids.add(el.dataset.pytest); else ids.delete(el.dataset.pytest);
       savePy({ ...st, ids: st.mine.map(t => t.id).filter(id => ids.has(id)) }); render();
+      refocus(`input[data-pytest="${CSS.escape(el.dataset.pytest)}"]`);
     } else if (['unCutTop', 'unCutHigh', 'unCutMid'].includes(el.id)) {
       const k = { unCutTop: 'top', unCutHigh: 'high', unCutMid: 'mid' }[el.id];
       const cuts = { ...st.saved.cuts, [k]: Math.max(0, Math.min(100, Number(el.value) || 0)) };

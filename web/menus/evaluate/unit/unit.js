@@ -452,7 +452,7 @@ function fillSample() {
 document.addEventListener('click', e => {
   if (!visible() || !box.contains(e.target)) return;
   const v = e.target.closest('[data-unv]');
-  if (v) { U.view = v.dataset.unv; render(); return; }
+  if (v) { U.view = v.dataset.unv; render(); const f = box.querySelector(`[data-unv="${U.view}"]`); if (f) f.focus({ preventScroll: true }); return; } // 키보드로 바꿔도 초점이 고른 칸에
   if (e.target.closest('#unNew')) { openNew(); return; }
   const st = e.target.closest('[data-step]');
   if (st && U.view === 'test') { goStep(Number(st.dataset.step)); return; }
