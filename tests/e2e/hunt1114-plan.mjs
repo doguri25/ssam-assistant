@@ -1,6 +1,8 @@
 // 계획 버그 잡기(2026-11-14) 화면: 작년(기존) 계획서 목차에 「방침」이 없을 때 지침 문장이 안 보이는 방침 칸으로 들어가
 // 「반영됨」이라 하고 한글 파일에는 없던 것 (모델 쪽은 tests/unit/hunt1114-plan.test.mjs)
+import { readFileSync } from 'node:fs';
 import { open, run, assert, mockClaude } from './helpers.mjs';
+import { unzip } from '../../web/core/zip.js';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -60,6 +62,25 @@ await run('hunt1114-plan', [
       return M.planDoc(M.getPlan(M.currentId())).blocks.some(b => String(b.text || '').includes('안전한 독서 환경'));
     });
     assert(inDoc, '한글 파일에 넣은 문장이 없음');
+  }],
+  ['[ev-outline-doc] 행사계획: 작년·기존 계획서 목차로 쓴 계획서를 한글로 내려받으면 그 목차 그대로(앱의 「1. 개요」·「3. 세부 계획」이 겹치지 않음)', async () => {
+    const PLAN = 'Ⅰ. 개요\n1. 일시: 2027. 5. 6.(목)\nⅡ. 운영 방침\n가. 모두가 참여한다.\nⅢ. 세부 운영\n가. 이어달리기\nⅣ. 안전 대책\n가. 응급 처치 자리\nⅤ. 평가\n가. 만족도 설문';
+    await page.evaluate(async plan => {
+      (await import('./core/store.js')).flushAll();
+      const m = await import('./menus/plan/event-model.js');
+      const e = m.saveEvent({ ...m.newEvent(), name: '가을 운동회', grades: '3~6학년', date: '2027-05-06', place: '운동장', step: 3, maxStep: 3,
+        refs: [{ id: 'r1', kind: 'last', name: '2026 작년 운동회 계획서', text: 'Ⅰ. 개요\n1. 일시\nⅡ. 운영 방침\nⅢ. 세부 운영\nⅣ. 안전 대책\nⅤ. 평가' }],
+        docs: { plan, safety: '- 점검', letter: '날짜 준비물 복장 문의', rain: '', done: false } });
+      m.setCurrentEvent(e.id);
+    }, PLAN);
+    await page.reload(); await page.waitForTimeout(400);
+    await page.evaluate(() => import('./core/shell.js').then(s => s.go('plan', 'event')));
+    await page.waitForSelector(`${Y} textarea[data-docf="plan"]`);
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click(`${Y} [data-e="hwpx"]`)]);
+    const xml = [...(await unzip(new Uint8Array(readFileSync(await dl.path())))).entries()].filter(([k]) => /section\d*\.xml$/.test(k)).map(([, v]) => new TextDecoder().decode(v)).join('');
+    const text = [...xml.matchAll(/<hp:t>([^<]*)<\/hp:t>/g)].map(m => m[1]).join('\n');
+    assert(text.includes('Ⅰ. 개요') && text.includes('Ⅴ. 평가') && text.includes('가. 이어달리기'), text.slice(0, 300));
+    assert(!text.includes('1. 개요') && !text.includes('세부 계획'), '앱의 차례가 겹침: ' + text.slice(0, 300));
   }],
   ['페이지 오류 없음', async () => { assert(!errors.length, errors.join('\n')); }]
 ]);

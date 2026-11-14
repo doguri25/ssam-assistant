@@ -47,3 +47,23 @@ test('[year-outline-hidden] 지침 문장 [넣기]: 목차에 없는 칸이면 �
   assert.equal(insertKey(normDraft({ purpose: 'a' }), 'zz'), 'details');
   assert.ok(overlap('세부 글', n) !== null);
 });
+
+test('[ev-outline-doc] 행사 계획서를 작년·기존 계획서 목차로 썼으면 한글 문서도 그 목차 그대로(앱의 「1. 개요·2. 시간표·3. 세부 계획」을 덧씌우지 않음)', async () => {
+  const E = await import('../../web/menus/plan/event-model.js');
+  const last = { id: 'r1', kind: 'last', name: '2026 운동회 계획서', text: 'Ⅰ. 개요\n1. 일시\nⅡ. 운영 방침\nⅢ. 세부 운영\n가. 경기\nⅣ. 안전 대책\nⅤ. 평가' };
+  const plan = 'Ⅰ. 개요\n1. 일시: 2027. 5. 6.(목)\n2. 장소: 운동장\nⅡ. 운영 방침\n가. 모두가 참여한다.\nⅢ. 세부 운영\n가. 경기 종목: 이어달리기\nⅣ. 안전 대책\n가. 응급 처치 자리를 둔다.\nⅤ. 평가\n가. 만족도 설문';
+  const e = { ...E.newEvent(), name: '가을 운동회', purpose: '체력 기르기', date: '2027-05-06', grades: '전교생', place: '운동장', refs: [last],
+    options: [{ label: '안', summary: '', timetable: [{ time: '09:00', activity: '개회식', place: '운동장' }], pros: [], staffNeed: '', budget: [{ name: '상품', amount: 100000 }] }], picked: 0,
+    docs: { plan, safety: '', letter: '', rain: '', done: false } };
+  const doc = E.docDoc(e, 'plan');
+  assert.equal(doc.title, '가을 운동회 운영 계획');
+  const heads = doc.blocks.filter(b => b.type === 'h').map(b => b.text);
+  assert.deepEqual(heads, ['Ⅰ. 개요', 'Ⅱ. 운영 방침', 'Ⅲ. 세부 운영', 'Ⅳ. 안전 대책', 'Ⅴ. 평가']);
+  const all = doc.blocks.map(b => b.text || '').join('\n');
+  for (const s of ['1. 일시: 2027. 5. 6.(목)', '가. 경기 종목: 이어달리기', '가. 만족도 설문']) assert.ok(all.includes(s), s);
+  // 작년·기존 계획서가 없으면(또는 계획서 글에 큰 제목이 없으면) 지금처럼 개요 표·시간표·세부 계획
+  const plain = E.docDoc({ ...e, refs: [] }, 'plan');
+  assert.deepEqual(plain.blocks.filter(b => b.type === 'h').map(b => b.text), ['1. 개요', '2. 시간표', '3. 세부 계획', '4. 예산 내역']);
+  const flat = E.docDoc({ ...e, docs: { ...e.docs, plan: '가. 개요\n나. 운영 방침' } }, 'plan');
+  assert.equal(flat.blocks[0].text, '1. 개요');
+});

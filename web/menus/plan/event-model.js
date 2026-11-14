@@ -186,6 +186,25 @@ export function confirmBlockers(e) {
 
 const pickedOption = e => (e.options && e.picked != null ? e.options[e.picked] : null);
 
+/* 계획서 글이 작년·기존 계획서 목차(큰 제목 셋 이상)로 쓰였으면 그 글 그대로: 큰 제목 줄은 소제목, 나머지는 문단.
+   작년·기존 계획서가 없거나 글에 큰 제목이 없으면 null(앱의 개요 표·시간표·세부 계획 차례) */
+const squash = s => String(s || '').replace(/[\s\p{P}\p{S}]/gu, '');
+function ownOutlineBlocks(e, text) {
+  if (!(e.refs || []).some(r => r && r.kind === 'last' && String(r.text || '').trim())) return null;
+  const top = parseOutline(text).filter(x => x.level === 1);
+  if (top.length < 3) return null;
+  const blocks = [];
+  let buf = [], k = 0;
+  const flush = () => { if (buf.some(l => l.trim())) blocks.push({ type: 'p', text: buf.join('\n').trim() }); buf = []; };
+  for (const raw of String(text).split('\n')) {
+    const m = /^\s*(?:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]|\d{1,2})\.\s*(\S.*)$/.exec(raw);
+    if (m && top[k] && squash(m[1]).startsWith(squash(top[k].title))) { flush(); blocks.push({ type: 'h', text: raw.trim() }); k++; continue; }
+    buf.push(raw);
+  }
+  flush();
+  return blocks;
+}
+
 /* 문서마다 한글 파일(.hwpx)로 내보낼 모양 */
 export function docDoc(e, docId) {
   const d = e.docs || {};
@@ -197,6 +216,9 @@ export function docDoc(e, docId) {
     return { title: `${e.name} 안전 점검표`, blocks };
   }
   if (docId === 'letter') return { title: `${e.name} 안내`, blocks: [{ type: 'p', text: d.letter || '' }] };
+  // 작년·기존 계획서 목차로 쓴 계획서는 그 목차 그대로(「1. 개요」·「Ⅰ. 개요」가 겹치지 않게)
+  const own = ownOutlineBlocks(e, d.plan || '');
+  if (own) return { title: `${e.name} 운영 계획`, blocks: own };
   const blocks = [
     { type: 'h', text: '1. 개요' },
     { type: 'table', head: true, rows: [['항목', '내용'], ['목적', e.purpose], ['일시', e.date], ['대상', e.grades], ['장소', `${e.place} (${e.outdoor ? '야외' : '실내'})`], ['예산', e.budget]] }
