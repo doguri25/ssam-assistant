@@ -130,10 +130,11 @@ function pyState(all) {
   });
   return { subs, mine, saved, ids, chosen, students };
 }
-// 근거(ev: { list, sentences })는 글이 있을 때만 평어 옆에 둠 — 칸을 비우면 근거도 지움
-const pyOut = list => Object.fromEntries(list.map(s => [s.no, { level: s.level, text: s.text, manual: s.manual, ...(s.ev && s.text ? { ev: s.ev } : {}) }]));
+// 근거(ev: { list, sentences })는 글이 있을 때만 평어 옆에 둠 — 칸을 비우면 근거도 지움.
+// 지금 목록에 없는 학생(그 학생이 본 평가를 뺐음·결석 등)의 저장한 평어는 그대로 둠(saved — 평가를 다시 넣으면 돌아옴)
+const pyOut = (list, saved = {}) => ({ ...saved, ...Object.fromEntries(list.map(s => [s.no, { level: s.level, text: s.text, manual: s.manual, ...(s.ev && s.text ? { ev: s.ev } : {}) }])) });
 function savePy(st, patch = {}) {
-  const v = { off: st.mine.map(t => t.id).filter(id => !st.ids.includes(id)), cuts: st.saved.cuts, students: pyOut(st.students), ...patch };
+  const v = { off: st.mine.map(t => t.id).filter(id => !st.ids.includes(id)), cuts: st.saved.cuts, students: pyOut(st.students, st.saved.students), ...patch };
   savePyeongeo(R.pySubject, v);
 }
 /* 고치는 칸 아래 근거 표시(근거가 없는 옛 평어는 그대로 아무것도 없음) */
@@ -198,7 +199,7 @@ async function writePyeongeo() {
         s.text = res[s.no].text;
         s.ev = res[s.no].sentences ? { list: lists[s.no], sentences: res[s.no].sentences } : null; // 예전 모양 답이면 근거 없이
       }
-      savePyeongeo(subject, { off: now.mine.map(t => t.id).filter(id => !now.ids.includes(id)), cuts: cur.cuts, students: pyOut(now.students) });
+      savePyeongeo(subject, { off: now.mine.map(t => t.id).filter(id => !now.ids.includes(id)), cuts: cur.cuts, students: pyOut(now.students, cur.students) });
     }
   } catch (e) {
     toast(e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 해 보세요.' : ai.errorMessage(e && e.code, e), 6000);
