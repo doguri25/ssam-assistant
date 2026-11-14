@@ -27,9 +27,9 @@ await run('shell', [
     assert(await current('nav.app-side') === '평가', '세로 메뉴 현재: ' + await current('nav.app-side'));
     assert(await title() === '평가', '제목: ' + await title());
     const ts = await tabs();
-    // 두 묶음(스펙 2026-11-14 §4): 채점 | 생활기록부 — 처음 들어가면 여전히 교과 평어(옛 화면의 지금 화면)
-    assert(ts.join('|') === '단원평가|활동지|평가지 채점|교과 평어|창의적 체험활동|행동특성|기재 점검', '가로 메뉴: ' + ts.join('|'));
-    assert(await current('header.app-top nav.app-tabs') === '교과 평어', '가로 메뉴 현재');
+    // 탭 6칸(스펙 2026-11-14-eval-redesign §1): 생활기록부는 교과 평어·창체·행특을 한 칸으로 접음 — 처음 들어가면 한눈에
+    assert(ts.join('|') === '한눈에|단원평가|활동지|평가지 채점|생활기록부|기재 점검', '가로 메뉴: ' + ts.join('|'));
+    assert(await current('header.app-top nav.app-tabs') === '한눈에', '가로 메뉴 현재');
   }],
   ['로고 칸과 헤더 높이가 76px', async () => {
     const h = await page.evaluate(() => [document.querySelector('nav.app-side .app-logo').getBoundingClientRect().height, document.querySelector('header.app-top').getBoundingClientRect().height]);
@@ -68,13 +68,14 @@ await run('shell', [
     assert(saved.plan === 'event' && saved.class === 'today', '저장: ' + JSON.stringify(saved));
   }],
   ['평가 › 단원평가·행동특성도 다른 메뉴에 갔다 오면 그 탭', async () => {
-    for (const [tab, label] of [['unit', '단원평가'], ['hk', '행동특성']]) {
-      await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click(`#menuTabs [data-tab="${tab}"]`);
+    for (const [tab, label] of [['unit', '단원평가'], ['hk', '생활기록부']]) {
+      await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), tab);
       await page.click('nav.app-side [data-menu-go="purchase"]'); await page.click('nav.app-side [data-menu-go="evaluate"]');
       assert(await current('header.app-top nav.app-tabs') === label, `${label} → ${await current('header.app-top nav.app-tabs')}`);
       assert(await page.evaluate(() => document.querySelector('section[data-menu="evaluate"]').classList.contains('ev-new')) === (tab === 'unit'), tab + ': 기존 화면 숨김이 맞지 않음');
     }
     assert(await page.evaluate(() => window.SSAM.getMode()) === 'hk', 'mode가 hk가 아님');
+    assert(await page.textContent('.rec-switch [aria-pressed="true"]') === '행동특성', '생활기록부 칸 안 전환');
   }],
   ['이제 없는 탭이 마지막이면 첫 탭, 탭을 정해 부르면(AI 칸) 그 탭', async () => {
     await page.evaluate(() => localStorage.setItem('ssam:nav:tabs', JSON.stringify({ plan: '없는탭', settings: 'school' })));
@@ -160,7 +161,7 @@ await run('shell', [
   }],
   ['단원평가·창체·평가지 채점 탭에서 ⋮ → 새 평가계획 넣기를 누르면 교과 평어의 넣기 화면이 보임', async () => {
     for (const tab of ['unit', 'cc', 'gr']) {
-      await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click(`#menuTabs [data-tab="${tab}"]`);
+      await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), tab);
       await page.click('#menuBtn'); await page.click('#menu [data-act="new"]');
       await page.waitForTimeout(150);
       assert(await page.getAttribute('#menuTabs [data-tab="pyeongeo"]', 'aria-current') === 'page', tab + ': 탭이 그대로');

@@ -107,8 +107,11 @@ await run('chat-smart', [
   ['현장 말: 「다음주 주안 만들어줘」→ 주간학습안내, 「세특 써줘」→ 교과 평어, 「인계서」→ 인수인계서, 「안내문 써줘」→ 가정통신문', async () => {
     for (const [q, want] of [['다음주 주안 만들어줘', '주간학습안내'], ['세특 써줘', '교과 평어'], ['인계서', '인수인계서'], ['안내문 써줘', '가정통신문']]) {
       await ask(q);
-      await page.waitForFunction(w => document.querySelector('#menuTabs [aria-current="page"]') && document.querySelector('#menuTabs [aria-current="page"]').textContent === w, want, { timeout: 4000 }).catch(() => {});
-      assert(await page.textContent('#menuTabs [aria-current="page"]') === want, `${q} → ${await page.textContent('#menuTabs [aria-current="page"]')}`);
+      // 생활기록부(교과 평어·창체·행특)는 가로 메뉴에서 한 칸이라 칸 안 전환의 지금 칸을 봄(스펙 2026-11-14-eval-redesign §1)
+      const nowTab = () => { const r = document.querySelector('.rec-switch:not([hidden]) [aria-pressed="true"]'), c = document.querySelector('#menuTabs [aria-current="page"]'); return r && c && c.dataset.fold ? r.textContent : c ? c.textContent : ''; };
+      await page.waitForFunction(([w, f]) => new Function('return (' + f + ')()')() === w, [want, nowTab.toString()], { timeout: 4000 }).catch(() => {});
+      const got = await page.evaluate(f => new Function('return (' + f + ')()')(), nowTab.toString());
+      assert(got === want, `${q} → ${got}`);
     }
   }],
   ['「이 화면에서 뭐 해야 돼?」: 채팅 뒤 화면(메뉴 › 탭·단계·화면 설명·다음 할 일), AI 없이', async () => {
