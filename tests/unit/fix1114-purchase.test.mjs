@@ -81,12 +81,25 @@ test('한글 파일(.hwpx·.hwp)에 품목 머리줄 없는 표나 줄글로 적
   text = '품명 | 규격 | 수량 | 단가\n비커 | 500ml | 4 | 3,000';
   r = await readIntake({ file: file('견적서.hwpx') });
   assert.deepEqual(r.items.map(it => [it.name, it.spec, it.qty, it.price]), [['비커', '500ml', '4', '3000']]);
-  // 강사 수당은 한글 파일 줄글도 AI로 보내지 않음
-  text = '외부 강사 김하늘 특강 부탁드려요';
+  // 표가 아닌 한글 파일 글은 AI로 보내지 않고 앱 규칙으로만 읽음(명단 같은 다른 파일을 잘못 넣어도 이름이 AI로 가지 않게)
   calls.length = 0;
+  text = '3학년 과학 실험 재료 구입 목록\n담임 김하늘\n알코올램프 10개 5,000원';
+  r = await readIntake({ file: file('목록.hwpx') });
+  assert.equal(calls.length, 0);
+  assert.deepEqual(r.items.map(row), [['알코올램프', '개', '10', '5000']]);
+  text = '외부 강사 김하늘 특강 부탁드려요';
   r = await readIntake({ file: file('강사.hwpx'), noAI: true });
   assert.equal(calls.length, 0);
   delete window.SSAM.files;
+});
+
+test('엑셀·CSV에 품명·단가 머리줄이 없거나 「물품·가격」처럼 다른 이름이면 칸 모양으로 읽음(AI로 보내지 않음)', async () => {
+  calls.length = 0;
+  let r = await readIntake({ file: new File(['알코올램프,10,5000\n비커,8,"4,500"\n'], '목록.csv') });
+  assert.deepEqual(r.items.map(it => [it.name, it.qty, it.price]), [['알코올램프', '10', '5000'], ['비커', '8', '4500']]);
+  r = await readIntake({ file: new File(['물품,개수,가격\n공책,20,1000\n'], '구입.csv') });
+  assert.deepEqual(r.items.map(it => [it.name, it.qty, it.price]), [['공책', '20', '1000']]);
+  assert.equal(calls.length, 0);
 });
 
 test('「관련」 칸에 주민번호·계좌번호가 있으면 막음(다른 칸과 같게)', () => {

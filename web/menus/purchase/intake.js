@@ -275,8 +275,9 @@ export async function readIntake({ text, file, noAI = false } = {}) {
     }
     const q = await readQuote(file, { aiRead: images => { if (noAI) throw { code: 'NO_AI_LECTURER' }; return aiRead('image', { images }); } });
     if (q.by === 'ai' && q.fields) return q;
-    // 한글 파일에 품명·단가 머리줄이 없는 표(칸은 「 | 」)나 줄글로 쓴 목록: 글 넣기처럼 읽음(표 칸은 탭으로)
-    if (!q.items.length && /\.hwpx?$/i.test(String(file.name || ''))) return readIntake({ text: (await readText(file)).replace(/[ \t]*\|[ \t]*/g, '\t'), noAI });
+    // 품명·단가 머리줄이 없는(「물품·가격」처럼 다른 이름인) 엑셀·CSV 표, 한글 파일의 표(칸은 「 | 」)·줄글 목록: 칸 모양·줄글 규칙으로 읽음.
+    // 견적서가 아닌 파일(명단 등)을 잘못 넣어도 이름이 가지 않게 AI로는 보내지 않음
+    if (!q.items.length && /\.(hwpx?|xlsx|csv)$/i.test(String(file.name || ''))) return readIntake({ text: (await readText(file)).replace(/[ \t]*\|[ \t]*/g, '\t'), noAI: true });
     return { items: q.items.map(it => ({ ...emptyItem(), name: it.name, spec: it.spec || '', unit: it.unit || '', qty: String(it.qty), price: String(it.price), vendor: it.vendor || '' })), fields: q.fields || {}, by: q.by, missed: [] };
   }
   // 주민번호·계좌 모양이 있는 줄은 읽지 않고(AI로도 보내지 않음) 수만 알려 줌
