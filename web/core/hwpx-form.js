@@ -254,9 +254,10 @@ function setText(xml, p, text) {
   if (!placed) out += textRun(cp, text);
   return out + '</hp:p>';
 }
-/* 본문 줄 단계: 0 보통 · 1 「1.」 · 2 「가.」 · 3 「1)」 · 4 「가)」·「①」 · 5 「-·○·□·※」 */
+/* 본문 줄 단계: 0 보통 · 1 「1.」 · 2 「가.」 · 3 「1)」 · 4 「가)」·「①」 · 5 「-·○·□·※」 · 6 「Ⅰ.」(계획서 큰 제목 — 양식에 없으면 보통 모양) */
 export function levelOf(text) {
   const t = String(text || '').trim();
+  if (/^[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ]\.(\s|$)/.test(t)) return 6;
   if (/^\d{1,2}\.(\s|$)/.test(t)) return 1;
   if (/^[가-하]\.(\s|$)/.test(t)) return 2;
   if (/^\d{1,2}\)(\s|$)/.test(t)) return 3;
@@ -264,7 +265,7 @@ export function levelOf(text) {
   if (/^[-·∙•○◦□■※▶▷*]/.test(t)) return 5;
   return 0;
 }
-const FALL = { 0: [0], 1: [1, 0], 2: [2, 1, 0], 3: [3, 2, 1, 0], 4: [4, 3, 2, 1, 0], 5: [5, 0] };
+const FALL = { 0: [0], 1: [1, 0], 2: [2, 1, 0], 3: [3, 2, 1, 0], 4: [4, 3, 2, 1, 0], 5: [5, 0], 6: [6, 0] };
 /* 옛 본문 문단 → 단계마다 본(문단 여는 태그·글자 모양·앞 공백) */
 function protosOf(xml, paras) {
   const by = {};

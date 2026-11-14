@@ -59,6 +59,26 @@ test('[plan-staff-ai] 학급운영계획 AI 글: 작년 계획서·지침·평�
   assert.ok(all.includes('○○○ 선생님과 함께한다') && all.includes('독서 강사 ○○○ 초청'));
 });
 
+test('[form-roman-level] 학교 계획서 양식에 「Ⅰ.」 큰 제목이 있으면: 계획서의 「Ⅰ.」 줄은 그 큰 제목 모양, 보통 글은 보통 글 모양(모든 줄이 큰 제목 모양이 되지 않음)', async () => {
+  const { makeHwpx } = await import('../../web/core/hwpx.js');
+  const { unzip } = await import('../../web/core/zip.js');
+  const F = await import('../../web/core/hwpx-form.js');
+  const { docToLetter } = await import('../../web/core/body-table.js');
+  // 지어낸 양식: 제목, 「Ⅰ.」 큰 제목(제목 모양 charPr 3·paraPr 2), 보통 글(charPr 0·paraPr 0), 학교장
+  const form = await F.readForm(makeHwpx({ title: '새싹초 업무 계획서', blocks: [{ type: 'h', text: 'Ⅰ. 옛 큰 제목' }, { type: 'p', text: '옛 본문을 적어요.' }, { type: 'p', text: '새싹초등학교장' }] }));
+  const roles = F.findRoles(form.lines);
+  assert.ok(F.rolesValid(roles, { date: false }), JSON.stringify(roles));
+  const doc = { title: '2027학년도 독서교육 운영 계획', blocks: [{ type: 'h', text: 'Ⅰ. 목적' }, { type: 'p', text: '책을 즐겨 읽는 습관을 기른다.' }, { type: 'h', text: 'Ⅱ. 방침' }, { type: 'p', text: '전교생이 참여한다.' }] };
+  const { bytes } = await F.fillForm(form, roles, { ...docToLetter(doc), date: '2027-01-12', reply: null });
+  const xml = new TextDecoder().decode((await unzip(bytes)).get('Contents/section0.xml'));
+  const paraOf = t => { const i = xml.indexOf(`>${t}<`); const s = xml.lastIndexOf('<hp:p ', i); return xml.slice(s, xml.indexOf('>', s) + 1) + xml.slice(xml.indexOf('<hp:run', s), xml.indexOf('>', xml.indexOf('<hp:run', s)) + 1); };
+  assert.match(paraOf('Ⅰ. 목적'), /paraPrIDRef="2"[\s\S]*charPrIDRef="3"/, paraOf('Ⅰ. 목적'));
+  assert.match(paraOf('Ⅱ. 방침'), /paraPrIDRef="2"[\s\S]*charPrIDRef="3"/);
+  assert.match(paraOf('책을 즐겨 읽는 습관을 기른다.'), /paraPrIDRef="0"[\s\S]*charPrIDRef="0"/, '보통 글이 큰 제목 모양: ' + paraOf('책을 즐겨 읽는 습관을 기른다.'));
+  assert.equal(F.levelOf('Ⅲ. 세부 추진 계획'), 6);
+  assert.equal(F.levelOf('보통 글'), 0);
+});
+
 test('[ev-outline-doc] 행사 계획서를 작년·기존 계획서 목차로 썼으면 한글 문서도 그 목차 그대로(앱의 「1. 개요·2. 시간표·3. 세부 계획」을 덧씌우지 않음)', async () => {
   const E = await import('../../web/menus/plan/event-model.js');
   const last = { id: 'r1', kind: 'last', name: '2026 운동회 계획서', text: 'Ⅰ. 개요\n1. 일시\nⅡ. 운영 방침\nⅢ. 세부 운영\n가. 경기\nⅣ. 안전 대책\nⅤ. 평가' };
