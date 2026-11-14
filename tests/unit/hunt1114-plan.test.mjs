@@ -48,6 +48,17 @@ test('[year-outline-hidden] 지침 문장 [넣기]: 목차에 없는 칸이면 �
   assert.ok(overlap('세부 글', n) !== null);
 });
 
+test('[plan-staff-ai] 학급운영계획 AI 글: 작년 계획서·지침·평가계획의 「이바다 선생님」「강사 박하늘」 같은 교직원 이름은 ○○○로', async () => {
+  const M = await import('../../web/menus/plan/classplan-model.js');
+  const A = await import('../../web/menus/plan/classplan-ai.js');
+  const last = 'Ⅰ. 학급 현황\n1. 학급 실태\n협력 수업은 이바다 선생님과 함께한다.\nⅡ. 학급 특색 교육\n1. 세부 운영 내용\n독서 강사 박하늘 초청 수업';
+  const outline = M.parseOutline(last);
+  const p = { ...M.newPlan(), year: 2027, grade: 3, room: 2, outline, sources: { lastPlan: last, guide: '담당 장학사 한가람 주무관에게 제출' }, guide: null };
+  const all = [A.draftPrompt(p, { bodies: M.sectionBodies(last, outline) }), A.guidePrompt(p), A.evalPrompt('국어 평가는 이바다 선생님이 맡는다')].join('\n');
+  for (const n of ['이바다', '박하늘', '한가람']) assert.ok(!all.includes(n), n);
+  assert.ok(all.includes('○○○ 선생님과 함께한다') && all.includes('독서 강사 ○○○ 초청'));
+});
+
 test('[ev-outline-doc] 행사 계획서를 작년·기존 계획서 목차로 썼으면 한글 문서도 그 목차 그대로(앱의 「1. 개요·2. 시간표·3. 세부 계획」을 덧씌우지 않음)', async () => {
   const E = await import('../../web/menus/plan/event-model.js');
   const last = { id: 'r1', kind: 'last', name: '2026 운동회 계획서', text: 'Ⅰ. 개요\n1. 일시\nⅡ. 운영 방침\nⅢ. 세부 운영\n가. 경기\nⅣ. 안전 대책\nⅤ. 평가' };

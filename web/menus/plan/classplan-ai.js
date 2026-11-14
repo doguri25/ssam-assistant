@@ -1,8 +1,9 @@
 /* 학급운영계획 AI 프롬프트 (화면 없음 — 시험에서도 씀). 모든 글은 이름·전화번호 줄을 뺀 뒤 넣음 */
 import { leaves } from './classplan-model.js';
-import { stripNames } from '../../core/privacy.js';
+import { stripNames, maskStaff } from '../../core/privacy.js';
 
-const clean = (t, n) => stripNames(String(t || '').slice(0, n)).text;
+// 이름·전화번호 줄을 빼고, 직함 앞뒤 교직원 이름(「이바다 선생님」「강사 박하늘」)도 ○○○로
+const clean = (t, n) => maskStaff(stripNames(String(t || '').slice(0, n)).text).text;
 const ids = p => leaves(p.outline).map(x => `${x.id}: ${x.title}`).join('\n');
 
 export function guidePrompt(p) {

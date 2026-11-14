@@ -13,6 +13,8 @@ await page.addInitScript(() => {
 const prompts = [];
 await mockClaude(page, async ({ prompt }) => {
   prompts.push(prompt);
+  if (prompt.startsWith('[작년 평가]')) return JSON.stringify({ good: ['참여가 많았다'], bad: [], numbers: [] });
+  if (prompt.startsWith('[행사 문서]')) return JSON.stringify({ plan: 'Ⅰ. 개요', safety: '- 안전', letter: '날짜 준비물 복장 문의', rain: '' });
   if (prompt.startsWith('[지침 점검]')) return JSON.stringify([{ item: '독서 환경', keywords: ['안전한', '독서 환경'], sentence: '안전한 독서 환경을 만든다.', section: 'policy' }]);
   // AI가 목차에 없는 방침 칸을 써 보내도(예전 프롬프트) 화면·한글 파일에는 없음
   if (prompt.startsWith('[연간계획 초안]')) return JSON.stringify({
@@ -81,6 +83,49 @@ await run('hunt1114-plan', [
     const text = [...xml.matchAll(/<hp:t>([^<]*)<\/hp:t>/g)].map(m => m[1]).join('\n');
     assert(text.includes('Ⅰ. 개요') && text.includes('Ⅴ. 평가') && text.includes('가. 이어달리기'), text.slice(0, 300));
     assert(!text.includes('1. 개요') && !text.includes('세부 계획'), '앱의 차례가 겹침: ' + text.slice(0, 300));
+  }],
+  ['[plan-staff-ai] 행사계획: 참고 자료(작년·기존 계획서)의 「박하늘 선생님」 같은 교직원 이름은 AI로 ○○○', async () => {
+    await page.evaluate(async () => {
+      (await import('./core/store.js')).flushAll();
+      const m = await import('./menus/plan/event-model.js');
+      const e = m.getEvent(m.currentEventId());
+      e.refs = [...e.refs, { id: 'r2', kind: 'official', name: '운동회 협조', text: '진행: 박하늘 선생님\n안전 지도는 이바다 교사가 맡는다.' }];
+      m.saveEvent(e);
+    });
+    await page.reload(); await page.waitForTimeout(400);
+    await page.evaluate(() => import('./core/shell.js').then(s => s.go('plan', 'event')));
+    await page.waitForSelector(`${Y} [data-e="docs"]`);
+    const n = prompts.length;
+    await page.click(`${Y} [data-e="docs"]`);
+    for (let i = 0; i < 40 && !prompts.slice(n).some(p => p.startsWith('[행사 문서]')); i++) await page.waitForTimeout(100);
+    const pr = prompts.slice(n).find(p => p.startsWith('[행사 문서]'));
+    assert(pr, '문서 프롬프트 없음');
+    assert(!pr.includes('박하늘') && !pr.includes('이바다') && pr.includes('○○○ 선생님'), pr.slice(pr.indexOf('참고 자료'), pr.indexOf('참고 자료') + 400));
+  }],
+  ['[plan-staff-ai] 연간계획: 작년 계획서·작년 결과·지침의 교직원 이름(「강사 박하늘」「이바다 선생님」「한가람 주무관」)은 AI로 ○○○', async () => {
+    await page.evaluate(async () => {
+      (await import('./core/store.js')).flushAll();
+      const m = await import('./menus/plan/year-model.js');
+      const p = m.savePlan({ ...m.newPlan(), name: '과학교육', goal: '탐구하는 즐거움을 기른다.', step: 1, maxStep: 1,
+        sources: { lastPlan: '2026 과학교육 계획\n과학의 날 강사 박하늘 초청', lastResult: '이바다 선생님 반 참여가 많았다.\n만족도 4.5점', guide: '결과는 한가람 주무관에게 제출' } });
+      m.setCurrent(p.id);
+    });
+    await page.reload(); await page.waitForTimeout(400);
+    await page.evaluate(() => import('./core/shell.js').then(s => s.go('plan', 'year')));
+    await page.waitForSelector(`${Y} #ypName`);
+    const n = prompts.length;
+    await page.click(`${Y} [data-y="next"]`);
+    await page.waitForSelector(`${Y} #ypReview .yp-review`);
+    await page.click(`${Y} [data-y="next"]`);
+    await page.waitForSelector(`${Y} #ypGuide li[data-g]`);
+    await page.click(`${Y} [data-y="next"]`);
+    await page.click(`${Y} [data-y="draft"]`);
+    await page.waitForSelector(`${Y} #ypDraft`);
+    const sent = prompts.slice(n);
+    assert(['[작년 평가]', '[지침 점검]', '[연간계획 초안]'].every(k => sent.some(p => p.startsWith(k))), sent.map(p => p.slice(0, 10)).join(','));
+    const all = sent.join('\n');
+    for (const w of ['박하늘', '이바다', '한가람']) assert(!all.includes(w), w + ' 이(가) AI로 감');
+    assert(all.includes('강사 ○○○ 초청') && all.includes('○○○ 선생님 반') && all.includes('○○○ 주무관에게'), '가린 자리');
   }],
   ['페이지 오류 없음', async () => { assert(!errors.length, errors.join('\n')); }]
 ]);
