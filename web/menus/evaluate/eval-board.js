@@ -11,7 +11,7 @@ import { flowSteps } from './unit/unit-flow.js';
 import { normCut } from './unit/unit-gap.js';
 import { openTest } from './unit/unit.js';
 import { listActivities, getActivity } from './activity/activity-model.js';
-import { openActivity } from './activity/activity.js';
+import { openActivity, openReview as openActivityReview } from './activity/activity.js';
 import { listCamps, currentCampId } from '../class/camp-model.js';
 import { getInfo } from '../class/class-model.js';
 
@@ -80,10 +80,10 @@ function openItem(kind, id) {
   else if (kind === 'activity') { go('evaluate', 'activity'); openActivity(id); }
   else if (kind === 'gr') { go('evaluate', 'gr'); if (SSAM().gr && SSAM().gr.open) SSAM().gr.open(id); }
 }
-/* 선생님 차례: 확인할 칸이 있는 단계로(단원평가 3단계 표·활동지 4단계 표·평가지 채점 결과) */
+/* 선생님 차례: 판단을 미룬 것만 하나씩 보는 확인 화면으로(활동지), 아직 없으면 확인할 칸이 있는 단계로(단원평가 3단계 표·평가지 채점 결과) */
 function openTurn(kind, id) {
   if (kind === 'unit') { go('evaluate', 'unit'); openTest(id, 3); }
-  else if (kind === 'activity') { go('evaluate', 'activity'); openActivity(id, 4); }
+  else if (kind === 'activity') { go('evaluate', 'activity'); openActivityReview(id); }
   else openItem(kind, id);
 }
 
