@@ -131,3 +131,26 @@ test('화면: 문장마다 「근거 n」 단추(aria-expanded·aria-controls), 
   const one = evidenceHTML({ sentences: [sentences[0]], list, text: sentences[0].t });
   assert.ok(!one.includes('class="evd-t"'), '한 문장이면 문장을 다시 쓰지 않음');
 });
+
+test('창체 근거 종류: 활동(act)·학습지(sheet)는 그 종류로 남음(다른 종류는 참고)', () => {
+  const l = evidenceList([{ kind: 'act', label: '자석 팽이 만들기' }, { kind: 'sheet', label: '축을 짧게 바꿨다고 씀' }, { kind: 'zzz', label: '모름' }]);
+  assert.deepEqual(l.map(x => x.kind), ['act', 'sheet', 'ref']);
+});
+
+test('글 쓰기 틀 문장 줄(evidenceRowsHTML): 문장마다 번호·글·근거 번호 칩(목록 차례), 근거 없음, 근거를 모르는 문장은 칩 없음, 까닭·단추', async () => {
+  const { evidenceRowsHTML } = await import('../../web/core/evidence.js');
+  const list = [{ id: 'm1', kind: 'memo', label: '보건실에 데려감' }, { id: 'm2', kind: 'memo', label: '청소 구역 정리' }];
+  const h = evidenceRowsHTML({ list, key: 'k', rows: [
+    { t: '친구를 먼저 살핌.', src: ['m1', 'm2'] },
+    { t: '앞으로 기대됨.', src: [], bad: true, why: ['근거가 없어요'], acts: '<button type="button" data-x>고치기</button>' },
+    { t: '옛 글 문장.', src: null }
+  ] });
+  assert.equal((h.match(/class="evd-t"/g) || []).length, 3, '한 문장이어도 글을 보임');
+  assert.ok(/근거 1·2/.test(h), '목록 번호');
+  assert.ok(h.includes('aria-expanded="false"') && h.includes('data-evd-key="k:0"'));
+  assert.ok(/evd-none[^>]*>.*근거 없음/.test(h) && h.includes('evd-bad'), '근거 없음·고칠 곳');
+  assert.ok(h.includes('<li>근거가 없어요</li>') && h.includes('data-x'), '까닭·단추');
+  assert.equal((h.match(/data-evd-toggle/g) || []).length, 1, '근거를 모르는 문장·근거 없는 문장은 펼침 단추 없음');
+  assert.ok(h.includes('보건실에 데려감') && h.includes('메모 1'), '펼친 근거 줄에 종류와 번호');
+  assert.equal(evidenceRowsHTML({ rows: [] }), '');
+});

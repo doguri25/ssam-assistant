@@ -3021,6 +3021,79 @@ function hkOut(o, list, trim) {
 }
 const hkEvHTML = (r, s, i) => (r.ev && EV() ? EV().evidenceHTML({ ...r.ev, text: r.t, key: `hk:${s.id}:${i}` }) : '');
 
+/* ---------- 생활기록부 글 쓰기 틀 (record/record.js가 window.SSAM.record로 줌, 스펙 2026-11-14-eval-redesign §6) ----------
+   교과 평어·창체·행특이 같은 틀. 그리는 조각·문장 줄·근거 맞추기는 그 모듈이, 상태·저장·AI 부르기는 이 파일이 함.
+   이 파일은 모듈보다 먼저 돌아서 틀이 아직 없으면 빈 자리만 그리고, 준비되면(ssam:record-ready) 지금 화면을 다시 그림 */
+const REC = () => (window.SSAM && window.SSAM.record) || null;
+window.addEventListener('ssam:record-ready', () => {
+  const redraw = () => { try { if (S.mode === 'hk') { renderHKList(); renderHKEditor(); } else if (S.mode === 'cc') renderCCResults(); else if (S.mode === 'gr') renderGRResults(); else if (S.mode === 'pyeongeo') renderPyRec(); } catch (e) {} };
+  const a = document.activeElement, sec = document.querySelector('section[data-menu="evaluate"]');
+  if (a && sec && sec.contains(a) && a.matches('input, textarea, select')) a.addEventListener('blur', () => setTimeout(redraw, 0), { once: true });
+  else redraw();
+});
+/* 행특: 가운데에 보일 후보 — 선생님이 고른 후보(HK.cand, 이번 실행 동안), 없으면 고른 글(복사함), 없으면 첫 후보 */
+HK.cand = {};
+function hkCur(s) {
+  const rs = (s && s.results) || [];
+  if (!rs.length) return -1;
+  const c = HK.cand[s.id];
+  if (c != null && rs[c]) return c;
+  const d = rs.findIndex(r => r.d);
+  return d >= 0 ? d : 0;
+}
+const hkCurRes = s => { const i = hkCur(s); return i < 0 ? null : s.results[i]; };
+function renderPyRec() {} // TODO 교과 평어 학생별 틀
+const hkLimit = () => ({ max: HK.settings.max, unit: HK.settings.unit });
+// 학생끼리 같은 문장(기재 점검과 같은 규칙): 학생마다 지금 글
+const hkDups = () => (REC() ? REC().dupKeys(hkShown().map(s => ({ who: s.no, text: (hkCurRes(s) || {}).t || '' }))) : null);
+function hkState(s, dups) {
+  const R = REC(), r = hkCurRes(s);
+  return R.recState({ text: r && r.t, done: !!s.done, run: HK.running.has(s.id), wait: HK.queue.includes(s.id), err: s.err,
+    rows: r ? R.sentenceRows(r.t, r.ev, { limit: hkLimit(), dups }) : null, none: s.memo && s.memo.trim() ? '메모 있음' : '메모 없음' });
+}
+/* 그 글의 근거 목록 + 글을 쓴 뒤 더한 메모 조각(번호를 이어서) — 새 조각도 「아직 안 쓴 근거」로 문장을 더할 수 있게 */
+function hkEvMerged(s, r) {
+  const base = (r && r.ev && Array.isArray(r.ev.list)) ? r.ev.list : [];
+  let n = base.reduce((m, e) => Math.max(m, +(String(e.id).match(/\d+/) || [0])[0]), 0);
+  const fresh = hkEvList(s).filter(e => !base.some(b => b.label === e.label)).map(e => ({ ...e, id: 'm' + ++n }));
+  return [...base, ...fresh];
+}
+/* 나이스 차례로 복사: 학생마다 지금 글(고른 후보, 없으면 가운데 후보) — 넣은 글은 고른 글(다 씀)로 */
+const HK_NEIS_SRC = {
+  key: 'hk', what: '행특', field: '행동특성 및 종합의견', title: '행동특성',
+  text: id => { const s = hkStudent(id), r = s && hkCurRes(s); return r ? r.t : ''; },
+  no: id => { const s = hkStudent(id); return s ? s.no : 0; },
+  mark: id => { const s = hkStudent(id), r = s && hkCurRes(s); if (r && r.t) { r.d = 1; s.done = 1; } },
+  saved: () => { HKStore.save(); if (S.mode === 'hk') { renderHKList(); renderHKEditor(); } }
+};
+/* [고치기]: 고칠 문장 하나를 근거로 다시 씀(AI 한 문장, 이름은 가려 보냄) · [이 근거로 문장 더하기]: 근거 하나로 끝에 한 문장.
+   AI가 바꾼 글은 고른 글 표시(다 씀)를 지움([조금 길게]처럼) — 나이스에 넣은 글과 달라졌으니 */
+async function hkOneSentence(s, ci, { row = -1, add = '' } = {}) {
+  const R = REC(), r = s && s.results[ci];
+  if (!R || !r || r.busy || HK.busyRow || HK.running.has(s.id)) return;
+  if (!engineReady()) { openSettings(); return; }
+  const list = hkEvMerged(s, r), rr = R.sentenceRows(r.t, r.ev, { limit: hkLimit(), dups: hkDups() });
+  const x = row >= 0 ? rr.rows[row] : null, target = add ? list.find(e => e.id === add) : null;
+  if ((row >= 0 && !x) || (add && !target)) return;
+  HK.busyRow = { id: s.id, row, add }; renderHKEditor();
+  const before = r.t;
+  try {
+    const prompt = R.sentencePrompt({ mode: add ? 'add' : 'fix', field: 'hk', text: r.t, sentence: x ? x.t : '', target, list, da: HK.settings.ending === 'da',
+      why: x ? [...(x.none ? ['이 문장을 받치는 근거가 없어요'] : []), ...x.issues.map(i => i.why)] : [] });
+    const out = await generate(prompt, { fresh: true, task: 'writing' });
+    const one = R.normOne(out.text, list);
+    if (!one) throw { code: 'empty_completion' };
+    if (r.t !== before || !s.results.includes(r)) return; // 그새 글이 바뀜
+    if (add && !one.src.length) one.src = [add];
+    const ev = rr.known ? { ...(r.ev || {}), list } : r.ev;
+    const o = add ? R.appendSentence(r.t, ev, one) : R.replaceSentence(r.t, ev, row, [one]);
+    r.t = o.t; if (o.ev) r.ev = o.ev;
+    delete r.rv; r.d = 0; if (!s.results.some(y => y.d)) s.done = 0;
+    toast(add ? '근거로 문장을 더했어요' : '문장을 고쳤어요');
+  } catch (e) { toast(errMsg((e && e.code) || 'upstream_error', e), 4500); }
+  finally { HK.busyRow = null; HKStore.save(); renderHKEditor(); renderHKList(); }
+}
+
 /* ---------- 프롬프트 ---------- */
 function hkEndRule() {
   return HK.settings.ending === 'da'
@@ -3239,20 +3312,20 @@ function renderHKList() {
       <div class="row" style="justify-content:center"><input class="field num sm" id="hkCount" type="number" min="1" max="60" value="25" aria-label="학생 수"><button class="btn primary" type="button" data-hk="roster">칸 만들기</button></div></div>`;
     return;
   }
-  const shown = hkShown();
-  const doneN = shown.filter(s => s.done).length;
+  const R = REC();
+  if (!R) { box.innerHTML = '<div class="skel" style="height:200px"></div>'; return; } // 글 쓰기 틀이 준비되면(ssam:record-ready) 다시 그림
+  const shown = hkShown(), dups = hkDups();
+  const sts = shown.map(s => [s, hkState(s, dups)]);
   const memoN = shown.filter(s => s.memo && s.memo.trim()).length;
-  box.innerHTML = `<div class="head"><h2>학생</h2><span class="muted num">완료 ${doneN} / ${shown.length}</span></div>
-    <div class="row"><button class="btn primary" type="button" data-hk="all" ${memoN ? '' : 'disabled'}>메모 있는 학생 모두 만들기</button><button class="btn" type="button" data-hk="bulk">한꺼번에 넣기</button></div>
-    ${HK.err ? `<div class="banner err"><span class="grow">${esc(HK.err)}</span><button class="btn" type="button" data-act="settings">평어 쓰는 방식</button></div>` : ''}
-    <ul class="hk-students">${shown.map(s => {
-      const [k, label] = hkStatus(s);
-      return `<li><button type="button" class="hk-stu ${k}" data-hkstu="${esc(s.id)}" aria-current="${s.id === HK.sel}">
-        <span class="no num">${s.no}</span>
-        <span class="mid"><b>${esc(s.label || s.no + '번')}</b><small>${esc((s.memo || '').trim().slice(0, 40) || '메모를 넣어 주세요')}</small></span>
-        <span class="st">${k === 'run' || k === 'wait' ? '<span class="spin"></span>' : k === 'done' ? ICON.check : ''}${label}</span></button></li>`;
-    }).join('')}</ul>
-    <div class="row" style="justify-content:space-between"><button class="btn text" type="button" data-hk="addOne">${ICON.plus}학생 더하기</button><span class="row"><button class="btn text" type="button" data-eval-check="hk">기재 점검</button><button class="btn" type="button" data-hk="copyAll">${ICON.copy}완료한 글 모두 복사</button><button class="btn text" type="button" data-hk="reset" style="color:var(--err)">새로 시작</button></span></div>`;
+  // 생활기록부 글 쓰기 틀(스펙 2026-11-14-eval-redesign §6): 번호 · 다 씀/초안/고칠 곳(쓰는 중·메모 있음/없음)
+  box.innerHTML = R.listHTML({
+    items: sts.map(([s, st]) => ({ attr: `data-hkstu="${esc(s.id)}"`, no: s.no, sub: s.label || '', st, cur: s.id === HK.sel, busy: st.k === 'run' || st.k === 'wait', cls: 'hk-stu' })),
+    doneN: shown.filter(s => s.done).length, fixN: sts.filter(([, st]) => st.k === 'fix').length, total: shown.length,
+    top: `<div class="rw-ltools"><button class="btn primary" type="button" data-hk="all" ${memoN ? '' : 'disabled'}>메모 있는 학생 모두 만들기</button><button class="btn" type="button" data-hk="bulk">한꺼번에 넣기</button></div>
+      ${HK.err ? `<div class="banner err"><span class="grow">${esc(HK.err)}</span><button class="btn" type="button" data-act="settings">평어 쓰는 방식</button></div>` : ''}`,
+    bottom: `<div class="rw-lfoot"><button class="btn text" type="button" data-hk="addOne">${ICON.plus}학생 더하기</button><button class="btn text" type="button" data-eval-check="hk">기재 점검</button>
+      <button class="btn" type="button" data-hk="copyAll">${ICON.copy}다 쓴 글 모두 복사</button><button class="btn text" type="button" data-hk="reset" style="color:var(--err)">새로 시작</button></div>`
+  });
 }
 /* 특성 단추: 묶음(생활·학습·관계·특기·성장 중)마다 접기. 처음엔 첫 묶음만 펼침, 펼치고 접은 것은 이번 실행 동안 기억.
    묶음 머리에 이 학생 메모에 들어 있는 특성 수(「생활 · 2개 골랐어요」) — 메모를 쉼표·줄로 나눈 조각이 단추 글과 같으면 고른 것 */
@@ -3285,48 +3358,78 @@ function renderHKEditor() {
   const box = $('#hkEditor'); if (!box) return;
   const s = hkStudent(HK.sel);
   if (!s) { box.innerHTML = HK.students.length ? `<div class="empty"><h3>학생을 골라 주세요</h3></div>` : ''; return; }
+  const R = REC();
+  if (!R) { box.innerHTML = '<div class="skel" style="height:200px"></div>'; return; }
   const busy = HK.running.has(s.id) || HK.queue.includes(s.id);
   const memoFocused = document.activeElement && document.activeElement.id === 'hkMemo';
   const labelFocused = document.activeElement && document.activeElement.id === 'hkLabel';
-  const res = (s.results || []).map((r, i) => {
-    const cur = r.draft != null ? r.draft : r.t;
-    const ok = rangeOk(cur);
-    return `<div class="hk-res ${r.d ? 'done' : ''}${rvOpen(r) ? ' rv-mark' : ''}" data-ri="${i}">
-      ${r.edit ? `<textarea class="field hk-edit" data-edit="${i}" rows="7">${esc(cur)}</textarea>`
-        : `<div class="hk-text" role="button" tabindex="0" data-pick="${i}" aria-label="${r.d ? '사용함. ' : ''}눌러서 복사">${r.d ? ICON.check : ''}${esc(r.t)}</div>`}
-      ${hkEvHTML(r, s, i)}
-      <div class="hk-meta">
-        <span class="cnt ${ok ? 'ok' : 'warn'} num">${hkCountLabel(cur)}</span>
-        <span class="right">
-          ${r.busy ? '<span class="spin"></span>' : ''}
-          <button class="btn" type="button" data-hkr="edit" data-i="${i}">${r.edit ? '고친 내용 저장' : '고치기'}</button>
-          <button class="btn" type="button" data-hkr="longer" data-i="${i}" ${r.busy ? 'disabled' : ''}>조금 길게</button>
-          <button class="btn" type="button" data-hkr="shorter" data-i="${i}" ${r.busy ? 'disabled' : ''}>조금 짧게</button>
-          <button class="icon-btn" type="button" data-hkr="del" data-i="${i}" aria-label="이 글 지우기" title="이 글 지우기">${ICON.x}</button>
-        </span>
-      </div>
-      ${r.edit ? '' : rvInline(r, ['hk', s.id, i].map(encodeURIComponent).join(':'), `후보 ${i + 1}`)}
-    </div>`;
-  }).join('');
+  // 생활기록부 글 쓰기 틀(스펙 2026-11-14-eval-redesign §6): 가운데 지금 글(고른 후보, 없으면 첫 후보)을 문장마다 근거와 함께,
+  // 고칠 곳(근거 없음·기재 점검 규칙·같은 문장)은 주황 + [고치기]·[문장 빼기], 아래 글자 수·[AI로 다시 쓰기]·[나이스 차례로 복사]·[다음 학생]. 다른 후보는 아래 작게
+  const ci = hkCur(s), r = ci >= 0 ? s.results[ci] : null, next = hkNext(s);
+  const rr = r ? R.sentenceRows(r.t, r.ev, { limit: hkLimit(), dups: hkDups() }) : null;
+  const picked = [...hkKwPicked(s)].filter(k => KW_GROUPS.some(([, ks]) => ks.includes(k)));
+  const chips = `${picked.slice(0, 6).map(k => `<span class="ev-chip done">${esc(k)}</span>`).join('')}<button type="button" class="rw-chip-add" data-hk="traits">특성 더하기</button>`;
+  const who = `<span class="badge num">${s.no}</span>번`;
+  const gen = label => `<button class="btn${r ? '' : ' primary'}" type="button" data-hk="gen" ${busy ? 'disabled' : ''}>${busy ? '<span class="spin"></span>쓰는 중' : label}</button>`;
+  const rowBusy = HK.busyRow && HK.busyRow.id === s.id ? HK.busyRow : null;
+  let art;
+  if (r) {
+    const cur = r.draft != null ? r.draft : r.t, key = ['hk', s.id, ci].map(encodeURIComponent).join(':');
+    const acts = i => `<button type="button" class="ev-turn-btn rw-fix" data-hkrow="fix" data-row="${i}" ${rowBusy || r.busy || busy ? 'disabled' : ''}>${rowBusy && rowBusy.row === i ? '<span class="spin"></span>고치는 중' : '고치기'}</button><button type="button" class="btn rw-del" data-hkrow="del" data-row="${i}" ${rowBusy || r.busy ? 'disabled' : ''}>문장 빼기</button>`;
+    art = R.articleHTML({
+      cls: `hk-res${r.d ? ' done' : ''}${rvOpen(r) ? ' rv-mark' : ''}`, attrs: `data-ri="${ci}"`, headCls: 'hk-top', where: '행동특성 및 종합의견', who, chips,
+      seg: s.results.length > 1 || r.d ? `<p class="rw-cand ev-sub">후보 ${ci + 1}${s.results.length > 1 ? ` / ${s.results.length}` : ''}${r.d ? ' · <b>고른 글</b>(복사함)' : ''}</p>` : '',
+      note: rr.edited && !r.edit ? '<p class="evd-edit rw-note"><b>고친 글</b> · 근거는 처음 쓴 글 기준이에요</p>' : '',
+      body: r.edit ? `<textarea class="field hk-edit" data-edit="${ci}" rows="7" aria-label="${s.no}번 글 고치기">${esc(cur)}</textarea>`
+        : `<div class="hk-text rw-text" tabindex="-1">${R.rowsHTML({ rows: rr.rows, list: r.ev ? hkEvMerged(s, r) : [], key: `hk:${s.id}:${ci}`, label: `${s.no}번 문장`, acts })}</div>`,
+      after: r.edit ? '' : rvInline(r, key, `후보 ${ci + 1}`),
+      foot: R.footHTML({ n: measure(cur), max: HK.settings.max, unit: unitWord(), detail: hkCountDiff(cur), warn: !rangeOk(cur),
+        acts: `${gen('AI로 다시 쓰기')}<button class="btn" type="button" data-hk="neis">나이스 차례로 복사</button>${next ? `<button class="btn dark" type="button" data-hk="next">다음 학생 ${next.no}번</button>` : ''}` }),
+      tools: `<span class="cnt ${rangeOk(cur) ? 'ok' : 'warn'} num">${hkCountLabel(cur)}</span><span class="rw-grow"></span>${r.busy ? '<span class="spin"></span>' : ''}
+        <button class="btn" type="button" data-pick="${ci}" aria-label="${s.no}번 글 복사하고 다 씀으로">${r.d ? ICON.check + '다시 복사' : ICON.copy + '복사하고 다 씀'}</button>
+        <button class="btn" type="button" data-hkr="edit" data-i="${ci}">${r.edit ? '고친 내용 저장' : '직접 고치기'}</button>
+        <button class="btn" type="button" data-hkr="longer" data-i="${ci}" ${r.busy ? 'disabled' : ''}>조금 길게</button>
+        <button class="btn" type="button" data-hkr="shorter" data-i="${ci}" ${r.busy ? 'disabled' : ''}>조금 짧게</button>
+        <button class="icon-btn" type="button" data-hkr="del" data-i="${ci}" aria-label="이 후보 지우기" title="이 후보 지우기">${ICON.x}</button>`
+    });
+  } else {
+    art = R.articleHTML({ cls: 'rw-empty', headCls: 'hk-top', where: '행동특성 및 종합의견', who, chips,
+      body: busy ? '<div class="skel" style="height:120px"></div>' : `<p class="rw-emptyp">${s.memo && s.memo.trim() ? '메모와 특성으로 글을 써요. 문장마다 어느 메모에서 왔는지 근거가 붙어요.' : '아래에 관찰 메모를 넣거나 특성 단추를 눌러 주세요.'}</p>`,
+      foot: `<span class="rw-grow"></span><span class="rw-acts">${gen(ICON.spark + '행특 만들기')}</span>` });
+  }
+  // 다른 후보: 누르면 그 후보를 가운데에(검토 의견이 있으면 표시)
+  const alts = (s.results || []).map((x, i) => (i === ci ? '' : `<li class="hk-res rw-alt${x.d ? ' done' : ''}" data-ri="${i}"><button type="button" class="hk-text rw-alt-t" data-hkcand="${i}">
+      <span class="rw-alt-h">후보 ${i + 1}${x.d ? ' · 고른 글' : ''}${rvOpen(x) ? ' · <span class="ev-chip turn-soft">검토 의견</span>' : ''}<span class="num">${charCount(x.t)}자</span></span><span class="rw-alt-p">${esc(x.t)}</span></button></li>`)).join('');
+  const list = r && r.ev ? hkEvMerged(s, r) : hkEvList(s);
+  const side = R.sideHTML({ who: `${s.no}번`, from: list.length ? `관찰 메모 ${list.length}` : '', uses: R.evidenceUse(list, rr && rr.known ? rr.rows : []), known: !!(rr && rr.known && !r.edit),
+    addAttr: r && !busy && !r.edit ? e => `data-hkadd="${esc(e.id)}"` : null, busy: rowBusy && rowBusy.add ? rowBusy.add : (rowBusy || (r && r.busy) ? 'x' : ''),
+    note: r && rr && !rr.known ? '<p class="ev-sub rw-evnote">이 글은 문장마다 근거를 맞추지 않았어요. [AI로 다시 쓰기]를 누르면 근거가 붙어요.</p>' : '',
+    empty: '메모를 넣으면 메모 조각이 근거가 돼요', ai: 'AI에는 이름 없이 메모 조각만 보내요.' });
   box.innerHTML = `
     <button class="btn text back" type="button" data-hk="back">${ICON.back}학생 목록</button>
-    <div class="hk-top"><span class="badge num">${s.no}</span>
-      <input class="field" id="hkLabel" value="${esc(s.label || '')}" placeholder="${s.no}번 · 별칭 (이름은 쓰지 마세요)" autocomplete="off">
-      ${s.done ? `<span class="chip done">${ICON.check}완료</span>` : ''}</div>
-    <label class="lab" for="hkMemo">교사 메모 · 단어나 짧은 문장 <span class="muted">(이름은 쓰지 마세요)</span></label>
-    <textarea class="field" id="hkMemo" rows="4" placeholder="예) 1인 1역(우유 당번) 한 학기 동안 성실, 친구가 다치면 먼저 도와줌, 발표할 때 목소리가 작았는데 2학기에 자신감 생김, 수학 문제를 끝까지 풀려고 함">${esc(s.memo || '')}</textarea>
-    ${hkKwHTML(s)}
-    <div class="row">
-      <button class="btn primary" type="button" data-hk="gen" ${busy ? 'disabled' : ''}>${busy ? '<span class="spin"></span>쓰는 중' : ICON.spark + (s.results && s.results.length ? '새 후보 만들기' : '행특 만들기')}</button>
-      <span class="muted num">후보 ${HK.settings.variants}개 · ${HK.settings.min}~${HK.settings.max}${unitWord()}${engineReady() ? ' · ' + esc(engineName()) : ''}</span>
-    </div>
-    ${uiAiNote('교사 메모(붙여넣은 이름 칸은 빼고)와 학년을 보내요. 번호·별칭은 보내지 않아요.')}
-    ${s.err ? `<div class="banner err"><span class="grow">${esc(s.err)}</span></div>` : ''}${s.rvErr ? RV_FAIL_HTML : ''}
-    ${!engineReady() ? `<div class="banner info"><span class="grow">글을 만들 AI를 먼저 정해 주세요.</span><button class="btn primary" type="button" data-act="settings">API 키 넣기</button></div>` : ''}
-    <div class="hk-results">${res || (busy ? '<div class="skel" style="height:120px"></div>' : '')}</div>
-    ${res ? '<p class="muted">글을 누르면 복사되고 완료로 표시돼요.</p>' : ''}`;
+    <div class="rw-grid"><div class="rw-main">
+    ${art}
+    ${alts ? `<section class="rw-alts" aria-label="다른 후보"><h4>다른 후보</h4><ul>${alts}</ul></section>` : ''}
+    <section class="rw-memo ev-card" aria-label="${s.no}번 메모">
+      <div class="rw-memo-h"><label class="lab" for="hkMemo">교사 메모 · 단어나 짧은 문장 <span class="muted">(이름은 쓰지 마세요)</span></label>
+        <input class="field rw-alias" id="hkLabel" value="${esc(s.label || '')}" placeholder="${s.no}번 · 별칭 (이름은 쓰지 마세요)" autocomplete="off" aria-label="${s.no}번 별칭"></div>
+      <textarea class="field" id="hkMemo" rows="4" placeholder="예) 1인 1역(우유 당번) 한 학기 동안 성실, 친구가 다치면 먼저 도와줌, 발표할 때 목소리가 작았는데 2학기에 자신감 생김, 수학 문제를 끝까지 풀려고 함">${esc(s.memo || '')}</textarea>
+      ${hkKwHTML(s)}
+      <p class="muted num rw-memo-info">후보 ${HK.settings.variants}개 · ${HK.settings.min}~${HK.settings.max}${unitWord()}${engineReady() ? ' · ' + esc(engineName()) : ''}</p>
+      ${uiAiNote('교사 메모(붙여넣은 이름 칸은 빼고)와 학년을 보내요. 번호·별칭은 보내지 않아요.')}
+      ${s.err ? `<div class="banner err"><span class="grow">${esc(s.err)}</span></div>` : ''}${s.rvErr ? RV_FAIL_HTML : ''}
+      ${!engineReady() ? `<div class="banner info"><span class="grow">글을 만들 AI를 먼저 정해 주세요.</span><button class="btn primary" type="button" data-act="settings">API 키 넣기</button></div>` : ''}
+    </section>
+    </div><aside class="rw-side" aria-label="${s.no}번 근거">${side}</aside></div>`;
   if (memoFocused) { const m = $('#hkMemo'); m.focus(); m.selectionStart = m.selectionEnd = m.value.length; }
   if (labelFocused) $('#hkLabel').focus();
+}
+/* 다음 학생(명단 차례) */
+function hkNext(s) { const l = hkShown(), i = l.indexOf(s); return i >= 0 && i < l.length - 1 ? l[i + 1] : null; }
+/* 글자 수 줄의 자세히: 범위 안 · n자 모자람 · n자 넘침 */
+function hkCountDiff(t) {
+  const n = measure(t);
+  return n < HK.settings.min ? `${(HK.settings.min - n).toLocaleString()}${unitWord()} 모자람` : n > HK.settings.max ? `${(n - HK.settings.max).toLocaleString()}${unitWord()} 넘침` : '범위 안';
 }
 
 /* ---------- 이벤트 ---------- */
@@ -3364,6 +3467,22 @@ document.addEventListener('click', e => {
     });
     return;
   }
+  // 생활기록부 글 쓰기 틀: 다른 후보 보기 · 문장 고치기/빼기 · 근거로 문장 더하기
+  const cand = t.closest('[data-hkcand]');
+  if (cand) { const s = hkStudent(HK.sel); if (s && s.results[+cand.dataset.hkcand]) { HK.cand[s.id] = +cand.dataset.hkcand; renderHKEditor(); const a = $('#hkEditor .rw-art'); if (a) a.scrollIntoView({ block: 'nearest' }); } return; }
+  const rowb = t.closest('[data-hkrow]');
+  if (rowb && !rowb.disabled) {
+    const s = hkStudent(HK.sel), ci = s ? hkCur(s) : -1, r = ci >= 0 ? s.results[ci] : null, i = +rowb.dataset.row;
+    if (!r || !REC()) return;
+    if (rowb.dataset.hkrow === 'fix') { hkOneSentence(s, ci, { row: i }); return; }
+    // 문장 빼기: 손으로 고친 것과 같게(고른 글 표시는 그대로). 마지막 문장을 빼면 그 후보를 지움
+    const o = REC().removeSentence(r.t, r.ev, i);
+    if (!o.t) { s.results.splice(ci, 1); delete HK.cand[s.id]; if (!s.results.some(x => x.d)) s.done = 0; }
+    else { r.t = o.t; if (o.ev) r.ev = o.ev; delete r.rv; }
+    HKStore.save(); renderHKEditor(); renderHKList(); toast('문장을 뺐어요'); return;
+  }
+  const addb = t.closest('[data-hkadd]');
+  if (addb && !addb.disabled) { const s = hkStudent(HK.sel); if (s && hkCur(s) >= 0) hkOneSentence(s, hkCur(s), { add: addb.dataset.hkadd }); return; }
   const rb = t.closest('[data-hkr]');
   if (rb) {
     const s = hkStudent(HK.sel); const i = +rb.dataset.i; const r = s && s.results[i]; if (!r) return;
@@ -3372,7 +3491,7 @@ document.addEventListener('click', e => {
       if (r.edit) { const v = r.draft != null ? r.draft : r.t, nt = v.replace(/\s*\n+\s*/g, ' ').trim(); if (nt !== r.t) delete r.rv; r.t = nt; delete r.draft; delete r.edit; HKStore.save(); renderHKList(); }
       else r.edit = 1;
       renderHKEditor(); if (r.edit) { const ta = document.querySelector(`[data-edit="${i}"]`); ta && ta.focus(); }
-    } else if (a === 'del') { s.results.splice(i, 1); if (!s.results.some(x => x.d)) s.done = 0; HKStore.save(); renderHKEditor(); renderHKList(); }
+    } else if (a === 'del') { s.results.splice(i, 1); delete HK.cand[s.id]; if (!s.results.some(x => x.d)) s.done = 0; HKStore.save(); renderHKEditor(); renderHKList(); }
     else hkAdjust(s.id, i, a);
     return;
   }
@@ -3387,6 +3506,14 @@ document.addEventListener('click', e => {
     renderHK();
   }
   else if (act === 'back') { HK.showEditor = false; $('#hkView').classList.remove('show-pane'); }
+  else if (act === 'next') {
+    const s = hkStudent(HK.sel), n = s && hkNext(s); if (!n) return;
+    HK.sel = n.id; renderHKList(); renderHKEditor();
+    const b = document.querySelector(`#hkList [data-hkstu="${CSS.escape(n.id)}"]`); if (b) b.scrollIntoView({ block: 'nearest' });
+    const top = $('#hkEditor'); if (top) top.scrollTop = 0;
+  }
+  else if (act === 'neis') neisCopyAll(HK_NEIS_SRC, hkShown().map(s => s.id));
+  else if (act === 'traits') { const g = document.querySelector('#hkEditor .kw-groups'); if (g) { g.scrollIntoView({ block: 'center', behavior: 'smooth' }); const sm = g.querySelector('summary'); if (sm) sm.focus({ preventScroll: true }); } }
   else if (act === 'gen') {
     const s = hkStudent(HK.sel); if (!s) return;
     if (!s.memo || !s.memo.trim()) { toast('메모를 먼저 넣어 주세요'); $('#hkMemo') && $('#hkMemo').focus(); return; }
@@ -3420,7 +3547,13 @@ document.addEventListener('input', e => {
   const ed = e.target.closest && e.target.closest('[data-edit]');
   if (ed && s) {
     const r = s.results[+ed.dataset.edit];
-    if (r) { r.draft = ed.value; const c = ed.closest('.hk-res').querySelector('.cnt'); c.textContent = hkCountLabel(r.draft); c.className = 'cnt num ' + (rangeOk(r.draft) ? 'ok' : 'warn'); }
+    if (r) {
+      r.draft = ed.value;
+      const box = ed.closest('.hk-res'), c = box && box.querySelector('.cnt'), n = box && box.querySelector('.rw-count .ev-num'), d = box && box.querySelector('.rw-cdet');
+      if (c) { c.textContent = hkCountLabel(r.draft); c.className = 'cnt num ' + (rangeOk(r.draft) ? 'ok' : 'warn'); }
+      if (n) n.textContent = measure(r.draft).toLocaleString();
+      if (d) { d.textContent = hkCountDiff(r.draft); d.classList.toggle('warn', !rangeOk(r.draft)); }
+    }
   }
   if (e.target.id === 'hkLabel' && s) { s.label = e.target.value.trim(); HKStore.save(); clearTimeout(HK.lt); HK.lt = setTimeout(renderHKList, 400); }
 });

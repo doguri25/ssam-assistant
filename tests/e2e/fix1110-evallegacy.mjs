@@ -53,7 +53,8 @@ const until = async (fn, ms = 20000) => { const end = Date.now() + ms; while (!(
 const rows = () => page.$$eval('#grResults [data-grrow]', els => els.map(e => e.querySelector('.badge').textContent.trim() + (e.classList.contains('skip') ? 's' : '')));
 const lastArm = () => page.evaluate(() => { const a = window.__inv.filter(x => x.cmd === 'neis_arm').pop(); return a ? a.args.texts : null; });
 const rec = id => page.evaluate(id => JSON.parse(localStorage.getItem('ssam:gr:' + id)), id);
-const goTab = async tab => { await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click(`#menuTabs [data-tab="${tab}"]`); };
+// 평가 가로 메뉴에서 교과 평어·창체·행특은 「생활기록부」 한 칸으로 접힘(스펙 2026-11-14-eval-redesign §1) — 그 탭으로 바로 감
+const goTab = async tab => { await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), tab); };
 // 지난 채점 기록 하나를 넣고 평가지 채점 탭을 엶
 const seedGR = async (id, students, cls = { count: 4, except: [] }) => {
   await page.evaluate(({ id, students, cls }) => {
@@ -336,13 +337,13 @@ await run('fix1110-evallegacy', [
     await page.click('[data-hk="gen"]');
     await page.waitForSelector('#hkEditor [data-pick="0"]', { timeout: 15000 });
     await page.click('#hkEditor [data-pick="0"]');
-    await until(async () => (await page.textContent('#hkList')).includes('완료 1 / 5'), 3000);
+    await until(async () => (await page.textContent('#hkList')).includes('다 씀 1 / 5'), 3000);
     await page.click('#hkEditor [data-hkr="longer"][data-i="0"]');
     await until(async () => !(await page.$('#hkEditor .hk-res .spin')) && (await page.textContent('#hkEditor .hk-text')).includes('꾸준히 노력함'), 10000);
     await page.waitForTimeout(700);
     const list = await page.textContent('#hkList');
     const h = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:hk')).students.find(s => s.no === 1));
-    assert(!list.includes('완료 1 / 5') && h.done === 0 && !h.results.some(r => r.d), '완료가 남음: ' + list.replace(/\s+/g, ' ').slice(0, 60) + ' / ' + JSON.stringify({ done: h.done, d: h.results.map(r => r.d) }));
+    assert(!list.includes('다 씀 1 / 5') && h.done === 0 && !h.results.some(r => r.d), '완료가 남음: ' + list.replace(/\s+/g, ' ').slice(0, 60) + ' / ' + JSON.stringify({ done: h.done, d: h.results.map(r => r.d) }));
   }],
   // ---------- cc-busy ----------
   ['[cc-busy] 창체를 쓰는 중이면 평가 메뉴가 「만드는 중」으로 알려 학년도 옮기기·업데이트가 하던 글을 잃지 않게 함', async () => {

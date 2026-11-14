@@ -47,7 +47,8 @@ await mockClaude(page, async ({ prompt }) => {
 });
 const until = async (fn, ms = 10000, what = '') => { const end = Date.now() + ms; while (!(await fn())) { if (Date.now() > end) throw new Error('시간 초과 ' + what); await new Promise(r => setTimeout(r, 50)); } };
 const n = k => calls.filter(c => c.k === k).length;
-const goTo = async (menu, tab) => { await page.click(`nav.app-side [data-menu-go="${menu}"]`); if (tab) await page.click(`#menuTabs [data-tab="${tab}"]`); };
+// 평가의 교과 평어·창체·행특은 가로 메뉴에서 「생활기록부」 한 칸으로 접힘(스펙 2026-11-14-eval-redesign §1) — 접힌 탭은 바로 감
+const goTo = async (menu, tab) => { await page.click(`nav.app-side [data-menu-go="${menu}"]`); if (!tab) return; if (await page.$(`#menuTabs [data-tab="${tab}"]`)) await page.click(`#menuTabs [data-tab="${tab}"]`); else await page.evaluate(([m, t]) => import('./core/shell.js').then(s => s.go(m, t)), [menu, tab]); };
 const ls = k => page.evaluate(k => JSON.parse(localStorage.getItem(k) || 'null'), k);
 /* 세로 메뉴의 「AI가 일하는 중」 점: 일하는 메뉴 버튼만(지금 보는 메뉴는 빼고) */
 const dots = () => page.$$eval('nav.app-side .side-btn.working', bs => bs.map(b => b.dataset.menuGo).join(','));
@@ -232,7 +233,7 @@ await run('background-jobs', [
     const hk = await ls('ssam:hk');
     for (const s of hk.students) assert(s.results.length === 2 && s.results.every(r => r.t.includes('-' + 'ABC'[s.no - 1])), `${s.no}번 글: ${JSON.stringify(s.results.map(r => r.t.slice(0, 12)))}`);
     await goTo('evaluate', 'hk');
-    assert((await page.textContent('#hkList')).includes('완료 0 / 3') && (await page.locator('#hkList .hk-stu .spin').count()) === 0, '돌아와도 쓰는 중');
+    assert((await page.textContent('#hkList')).includes('다 씀 0 / 3') && (await page.locator('#hkList .hk-stu .spin').count()) === 0, '돌아와도 쓰는 중');
     assert((await page.textContent('#hkEditor')).includes('후보1-'), '글이 안 보임');
     delay = 0;
   }],
