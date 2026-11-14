@@ -26,10 +26,10 @@ const underFab = sel => page.evaluate(sel => {
 const toBottom = () => page.evaluate(() => { const a = document.querySelector('#app'); a.scrollTop = a.scrollHeight; });
 
 await run('ui-tidy-shell', [
-  ['평가 탭 두 묶음: 「채점」 단원평가·활동지·평가지 채점 | 「생활기록부」 교과 평어·창체·행특·기재 점검 — 이름은 누르는 칸이 아니고 사이에 구분선', async () => {
+  ['평가 탭 두 묶음: 「채점」 단원평가·활동지 | 「생활기록부」 평가지 채점·교과 평어·창체·행특·기재 점검(평가지 채점은 교과 평어와 이어짐) — 이름은 누르는 칸이 아니고 사이에 구분선', async () => {
     await page.click('nav.app-side [data-menu-go="evaluate"]');
     const seq = await page.$$eval('#menuTabs > *', els => els.map(e => e.matches('.tab-grp') ? `[${e.textContent}]` : e.matches('.tab-sep') ? '|' : e.dataset.tab));
-    assert(seq.join(' ') === '[채점] unit activity gr | [생활기록부] pyeongeo cc hk check', seq.join(' '));
+    assert(seq.join(' ') === '[채점] unit activity | [생활기록부] gr pyeongeo cc hk check', seq.join(' '));
     const g = await page.$$eval('#menuTabs .tab-grp', els => els.map(e => ({ tag: e.tagName, tab: e.tabIndex, h: e.getBoundingClientRect().height, fs: parseFloat(getComputedStyle(e).fontSize) })));
     assert(g.every(x => x.tag === 'SPAN' && x.tab < 0 && x.fs < 14), '묶음 이름: ' + JSON.stringify(g));
     assert(await page.getAttribute('#menuTabs .tab-sep', 'aria-hidden') === 'true', '구분선은 읽지 않음');

@@ -308,9 +308,13 @@ function cutAsk(t) {
   return u === t ? t : u.replace(/(\S)\s*(을|를)$/, (m, c, p) => { const b = hasBatchim(c); return b == null || b === (p === '을') ? c : m; });
 }
 /* 품명: 앞의 「내가 필요한」·「제가 쓸」(주어 + 필요한), 뒤의 「사주세요」·「 구입」을 뺌(다 지워지면 그대로) */
+/* 「1인당」「부스당」「시간당」「(1개당)」 같은 단가 단위 말은 품명이 아님(단가·단위 칸이 나타냄). 「강당·식당·사탕」은 이름이라 그대로 */
+export const PER_UNIT = '인|명|팀|반|학급|학년|조|모둠|부스|개|장|권|박스|상자|세트|자루|통|팩|병|봉지|봉|시간|차시|회|건|일|대|벌|켤레|쌍|매|부|kg|EA|ea';
+const PER = new RegExp(`(^|\\s)\\(?\\s*(?:\\d+\\s*)?(?:${PER_UNIT})\\s*당\\s*\\)?(?=\\s|$|[,.)])`, 'g');
+export const dropPerUnit = name => String(name == null ? '' : name).replace(PER, '$1').replace(/\s+/g, ' ').trim();
 export function plainItemName(name) {
   const s = String(name == null ? '' : name).trim();
-  let t = s.replace(LEAD_SUBJ_NEED, '');
+  let t = dropPerUnit(s).replace(LEAD_SUBJ_NEED, '');
   for (let i = 0; i < 2; i++) t = t.replace(LEAD_NEED, '');
   for (let i = 0; i < 2; i++) t = cutAsk(t);
   t = t.trim();

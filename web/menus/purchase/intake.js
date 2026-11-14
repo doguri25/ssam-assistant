@@ -1,7 +1,7 @@
 /* 품의 「아무거나 넣기」: 엑셀·견적서 파일, 장바구니·견적 캡처, 대충 쓴 줄글 → 품목과 빈 칸 (스펙 4.0).
    줄글은 먼저 앱이 규칙으로 읽고, 못 읽은 줄이 있으면 AI가 글 전체를 읽음. 캡처는 AI. 주문자·주소·전화는 받지 않음 */
 import * as ai from '../../core/ai.js';
-import { emptyItem, findPersonal, toNumber, plainItemName, plainOfficial } from './rules.js';
+import { emptyItem, findPersonal, toNumber, plainItemName, plainOfficial, PER_UNIT } from './rules.js';
 import { readQuote } from './quote.js';
 import { findItems } from '../../core/sheet.js';
 import { readText } from '../../core/files.js';
@@ -89,6 +89,9 @@ function parseLine(raw) {
     const lo = Math.min(...amounts), hi = Math.max(...amounts);
     if (Math.abs(lo * qty - hi) <= Math.max(1, hi * 0.001)) price = lo;
   }
+  // 「강사 시간당 5만원」「다과 1인당 5천원」처럼 수량이 없으면 「~당」의 단위를 단위 칸에(인 → 명). 「~당」 말은 품명에서 뺌(plainItemName)
+  const per = new RegExp(`(?:^|\\s|\\()\\s*(?:\\d+\\s*)?(${PER_UNIT})\\s*당`).exec(s);
+  if (!unit && per) unit = per[1] === '인' ? '명' : per[1];
   // 「내가 필요한 책」·「A4 용지 사주세요」 같은 1인칭·구어는 품명에서 뺌
   const name = plainItemName(s.replace(/[=@×*]|\(\s*\)|\[\s*\]/g, ' ').replace(/(^|\s)(?:x|X|각|개당|단가|금액|씩)(?=\s|$)/g, ' ')
     .replace(/(^|\s)[,，;]+(?=\s|$)/g, ' ').replace(/[,:\-–·]+\s*$/, '').replace(/\s+/g, ' ').trim());
