@@ -133,6 +133,22 @@ await run('eval-board', [
     await page.click('nav.app-side [data-menu-go="evaluate"]');
     await page.waitForFunction(() => /선생님 차례 2/.test((document.querySelector('#menuTabs .ev-turn-pill') || {}).textContent || ''));
   }],
+  ['키보드: 가로 메뉴·생활기록부 칸 안 전환을 Enter로 바꿔도 초점이 바꾼 칸에 남음', async () => {
+    const act = () => page.evaluate(() => { const a = document.activeElement; return !a || a === document.body ? 'BODY' : `${a.closest('#menuTabs') ? 'tabs' : a.closest('.rec-switch') ? 'rec' : 'other'}:${a.textContent.trim()}`; });
+    await page.click('#menuTabs [data-tab="board"]');
+    await page.focus('#menuTabs [data-tab="unit"]');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('.unit-box:not([hidden])');
+    assert(await act() === 'tabs:단원평가', '가로 메뉴 Enter 뒤 초점: ' + await act());
+    await page.keyboard.press('Tab');
+    assert(await act() === 'tabs:활동지', 'Tab으로 다음 칸: ' + await act());
+    await page.click('#menuTabs [data-fold="rec"]');
+    await page.waitForSelector('.rec-switch:not([hidden])');
+    await page.focus('.rec-switch [data-rec-go="cc"]');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('.rec-switch [aria-pressed="true"]').textContent === '창의적 체험활동');
+    assert(await act() === 'rec:창의적 체험활동', '칸 안 전환 Enter 뒤 초점: ' + await act());
+  }],
   ['1280: 행동특성 글 쓰기·평가지 채점 확인 화면을 「쌤」 버튼이 가리지 않음(처음 화면·내려도)', async () => {
     const S = 'section[data-menu="evaluate"] :is(button, input, select, textarea, li, p)';
     const check = async (scroller, where) => {

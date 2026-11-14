@@ -153,10 +153,12 @@ function drawSwitch(section, tab) {
     sw = document.createElement('div'); sw.className = 'rec-switch';
     section.prepend(sw);
   }
+  const had = !!(document.activeElement && sw.contains(document.activeElement)); // 칸 안 전환을 눌러(키보드 Enter 등) 바꿨으면 초점을 고른 칸에
   sw.hidden = !REC.includes(tab);
   if (sw.hidden) return;
   sw.innerHTML = `<div class="rs-seg" role="group" aria-label="생활기록부 글">${REC.map(id => `<button type="button" data-rec-go="${id}" aria-pressed="${id === tab}">${REC_LABEL[id]}</button>`).join('')}</div>
     <span class="ev-sub">${REC_SUB[tab]}</span>`;
+  if (had) { const b = sw.querySelector('[aria-pressed="true"]'); if (b) b.focus({ preventScroll: true }); }
 }
 
 function enter(tab, section) {
