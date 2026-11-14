@@ -57,6 +57,15 @@ test('[year-outline-goal] 작년 목차의 「추진 목표」는 목적 칸(「
   assert.deepEqual(yearOutline('1. 목적\n2. 운영 목표\n3. 세부 운영 계획').items.map(x => x.key), ['purpose', 'x1', 'details']);
 });
 
+test('[report-head-num] 결과 보고서 소제목에 번호가 붙어 와도(작년 보고서 소제목을 따른 AI 답·선생님이 친 번호) 「2. 1. 목적」처럼 번호가 겹치지 않음', async () => {
+  const { normReport, reportDoc } = await import('../../web/menus/plan/report-ai.js');
+  const r = normReport({ name: '2027 과학의 날', sections: [{ h: '1. 목적', lines: ['과학 탐구'] }, { h: 'Ⅱ. 추진 내용', lines: ['실험'] }, { h: '가. 성과', lines: ['참여'] }, { h: '반성 및 개선 방안', lines: ['시간'] }] });
+  const heads = reportDoc(r).blocks.filter(b => b.type === 'h').map(b => b.text);
+  assert.deepEqual(heads, ['1. 개요', '2. 목적', '3. 추진 내용', '4. 성과', '5. 반성 및 개선 방안']);
+  // 숫자로 시작하는 소제목 이름(「2027 성과」)은 그대로
+  assert.equal(reportDoc(normReport({ sections: [{ h: '2027 성과', lines: ['a'] }] })).blocks.find(b => b.type === 'h' && b.text !== '1. 개요').text, '2. 2027 성과');
+});
+
 test('[plan-staff-ai] 학급운영계획 AI 글: 작년 계획서·지침·평가계획의 「이바다 선생님」「강사 박하늘」 같은 교직원 이름은 ○○○로', async () => {
   const M = await import('../../web/menus/plan/classplan-model.js');
   const A = await import('../../web/menus/plan/classplan-ai.js');
