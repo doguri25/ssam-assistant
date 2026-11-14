@@ -68,6 +68,28 @@ await run('fix1114-etc', [
     const body = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:msg:list'))[0].body);
     assert(body.includes('시청각실 2') && body.includes('3학년 담임'), '최근 쪽지 본문: ' + body);
   }],
+  ['공문 처리: 할 일이 12개인 공문에 할 일을 더 치고 Enter → 사라지지 않고 「12개까지」 알림, 친 글은 칸에 그대로', async () => {
+    await page.evaluate(() => {
+      const tasks = Array.from({ length: 12 }, (_, i) => ({ text: `할 일 ${i + 1}`, due: '', done: false }));
+      localStorage.setItem('ssam:gongmun:list', JSON.stringify([{ id: 'gmT', name: '연수 안내', title: '연수 안내', text: '연수 안내 글', tasks, kinds: [], at: 1, read: true }]));
+    });
+    await page.click('#menuTabs [data-tab="message"]');
+    await page.click('#menuTabs [data-tab="gongmun"]');
+    const G = `${E} .gm-box [data-gm-id="gmT"]`;
+    await page.waitForSelector(`${G} [data-gm-tadd]`);
+    await page.fill(`${G} [data-gm-tadd]`, '참가 학생 명단 제출');
+    await page.press(`${G} [data-gm-tadd]`, 'Enter');
+    await waitToast('12개까지');
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:gongmun:list'))[0].tasks.map(t => t.text));
+    assert(saved.length === 12 && !saved.includes('참가 학생 명단 제출'), JSON.stringify(saved));
+    assert((await page.inputValue(`${G} [data-gm-tadd]`)) === '참가 학생 명단 제출', '친 글이 없어짐');
+    await page.click(`${G} [data-gm-tdel="0"]`);
+    await page.fill(`${G} [data-gm-tadd]`, '참가 학생 명단 제출');
+    await page.press(`${G} [data-gm-tadd]`, 'Enter');
+    await page.waitForTimeout(150);
+    const after = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:gongmun:list'))[0].tasks.map(t => t.text));
+    assert(after.length === 12 && after[11] === '참가 학생 명단 제출', JSON.stringify(after));
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();
