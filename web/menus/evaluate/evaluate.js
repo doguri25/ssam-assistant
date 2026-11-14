@@ -6828,6 +6828,7 @@ async function checkShow(ref) {
     const sub = S.plan && S.plan.subjects.find(x => x.units.some(u => u.id === p[2]));
     if (!sub) return;
     S.subject = sub.name; S.unitId = p[2]; S.lv = p[3]; S.showPane = true; S.remainOnly = false;
+    PYR.view = 'pool'; PYR.edit = false; // 학생별 교과 평어로 보던 중이면 문장 모음으로
     renderAll(); focus([`#listBox [data-i="${+p[4]}"]`]);
   } else if (p[0] === 'hk') {
     if (!hkStudent(p[1])) return;
@@ -6835,13 +6836,14 @@ async function checkShow(ref) {
     focus([`#hkEditor [data-ri="${+p[2]}"] .hk-text`, `#hkEditor [data-edit="${+p[2]}"]`]);
   } else if (p[0] === 'cc') {
     if (!ccInfo(p[1])) return;
-    CHE.view = p[1]; CHE.showRes = true; $('#ccView').classList.add('show-pane'); renderCC();
-    focus([`#ccResults [data-cccopy="${+p[2]}"]`]);
+    // 「한 명씩 근거와」로 보던 중이면 그 학생을 고름(아니면 보던 학생 글이 보임)
+    CHE.view = p[1]; CHE.sel = +p[2]; CHE.showRes = true; $('#ccView').classList.add('show-pane'); renderCC();
+    focus([`#ccResults [data-cccopy="${+p[2]}"]`, `#ccResults [data-ccsel="${+p[2]}"]`]);
   } else if (p[0] === 'gr') {
     if (p[1] !== GR.id) {
       if (GR.running.size || ['grading', 'ranking', 'writing'].includes(GR.phase)) { toast('채점하는 중이라 그 기록은 열지 않았어요'); return; }
       await grOpenHistory(p[1]);
-    } else { GR.showRes = true; $('#grView').classList.add('show-pane'); renderGR(); }
+    } else { GR.rvw = null; GR.showRes = true; $('#grView').classList.add('show-pane'); renderGR(); } // 채점 확인 화면을 열어 두었으면 닫고 결과로
     focus([`#grResults [data-grcopy="${CSS.escape(p[2])}"]`]);
   }
 }
