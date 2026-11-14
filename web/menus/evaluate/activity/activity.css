@@ -38,3 +38,120 @@
 .el-sheet{display:flex;flex-direction:column;gap:8px}
 .gr-refs{display:flex;flex-direction:column;gap:4px;margin:6px 0;padding:8px 10px;border:1px solid var(--line,#e4e6eb);border-radius:8px}
 .gr-refs-none{margin:6px 0;font-size:12.5px}
+.ac-row-on td{background:var(--accent-soft)}
+.ac-chk-row{margin:6px 0}
+
+/* ---------- 5단계 활동지 한눈에(스펙 2026-11-14-eval-redesign §5): 공통 모양은 eval-ui.css(.ev-*). 이 파일이 먼저 읽혀 덮을 때는 .act-page를 붙임 ---------- */
+.ac-turn-ink{color:var(--turn-ink)}
+.ac-r-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 12px}
+.ac-r-sum{margin:0;font-size:14.5px;color:var(--ink2)}
+.ac-r-bar .ev-turn-btn{flex:none}
+.act-page .ac-tiles{grid-template-columns:repeat(auto-fit,minmax(118px,1fr))}
+.act-page .ac-tile-dash{border:2px dashed var(--turn);background:var(--surface)}
+.act-page .ac-tile-dash .ev-tl{color:var(--turn-ink)}
+.ac-r-grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}
+.ac-gal{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px}
+.ac-gal > li{display:flex}
+.ac-gal-none{margin:8px 4px}
+.act-page .ac-gc{width:100%;min-height:44px;margin:0;font:inherit;color:var(--ink);text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:10px;box-shadow:none}
+.act-page .ac-gc:hover{border-color:var(--ink3)}
+.act-page .ac-gc.turn:hover,.act-page .ac-gc.turn-dash:hover{border-color:var(--turn-ink)}
+.act-page .ac-gc:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.ac-gc-top{display:flex;align-items:flex-start;justify-content:space-between;gap:6px}
+.ac-gc-no{font-size:13px;font-weight:700;color:var(--ink2);white-space:nowrap}
+.ac-gc-no .ev-num{font-size:24px;line-height:1;color:var(--ink);margin-right:1px}
+.act-page .ac-r-bar .btn,.act-page .ac-next .btn,.act-page .ac-rv .btn,.act-page .ac-chk-row .btn{min-height:44px}
+.ac-gc-marks{display:flex;flex-wrap:wrap;gap:4px}
+.ac-m{display:inline-flex;align-items:center;justify-content:center;gap:3px;min-width:32px;height:26px;padding:0 5px;border-radius:6px;font-size:13px;font-weight:800;box-sizing:border-box;background:var(--surface2);color:var(--ink2)}
+.ac-m-no{font-size:11px;font-weight:600}
+.ac-m.m-o{background:var(--accent-soft);color:var(--accent-ink)}
+.ac-m.m-x{background:var(--turn);color:var(--ink)}
+.ac-m.m-t{background:var(--turn-line);color:var(--ink)}
+.ac-m.m-n{background:transparent;border:1.5px dashed var(--line);color:var(--ink3);font-size:11.5px}
+.ac-m.look{box-shadow:inset 0 0 0 2px var(--turn-ink)}
+.ac-gc-line{font-size:14px;line-height:1.45;color:var(--ink2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ac-gc-turn{margin-top:auto;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+.ac-gc-q{font-size:13px;font-weight:800;color:var(--turn-ink)}
+.ac-r-side{display:flex;flex-direction:column;gap:14px;min-width:0}
+.ac-whole{display:flex;flex-direction:column;gap:10px}
+.ac-w-miss{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.ac-w-miss li{display:flex;flex-direction:column;gap:3px;padding:10px 0;border-top:1px solid var(--line)}
+.ac-w-t{font-size:15px;font-weight:800;line-height:1.4}
+.ac-w-ask{font-size:13.5px;color:var(--ink3);line-height:1.45}
+.ac-w-n{font-size:12.5px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.ac-w-none{margin:0}
+.ac-w-h{margin:6px 0 0;font-size:14px;font-weight:800;color:var(--ink2)}
+.ac-w-lv{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.ac-w-lv li{display:grid;grid-template-columns:72px minmax(0,1fr) 26px;align-items:center;gap:8px;font-size:13.5px}
+.ac-w-lv .ev-num{text-align:right;font-size:15px}
+.ac-w-lv .lv-ok .ev-bar,.ac-w-lv .lv-none .ev-bar{background:var(--surface3)}
+.ac-w-lv .lv-ok .ev-bar > i,.ac-w-lv .lv-none .ev-bar > i{background:var(--ink3)}
+.ac-w-lv .lv-try .ev-bar{background:var(--turn-soft)}
+.ac-w-lv .lv-try .ev-bar > i{background:var(--turn)}
+.ac-w-lv .lv-try .ac-w-l{color:var(--turn-ink);font-weight:700}
+.ac-w-turn{display:flex;flex-direction:column;align-items:flex-start;gap:6px;margin-top:4px;padding:12px 14px;border-radius:14px;background:var(--turn-soft);border:1px solid var(--turn-line)}
+.ac-w-turn b{color:var(--turn-ink);font-size:15px}
+.ac-next{display:flex;flex-direction:column;gap:12px}
+.ac-next-p{margin:0;font-size:15.5px;font-weight:700;line-height:1.5}
+.ac-next .fold{color:var(--ink)}
+
+/* ---------- 채점 확인(스펙 §4, 판단을 미룬 칸만 하나씩) ---------- */
+.ac-rv-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:6px 16px}
+.ac-rv-title{margin:2px 0 0;font:800 24px/1.25 var(--f-display,inherit);letter-spacing:-.02em}
+.ac-rv-say{margin:0}
+.ac-rv-items{display:flex;flex-direction:column;gap:4px}
+.ac-rv-items .ev-rv-item:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.ac-rv-sum{display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;padding:10px 6px 4px;border-top:1px solid var(--line);font-size:13.5px;color:var(--ink3)}
+.ac-rv-sum .ev-num{color:var(--accent-ink);font-size:16px}
+.act-page .ac-rv-card{padding:0;overflow:hidden}
+.ac-rv-card:focus-visible,.ac-rv-done:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.ac-rv-ask{margin:4px 0 0;font-size:16.5px;font-weight:800;line-height:1.45}
+.ac-rv-read{padding:12px 20px 16px}
+.ac-rv-read .field{min-width:0}
+.ac-rv-fb{display:flex;flex-direction:column;gap:10px}
+.ac-rv-fb textarea.field{min-width:0;min-height:64px;resize:vertical;font-size:14.5px}
+/* 넓은 화면: 목록 | 문항·학생 답 위, 피드백 아래 | 기준·쌤비서 생각. 좁으면 목록이 위로(가로로 밂), 휴대폰은 한 줄로 목록 → 답 → 기준 → 피드백 */
+.act-page .ac-rv{display:grid;grid-template-columns:190px minmax(0,1fr) minmax(260px,300px);grid-template-rows:auto 1fr;align-items:start;gap:16px}
+.act-page .ac-rv > *{min-width:0}
+.act-page .ac-rv .ev-rv-list{grid-column:1;grid-row:1 / 3}
+.act-page .ac-rv .ev-rv-main{grid-column:2;grid-row:1}
+.act-page .ac-rv .ev-rv-side{grid-column:3;grid-row:1 / 3}
+.act-page .ac-rv .ac-rv-fb{grid-column:2;grid-row:2}
+.act-page .ac-rv .ac-rv-wide{grid-column:2 / 4;grid-row:1 / 3}
+.ac-rv-h3{margin:0;font-size:16px;font-weight:800}
+.ac-rv-crit{display:flex;flex-direction:column;gap:10px}
+.ac-rv-ans{margin:0;font-size:14.5px;line-height:1.5}
+.ac-rv-opts{display:flex;flex-direction:column;gap:8px}
+.ac-rv-opts .ev-rv-opt{min-height:44px}
+.ac-rv-opt-t{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ac-rv-ai{color:var(--turn-ink);font-size:12.5px;font-weight:800}
+.ac-rv-why{display:flex;flex-direction:column;gap:12px}
+.ac-rv-acts{gap:8px}
+.ac-rv-why .ac-rv-keys{color:#c9ced6}
+.ac-rv-done{display:flex;flex-direction:column;align-items:flex-start;gap:12px}
+@media (max-width:1180px){
+  .act-page .ac-rv{grid-template-columns:minmax(0,1fr) minmax(250px,290px);grid-template-rows:auto auto 1fr}
+  .act-page .ac-rv .ev-rv-list{grid-column:1 / -1;grid-row:1}
+  .act-page .ac-rv .ev-rv-main{grid-column:1;grid-row:2}
+  .act-page .ac-rv .ev-rv-side{grid-column:2;grid-row:2 / 4}
+  .act-page .ac-rv .ac-rv-fb{grid-column:1;grid-row:3}
+  .act-page .ac-rv .ac-rv-wide{grid-column:1 / -1;grid-row:2}
+  .ac-rv-items{flex-direction:row;overflow-x:auto;padding-bottom:4px}
+  .ac-rv-items .ev-rv-item{flex:none}
+}
+@media (max-width:900px){
+  .ac-r-grid{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:760px){
+  .act-page .ac-rv{grid-template-columns:minmax(0,1fr);grid-template-rows:none}
+  .act-page .ac-rv > *,.act-page .ac-rv .ev-rv-list,.act-page .ac-rv .ev-rv-main,.act-page .ac-rv .ev-rv-side,.act-page .ac-rv .ac-rv-fb,.act-page .ac-rv .ac-rv-wide{grid-column:1;grid-row:auto}
+  .act-page .ac-rv .ev-rv-answer{padding:16px;font-size:16.5px}
+  .ac-rv-title{font-size:21px}
+  .ac-gal{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+  .act-page .ac-gc{padding:12px;gap:8px}
+  .act-page .ac-gc.turn,.act-page .ac-gc.turn-dash{padding:11px}
+  .ac-gc-marks{gap:3px}
+  .act-page .ac-tiles{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .act-page .ac-tiles .ev-tile{min-height:56px;padding:6px 10px}
+  .act-page .ac-tiles .ev-num{font-size:22px}
+}

@@ -1,5 +1,5 @@
-/* 평가 › 활동지 (스펙 4장): 목록과 1단계(활동지 넣기)·2단계(기준 확인). 3·4단계는 activity-grading.js, 5단계·모아 보기는 activity-results.js가
-   registerStep·registerView로 붙임. 학생 이름은 저장·전송하지 않음(번호만) */
+/* 평가 › 활동지 (스펙 4장): 목록과 1단계(활동지 넣기)·2단계(기준 확인). 3·4단계는 activity-grading.js, 5단계(한눈에 카드·표)·모아 보기는 activity-results.js,
+   채점 확인(판단을 미룬 칸만 하나씩, 스펙 2026-11-14-eval-redesign §4)은 activity-review.js가 registerStep·registerView로 붙임. 학생 이름은 저장·전송하지 않음(번호만) */
 import { onEnter, go } from '../../../core/shell.js';
 import { registerInbox } from '../../../core/inbox.js';
 import { stepsHTML } from '../../../core/steps.js';
@@ -21,7 +21,8 @@ export const SS = () => window.SSAM || {};
 const STEPS = ['활동지 넣기', '기준 확인', '학생 활동지', '채점·확인', '결과'];
 const SRC = { teacher: '교사용에서', answer: '정답에서', ai: 'AI가 만듦', edit: '선생님이 고침' };
 /* 화면 상태. critPages: 기준을 만들 빈 활동지·교사용 쪽 그림(이 화면에만), pending: 1단계에 같이 넣은 학생 쪽(3단계가 받음) */
-export const A = { view: 'list', id: null, draft: null, step: 1, msg: '', note: '', busy: '', critFor: null, critPages: [], pending: null };
+/* focusNo: 5단계 카드에서 고른 학생(4단계 표에서 그 줄을 보임, 한 번만) */
+export const A = { view: 'list', id: null, draft: null, step: 1, msg: '', note: '', busy: '', critFor: null, critPages: [], pending: null, focusNo: null };
 let box = null, curTab = '';
 const stepViews = {}, views = {};
 export const registerStep = (n, v) => { stepViews[n] = v; };
@@ -44,6 +45,15 @@ export function openActivity(id, step) {
   if (!a) return;
   A.view = 'act'; A.id = id; A.draft = null; A.msg = ''; A.note = '';
   A.step = step || (a.done ? 5 : reach(a));
+  render();
+}
+/* 채점 확인 화면(판단을 미룬 칸만 하나씩): 평가 한눈에의 [선생님 차례]·5단계·4단계의 [확인할 것만 보기]. 화면은 activity-review.js */
+export function openReview(id) {
+  const a = getActivity(id);
+  if (!a) return;
+  A.view = 'act'; A.id = id; A.draft = null; A.msg = ''; A.note = '';
+  A.step = a.done ? 5 : reach(a);
+  if (views.review && views.review.open) views.review.open(a);
   render();
 }
 export const goStep = n => { A.step = n; render(); };
@@ -140,13 +150,15 @@ export function render() {
   if (rendering) { again = true; return; }
   rendering = true;
   try {
-    const a = A.view === 'act' ? curAct() : null;
-    if (A.view === 'act' && !a) A.view = 'list';
+    const one = A.view === 'act' || A.view === 'review'; // 활동지 하나를 보는 화면
+    const a = one ? curAct() : null;
+    if (one && !a) A.view = 'list';
     const inner = A.view === 'act' ? actHTML(a) : A.view !== 'list' && views[A.view] ? views[A.view].html() : listHTML();
     keepFiles(box, () => { box.innerHTML = `<div class="m-page act-page">${inner}</div>`; }); // 파일 고르기 창이 열린 채 다시 그려도 고른 파일이 들어가게(core/keep-files.js, 한꺼번에 넣기 칸)
     stepsInView(box);
     if (A.view === 'act' && stepViews[A.step] && stepViews[A.step].bind) stepViews[A.step].bind(box, a);
     if (A.view === 'act' && A.step === 2) autoCriteria(a);
+    if (A.view !== 'act' && views[A.view] && views[A.view].bind) views[A.view].bind(box);
   } finally { rendering = false; }
   if (again) { again = false; render(); }
 }
@@ -300,6 +312,7 @@ document.addEventListener('click', e => {
     sh => sh.querySelector('#actDelOk').addEventListener('click', () => { removeActivity(id); SS().closeSheet(); render(); }));
   } else if (!a) return;
   else if (act === 'next') goStep(2);
+  else if (act === 'review') openReview(a.id);
   else if (act === 'criteria') makeCriteria(a.id);
   else if (act === 'addItem') { addItem(a); a.confirmed = false; commitAct(a); render(); }
   else if (act === 'delItem') { dropItems(a, x => x.no !== +b.dataset.no); a.confirmed = false; commitAct(a); render(); }
