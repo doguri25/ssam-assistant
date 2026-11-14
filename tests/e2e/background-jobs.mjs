@@ -47,7 +47,8 @@ await mockClaude(page, async ({ prompt }) => {
 });
 const until = async (fn, ms = 10000, what = '') => { const end = Date.now() + ms; while (!(await fn())) { if (Date.now() > end) throw new Error('시간 초과 ' + what); await new Promise(r => setTimeout(r, 50)); } };
 const n = k => calls.filter(c => c.k === k).length;
-const goTo = async (menu, tab) => { await page.click(`nav.app-side [data-menu-go="${menu}"]`); if (tab) await page.click(`#menuTabs [data-tab="${tab}"]`); };
+// 평가 생활기록부(교과 평어·창체·행특)는 가로 메뉴에서 한 칸이라(스펙 2026-11-14-eval-redesign §1) 그 셋은 go()로
+const goTo = async (menu, tab) => { await page.click(`nav.app-side [data-menu-go="${menu}"]`); if (tab && ['pyeongeo', 'cc', 'hk'].includes(tab)) await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), tab); else if (tab) await page.click(`#menuTabs [data-tab="${tab}"]`); };
 const ls = k => page.evaluate(k => JSON.parse(localStorage.getItem(k) || 'null'), k);
 /* 세로 메뉴의 「AI가 일하는 중」 점: 일하는 메뉴 버튼만(지금 보는 메뉴는 빼고) */
 const dots = () => page.$$eval('nav.app-side .side-btn.working', bs => bs.map(b => b.dataset.menuGo).join(','));
