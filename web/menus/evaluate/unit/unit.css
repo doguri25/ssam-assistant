@@ -294,7 +294,7 @@ section[data-menu="evaluate"].ev-new > :not(.unit-box):not(.act-box):not(.chk-bo
 .un-fg-t{margin:0;font-size:15px;line-height:1.45;overflow-wrap:anywhere}
 .un-fg-n{color:var(--turn-ink);font-weight:800}
 .un-fg .ev-sub{margin:0}
-.un-fg-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.un-fg-row{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
 .un-fg-nos{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .un-fg-nos .ev-chip{min-width:36px;min-height:36px;justify-content:center;padding:0 8px;border-radius:10px;font-size:14px}
 .btn.un-ink-btn{min-height:44px;padding:0 16px;border-radius:12px;border-color:var(--ink);background:var(--ink);color:#fff;font-size:14px;font-weight:800}

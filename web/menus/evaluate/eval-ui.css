@@ -93,6 +93,7 @@
 .eb-card .eb-line{margin:0;font-size:13.5px;color:var(--ink2,#3f4350);line-height:1.45}
 .eb-card .eb-prog{display:flex;flex-direction:column;gap:5px}
 .eb-card .eb-prog span{display:flex;justify-content:space-between;font-size:12.5px;color:var(--accent-ink,#3730a3);font-weight:700}
+.eb-card .ev-turn-btn{width:100%;padding:6px 10px;text-align:center;line-height:1.35}
 .eb-done{margin:0}
 .eb-done summary{cursor:pointer;font-weight:800;color:var(--accent-ink,#3730a3);min-height:44px;display:flex;align-items:center}
 .eb-done ul{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:8px}

@@ -1,7 +1,7 @@
 // 평가 한눈에(스펙 2026-11-14-eval-redesign §2): 평가마다 단계(준비·채점·결과 확인·보충·생활기록부·끝)와 선생님이 확인할 수
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { STAGES, unitStage, unitPending, activityStage, activityPending, grStage, grPending } from '../../web/menus/evaluate/eval-stage.js';
+import { STAGES, unitStage, unitPending, activityStage, activityPending, grStage, grPending, boardStage } from '../../web/menus/evaluate/eval-stage.js';
 
 const step = (id, done) => ({ id, done });
 const STEPS = (...doneIds) => ['grade', 'miss', 'redo', 'gap', 'camp', 'post'].map(id => step(id, doneIds.includes(id)));
@@ -72,4 +72,11 @@ test('평가지 채점 확인할 학생: 알아보기 어려움(선생님이 안
     { skip: 1, unreadable: 1 }, { unreadable: 1, rv: { score: 1 } }] };
   assert.equal(grPending(b), 5);
   assert.equal(grPending(null), 0);
+});
+
+test('한눈에 단계: 끝났어도 확인할 것이 남으면 접지 않고 생활기록부 칸(띠·가로 메뉴 수가 같게)', () => {
+  assert.equal(boardStage('done', 2), 'record');
+  assert.equal(boardStage('done', 0), 'done');
+  assert.equal(boardStage('grade', 3), 'grade');
+  assert.equal(boardStage('result', 0), 'result');
 });

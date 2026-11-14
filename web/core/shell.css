@@ -69,6 +69,8 @@ section[data-menu="evaluate"][hidden]{display:none}
 @media (min-width:761px){
   body:has(#inboxFab:not([hidden])) .m-page{padding-bottom:104px;padding-right:max(32px,calc(96px - max(0px,(100vw - var(--side-w) - 1120px) / 2)))}
   body:has(#inboxFab:not([hidden])) section[data-menu="evaluate"] :is(.pane,.hk-right,.gr-res){padding-bottom:104px}
+  /* 옛 평가 화면의 오른쪽 칸(행동특성 글 쓰기·평가지 채점 확인 등)은 창 오른쪽 끝까지 닿으므로 버튼 자리만큼 오른쪽도 비움 */
+  body:has(#inboxFab:not([hidden])) section[data-menu="evaluate"] :is(.hk-right,.gr-res){padding-right:96px}
 }
 /* 휴대폰: 세로 메뉴 → 아래 탭 5칸(오늘·평가·학급·품의·더보기), 로고 마크만 머리 줄 왼쪽 */
 @media (max-width:760px){

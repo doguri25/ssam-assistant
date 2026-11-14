@@ -5,7 +5,7 @@
    단계·확인 수 규칙은 eval-stage.js(순수). 학생 이름은 쓰지 않음(번호·수만) */
 import { onEnter, go, REC } from '../../core/shell.js';
 import { getSchool } from '../../core/settings.js';
-import { STAGES, unitStage, unitPending, activityStage, activityPending, grStage, grPending } from './eval-stage.js';
+import { STAGES, boardStage, unitStage, unitPending, activityStage, activityPending, grStage, grPending } from './eval-stage.js';
 import { listTests, getTest, loadTests, getSet, getPyeongeo, graded } from './unit/unit-model.js';
 import { flowSteps } from './unit/unit-flow.js';
 import { normCut } from './unit/unit-gap.js';
@@ -39,11 +39,11 @@ function unitItems() {
     const steps = flowSteps(t, ctx), g = graded(t), m = live(t.students).length;
     const py = t.meta.subject ? getPyeongeo(t.meta.subject).students || {} : {};
     const pyDone = !!g.length && g.every(x => py[x.no] && py[x.no].text);
-    const stage = unitStage(t, steps, { pyDone }), pending = unitPending(t);
+    const pending = unitPending(t), stage = boardStage(unitStage(t, steps, { pyDone }), pending);
     const first = steps.find(n => !n.done && !(t.meta.sample && ['gap', 'camp', 'post'].includes(n.id)));
     const line = stage === 'prep' ? (m ? '채점을 시작할 차례' : '학생 답안을 넣을 차례')
       : stage === 'grade' ? (pending ? `판단을 미룬 칸 ${pending}개` : g.length === m && !t.done ? '[채점 마치기]를 누를 차례' : '')
-      : stage === 'record' ? '교과 평어를 쓸 차례' : first ? `${first.label} · ${first.status}` : '';
+      : stage === 'record' ? (pyDone ? `판단을 미룬 칸 ${pending}개` : '교과 평어를 쓸 차례') : first ? `${first.label} · ${first.status}` : '';
     return { kind: 'unit', id: s.id, subject: '', title: s.title, stage, pending, line, n: g.length, m, at: s.at, sample: !!s.sample }; // 제목에 교과가 들어 있음
   }).filter(Boolean);
 }
@@ -52,18 +52,18 @@ function activityItems() {
     const a = getActivity(s.id);
     if (!a) return null;
     const m = live(a.students).length, n = live(a.students).filter(x => x.status === 'done').length;
-    const stage = activityStage(a), pending = activityPending(a);
+    const pending = activityPending(a), stage = boardStage(activityStage(a), pending);
     const line = stage === 'prep' ? '학생 활동지를 넣을 차례' : stage === 'grade' ? (pending ? `판단을 미룬 칸 ${pending}개` : '')
-      : stage === 'result' ? '결과를 보고 교과 평어로 넘길 차례' : '교과 평어로 넘겼어요';
+      : stage === 'result' ? '결과를 보고 교과 평어로 넘길 차례' : `${pending ? `판단을 미룬 칸 ${pending}개 · ` : ''}교과 평어로 넘겼어요`;
     return { kind: 'activity', id: s.id, subject: s.subject, title: s.title || a.meta.title || '활동지', stage, pending, line, n, m, at: s.at };
   }).filter(Boolean);
 }
 function grItems() {
   return grRecords().map(b => {
     const st = live(b.students), m = st.length, n = st.filter(x => x.score != null).length, texts = st.filter(x => x.text).length;
-    const stage = grStage(b), pending = grPending(b);
+    const pending = grPending(b), stage = boardStage(grStage(b), pending);
     const line = stage === 'prep' ? '평가지를 넣을 차례' : stage === 'grade' ? (pending ? `확인할 학생 ${pending}명` : '') : stage === 'result' ? (pending ? `확인할 학생 ${pending}명` : '평어를 쓸 차례')
-      : `평어 ${texts}/${m}명`;
+      : `${pending ? `확인할 학생 ${pending}명 · ` : ''}평어 ${texts}/${m}명`;
     return { kind: 'gr', id: b.id, subject: '', title: b.title || '수행평가', stage, pending, line, n, m, at: b.createdAt || 0 };
   });
 }
@@ -104,7 +104,7 @@ function cardHTML(x) {
     <span class="ev-chip eb-kind">${KIND[x.kind]}${x.sample ? ' · 예시' : ''}</span>
     <h4><button type="button" data-eb-open>${title(x)}</button></h4>
     ${x.line ? `<p class="eb-line">${esc(x.line)}</p>` : ''}${prog}
-    ${x.pending ? `<button type="button" class="ev-turn-btn" data-eb-turn>선생님 차례 · ${x.pending}개 확인</button>` : ''}
+    ${x.pending ? `<button type="button" class="ev-turn-btn" data-eb-turn aria-label="선생님 차례 ${x.pending}개 확인">선생님 차례 · ${x.pending}개</button>` : ''}
   </article>`;
 }
 function emptyHTML() {

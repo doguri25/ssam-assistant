@@ -5,8 +5,10 @@
      복습 문제·도달하지 못한 학생·기초학력·사전사후 → 보충, 모두 끝 → 생활기록부(그 교과 평어를 다 썼으면 끝).
      예시 평가는 결손·기초학력·사전사후 칸을 보지 않음(그 칸은 예시에서 늘 「예시는 빼요」라 끝나지 않음).
    - 활동지: 채점 0 → 준비, 채점 중(마치기 전) → 채점, 마침 → 결과 확인, 교과 평어로 넘김(link) → 끝(평어는 교과 평어에서 씀).
-   - 평가지 채점: 점수 0 → 준비, 점수 일부 → 채점, 모두 점수·글 없음 → 결과 확인, 글 일부 → 생활기록부, 글 모두 → 끝. */
+   - 평가지 채점: 점수 0 → 준비, 점수 일부 → 채점, 모두 점수·글 없음 → 결과 확인, 글 일부 → 생활기록부, 글 모두 → 끝.
+   한눈에서는 끝났어도 확인할 것이 남은 평가를 접지 않고 생활기록부 칸에 둠(boardStage — 띠와 가로 메뉴 「선생님 차례」 수가 같게). */
 export const STAGES = [['prep', '준비'], ['grade', '채점'], ['result', '결과 확인'], ['help', '보충'], ['record', '생활기록부']];
+export const boardStage = (stage, pending) => (stage === 'done' && pending ? 'record' : stage);
 export const stageLabel = id => (STAGES.find(s => s[0] === id) || [id, '끝'])[1];
 
 const live = list => (Array.isArray(list) ? list : []).filter(s => s && !s.skip);
