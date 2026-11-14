@@ -34,8 +34,16 @@ export function yearOutline(src) {
   return { items, roman: /^\s*[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]\.\s*\S/m.test(String(src || '')) };
 }
 const ROMAN = 'ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ';
-/* 초안의 글 칸: 기본 넷 + 목차의 덧붙임 칸 */
-export const textKeys = d => [...TEXT_SECTIONS, ...((d && d.outline) || []).map(o => o.key).filter(isExtra)];
+/* 초안의 글 칸: 기본 넷 + 목차의 덧붙임 칸. 작년(기존) 계획서 목차로 쓴 초안은 목차에 있는 칸만(화면·한글 파일에 나오는 칸 — 없는 칸 글로 지침 「반영됨」을 세거나 검토하지 않게) */
+export const textKeys = d => {
+  const o = ((d && d.outline) || []).map(x => x.key);
+  return o.length ? [...TEXT_SECTIONS.filter(k => o.includes(k)), ...o.filter(isExtra)] : [...TEXT_SECTIONS];
+};
+/* 지침 문장을 넣을 칸: 그 칸이 초안에 있으면 그 칸, 없으면 세부 추진 계획, 그것도 없으면 목차의 첫 글 칸 */
+export function insertKey(draft, section) {
+  const keys = textKeys(draft);
+  return keys.includes(section) ? section : keys.includes('details') ? 'details' : keys[0] || 'details';
+}
 
 const str = v => (typeof v === 'string' ? v : v == null ? '' : typeof v === 'number' ? String(v) : '');
 // AI가 섹션을 목록(배열)으로 주면 줄로 이음
@@ -226,7 +234,7 @@ export function guideStatus(items, draft) {
 
 export function insertSentence(draft, section, sentence) {
   const d = { ...(draft || normDraft({})) };
-  const k = TEXT_SECTIONS.includes(section) ? section : 'details';
+  const k = insertKey(d, section);
   const prev = String(d[k] || '').trimEnd();
   d[k] = (prev ? prev + '\n' : '') + String(sentence || '').trim();
   return d;
