@@ -103,3 +103,29 @@
   .rec-switch{padding:16px 16px 0}
   .rec-switch .rs-seg{width:100%;overflow-x:auto}
 }
+
+/* ---------- 채점 확인 — 판단을 미룬 것만 하나씩(스펙 §4, 단원평가·활동지·평가지 채점 같은 모양) ----------
+   <div class="ev-rv"> <aside class="ev-rv-list">…<button class="ev-rv-item" aria-current="true">…</aside>
+   <div class="ev-rv-main">문항·학생 답(.ev-rv-answer)·피드백</div> <aside class="ev-rv-side">기준(.ev-rv-opt)·쌤비서 생각(.ev-ink-card)</aside> </div> */
+.ev-rv{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.ev-rv-list{flex:0 1 200px;min-width:170px;background:var(--surface,#fff);border:1px solid var(--line,#e4e6eb);border-radius:20px;padding:12px;display:flex;flex-direction:column;gap:4px}
+.ev-rv-list .ev-rv-lh{display:flex;justify-content:space-between;align-items:baseline;padding:4px 6px 8px;font-weight:800}
+.ev-rv-item{min-height:44px;padding:0 12px;border-radius:12px;border:1px solid var(--turn-line);background:var(--turn-soft);color:var(--ink,#16181d);font:inherit;font-size:14px;cursor:pointer;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left}
+.ev-rv-item::after{content:'';width:8px;height:8px;border-radius:50%;background:var(--turn);flex:none}
+.ev-rv-item[aria-current="true"]{background:var(--ink,#16181d);border-color:var(--ink,#16181d);color:#fff}
+.ev-rv-item.done{background:var(--surface,#fff);border-color:var(--line,#e4e6eb);color:var(--ink3,#5c6170)}
+.ev-rv-item.done::after{background:var(--accent,#4f46e5)}
+.ev-rv-main{flex:999 1 420px;min-width:0;display:flex;flex-direction:column;gap:14px}
+.ev-rv-q{padding:16px 20px;border-bottom:1px solid var(--line,#e4e6eb)}
+.ev-rv-answer{padding:20px 24px;background:var(--surface2,#fbfbf8);font-size:18px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere}
+.ev-rv-answer mark{background:var(--turn-soft);color:inherit;border-radius:4px;padding:0 2px}
+.ev-rv-side{flex:1 1 320px;min-width:0;display:flex;flex-direction:column;gap:14px}
+.ev-rv-opt{width:100%;text-align:left;padding:12px 14px;border-radius:16px;border:1px solid var(--line,#e4e6eb);background:var(--surface,#fff);color:var(--ink,#16181d);
+  font:inherit;cursor:pointer;display:flex;gap:12px;align-items:flex-start}
+.ev-rv-opt .ev-num{font-size:20px;min-width:34px}
+.ev-rv-opt.ai{border:2px solid var(--turn);background:var(--turn-soft);padding:11px 13px}
+.ev-rv-opt[aria-pressed="true"]{border:2px solid var(--accent,#4f46e5);background:var(--accent-soft,#eef0ff);padding:11px 13px}
+.ev-rv-opt:focus-visible{outline:3px solid var(--accent,#4f46e5);outline-offset:2px}
+.ev-rv-why{margin:0;font-size:15px;line-height:1.6}
+.ev-rv-keys{font-size:12.5px;color:var(--ink3,#5c6170)}
