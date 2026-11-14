@@ -32,6 +32,18 @@ test('한 덩어리 안에서는 지운 말을 모두 앞에, 더한 말을 뒤�
   assert.deepEqual(ops, [{ op: 'eq', t: '가' }, { op: 'del', t: '나 다 라' }, { op: 'ins', t: '바 사 아' }, { op: 'eq', t: '마' }]);
 });
 
+test('바뀐 곳 사이에 낀 같은 낱말 하나는 바뀐 덩어리에 넣음(읽기 쉽게)', () => {
+  assert.deepEqual(wordDiff('모둠 활동에서 서로의 생각을 존중하며 협력함. 친구를 잘 도움.', '모둠 활동에서 친구의 생각을 귀 기울여 듣고 함께 답을 찾음. 친구를 잘 도움.'), [
+    { op: 'eq', t: '모둠 활동에서' },
+    { op: 'del', t: '서로의 생각을 존중하며 협력함.' },
+    { op: 'ins', t: '친구의 생각을 귀 기울여 듣고 함께 답을 찾음.' },
+    { op: 'eq', t: '친구를 잘 도움.' }
+  ]);
+  // 두 낱말 이상 같으면 그대로 남김, 앞뒤 끝의 한 낱말도 남김
+  assert.deepEqual(wordDiff('가 나 다 라', '마 나 다 바'), [{ op: 'del', t: '가' }, { op: 'ins', t: '마' }, { op: 'eq', t: '나 다' }, { op: 'del', t: '라' }, { op: 'ins', t: '바' }]);
+  assert.deepEqual(wordDiff('가 나', '가 다'), [{ op: 'eq', t: '가' }, { op: 'del', t: '나' }, { op: 'ins', t: '다' }]);
+});
+
 test('끝에서 지운 말·앞에 더한 말', () => {
   assert.deepEqual(wordDiff('수업 시간에 산만함.', '수업 시간에'), [{ op: 'eq', t: '수업 시간에' }, { op: 'del', t: '산만함.' }]);
   assert.deepEqual(wordDiff('끝까지 해냄.', '맡은 일을 끝까지 해냄.'), [{ op: 'ins', t: '맡은 일을' }, { op: 'eq', t: '끝까지 해냄.' }]);

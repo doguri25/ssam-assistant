@@ -178,7 +178,7 @@ await run('ui-tidy-unit', [
     assert(s.rows === 1 && s.curIn && s.minH >= 44, '활동지 단계 탭 ' + JSON.stringify(s));
     for (const st of [1, 2, 3, 4, 5]) { await goA(st); assert(await over() <= 0, `활동지 ${st}단계 ${await over()}`); }
     await enter(page, 'evaluate', 'check');
-    await page.waitForFunction(c => /점검한 글/.test((document.querySelector(`${c} .chk-sum`) || {}).textContent || ''), C);
+    await page.waitForFunction(c => /편을 AI 없이 훑었어요|점검할 글이 아직 없어요/.test((document.querySelector(`${c} .chk-sum`) || {}).textContent || ''), C);
     assert(await over() <= 0, '기재 점검 ' + await over());
     await page.setViewportSize({ width: 1280, height: 860 });
   }],

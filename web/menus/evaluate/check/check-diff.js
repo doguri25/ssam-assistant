@@ -38,6 +38,14 @@ export function wordDiff(before, after) {
     if (x < midA.length) { push('eq', midA[x]); i = x + 1; j = y + 1; }
   }
   a.slice(a.length - s).forEach(t => push('eq', t));
+  // 바뀐 곳 사이에 낀 같은 낱말 하나(「서로의 [생각을] 존중하며」)는 바뀐 덩어리에 넣음 — 낱말마다 끊겨 읽기 어렵지 않게
+  for (let k = 1; k < ops.length - 1; k++) {
+    if (ops[k].op === 'eq' && ops[k - 1].op !== 'eq' && ops[k + 1].op !== 'eq') {
+      const t = ops[k].t;
+      ops.splice(k, 1, { op: 'del', t }, { op: 'ins', t });
+      k++;
+    }
+  }
   // 바뀐 덩어리 안에서는 지운 말을 모두 앞에, 더한 말을 뒤에 → 같은 종류끼리 이음
   const out = [];
   for (let k = 0; k < ops.length;) {

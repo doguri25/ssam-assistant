@@ -200,14 +200,13 @@ function finalHTML(v) {
     : `<li><span class="chk-bang" aria-hidden="true">!</span><span>글이 없는 학생이 있어요${gaps}</span></li>`;
   const oks = TILE_KINDS.filter(k => !v.counts[k]).map(k => `<li>${CHECK}<span>${OK_TEXT[k]}</span></li>`).join('');
   const rest = TILE_KINDS.filter(k => v.counts[k]).map(k => `<li><span class="chk-bang" aria-hidden="true">!</span><span>${TILE_NAME[k]} <b class="ev-num">${v.counts[k]}</b>곳</span></li>`).join('');
-  const dest = C.src === 'gr' ? '평가지 채점' : '창의적 체험활동';
   return `<section class="ev-ink-card chk-final" aria-labelledby="chkFinalH">
       <h3 id="chkFinalH">나이스에 넣기 전 마지막 점검</h3>
       <div class="chk-prog"><div class="ev-bar" role="progressbar" aria-label="살펴본 곳" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done}"><i style="width:${total ? Math.round(done / total * 100) : 100}%"></i></div><span class="ev-num">${done} / ${total} 살펴봄</span></div>
       ${fixed || v.kept ? `<p class="chk-done">고친 곳 <b class="ev-num">${fixed}</b> · 그대로 둔 곳 <b class="ev-num">${v.kept}</b>${v.kept ? ' <button class="chk-linkbtn" type="button" data-chk-unkeep>그대로 둔 곳 다시 보기</button>' : ''}</p>` : ''}
       <ul class="chk-final-list">${writers}${oks}${rest}</ul>
       <button class="chk-neis" type="button" data-chk-neis>나이스 차례로 복사하러 가기</button>
-      <p class="chk-neis-sub">${dest} 화면의 [전체복사]로 나이스 학생 칸에 차례로 넣어요${left ? ` · 고칠 곳 ${left}곳을 먼저 살펴보세요` : ''}</p>
+      <p class="chk-neis-sub">창체·평가지 채점 화면의 [전체복사]로 나이스 학생 칸에 차례로 넣어요${left ? ` · 고칠 곳 ${left}곳을 먼저 살펴보세요` : ''}</p>
     </section>
     <p class="ev-sub chk-aiwhy">찾기는 AI 없이 해요. 고칠 때만 AI를 써요.</p>
     ${aiNoteHTML(AI_NOTE)}`;
@@ -316,7 +315,7 @@ function keep(cardId, ref) {
     C.keep = readKeep();
   }
   draw();
-  if (keys.length) toast('그대로 뒀어요 · 고칠 곳으로 세지 않아요', 2600);
+  toast(keys.length ? '그대로 뒀어요 · 고칠 곳으로 세지 않아요' : '그대로 뒀어요', 2600);
 }
 async function goTo(ref) {
   const x = item(ref);
