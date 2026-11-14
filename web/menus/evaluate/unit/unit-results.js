@@ -1,24 +1,28 @@
-/* 단원평가 결과 모아 보기 (스펙 2.3·3.4): 성적 일람표 · 학생별 누적 · 반 약한 부분 · 교과 평어로 넘기기.
-   채점을 마친 평가만 모음 */
+/* 단원평가 결과 한 화면 (스펙 2026-11-14-eval-redesign §3-1, 단원평가 탭 첫 화면): 평가 카드 줄 · 학생별 점수 표(100점으로, 흐름 선·평균·수준) ·
+   오른쪽 반이 약한 영역 · 도달하지 못한 학생 · 교과 평어로. 번호를 누르면 그 학생의 누적이 그 자리에 펼쳐짐. 교과·학기 거르기, 엑셀·한글 내려받기.
+   교과 평어로 넘기기는 [평어 쓰러 가기]로 여는 따로 보기(R.rv 'pyeongeo'). 평가 하나의 「반 약한 부분」은 평가 화면 3단계(unit-grading.js)로 옮김.
+   채점을 마친 평가만 모음(채점 중인 평가는 카드 줄에만) */
 import { toast, copyText, saveFile } from '../../../core/ui.js';
 import * as ai from '../../../core/ai.js';
 import { aiRowHTML } from '../../../core/ai-roles.js';
 import { exportButton, exportDoc, downloadsButton } from '../../../core/doc-export.js';
 import { studentTotal } from './unit-grade.js';
 import {
-  listTests, loadTests, graded, makeTitle, filterTests, summaryTable, studentHistory, itemStats, domainStats, reteach,
+  listTests, loadTests, graded, makeTitle, filterTests, summaryTable, studentHistory, domainStats,
   levelOf, LEVEL_NAME, getPyeongeo, savePyeongeo, contentKey
 } from './unit-model.js';
 import { tableDoc, tableCsv } from './unit-docs.js';
 import { pyeongeoPrompt, normPyeongeo, pyeongeoEvidence, evTitle } from './unit-ai.js';
 import { evidenceHTML } from '../../../core/evidence.js';
 import { itemName } from './unit-model.js';
-import { unitAccuracy, accuracyText } from '../grade-accuracy.js';
-import { U, esc, AI_KEY, registerResults, visible, render, refresh, later, editing, getBox } from './unit.js';
+import { U, esc, AI_KEY, registerResults, visible, render, refresh, later, editing, getBox, introLine, viewSeg } from './unit.js';
+import { scoreTone, dateLabel, cardTitle, colLabel, sparkPath, trendValues, weakAdvice } from './unit-view.js';
+import { openWeak } from './unit-grading.js';
 import { aiNoteHTML, foldHTML } from '../../../core/ui-parts.js';
 import { gapHTML } from './unit-gap-card.js'; // 「도달하지 못한 학생」 카드(스펙 2026-11-13 §2-1): 그 파일이 그리고 듣기도 함
 
-const R = { rv: 'table', subject: '', term: 0, stuNo: null, weakId: null, pySubject: null, pyRun: null };
+/* rv: 'table'(결과 한 화면) | 'pyeongeo'(교과 평어로 넘기기), stuNo: 누적을 펼친 학생(없으면 null) */
+const R = { rv: 'table', subject: '', term: 0, stuNo: null, pySubject: null, pyRun: null };
 const pct = r => `${Math.round(r * 100)}%`;
 const doneTests = () => listTests().filter(s => s.done);
 const loaded = list => loadTests(list);
@@ -29,24 +33,34 @@ const copy = async text => toast((await copyText(text)) === false ? '복사하�
 function filtersHTML(all) {
   const subs = [...new Set(all.map(s => s.subject).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
   const o = (v, l, cur) => `<option value="${esc(v)}"${String(cur) === String(v) ? ' selected' : ''}>${esc(l)}</option>`;
-  return `<div class="row un-filters">
+  return `<div class="row un-filters" role="group" aria-label="거르기">
     <label class="cls-inline">교과 <select class="field" id="unFSubject">${o('', '전체', R.subject)}${subs.map(s => o(s, s, R.subject)).join('')}</select></label>
     <label class="cls-inline">학기 <select class="field" id="unFTerm">${o(0, '전체', R.term)}${o(1, '1학기', R.term)}${o(2, '2학기', R.term)}</select></label>
   </div>`;
 }
 
-/* ---------- 성적 일람표 ---------- */
+/* ---------- 학생별 점수 표(성적 일람표) ---------- */
+const cutsNow = () => (R.subject ? getPyeongeo(R.subject).cuts : undefined);
+const sparkSVG = vals => {
+  const p = sparkPath(vals);
+  return p ? `<svg class="un-spark" width="64" height="24" viewBox="0 0 64 24" aria-hidden="true" focusable="false"><path d="${p.d}"/><circle cx="${p.x}" cy="${p.y}" r="2.5"/></svg>` : '';
+};
 function tableHTML(tests) {
-  const tb = summaryTable(tests);
-  const cell = v => (v == null ? '<td class="muted">-</td>' : `<td class="num">${v}</td>`);
-  return `<div class="yp-card">
-    <div class="row"><b>성적 일람표</b><span class="muted">100점으로 바꾼 점수</span><span class="grow"></span><button class="btn" type="button" data-un="csv">엑셀(CSV)</button>${exportButton('data-un="tableHwpx"')}${downloadsButton()}</div>
-    <div class="un-grid-wrap"><table class="un-sumt"><thead><tr><th>번호</th>${tb.cols.map(c => `<th data-col="${esc(c.id)}" title="${esc(c.title)}">${esc(c.title)}</th>`).join('')}<th>평균</th></tr></thead>
-    <tbody>${tb.rows.map(r => `<tr data-no="${r.no}"><th>${r.no}번</th>${tb.cols.map(c => cell(r.cells[c.id])).join('')}${cell(r.avg)}</tr>`).join('')}
-    <tr class="avg"><th>반 평균</th>${tb.cols.map(c => cell(tb.colAvg[c.id])).join('')}<td></td></tr></tbody></table></div></div>`;
+  const tb = summaryTable(tests), n = tb.cols.length + 4;
+  const cell = v => (v == null ? '<td class="muted">-</td>' : `<td class="num sc${scoreTone(v) ? ' ' + scoreTone(v) : ''}">${v}</td>`);
+  const meta = Object.fromEntries(tests.map(t => [t.id, t.meta]));
+  const rows = tb.rows.map(r => {
+    const lv = r.avg == null ? '' : levelOf(r.avg, cutsNow()), open = R.stuNo === r.no;
+    return `<tr data-no="${r.no}"${lv === 'low' ? ' class="low"' : ''}><th scope="row"><button type="button" class="un-stno" data-stu="${r.no}" aria-expanded="${open}" aria-label="${r.no}번 학생별 누적 ${open ? '접기' : '보기'}">${r.no}</button></th>${tb.cols.map(c => cell(r.cells[c.id])).join('')}<td class="un-trend">${sparkSVG(trendValues(r, tests))}</td><td class="num un-avg">${r.avg ?? '-'}</td><td>${lv ? `<span class="ev-chip${lv === 'low' ? ' turn' : ''}">${LEVEL_NAME[lv]}</span>` : ''}</td></tr>${open ? `<tr class="un-stu-x"><td colspan="${n}">${studentHTML(tests)}</td></tr>` : ''}`;
+  }).join('');
+  return `<section class="yp-card un-sc" aria-label="학생별 점수">
+    <div class="un-sc-h"><h3>학생별 점수</h3><span class="un-legend" aria-hidden="true"><span><i class="sw hi"></i>90점 이상</span><span><i class="sw lo"></i>60점 아래</span></span></div>
+    <div class="un-grid-wrap"><table class="un-sumt"><thead><tr><th scope="col">번호</th>${tb.cols.map(c => `<th scope="col" data-col="${esc(c.id)}" title="${esc(c.title)}">${esc(colLabel(meta[c.id]))}</th>`).join('')}<th scope="col">흐름</th><th scope="col">평균</th><th scope="col">수준</th></tr></thead>
+    <tbody>${rows}<tr class="avg"><th scope="row">반 평균</th>${tb.cols.map(c => cell(tb.colAvg[c.id])).join('')}<td></td><td></td><td></td></tr></tbody></table></div>
+    <p class="ev-sub un-sc-note">100점으로 바꾼 점수예요. 흐름 선은 평가 날짜 차례예요. 번호를 누르면 그 학생의 누적이 펼쳐져요.</p></section>`;
 }
 
-/* ---------- 학생별 누적 ---------- */
+/* ---------- 학생별 누적(표 안에 펼침) ---------- */
 function studentText(no, h) {
   return [`[단원평가 누적] ${no}번`,
     ...h.rows.map(r => `- ${r.date} ${r.title}: ${r.score}/${r.total} (${r.pct}점, 반 평균 ${r.classAvg}점)`),
@@ -55,32 +69,48 @@ function studentText(no, h) {
 }
 function studentHTML(tests) {
   const nos = summaryTable(tests).rows.map(r => r.no);
-  if (!nos.includes(R.stuNo)) R.stuNo = nos[0];
   const h = studentHistory(tests, R.stuNo);
-  return `<div class="yp-card">
-    <div class="row"><label class="cls-inline">학생 <select class="field" id="unStuNo">${nos.map(n => `<option value="${n}"${n === R.stuNo ? ' selected' : ''}>${n}번</option>`).join('')}</select></label><span class="grow"></span><button class="btn" type="button" data-un="stuCopy">복사</button></div>
+  return `<div class="un-stu-panel" role="region" aria-label="${R.stuNo}번 학생별 누적">
+    <div class="row"><b>${R.stuNo}번 학생별 누적</b><label class="cls-inline">학생 <select class="field" id="unStuNo">${nos.map(n => `<option value="${n}"${n === R.stuNo ? ' selected' : ''}>${n}번</option>`).join('')}</select></label><span class="grow"></span><button class="btn" type="button" data-un="stuCopy">복사</button><button class="btn text" type="button" data-un="stuClose">접기</button></div>
     <div class="un-grid-wrap"><table class="un-hist cls-sum"><thead><tr><th>날짜</th><th>평가</th><th>점수</th><th>100점으로</th><th>반 평균</th></tr></thead>
     <tbody>${h.rows.map(r => `<tr><td>${esc(r.date)}</td><td>${esc(r.title)}</td><td class="num">${r.score}/${r.total}</td><td class="num">${r.pct}</td><td class="num">${r.classAvg ?? '-'}</td></tr>`).join('')}</tbody></table></div>
-    <h3>영역별 정답률</h3><p style="margin:0">${h.domains.map(d => `<span class="chip">${esc(d.name)} ${pct(d.rate)}</span>`).join(' ') || '<span class="muted">없음</span>'}</p>
-    <h3>자주 틀린 평가 내용</h3>${h.weak.length ? `<ol class="un-weaklist">${h.weak.map(w => `<li>${esc(w.content)} <span class="muted">잃은 점수 ${w.lost}${w.pages ? ` · ${esc(w.pages)}` : ''}</span></li>`).join('')}</ol>` : '<p class="muted" style="margin:0">없어요</p>'}
+    <h4>영역별 정답률</h4><p style="margin:0">${h.domains.map(d => `<span class="chip">${esc(d.name)} ${pct(d.rate)}</span>`).join(' ') || '<span class="muted">없음</span>'}</p>
+    <h4>자주 틀린 평가 내용</h4>${h.weak.length ? `<ol class="un-weaklist">${h.weak.map(w => `<li>${esc(w.content)} <span class="muted">잃은 점수 ${w.lost}${w.pages ? ` · ${esc(w.pages)}` : ''}</span></li>`).join('')}</ol>` : '<p class="muted" style="margin:0">없어요</p>'}
   </div>`;
 }
 
-/* ---------- 반 약한 부분 ---------- */
-function weakHTML(tests) {
-  const byDate = tests.slice().sort((a, b) => String(b.meta.date).localeCompare(String(a.meta.date)));
-  if (!byDate.some(t => t.id === R.weakId)) R.weakId = byDate[0].id;
-  const t = byDate.find(x => x.id === R.weakId);
-  const stats = itemStats(t).sort((a, b) => a.rate - b.rate), re = reteach(t);
-  return `<div class="yp-card">
-    <label class="cls-inline">평가 <select class="field" id="unWeakTest">${byDate.map(x => `<option value="${esc(x.id)}"${x.id === t.id ? ' selected' : ''}>${esc(makeTitle(x.meta))}</option>`).join('')}</select></label>
-    <p class="muted un-acc" id="unWeakAcc">${esc(accuracyText(unitAccuracy(t), { finished: t.done, graded: true }))}</p>
-    <h3>다시 가르칠 내용</h3>${re.length ? `<ul class="un-weaklist">${re.map(x => `<li><b>${x.no}번</b> ${esc(x.content)} <span class="muted">정답률 ${pct(x.rate)}${x.pages ? ` · ${esc(x.pages)}` : ''}</span></li>`).join('')}</ul>` : '<p class="muted" style="margin:0">정답률이 60%보다 낮은 문항이 없어요.</p>'}
-    <h3>영역별 정답률</h3><p style="margin:0">${domainStats([t]).map(d => `<span class="chip">${esc(d.name)} ${pct(d.rate)}</span>`).join(' ') || '<span class="muted">없음</span>'}</p>
-    <h3>문항별 정답률</h3>
-    <div class="un-grid-wrap"><table class="un-weak cls-sum"><thead><tr><th>문항</th><th>평가 내용</th><th>영역</th><th>정답률</th><th>많이 쓴 오답</th></tr></thead>
-    <tbody>${stats.map(x => `<tr data-rate="${x.rate.toFixed(4)}"><td>${x.no}번</td><td>${esc(x.content)}</td><td>${esc(x.domain)}</td><td class="num">${pct(x.rate)}</td><td>${x.wrong.map(w => `${esc(w.answer)} (${w.count}명)`).join(', ')}</td></tr>`).join('')}</tbody></table></div>
-  </div>`;
+/* ---------- 오른쪽: 반이 약한 영역 · 교과 평어로 ---------- */
+function domainHTML(tests) {
+  const stats = domainStats(tests), adv = weakAdvice(stats);
+  if (!adv) return '<section class="yp-card un-dom-card" aria-label="반이 약한 영역"><h3>반이 약한 영역</h3><p class="ev-sub" style="margin:0">문항에 영역이 적혀 있지 않아요. 답안의 영역 칸을 채우면 여기에 보여요.</p></section>';
+  const row = d => { const low = d.name === adv.low, p = Math.round(d.rate * 100); return `<li${low ? ' class="low"' : ''}><span class="un-dom-n">${esc(d.name)}</span><span class="ev-bar${low ? ' turn' : ''}"><i style="width:${p}%"></i></span><span class="ev-num">${p}%</span></li>`; };
+  return `<section class="yp-card un-dom-card" aria-label="반이 약한 영역"><h3>반이 약한 영역</h3>
+    <ul class="un-dom">${stats.map(row).join('')}</ul><p class="un-dom-line">${esc(adv.line)}</p></section>`;
+}
+function pyCardHTML(tests) {
+  const subs = [...new Set(tests.map(t => t.meta.subject).filter(Boolean))];
+  const sub = R.subject || subs[0] || '';
+  return `<section class="ev-ink-card un-pycard" aria-label="교과 평어로"><p class="ev-sub">교과 평어로 이어서</p>
+    <p class="un-pycard-t">평가 ${tests.length}개의 점수와 잘한·보완할 내용이 학생마다 근거로 모였어요.</p>
+    <button class="btn un-on-ink" type="button" data-rv="pyeongeo" data-py-sub="${esc(sub)}">${sub ? `${esc(sub)} ` : ''}평어 쓰러 가기</button></section>`;
+}
+
+/* ---------- 평가 카드 줄: 채점을 마친 평가(평균) + 채점 중인 평가(파랑 테두리·막대) — 누르면 그 평가 ---------- */
+const live = t => (t.students || []).filter(s => !s.skip);
+function cardsHTML(tests) {
+  const tb = summaryTable(tests), byId = Object.fromEntries(tests.map(t => [t.id, t]));
+  const done = tb.cols.map(c => byId[c.id]).filter(Boolean);
+  const run = loaded(filterTests(listTests().filter(s => !s.done), { subject: R.subject, term: R.term }));
+  if (!done.length && !run.length) return '';
+  const card = (t, on) => {
+    const m = t.meta, n = graded(t).length, all = live(t).length, w = all ? Math.round(n / all * 100) : 0;
+    const head = `${m.subject ? `${esc(m.subject)} · ` : ''}${on ? '채점 중' : esc(dateLabel(m.date) || m.date || '')}`;
+    const body = on ? `<span class="un-tc-bar"><span class="ev-bar"><i style="width:${w}%"></i></span><span class="ev-num">${n} / ${all}</span></span>`
+      : `<span class="un-tc-n"><span class="ev-num">${tb.colAvg[t.id] ?? '-'}</span> 평균</span>`;
+    return `<button type="button" class="un-tc${on ? ' run' : ''}" data-un-open="${esc(t.id)}" aria-label="${esc(`${makeTitle(m)} ${on ? `채점 중 ${n}/${all}명` : `반 평균 ${tb.colAvg[t.id] ?? '-'}점`} — 열기`)}">
+      <span class="un-tc-k">${head}</span><span class="un-tc-t">${esc(cardTitle(m))}</span>${body}</button>`;
+  };
+  return `<ul class="un-tcards" aria-label="평가">${[...done.map(t => card(t, false)), ...run.map(t => card(t, true))].map(c => `<li>${c}</li>`).join('')}</ul>`;
 }
 
 /* ---------- 교과 평어로 넘기기 ---------- */
@@ -190,18 +220,27 @@ function refreshView() {
   if (b) { b.disabled = !!R.pyRun; b.innerHTML = R.pyRun ? '<span class="spin"></span>쓰는 중…' : '평어 쓰기'; }
 }
 
+function headHTML(all, tests) {
+  const nos = new Set(tests.flatMap(t => graded(t).map(x => x.no)));
+  const where = [R.subject, R.term ? `${R.term}학기` : ''].filter(Boolean).join(' ') || '전체';
+  return `<div class="un-rhead"><div class="un-rhead-t"><h2>단원평가</h2>
+      <p class="ev-sub">${esc(where)} · 채점 끝난 평가 ${tests.length}개${nos.size ? ` · ${nos.size}명` : ''} · 점수는 모두 100점으로 바꿔 보여요</p></div>
+    <div class="un-racts"><button class="btn" type="button" data-un="csv" title="엑셀(CSV)로 내려받기"${tests.length ? '' : ' disabled'}>엑셀로</button>${exportButton('data-un="tableHwpx"', { disabled: !tests.length })}${downloadsButton()}<button class="btn primary" type="button" id="unNew">새 단원평가</button></div></div>
+    ${introLine()}<div class="row un-rbar">${viewSeg()}${filtersHTML(all)}</div>`;
+}
+const EMPTY = '<div class="yp-card"><p class="muted" style="margin:0">마친 단원평가가 없어요. 평가 목록에서 채점을 마치면 여기에 모여요. 바로 보려면 [예시로 채우기].</p></div>';
 function html() {
   const all = doneTests(), list = filterTests(all, { subject: R.subject, term: R.term }), tests = loaded(list);
-  const seg = `<div class="seg un-rseg" role="group" aria-label="결과 보기">${[['table', '성적 일람표'], ['student', '학생별 누적'], ['weak', '반 약한 부분'], ['gap', '도달하지 못한 학생'], ['pyeongeo', '교과 평어로 넘기기']].map(([k, l]) => `<button type="button" data-rv="${k}" aria-pressed="${R.rv === k}">${l}</button>`).join('')}</div>`;
-  let body;
-  if (R.rv === 'pyeongeo') body = all.length ? pyHTML(loaded(all)) : '';
-  else if (!tests.length) body = '';
-  else body = R.rv === 'student' ? studentHTML(tests) : R.rv === 'weak' ? weakHTML(tests) : R.rv === 'gap' ? gapHTML(tests, { subject: R.subject }) : tableHTML(tests);
-  if (!body) body = '<div class="yp-card"><p class="muted" style="margin:0">마친 단원평가가 없어요. 평가 목록에서 채점을 마치면 여기에 모여요. 바로 보려면 [예시로 채우기].</p></div>';
-  return `<div class="un-results">${R.rv === 'pyeongeo' ? '' : filtersHTML(all)}${seg}${body}</div>`;
+  if (R.rv === 'pyeongeo') {
+    const body = all.length ? pyHTML(loaded(all)) : '';
+    return `<div class="un-results un-pyview"><div class="un-top"><button class="btn text" type="button" data-rv="table">‹ 결과</button><b class="un-title">교과 평어로 넘기기</b></div>${body || EMPTY}</div>`;
+  }
+  if (R.stuNo != null && !summaryTable(tests).rows.some(r => r.no === R.stuNo)) R.stuNo = null;
+  const main = tests.length ? `<div class="un-rgrid">${tableHTML(tests)}<aside class="un-rside" aria-label="반 전체">${domainHTML(tests)}${gapHTML(tests, { subject: R.subject })}${pyCardHTML(tests)}</aside></div>` : EMPTY;
+  return `<div class="un-results un-one">${headHTML(all, tests)}${cardsHTML(tests)}${main}</div>`;
 }
 registerResults({ html });
-/* 평가 › 기재 점검 [그 글로 가기]: 결과 모아 보기 › 교과 평어로 넘기기의 그 교과, 그 학생 칸에 초점(창 틀이 단원평가 탭으로 옮긴 뒤) */
+/* 평가 › 기재 점검 [그 글로 가기]·평가 화면 단계 줄 「생활기록부」·[평어 초안 미리 보기]: 교과 평어로 넘기기의 그 교과, (번호를 주면) 그 학생 칸에 초점 */
 export function showPyeongeo(subject, no) {
   U.view = 'results'; R.rv = 'pyeongeo'; R.pySubject = subject;
   render();
@@ -222,9 +261,12 @@ document.addEventListener('click', e => {
   const box = getBox();
   if (!box || !box.contains(e.target) || !inView()) return;
   const v = e.target.closest('[data-rv]');
-  if (v) { R.rv = v.dataset.rv; render(); return; }
+  if (v) { R.rv = v.dataset.rv; if (v.dataset.pySub) R.pySubject = v.dataset.pySub; render(); if (R.rv === 'table') focusTop(); return; }
+  const st = e.target.closest('[data-stu]');
+  if (st) { const no = Number(st.dataset.stu); R.stuNo = R.stuNo === no ? null : no; render(); const f = getBox().querySelector(`[data-stu="${no}"]`); if (f) f.focus(); return; }
   const b = e.target.closest('[data-un]'), a = b && b.dataset.un;
   if (a === 'csv' || a === 'tableHwpx') download(a === 'csv' ? 'csv' : 'hwpx');
+  else if (a === 'stuClose') { const no = R.stuNo; R.stuNo = null; render(); const f = getBox().querySelector(`[data-stu="${no}"]`); if (f) f.focus(); }
   else if (a === 'stuCopy') copy(studentText(R.stuNo, studentHistory(loaded(filterTests(doneTests(), { subject: R.subject, term: R.term })), R.stuNo)));
   else if (a === 'pyAI') writePyeongeo();
   else if (a === 'pyCopy') { const s = pyState(loaded(doneTests())).students.find(x => x.no === Number(b.dataset.no)); if (s) copy(s.text); }
@@ -236,8 +278,7 @@ document.addEventListener('change', e => {
   const el = e.target;
   if (el.id === 'unFSubject') { R.subject = el.value; render(); }
   else if (el.id === 'unFTerm') { R.term = Number(el.value); render(); }
-  else if (el.id === 'unStuNo') { R.stuNo = Number(el.value); render(); }
-  else if (el.id === 'unWeakTest') { R.weakId = el.value; render(); }
+  else if (el.id === 'unStuNo') { R.stuNo = Number(el.value); render(); const f = getBox().querySelector('#unStuNo'); if (f) f.focus(); }
   else if (el.id === 'unPySubject') { R.pySubject = el.value; render(); }
   else {
     const st = pyState(loaded(doneTests()));
@@ -267,12 +308,26 @@ document.addEventListener('change', e => {
   }
 });
 
-/* 결과 모아 보기의 한 보기(rv: table·student·weak·gap·pyeongeo)를 바로 엶 — 3분 둘러보기(core/tour-steps.js)가 부름. 교과·학기 거르기는 전체로.
-   평가 한 바퀴 띠(unit-flow-card.js)는 그 평가의 교과·학기로(마친 평가에 없는 교과면 전체 — 고르기 칸에 없는 교과로 거르지 않게) */
+/* 결과의 한 보기를 바로 엶 — 3분 둘러보기(core/tour-steps.js)·평가 단계 줄(unit-flow-card.js)이 부름. 교과·학기 거르기는 전체로.
+   rv: 'table'·'gap'(결과 한 화면 — 도달하지 못한 학생은 오른쪽 칸), 'student'(첫 학생 누적을 펼침), 'pyeongeo'(교과 평어로 넘기기),
+   'weak'(평가 하나의 반 약한 부분 — 가장 최근 마친 평가의 3단계로 옮김).
+   단계 줄은 그 평가의 교과·학기로(마친 평가에 없는 교과면 전체 — 고르기 칸에 없는 교과로 거르지 않게) */
 export function showResults(rv, { subject = '', term = 0 } = {}) {
-  U.view = 'results';
-  if (rv) R.rv = rv;
   R.subject = subject && doneTests().some(s => s.subject === subject) ? subject : '';
   R.term = [1, 2].includes(Number(term)) ? Number(term) : 0;
+  if (rv === 'weak') {
+    const last = filterTests(doneTests(), { subject: R.subject, term: R.term })[0] || doneTests()[0];
+    if (last) { openWeak(last.id); return; }
+  }
+  U.view = 'results';
+  R.rv = rv === 'pyeongeo' ? 'pyeongeo' : 'table';
+  if (rv === 'student' && R.stuNo == null) { const r = summaryTable(loaded(filterTests(doneTests(), { subject: R.subject, term: R.term }))).rows[0]; R.stuNo = r ? r.no : null; }
   render();
+}
+/* 결과 한 화면으로 돌아오면(평어 보기 [‹ 결과]) 머리에 초점 */
+function focusTop() {
+  const box = getBox(), h = box && box.querySelector('.un-rhead h2');
+  if (!h) return;
+  h.setAttribute('tabindex', '-1');
+  h.focus({ preventScroll: true });
 }

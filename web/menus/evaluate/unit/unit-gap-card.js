@@ -1,4 +1,4 @@
-/* 결과 모아 보기 › 「도달하지 못한 학생」 카드 (스펙 2026-11-13-gap-evidence §2-1). unit-results.js의 html()이 gapHTML(tests, { subject })로 부름.
+/* 결과 한 화면 오른쪽 「도달하지 못한 학생」 카드 (스펙 2026-11-13-gap-evidence §2-1, 새 모양 2026-11-14-eval-redesign §3-1 주황 테두리). unit-results.js의 html()이 gapHTML(tests, { subject })로 부름.
    고른 교과·학기의 다 채점한 단원평가에서 영역 점수율이 기준(기본 60%, 단원평가 설정 unit:set의 gapCut에 기억) 아래인 영역이 있는 학생 →
    체크 → [기초학력에 넣기] → 지금 있는 프로그램 또는 새 프로그램. 학생은 학급 정보(학년·반)와 번호로 만들고 이름 칸은 비움(같은 학생은 겹치지 않음),
    가장 낮은 영역의 점수를 사전 점수로 적어 둠(camp-growth.js). 이 카드의 일은 이 파일의 document 듣기만 함(평어 쪽 코드와 따로) */
@@ -26,12 +26,13 @@ function listHTML(list, cut) {
   const line = g => g.areas.slice(0, 3).map(a => `${multi && a.subject ? `${a.subject} ` : ''}${a.name} ${a.pct}%`).join(' · ');
   const n = list.filter(g => G.sel.has(g.no)).length, all = n === list.length;
   return `<div class="row un-gap-bar"><button class="btn" type="button" data-gap="all" aria-pressed="${all}">${all ? '모두 빼기' : '모두 고르기'}</button>
-      <span class="muted" id="unGapN" role="status">${n ? `${n}명 골랐어요` : `${list.length}명이에요`}</span><span class="grow"></span>
-      <button class="btn primary" type="button" data-gap="add">기초학력에 넣기</button></div>
+      <span class="muted" id="unGapN" role="status">${n ? `${n}명 골랐어요` : `${list.length}명이에요`}</span></div>
     <ul class="un-gaps">${list.map(g => `<li class="un-gap-i" data-gap-no="${g.no}"><label><input type="checkbox" data-gapno="${g.no}"${G.sel.has(g.no) ? ' checked' : ''}>
       <span class="un-gap-t"><b>${g.no}번</b> · <span class="un-gap-a">${esc(line(g))}</span>${g.areas.length > 3 ? ` <span class="muted">외 ${g.areas.length - 3}개</span>` : ''} <span class="muted">(평가 ${g.n}개)</span></span></label></li>`).join('')}</ul>
-    <p class="muted" style="margin:0">기초학력에는 번호만 넣고 이름 칸은 비워 둬요. 가장 낮은 영역의 점수를 사전 점수로 적어 둬요.</p>`;
+    <button class="ev-turn-btn un-gap-add" type="button" data-gap="add">${addLabel(n)}</button>
+    <p class="ev-sub" style="margin:0">기초학력에는 번호만 넣고 이름 칸은 비워 둬요. 가장 낮은 영역의 점수를 사전 점수로 적어 둬요.</p>`;
 }
+const addLabel = n => (n ? `${n}명을 기초학력에 넣기` : '기초학력에 넣기');
 
 /* 기준(자주 안 바꿈) 요약 한 줄 */
 const cutSum = cut => `기준: 영역 점수율 ${cut}% 아래`;
@@ -40,12 +41,12 @@ export function gapHTML(tests, { subject = '' } = {}) {
   G.tests = tests; G.subject = subject;
   const cut = cutNow(), list = gapStudents(tests, { cut }), nos = new Set(list.map(g => g.no));
   for (const no of [...G.sel]) if (!nos.has(no)) G.sel.delete(no);
-  return `<div class="yp-card un-gap">
-    <div class="row"><b>도달하지 못한 학생</b><span class="muted">평가 ${tests.length}개의 영역별 점수율로 찾아요</span></div>
+  return `<section class="yp-card ev-card turn un-gap" aria-label="도달하지 못한 학생">
+    <div class="un-gap-h"><h3>도달하지 못한 학생</h3><span class="ev-sub"><span class="un-gap-cut">영역 ${cut}% 아래</span> · 평가 ${tests.length}개</span></div>
     ${foldHTML({ key: 'unit-gapcut', summary: cutSum(cut), body: `<div class="row"><label class="cls-inline">기준 <input class="field num" type="number" id="unGapCut" min="40" max="90" step="1" value="${cut}" inputmode="numeric">% 아래</label>
       <span class="muted">40~90 사이로 바꿀 수 있어요.</span></div>` })}
     <div class="un-gap-list" id="unGapList">${listHTML(list, cut)}</div>
-  </div>`;
+  </section>`;
 }
 
 /* 평가 한 바퀴 띠(unit-flow-card.js) 「도달하지 못한 학생」: 그 평가의 학생을 골라 둔 채로 엶(목록에 없는 번호는 그릴 때 빠짐) */
@@ -58,8 +59,9 @@ function paintList() {
 }
 function paintCount() {
   const list = listNow(), n = list.filter(g => G.sel.has(g.no)).length, all = n === list.length, box = getBox();
-  const s = box.querySelector('#unGapN'), b = box.querySelector('[data-gap="all"]');
+  const s = box.querySelector('#unGapN'), b = box.querySelector('[data-gap="all"]'), add = box.querySelector('[data-gap="add"]');
   if (s) s.textContent = n ? `${n}명 골랐어요` : `${list.length}명이에요`;
+  if (add) add.textContent = addLabel(n);
   if (b) { b.textContent = all ? '모두 빼기' : '모두 고르기'; b.setAttribute('aria-pressed', String(all)); }
 }
 
@@ -131,6 +133,7 @@ document.addEventListener('change', e => {
     el.value = cut;
     if (cut !== cutNow()) saveSet({ ...getSet(), gapCut: cut });
     const sum = getBox().querySelector('[data-fold="unit-gapcut"] .fold-text'); if (sum) sum.textContent = cutSum(cut);
+    const head = getBox().querySelector('.un-gap .un-gap-cut'); if (head) head.textContent = `영역 ${cut}% 아래`;
     paintList(); // 기준 칸은 그대로(초점·Tab 차례를 지킴), 줄만 바꿈
   } else if (el.dataset.gapno) {
     const no = Number(el.dataset.gapno);

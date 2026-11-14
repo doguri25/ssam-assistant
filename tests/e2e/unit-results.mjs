@@ -1,4 +1,5 @@
-// 단원평가 결과 모아 보기: 성적 일람표(교과·학기 거르기, CSV·한글 파일), 학생별 누적, 반 약한 부분, 교과 평어로 넘기기(수준·AI 초안·저장·복사)
+// 단원평가 결과 한 화면(스펙 2026-11-14-eval-redesign §3-1): 성적 일람표(교과·학기 거르기, CSV·한글 파일), 학생별 누적(번호를 누르면 그 자리에),
+// 반 약한 부분(평가 하나 — 평가 화면 3단계로 옮김), 교과 평어로 넘기기(수준·AI 초안·저장·복사)
 import { readFileSync } from 'node:fs';
 import { open, run, assert, mockClaude } from './helpers.mjs';
 
@@ -62,9 +63,12 @@ await run('unit-results', [
     [dl] = await Promise.all([page.waitForEvent('download'), page.click(`${V} [data-un="tableHwpx"]`)]);
     assert(dl.suggestedFilename() === '전체 단원평가 성적 일람표.hwpx', dl.suggestedFilename());
   }],
-  ['학생별 누적: 평가 3줄, 영역 정답률, 자주 틀린 평가 내용, 복사', async () => {
-    await page.click(`${V} [data-rv="student"]`);
+  ['학생별 누적: 번호를 누르면 그 줄 아래에 펼침 — 평가 3줄, 영역 정답률, 자주 틀린 평가 내용, 복사', async () => {
+    await page.click(`${V} [data-stu="2"]`);
+    assert(await page.getAttribute(`${V} [data-stu="2"]`, 'aria-expanded') === 'true', '펼침 표시');
+    assert(await page.evaluate(v => { const r = document.querySelector(`${v} .un-sumt tr[data-no="2"]`); return !!(r && r.nextElementSibling && r.nextElementSibling.matches('.un-stu-x')); }, V), '그 줄 바로 아래');
     await pick('#unStuNo', '3');
+    assert(await page.evaluate(v => document.querySelector(`${v} .un-sumt tr[data-no="3"]`).nextElementSibling.matches('.un-stu-x'), V), '고른 학생 줄 아래로');
     assert(await page.locator(`${V} .un-hist tbody tr`).count() === 3, '평가 줄');
     const txt = await page.textContent(`${V} .un-results`);
     assert(txt.includes('지식') && txt.includes('계산') && txt.includes('자주 틀린'), txt.slice(0, 200));
@@ -72,13 +76,41 @@ await run('unit-results', [
     await page.waitForTimeout(150);
     const clip = await page.evaluate(() => navigator.clipboard.readText());
     assert(clip.startsWith('[단원평가 누적] 3번') && clip.includes('영역별 정답률'), clip.slice(0, 100));
+    await page.click(`${V} [data-stu="3"]`);
+    assert(await page.locator(`${V} .un-stu-x`).count() === 0 && await page.getAttribute(`${V} [data-stu="3"]`, 'aria-expanded') === 'false', '다시 누르면 접힘');
   }],
-  ['반 약한 부분: 정답률 낮은 차례, 다시 가르칠 내용', async () => {
-    await page.click(`${V} [data-rv="weak"]`);
-    await pick('#unWeakTest', 'sample-1');
+  ['한 화면: 평가 카드(마친 평가 평균 · 채점 중 막대), 점수 색, 흐름 선, 수준, 반이 약한 영역, 도달하지 못한 학생, 교과 평어로', async () => {
+    const cards = await page.$$eval(`${V} .un-tc`, a => a.map(b => [b.dataset.unOpen ? 1 : 0, b.classList.contains('run'), b.textContent.replace(/\s+/g, ' ').trim()]));
+    assert(cards.length === 4 && cards.filter(c => c[1]).length === 1 && cards.every(c => c[0]), JSON.stringify(cards));
+    assert(cards.find(c => c[1])[2].includes('채점 중') && cards.find(c => c[1])[2].includes('6 / 6'), '채점 중 카드: ' + cards.find(c => c[1])[2]);
+    assert(cards.some(c => c[2].includes('수학 · 10월 22일') && c[2].includes('「3. 곱셈」') && c[2].includes('평균')), JSON.stringify(cards));
+    // 1번 수학 100점(연파랑), 2번 수학 0점(연주황)
+    const tone = async (no, i) => page.$eval(`${V} .un-sumt tr[data-no="${no}"]`, (tr, i) => tr.querySelectorAll('td.sc')[i].className, i);
+    const col = await page.$$eval(`${V} .un-sumt thead th[data-col]`, a => a.map(x => x.textContent.trim()));
+    const m = col.indexOf('수학 3단원');
+    assert(m >= 0, JSON.stringify(col));
+    assert((await tone(1, m)).includes('hi') && (await tone(2, m)).includes('lo'), `${await tone(1, m)} / ${await tone(2, m)}`);
+    assert(await page.locator(`${V} .un-sumt tbody tr[data-no] svg.un-spark path`).count() === 6, '흐름 선');
+    assert(await page.locator(`${V} .un-sumt tbody tr[data-no] .ev-chip`).count() === 6, '수준');
+    const dom = await page.textContent(`${V} .un-dom-card`);
+    assert(dom.includes('반이 약한 영역') && dom.includes('계산') && await page.locator(`${V} .un-dom li.low`).count() === 1, dom);
+    assert(await page.isVisible(`${V} .un-rside .un-gap.turn`), '도달하지 못한 학생(주황 테두리)');
+    assert((await page.textContent(`${V} .un-pycard`)).includes('평어 쓰러 가기'), '교과 평어로');
+    // 채점 중인 카드를 누르면 그 평가, [‹ 단원평가]로 돌아오면 결과 한 화면
+    await page.click(`${V} .un-tc.run`);
+    await page.waitForSelector(`${V} #unFlow`);
+    await page.click(`${V} [data-un="back"]`);
+    await page.waitForSelector(`${V} .un-one`);
+  }],
+  ['반 약한 부분(평가 하나): 평가를 열면 3단계 아래 접힌 칸 — 정답률 낮은 차례, 다시 가르칠 내용', async () => {
+    await page.click(`${V} [data-un-open="sample-1"]`);
+    await page.click(`${V} .steps [data-step="3"]`);
+    await page.click(`${V} .un-weak-card > summary`);
     const rates = await page.$$eval(`${V} .un-weak tbody tr`, trs => trs.map(tr => Number(tr.dataset.rate)));
     assert(rates.length === 10 && rates.every((r, i) => !i || rates[i - 1] <= r), JSON.stringify(rates));
-    assert((await page.textContent(`${V} .un-results`)).includes('다시 가르칠 내용'), '다시 가르칠 내용');
+    assert((await page.textContent(`${V} .un-weak-card`)).includes('다시 가르칠 내용'), '다시 가르칠 내용');
+    await page.click(`${V} [data-un="back"]`);
+    await page.waitForSelector(`${V} .un-one`);
   }],
   ['교과 평어: 수준 자동, 기준을 바꾸면 바뀜, 학생마다 고침', async () => {
     await page.click(`${V} [data-rv="pyeongeo"]`);
