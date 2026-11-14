@@ -56,6 +56,8 @@ test('AI로 보내는 글의 학생·보호자 이름(「김하늘 학생」「�
   assert.equal(maskNames('학생 이바다 체험학습비 1명 30,000원'), '학생 ○○○ 체험학습비 1명 30,000원');
   assert.equal(maskNames('한가람 학생의 보조 기구'), '○○○ 학생의 보조 기구');
   assert.equal(maskNames('이바다 어머니 상담 다과'), '○○○ 어머니 상담 다과');
+  assert.equal(maskNames('김하늘 학생한테 줄 상품'), '○○○ 학생한테 줄 상품');
+  assert.equal(maskNames('한가람 학부모님 상담 다과'), '○○○ 학부모님 상담 다과');
   // 학생을 꾸미는 말·학생 모임 이름은 그대로
   for (const s of ['학생회 간식 30개 1,000원', '학생 수 30명', '성실한 학생 시상품', '신청한 학생 간식', '학생 자치회 운영', '고학년 학생 간식']) assert.equal(maskNames(s), s);
 });
