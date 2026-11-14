@@ -641,6 +641,23 @@ document.addEventListener('click', async e => {
     copyText(s || '').then(ok => toast(ok ? '번역을 복사했어요. 알림 앱에 붙여 넣으세요' : '복사하지 못했어요'));
   }
 });
+/* 회신서 표 번호 칸을 고친 뒤(칸을 떠날 때 change) 다시 그리기: 바로 그리면 누른 칸·[✕]·Tab으로 옮겨 간 칸이 사라져 초점·첫 누름이 버려짐 →
+   누르는 동안은 뗀 뒤(click 뒤)로 미루고, 다 그린 뒤 초점은 같은 칸(번호 칸이면 그 줄 번호 칸)에. 떼기를 놓쳐도 2초 뒤에는 그림 */
+const RCP = { at: 0, due: false };
+const rcPressing = () => Date.now() - RCP.at < 2000;
+function rcFlush() {
+  if (!RCP.due || rcPressing()) return;
+  RCP.due = false;
+  const a = document.activeElement, k = a && box && box.contains(a) && a.dataset && a.dataset.rcNo != null ? `[data-rc-no="${a.dataset.rcNo}"]` : '';
+  render();
+  const n = k && box.querySelector(k);
+  if (n && document.activeElement !== n) n.focus({ preventScroll: true });
+}
+const rcLater = () => { RCP.due = true; setTimeout(rcFlush, 0); if (rcPressing()) setTimeout(rcFlush, 2100); };
+document.addEventListener('pointerdown', e => { if (mine(e)) RCP.at = Date.now(); }, true);
+const rcUp = () => { if (!RCP.at) return; RCP.at = 0; setTimeout(rcFlush, 0); };
+document.addEventListener('pointerup', rcUp, true);
+document.addEventListener('pointercancel', rcUp, true);
 document.addEventListener('change', e => {
   if (!mine(e)) return;
   const el = e.target, x = c();
@@ -650,7 +667,7 @@ document.addEventListener('change', e => {
   if (el.id === 'lfReplyOn' && x.out) { x.out.replyOn = el.checked; save(x, { push: true }); render(); return; }
   if (el.id === 'lfRcFile') { const fs = [...el.files]; el.value = ''; if (fs.length) rcAdd(fs); return; }
   if (el.dataset.rcA != null) { const r = x.collect.rows[+el.dataset.rcA], f = el.dataset.rcF; if (r) { r.answers[f] = el.value; r.unsure = r.unsure.filter(u => u !== f); save(x, { push: true }); render(); } return; }
-  if (el.dataset.rcNo != null) { const r = x.collect.rows[+el.dataset.rcNo], n = +el.value; if (r) { r.no = Number.isInteger(n) && n >= 1 && n <= 99 ? n : null; save(x, { push: true }); render(); } return; }
+  if (el.dataset.rcNo != null) { const r = x.collect.rows[+el.dataset.rcNo], n = +el.value; if (r) { r.no = Number.isInteger(n) && n >= 1 && n <= 99 ? n : null; save(x, { push: true }); rcLater(); } return; }
 });
 document.addEventListener('input', e => {
   if (!mine(e)) return;

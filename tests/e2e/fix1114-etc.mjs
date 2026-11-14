@@ -116,6 +116,39 @@ await run('fix1114-etc', [
     assert((await page.getAttribute(`${MV} [data-mv-pick="${id}"][data-i="1"]`, 'aria-pressed')) === 'true', '칩 표시');
     assert((await page.textContent(`${MV} .mv-item[data-item="${id}"] .mv-item-h b`)) === '업무 곤란도(부장)', '고친 항목 이름이 카드에');
   }],
+  ['회신서 모으기: 번호를 고친 뒤 다른 줄 번호 칸을 누르면 그 칸에 초점(바로 칠 수 있음), [✕]·Tab도 첫 누름에', async () => {
+    await page.evaluate(() => {
+      const l = JSON.parse(localStorage.getItem('ssam:letter:list') || '[]');
+      l.push({ id: 'ltRC', at: Date.now() + 1e6, sources: [], memo: 'm', out: { title: '현장체험학습 참가 안내', date: '2026-11-14', body: ['본문'], replyOn: true, reply: { title: '참가 동의서', fields: ['참가 여부: □ 참가합니다  □ 참가하지 않습니다'], due: '' }, short: '' },
+        send: { title: '', body: '' }, collect: { mask: [], rows: [{ no: 3, answers: { '참가 여부': '참가합니다' }, unsure: [] }, { no: null, answers: { '참가 여부': '' }, unsure: ['참가 여부'] }, { no: 5, answers: { '참가 여부': '참가하지 않습니다' }, unsure: [] }, { no: 8, answers: { '참가 여부': '참가합니다' }, unsure: [] }] } });
+      localStorage.setItem('ssam:letter:list', JSON.stringify(l));
+    });
+    await page.click('#menuTabs [data-tab="letter"]');
+    await page.click(`${LF} #lfRecent [data-lf-open="ltRC"]`);
+    await page.waitForSelector(`${LF} #lfCollect [data-rc-no]`);
+    const rows = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:letter:cur')).collect.rows.map(r => r.no));
+    const act = () => page.evaluate(() => { const a = document.activeElement; return a && a.dataset ? (a.dataset.rcNo != null ? `no${a.dataset.rcNo}` : a.dataset.rcA != null ? `a${a.dataset.rcA}` : a.tagName) : ''; });
+    const humanClick = async sel => {
+      await page.locator(sel).first().scrollIntoViewIfNeeded();
+      const b = await page.locator(sel).first().boundingBox();
+      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+      await page.mouse.down(); await page.waitForTimeout(80); await page.mouse.up();
+    };
+    await page.fill(`${LF} [data-rc-no="1"]`, '4'); // 못 읽은 번호
+    await humanClick(`${LF} [data-rc-no="2"]`);
+    await page.waitForTimeout(150);
+    assert((await act()) === 'no2', '누른 번호 칸에 초점이 없음: ' + await act());
+    await page.keyboard.press('Control+A'); await page.keyboard.type('6');
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(150);
+    assert(JSON.stringify(await rows()) === '[3,4,6,8]', '번호: ' + JSON.stringify(await rows()));
+    assert((await act()) === 'a2', 'Tab 뒤 초점(같은 줄 선택 칸): ' + await act());
+    await page.fill(`${LF} [data-rc-no="0"]`, '2');
+    await humanClick(`${LF} [data-rc-del="3"]`);
+    await page.waitForTimeout(150);
+    assert(JSON.stringify(await rows()) === '[2,4,6]', '[✕] 첫 누름: ' + JSON.stringify(await rows()));
+    assert((await page.textContent(`${LF} #lfCollect`)).includes('낸 회신서 3장'), '집계가 바뀌지 않음');
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();
