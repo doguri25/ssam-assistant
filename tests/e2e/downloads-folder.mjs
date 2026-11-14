@@ -30,12 +30,12 @@ await run('downloads-folder', [
     await app();
     await page.click('nav.app-side [data-menu-go="class"]');
     await unitResults();
-    const b = `${U} .row:has([data-un="tableHwpx"]) [data-open-downloads]`;
+    const b = `${U} .un-racts:has([data-un="tableHwpx"]) [data-open-downloads]`; // 결과 한 화면 머리의 내려받기 줄
     await page.waitForSelector(b);
     const txt = (await page.textContent(b)).trim();
     assert(txt === '다운로드 폴더' && (await page.locator(`${b} svg`).count()) === 1, txt);
     // 내려받기 단추 바로 뒤
-    const order = await page.$$eval(`${U} .row:has([data-un="tableHwpx"]) > *`, els => els.map(e => e.matches('[data-open-downloads]') ? 'folder' : e.querySelector('[data-un="tableHwpx"]') ? 'export' : ''));
+    const order = await page.$$eval(`${U} .un-racts:has([data-un="tableHwpx"]) > *`, els => els.map(e => e.matches('[data-open-downloads]') ? 'folder' : e.querySelector('[data-un="tableHwpx"]') ? 'export' : ''));
     assert(order.indexOf('folder') === order.indexOf('export') + 1, JSON.stringify(order));
     await page.click(b);
     await page.waitForFunction(() => window.__calls.includes('open_downloads'));

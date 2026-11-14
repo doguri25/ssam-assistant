@@ -1,6 +1,7 @@
-/* 평가 › 단원평가 (스펙 2): 평가 목록 · 결과 모아 보기, 평가마다 4단계.
+/* 평가 › 단원평가 (스펙 2, 새 디자인 2026-11-14-eval-redesign §3·§4): 결과 한 화면(첫 화면) · 평가 목록, 평가마다 4단계, 채점 확인(하나씩).
    이 파일은 탭 진입·목록·단계 틀·1단계(학생 문제지·답안). 1단계의 [학생 문제지 넣기(스캔한 것)] 줄과 2·3단계는 unit-grading.js(registerPapers),
-   4단계는 unit-feedback.js, 결과 모아 보기는 unit-results.js가 registerStep·registerResults로 붙임.
+   4단계는 unit-feedback.js, 결과 한 화면은 unit-results.js, 채점 확인은 unit-confirm.js가 registerStep·registerResults·registerReview로 붙임.
+   첫 화면: 채점을 마친 평가가 있으면 결과 한 화면, 없으면 평가 목록(시작 안내). 평가를 열었다가 [‹]로 나오면 열기 전 화면으로.
    단추는 이름대로: [답안 넣기]에 학생 문제지 스캔을, [학생 문제지 넣기]에 답안 한글 파일을 넣어도 맞는 곳에 옮겨 넣음(unit-route.js) */
 import { onEnter, go } from '../../../core/shell.js';
 import { registerInbox } from '../../../core/inbox.js';
@@ -27,12 +28,17 @@ const PDFJS = 'PDF를 읽는 도구를 불러오지 못했어요. 인터넷 연�
 const NAMED = name => `「${name}」 파일은 학생 이름이 적힌 글이라 넣지 않았어요. 학생 문제지는 스캔한 PDF·사진으로 넣어 주세요`;
 const SUBJECTS = ['국어', '수학', '사회', '과학', '영어', '도덕', '음악', '미술', '체육', '실과'];
 
-/* 화면 상태: view 'list' | 'results' | 'test'. 저장 전의 새 평가는 draft에 둠(정답표가 생기면 저장) */
-export const U = { view: 'list', id: null, draft: null, step: 1, msg: { id: null, key: '', paper: '' } };
+/* 화면 상태: view 'home'(처음: 결과 한 화면 또는 목록으로 정함) | 'list' | 'results' | 'test' | 'review'(채점 확인).
+   from: 평가를 열기 전 화면('list' | 'results', 밖에서 열었으면 null — 나오면 첫 화면). 저장 전의 새 평가는 draft에 둠(정답표가 생기면 저장) */
+export const U = { view: 'home', from: null, id: null, draft: null, step: 1, msg: { id: null, key: '', paper: '' } };
 const stepViews = {};
-let resultsView = null, box = null, curTab = null;
+let resultsView = null, reviewView = null, box = null, curTab = null;
 export const registerStep = (n, v) => { stepViews[n] = v; };
 export const registerResults = v => { resultsView = v; };
+export const registerReview = v => { reviewView = v; };
+/* 첫 화면: 채점을 마친 평가가 있으면 결과 한 화면, 없으면 평가 목록(시작 안내) */
+export const home = () => (listTests().some(s => s.done) ? 'results' : 'list');
+const keepFrom = () => { if (U.view === 'list' || U.view === 'results') U.from = U.view; else if (U.view === 'home') U.from = null; };
 /* 학생 문제지(스캔) 쪽: { html(t), put(files, t0), putPages(pages, t0), keyArrived(id), note(id, text) } — unit-grading.js가 붙임 */
 let papers = null;
 export const registerPapers = p => { papers = p; };
@@ -85,12 +91,28 @@ export const reach = t => (!t || !t.key.items.length ? 1 : !t.students.length ? 
 export function openTest(id, step) {
   const t = getTest(id);
   if (!t) return;
+  keepFrom();
   U.view = 'test'; U.id = id; U.draft = null;
   U.step = step || (t.done ? 4 : Math.min(3, reach(t)));
   if (U.msg.id !== id) U.msg = { id, key: '', paper: '' };
   render();
 }
 export const goStep = n => { U.step = n; render(); };
+/* 채점 확인(스펙 §4): 그 평가의 확인할 칸(판단을 미룬 칸·검토 의견)만 하나씩 — 한눈에의 [선생님 차례]도 이것을 부름(go('evaluate', 'unit') 뒤에) */
+export function openReview(id) {
+  const t = getTest(id);
+  if (!t) return;
+  keepFrom();
+  U.view = 'review'; U.id = id; U.draft = null;
+  if (U.msg.id !== id) U.msg = { id, key: '', paper: '' };
+  if (reviewView && reviewView.start) reviewView.start(id);
+  render();
+}
+/* 나가기([‹ 단원평가]): 평가를 열기 전 화면으로(밖에서 열었으면 첫 화면) */
+export function leave() { U.view = U.from || home(); U.from = null; U.id = null; U.draft = null; render(); }
+/* 첫 화면 머리·[결과 | 평가 목록] 고르기(결과 한 화면·목록이 같이 씀) */
+export const introLine = () => introHTML('unit', '학생 문제지 스캔과 답안을 넣으면 채점하고 피드백을 만들어요. 결과는 한 화면에 모아 봐요.');
+export const viewSeg = () => `<div class="seg un-seg" role="group" aria-label="단원평가 보기"><button type="button" data-unv="results" aria-pressed="${U.view === 'results'}">결과</button><button type="button" data-unv="list" aria-pressed="${U.view === 'list'}">평가 목록</button></div>`;
 
 /* ---------- 그리기 ---------- */
 /* AI 채점 정확도 글 (이 기능 전에 저장한 요약엔 acc가 없어 「기록 없음」) */
@@ -157,15 +179,18 @@ function keyHTML(t) {
 }
 function testHTML(t) {
   const body = U.step === 1 ? keyHTML(t) : stepViews[U.step] ? stepViews[U.step].html(t) : '<div class="yp-card"><p class="muted" style="margin:0">준비 중이에요.</p></div>';
-  return `<div class="un-top"><button class="btn text" type="button" data-un="back">‹ 목록</button><b class="un-title">${esc(makeTitle(t.meta))}</b></div>
+  return `<div class="un-top"><button class="btn text" type="button" data-un="back">‹ 단원평가</button><b class="un-title">${esc(makeTitle(t.meta))}</b></div>
     ${band ? band.html(t) : ''}${stepsHTML(STEPS, U.step, reach(t))}<div class="un-body">${body}</div>`;
 }
 /* 휴대폰에서 한 줄로 밀어 넘기는 단계 탭: 지금 단계가 보이게 탭 줄만 옆으로 밂(화면은 위아래로 움직이지 않음) */
+/* 평가 화면 단계 줄(.un-steps, 휴대폰에서 한 줄로 밀어 넘김)도 지금 칸이 보이게 */
 export function stepsInView(root) {
-  const ol = root && root.querySelector('.steps'), li = ol && ol.querySelector('li.cur');
-  if (!li || ol.scrollWidth <= ol.clientWidth) return;
-  const d = li.getBoundingClientRect().right - ol.getBoundingClientRect().right;
-  if (d > 0) ol.scrollLeft += d + 12;
+  for (const [list, cur] of [['.steps', 'li.cur'], ['.un-steps', 'li[aria-current]']]) {
+    const ol = root && root.querySelector(list), li = ol && ol.querySelector(cur);
+    if (!li || ol.scrollWidth <= ol.clientWidth) continue;
+    const d = li.getBoundingClientRect().right - ol.getBoundingClientRect().right;
+    if (d > 0) ol.scrollLeft += d + 12;
+  }
 }
 /* 그리는 중에 지워지는 입력 칸의 blur→change가 다시 그리기를 부르면, 끝난 뒤 한 번 더 그림 */
 let rendering = false, again = false;
@@ -178,18 +203,20 @@ export function render() {
   if (again) { again = false; render(); }
 }
 function draw() {
-  const t = U.view === 'test' ? cur() : null;
-  if (U.view === 'test' && !t) U.view = 'list';
-  const head = `<div class="m-head"><h2>단원평가</h2>${introHTML('unit', '학생 문제지 스캔과 답안을 넣으면 채점하고 피드백을 만들어요. 결과는 모아 봐요.')}</div>`;
-  const seg = `<div class="seg un-seg" role="group" aria-label="단원평가 보기"><button type="button" data-unv="list" aria-pressed="${U.view !== 'results'}">평가 목록</button><button type="button" data-unv="results" aria-pressed="${U.view === 'results'}">결과 모아 보기</button></div>`;
+  if (U.view === 'home') U.view = home();
+  const t = U.view === 'test' || U.view === 'review' ? cur() : null;
+  if ((U.view === 'test' || U.view === 'review') && !t) U.view = home();
+  if (U.view === 'review' && !reviewView) U.view = 'test';
   let inner;
   if (U.view === 'test') inner = testHTML(t);
-  else if (U.view === 'results') inner = head + seg + (resultsView ? resultsView.html() : '');
-  else inner = head + seg + listHTML();
-  box.innerHTML = `<div class="m-page un-page">${inner}</div>`;
+  else if (U.view === 'review') inner = reviewView.html(t);
+  else if (U.view === 'results') inner = resultsView ? resultsView.html() : '';
+  else inner = `<div class="m-head"><h2>단원평가</h2>${introLine()}</div>${viewSeg()}${listHTML()}`;
+  box.innerHTML = `<div class="m-page un-page${U.view === 'results' ? ' un-rpage' : U.view === 'review' ? ' un-rvpage' : ''}">${inner}</div>`;
   stepsInView(box);
   if (U.view === 'test' && stepViews[U.step] && stepViews[U.step].bind) stepViews[U.step].bind(box, t);
   if (U.view === 'results' && resultsView && resultsView.bind) resultsView.bind(box);
+  if (U.view === 'review' && reviewView.bind) reviewView.bind(box, t);
 }
 
 /* ---------- 1단계: 학생 문제지·답안 ---------- */
@@ -434,7 +461,7 @@ document.addEventListener('click', e => {
   if (a === 'del') { askDelete(b.dataset.id); return; }
   if (a === 'sample') { fillSample(); return; }
   if (a === 'sampleDel') { listTests().filter(s => s.sample).forEach(s => removeTest(s.id)); toast('예시 평가를 지웠어요'); render(); return; }
-  if (a === 'back') { U.view = 'list'; U.id = null; U.draft = null; render(); return; }
+  if (a === 'back') { leave(); return; }
   // 목록 아래쪽 평가를 열어도 평가 화면은 맨 위(평가 이름·띠·단계 탭)부터 보이게
   if (!a) { const o = e.target.closest('[data-un-open]'); if (o) { openTest(o.dataset.unOpen); box.scrollIntoView({ block: 'start' }); } return; }
   if (!inStep(1)) return;
@@ -481,6 +508,7 @@ function paperless(text) {
 function openNew() {
   const t = newTest();
   drafts.add(t);
+  keepFrom();
   U.view = 'test'; U.id = null; U.draft = t; U.step = 1; U.msg = { id: t.id, key: '', paper: '' };
   render();
 }

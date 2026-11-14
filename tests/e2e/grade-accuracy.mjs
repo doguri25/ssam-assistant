@@ -116,6 +116,7 @@ await run('grade-accuracy', [
   }],
   ['평가 목록: 평가마다 정확도, 옛 평가는 「기록 없음」, 목록 위 「올해 n개 평가 · AI가 맞힌 칸 평균 ○%」', async () => {
     await page.click(`${V} [data-un="back"]`);
+    await page.click(`${V} [data-unv="list"]`); // 마친 평가가 있으면 첫 화면은 결과 한 화면
     const card = await page.textContent(`${V} [data-un-open="${A}"] .un-c-acc`);
     assert(card.trim() === 'AI가 맞힌 칸 95% (객관식 92% · 단답 100% · 서술형 100%) · 선생님이 고친 칸 1개', card);
     assert((await page.textContent(`${V} [data-un-open="old"] .un-c-acc`)).trim() === 'AI가 맞힌 칸: 기록 없음', '옛 평가');
@@ -125,14 +126,19 @@ await run('grade-accuracy', [
     assert((await page.textContent(`${V} #unYear`)).trim() === '올해 1개 평가 · AI가 맞힌 칸 평균 95%', await page.textContent(`${V} #unYear`));
     assert((await page.textContent(`${V} [data-un-open="sample-1"] .un-c-acc`)).includes('선생님이 고친 칸 2개'), '예시');
   }],
-  ['결과 모아 보기(반 약한 부분)에도 그 평가의 정확도, 옛 평가는 「기록 없음」', async () => {
-    await page.click(`${V} [data-unv="results"]`);
-    await page.click(`${V} [data-rv="weak"]`);
-    await page.selectOption(`${V} #unWeakTest`, A);
-    assert((await page.textContent(`${V} #unWeakAcc`)).includes('AI가 맞힌 칸 95%'), await page.textContent(`${V} #unWeakAcc`));
-    await page.selectOption(`${V} #unWeakTest`, 'old');
-    assert((await page.textContent(`${V} #unWeakAcc`)).trim() === 'AI가 맞힌 칸: 기록 없음', await page.textContent(`${V} #unWeakAcc`));
-    await page.click(`${V} [data-unv="list"]`);
+  ['반 약한 부분(평가 하나 — 평가 화면 3단계 아래)에도 그 평가의 정확도, 옛 평가는 「기록 없음」', async () => {
+    const weak = async id => {
+      await page.click(`${V} [data-un-open="${id}"]`);
+      if (await page.locator(`${V} .steps [data-step="3"]`).count()) await page.click(`${V} .steps [data-step="3"]`);
+      await page.click(`${V} .un-weak-card > summary`);
+      const x = (await page.textContent(`${V} #unWeakAcc`)).trim();
+      await page.click(`${V} [data-un="back"]`);
+      return x;
+    };
+    const a = await weak(A);
+    assert(a.includes('AI가 맞힌 칸 95%'), a);
+    const o = await weak('old');
+    assert(o === 'AI가 맞힌 칸: 기록 없음', o);
   }],
   ['활동지: 채점하면 처음 표시 기억, 4단계 요약 줄 「확인 중」, 칸을 고치면 지금 표시만', async () => {
     await tab('activity');

@@ -48,9 +48,9 @@ await enter(page, 'evaluate', 'unit');
 await page.click(`${V} [data-unv="results"]`);
 
 await run('unit-gap', [
-  ['결과 모아 보기 「도달하지 못한 학생」: 기준 60% 아래 영역이 있는 학생만, 낮은 차례·평가 수, 결석은 뺌', async () => {
-    await page.click(`${V} [data-rv="gap"]`);
-    await page.waitForSelector(`${V} .un-gap`);
+  ['결과 한 화면 오른쪽 「도달하지 못한 학생」(주황 테두리): 기준 60% 아래 영역이 있는 학생만, 낮은 차례·평가 수, 결석은 뺌', async () => {
+    await page.waitForSelector(`${V} .un-rside .un-gap.turn`);
+    assert((await page.textContent(`${V} .un-gap .un-gap-h`)).includes('영역 60% 아래'), await page.textContent(`${V} .un-gap .un-gap-h`));
     assert(await page.inputValue(`${V} #unGapCut`) === '60', '기본 기준 60');
     assert(JSON.stringify(await gapNos()) === '[3,5,7,9]', '전체 교과: ' + JSON.stringify(await gapNos()));
     assert((await gapLine(5)).includes('국어 읽기 30%'), '교과가 섞이면 교과 이름: ' + await gapLine(5));
@@ -74,7 +74,8 @@ await run('unit-gap', [
     const saved = await page.evaluate(async () => (await import('./menus/evaluate/unit/unit-model.js')).getSet().gapCut);
     assert(saved === 50, '기억: ' + saved);
     assert((await page.textContent(`${V} [data-fold="unit-gapcut"] .fold-text`)).includes('50% 아래'), '요약 줄도 바뀜');
-    await page.click(`${V} [data-rv="table"]`); await page.click(`${V} [data-rv="gap"]`);
+    await page.click(`${V} [data-unv="results"]`); // 다시 그려도
+    assert((await page.textContent(`${V} .un-gap .un-gap-h`)).includes('영역 50% 아래'), '머리 글도 50%');
     assert(await page.inputValue(`${V} #unGapCut`) === '50', '다시 열어도 50');
     await page.fill(`${V} #unGapCut`, '200'); await page.press(`${V} #unGapCut`, 'Tab');
     assert(await page.inputValue(`${V} #unGapCut`) === '90', '90까지');
@@ -87,6 +88,7 @@ await run('unit-gap', [
     assert(!(await page.$(SH)), '창이 뜨지 않음');
     await page.check(`${V} [data-gapno="3"]`); await page.check(`${V} [data-gapno="9"]`);
     assert((await page.textContent(`${V} #unGapN`)).includes('2명 골랐어요'), await page.textContent(`${V} #unGapN`));
+    assert((await page.textContent(`${V} [data-gap="add"]`)).trim() === '2명을 기초학력에 넣기', await page.textContent(`${V} [data-gap="add"]`));
   }],
   ['[기초학력에 넣기] → 새 프로그램: 학급 학년·반·번호로 학생(이름 빈칸), 사전 점수, 「이름을 넣어 주세요」', async () => {
     await page.click(`${V} [data-gap="add"]`);

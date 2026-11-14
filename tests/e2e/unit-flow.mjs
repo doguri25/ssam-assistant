@@ -1,7 +1,8 @@
 // 평가 한 바퀴 띠 (스펙 2026-11-13-crop-log-flow §3): 평가를 연 화면 4단계 탭 위 한 줄 —
 // 채점 → 틀린 까닭 → 복습 문제 → 도달하지 못한 학생 → 기초학력 → 사전·사후, 상태 글·✓·「지금」, 누르면 그곳으로,
 // [채점 마치기]·[틀린 까닭 묶기]·복습 문제 칸·[기초학력에 넣기]·뒤 단원평가 뒤 상태가 바뀜, 예시 평가, 390px·44px. 이름·학교는 모두 지어낸 것
-// 띠는 기본이 접힌 한 줄 「평가 한 바퀴 n/6 · 다음: …」(스펙 2026-11-14-ui-tidy §3) — 처음에 한 번 펼치면 이 실행 동안 펼친 채로
+// 띠는 기본이 접힌 한 줄 「평가 한 바퀴 n/6 · 다음: …」(스펙 2026-11-14-ui-tidy §3) — 처음에 한 번 펼치면 이 실행 동안 펼친 채로.
+// 새 디자인(스펙 2026-11-14-eval-redesign §3-2): 그 위에 가로 다섯 칸 단계 줄(계획·문항 → 채점 → 결과 확인 → 보충 → 생활기록부), 여섯 마디는 그 아래 접은 한 줄
 import { open, run, assert, enter, mockClaude } from './helpers.mjs';
 
 const t = await open();
@@ -81,10 +82,26 @@ await run('unit-flow', [
     assert((await page.textContent(`${node('grade')} .un-flow-now`)).trim() === '지금', '「지금」 글자');
     assert(await page.$$eval(`${B} .un-flow-now`, a => a.length) === 1, '「지금」은 하나');
     assert(await page.getAttribute(node('grade'), 'aria-label') === '채점, 채점 4/5명, 지금 할 차례', await page.getAttribute(node('grade'), 'aria-label'));
-    assert(!(await page.textContent(B)).includes('✓'), '다 된 마디가 없으면 ✓ 없음');
+    assert(!(await page.textContent(`${B} #unFlowL`)).includes('✓'), '다 된 마디가 없으면 ✓ 없음');
     const arrows = await page.$$eval(`${B} .un-flow-a`, a => a.map(x => [x.getAttribute('aria-hidden'), x.textContent.trim()]));
     assert(arrows.length === 5 && arrows.every(([h, x]) => h === 'true' && x === '→'), JSON.stringify(arrows));
-    assert(await page.getAttribute(B, 'aria-label') === '평가 한 바퀴', '띠 이름');
+    assert(await page.getAttribute(B, 'aria-label') === '평가 단계', '띠 이름');
+  }],
+  ['다섯 칸 단계 줄: 계획·문항 ✓ → 채점 중(지금, 4/5) → 다음 결과 확인 → 보충 → 생활기록부, 칸을 누르면 그 일로', async () => {
+    const st = await page.$$eval(`${B} .ev-steps > li`, a => a.map(li => [li.querySelector('button').dataset.flowStep, li.className, li.getAttribute('aria-current') || '', li.textContent.replace(/\s+/g, ' ').trim()]));
+    assert(JSON.stringify(st.map(x => x[0])) === '["plan","grade","result","help","record"]', JSON.stringify(st));
+    assert(st[0][1] === 'done' && st[0][3].startsWith('✓ 계획·문항') && st[0][3].includes('2문항'), JSON.stringify(st[0]));
+    assert(st[1][2] === 'step' && st[1][3] === '채점 중 4 / 5', JSON.stringify(st[1]));
+    assert(st[2][1] === 'next' && st[2][3].startsWith('다음 결과 확인'), JSON.stringify(st[2]));
+    assert(await page.getAttribute(`${B} [data-flow-step="grade"]`, 'aria-label') === '채점 중, 4 / 5, 지금 할 차례', await page.getAttribute(`${B} [data-flow-step="grade"]`, 'aria-label'));
+    await page.click(`${B} [data-flow-step="plan"]`);
+    assert((await curStep()).includes('학생 문제지·답안'), await curStep());
+    await page.click(`${B} [data-flow-step="grade"]`);
+    assert((await curStep()).includes('채점·확인'), await curStep());
+    // 채점을 마치기 전 생활기록부 칸은 알림만
+    await page.click(`${B} [data-flow-step="record"]`);
+    await page.waitForFunction(() => /채점 마치기/.test(document.querySelector('#toast').textContent));
+    assert((await curStep()).includes('채점·확인'), '그대로');
   }],
   ['채점 마디 → 3단계', async () => {
     await page.click(`${V} .steps [data-step="1"]`);
@@ -135,7 +152,7 @@ await run('unit-flow', [
   ['도달하지 못한 학생 마디 → 결과 모아 보기 「도달하지 못한 학생」(이 평가의 교과·학기), 이 평가의 학생을 골라 둠', async () => {
     await page.click(node('gap'));
     await page.waitForSelector(`${V} .un-gap`);
-    assert(await page.getAttribute(`${V} [data-rv="gap"]`, 'aria-pressed') === 'true', '도달하지 못한 학생 보기');
+    assert(await page.evaluate(() => document.activeElement && document.activeElement.classList.contains('un-gap')), '결과 한 화면의 도달하지 못한 학생 칸으로');
     assert(await page.inputValue(`${V} #unFSubject`) === '수학' && await page.inputValue(`${V} #unFTerm`) === '2', `${await page.inputValue(`${V} #unFSubject`)} ${await page.inputValue(`${V} #unFTerm`)}`);
     const nos = await page.$$eval(`${V} .un-gap-i`, a => a.map(x => Number(x.dataset.gapNo)));
     assert(JSON.stringify(nos) === '[2,3,4,8]', '목록: ' + JSON.stringify(nos));

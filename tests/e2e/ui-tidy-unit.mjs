@@ -2,7 +2,8 @@
 // §3 「평가 한 바퀴」 띠는 접힌 한 줄(「평가 한 바퀴 n/6 · 다음: …」·다 되면 「6/6 ✓」, aria-expanded, 키보드, 이 실행 동안 펼친 채로),
 // 휴대폰(390×844)에서 연 평가의 첫 화면에 4단계 첫 카드가 보이고 단계 탭은 한 줄로 밀어 넘김,
 // §4 머리말 설명은 처음 3번만 펼침(ssam:ui:intro)·「AI로 가는 것」은 접혀 있고 펼치면 무엇을 보내는지, §2 자주 안 바꾸는 설정은 요약 한 줄 + [바꾸기],
-// 390px에서 가로로 넘치지 않음, 페이지 오류 없음. 학생·교과 글은 모두 지어낸 것
+// 390px에서 가로로 넘치지 않음, 페이지 오류 없음. 학생·교과 글은 모두 지어낸 것.
+// 새 디자인(스펙 2026-11-14-eval-redesign §3): 첫 화면은 결과 한 화면(마친 평가가 있으면), 띠 위에 다섯 칸 단계 줄(휴대폰은 한 줄로 밀어 넘김)
 import { open, run, assert, enter } from './helpers.mjs';
 
 const t = await open();
@@ -36,6 +37,7 @@ await page.evaluate(async () => {
   m.savePyeongeo('수학', { off: [], students: { 3: { level: 'mid', text: '나눗셈의 뜻을 알지 못함.', manual: false } } });
 });
 await enter(page, 'evaluate', 'unit');
+await page.click(`${V} [data-unv="list"]`); // 마친 평가가 있어 첫 화면은 결과 한 화면 — 목록에서 예시로 채우기
 await page.click(`${V} [data-un="sample"]`);
 await page.click(`${V} [data-un-open="sample-1"]`);
 await page.waitForSelector(SUM);
@@ -131,11 +133,11 @@ await run('ui-tidy-unit', [
     assert(await isOpen(F) === false && !(await page.isVisible(`${V} #unCutTop`)), '수준 기준 접힘');
     assert(/^수준 기준\(평균 점수\): 최상 \d+ · 상 \d+ · 중 \d+점 이상$/.test((await page.textContent(`${F} .fold-text`)).trim()), await page.textContent(`${F} .fold-text`));
     assert((await page.textContent(`${V} .un-results .ai-note`)).includes('AI에는 번호·수준·평가 내용만 보내요. 점수와 이름은 보내지 않아요.'), '평어 안내');
-    await page.click(`${V} [data-rv="gap"]`);
+    await page.click(`${V} [data-rv="table"]`); // [‹ 결과] — 도달하지 못한 학생은 결과 한 화면 오른쪽 칸
     const G = `${V} [data-fold="unit-gapcut"]`;
     assert(await isOpen(G) === false && (await page.textContent(`${G} .fold-text`)).trim() === '기준: 영역 점수율 60% 아래', await page.textContent(`${G} .fold-text`));
   }],
-  ['휴대폰 390×844: 연 평가(4단계)의 첫 화면에 띠 한 줄·한 줄 단계 탭 아래 4단계 첫 카드와 [잘한 점·격려 쓰기]가 보임', async () => {
+  ['휴대폰 390×844: 연 평가(4단계)의 첫 화면에 단계 줄·띠 한 줄·한 줄 단계 탭 아래 4단계 첫 카드와 [잘한 점·격려 쓰기]가 보임', async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.click(`${V} [data-unv="list"]`);
     await page.click(`${V} [data-un-open="sample-1"]`);
@@ -146,7 +148,9 @@ await run('ui-tidy-unit', [
       return { top: q(`${v} .un-top`).top, band: q(`${v} #unFlow`).height, card: q(`${v} .un-body .yp-card`).top, btn: q(`${v} [data-un="fbAI"]`).bottom, floor: bt.length ? Math.min(...bt.map(x => x.top)) : innerHeight };
     }, V);
     assert(r.top >= 0, '평가 이름이 보임 ' + JSON.stringify(r));
-    assert(r.band < 60, '띠는 한 줄 ' + JSON.stringify(r));
+    assert(r.band < 140, '단계 줄 한 줄 + 띠 한 줄 ' + JSON.stringify(r));
+    const st = await page.evaluate(v => { const ol = document.querySelector(`${v} .un-steps`), lis = [...ol.children]; return { rows: new Set(lis.map(l => Math.round(l.getBoundingClientRect().top))).size, scrolls: ol.scrollWidth > ol.clientWidth }; }, V);
+    assert(st.rows === 1 && st.scrolls, '단계 줄은 한 줄로 밀어 넘김 ' + JSON.stringify(st));
     assert(r.card < r.floor - 120 && r.btn <= r.floor, '첫 카드·[잘한 점·격려 쓰기]가 첫 화면 안 ' + JSON.stringify(r));
     const s = await stepsInfo(V);
     assert(s.rows === 1 && s.scrolls && s.curIn, '단계 탭 한 줄·밀어 넘김·지금 단계 보임 ' + JSON.stringify(s));
@@ -168,7 +172,14 @@ await run('ui-tidy-unit', [
     await page.click(`${V} [data-un="back"]`);
     assert(await over() <= 0, '목록 ' + await over());
     await page.click(`${V} [data-unv="results"]`);
-    for (const rv of ['table', 'student', 'weak', 'gap', 'pyeongeo']) { await page.click(`${V} [data-rv="${rv}"]`); assert(await over() <= 0, `${rv} ${await over()}`); }
+    assert(await over() <= 0, '결과 한 화면 ' + await over());
+    await page.click(`${V} [data-stu="1"]`);
+    assert(await over() <= 0, '학생별 누적 ' + await over());
+    await page.click(`${V} [data-rv="pyeongeo"]`);
+    assert(await over() <= 0, '교과 평어 ' + await over());
+    await page.click(`${V} [data-rv="table"]`);
+    await page.click(`${V} [data-un-open="sample-1"]`); await page.click(`${V} .steps [data-step="3"]`); await page.click(`${V} .un-weak-card > summary`);
+    assert(await over() <= 0, '반 약한 부분 ' + await over());
     await enter(page, 'evaluate', 'activity');
     await page.click(`${A} [data-ac="sample"]`);
     assert(await over() <= 0, '활동지 목록 ' + await over());
@@ -227,7 +238,7 @@ await run('ui-tidy-unit', [
     const I = `${V} .m-head .intro`;
     assert((await page.textContent(`${I} .intro-sum`)).trim() === '화면 설명' && await page.isVisible(`${I} .intro-sum`) && !(await page.isVisible(`${I} .intro-text`)), '「화면 설명」');
     await page.click(`${I} .intro-sum`);
-    assert((await page.textContent(`${I} .intro-text`)).trim() === '학생 문제지 스캔과 답안을 넣으면 채점하고 피드백을 만들어요. 결과는 모아 봐요.', '펼친 글');
+    assert((await page.textContent(`${I} .intro-text`)).trim() === '학생 문제지 스캔과 답안을 넣으면 채점하고 피드백을 만들어요. 결과는 한 화면에 모아 봐요.', '펼친 글');
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

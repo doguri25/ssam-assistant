@@ -1,4 +1,7 @@
 /* 단원평가 학생 문제지(스캔한 것) 넣기(1단계 줄)·2단계(나누기·이름 가리기)·3단계(문항별 채점·확인 표) (스펙 2.2·3.2).
+   3단계 표는 학생 × 문항 지도(스펙 2026-11-14-eval-redesign §3-2): 맞음 연파랑 · 틀림 주황 · 부분 연주황 · 아직 점선 · 확인할 칸 주황 테두리,
+   문항 머리·맨 아래 정답률(70% 아래 주황), 끝에 점수. 오른쪽 「쌤비서가 찾은 것」(같은 실수 묶음·선생님 차례·생활기록부로 이어서), 아래 「반 약한 부분」(접음).
+   칸 하나 정하기(setCell·pickRv)는 칸 확인 창과 채점 확인 화면(unit-confirm.js)이 같이 씀.
    스캔 쪽은 이 화면에만 두고 저장하지 않음. 채점은 시작한 평가 id를 붙들고, 결과는 그 평가를 다시 읽어 넣음 */
 import { toast } from '../../../core/ui.js';
 import * as ai from '../../../core/ai.js';
@@ -8,7 +11,9 @@ import { runPool } from '../../../core/ai-pool.js';
 import { newMeter, useText } from '../../../core/ai-wire.js';
 import * as store from '../../../core/store.js';
 import { ITEM_TYPES, autoJudge, gradeCell, mergeCells, needsCheck, studentTotal } from './unit-grade.js';
-import { getTest, getSet, saveSet, numbersFor, parseNos, renumber, maskOf, listTests, reattachByNo, spreadSkipNos } from './unit-model.js';
+import { getTest, getSet, saveSet, numbersFor, parseNos, renumber, maskOf, listTests, reattachByNo, spreadSkipNos, graded, itemStats, reteach, domainStats } from './unit-model.js';
+import { missView } from './unit-miss.js';
+import { heatTone, confirmList, foundGroups, rateText } from './unit-view.js';
 import { registerInbox } from '../../../core/inbox.js';
 import { go } from '../../../core/shell.js';
 import { gradeParts, normGrade, validGrade } from './unit-ai.js';
@@ -17,7 +22,7 @@ import { unitAccuracy, accuracyText } from '../grade-accuracy.js';
 import { arrangePages } from './unit-pages.js';
 import { readNos, openNoCheck, openNoWait, rosterAllowed, byNoOrder } from '../../../core/student-no.js';
 import { aiNoteHTML, foldHTML } from '../../../core/ui-parts.js';
-import { esc, SS, AI_KEY, registerStep, registerPapers, inStep, cur, curId, commit, saveOrWarn, refresh, later, render, goStep, getBox, openTest } from './unit.js';
+import { esc, SS, AI_KEY, registerStep, registerPapers, inStep, cur, curId, commit, saveOrWarn, refresh, later, render, goStep, getBox, openTest, openReview } from './unit.js';
 
 const TYPE = Object.fromEntries(ITEM_TYPES);
 /* 세션 상태: 넣은 스캔은 한 평가에만 붙음(raw: 넣은 장, pages: 모아찍기를 자르고 뒷면을 돌린 쪽). 채점은 한 번에 한 평가만(run: 그 평가의 차례·멈춤) */
@@ -381,44 +386,119 @@ function stopGrading() {
 
 const pending = t => t.students.filter(s => !s.skip && s.status === 'done').reduce((n, s) => n + t.key.items.filter(it => needsCheck(s.items[it.no])).length, 0);
 function mark(it, c) {
-  if (!c) return '·';
+  if (!c) return '';
   const full = Number(it.points) || 0;
   if (!c.read && !c.pts) return '—';
   if (c.pts >= full) return '○';
   if (!c.pts) return '✕';
   return `${c.pts}/${full}`;
 }
-function step3HTML(t) {
-  const id = t.id, items = t.key.items, run = busy(id);
-  const done = t.students.filter(s => !s.skip && s.status === 'done').length, total = t.students.filter(s => !s.skip).length;
-  const up = /업스테이지/.test(ai.providerName()) ? '<p class="muted cls-note">업스테이지는 이미지를 글자로 바꿔 보내요. 손글씨는 Claude·Gemini·GPT가 더 정확해요.</p>' : '';
-  const scanNote = !hasPages(id) ? '<p class="banner warn" style="margin:8px 0 0">스캔 이미지는 저장하지 않아요. 채점하려면 2단계에서 학생 문제지를 다시 넣어 주세요.</p>'
-    : noStale(t) ? '<p class="banner warn" style="margin:8px 0 0">번호를 다시 읽기 전이라 학생과 문제지 쪽이 맞지 않을 수 있어요. 칸의 문제지 그림은 번호를 읽은 뒤에 보여요([채점 시작]이나 칸의 [번호 읽기]).</p>' : '';
-  const head = `<tr><th scope="col">번호</th>${items.map(it => `<th scope="col"><button class="un-ih" type="button" data-item="${it.no}" title="${esc(it.content)}">${it.no}<small>${TYPE[it.type] || ''}</small></button></th>`).join('')}<th scope="col">총점</th></tr>`;
+const TONE = { ok: '맞음', no: '틀림', part: '부분 점수', wait: '아직' };
+const LEGEND = `<span class="un-legend" aria-hidden="true"><span><i class="sw ok"></i>맞음</span><span><i class="sw no"></i>틀림</span><span><i class="sw part"></i>부분 점수</span><span><i class="sw wait"></i>아직</span><span><i class="sw chk"></i>확인할 칸</span></span>`;
+const r1 = x => Math.round(x * 10) / 10;
+/* 학생 × 문항 지도: 칸은 지금처럼 누르면 그 칸 고치기(openCell), 문항 머리는 반 전체 답(openItem) */
+function heatHTML(t, run) {
+  const items = t.key.items, g = graded(t);
+  const rate = g.length ? Object.fromEntries(itemStats(t).map(x => [x.no, x.rate])) : {};
+  const low = no => rate[no] != null && rate[no] < 0.7;
+  const head = `<tr><th scope="col" class="un-hn">번호</th>${items.map(it => `<th scope="col"><button class="un-ih hh${low(it.no) ? ' low' : ''}" type="button" data-item="${it.no}" title="${esc(it.content)}" aria-label="${it.no}번 문항 ${TYPE[it.type] || ''}${rate[it.no] != null ? ` · 정답률 ${rateText(rate[it.no])}` : ''} — 반 전체 답 보기">${it.no}<small>${TYPE[it.type] || ''}</small></button></th>`).join('')}<th scope="col">점수</th></tr>`;
   const rows = t.students.map((s, i) => {
     if (s.skip) return '';
     const st = (run && G.running.has(i) ? '<span class="spin" aria-label="채점 중"></span>' : s.status === 'error' ? `<span class="chip err" title="${esc(s.err || '')}">오류</span>` : '')
       + (s.status === 'done' && s.rvErr ? `<span class="chip warn" title="검토 AI를 부르지 못했어요. 메인 AI의 채점은 그대로예요.">${esc(s.rvErr)}</span>` : '');
     const cells = items.map(it => {
-      const c = s.status === 'done' ? s.items[it.no] : null;
-      return `<td><button class="un-cell${needsCheck(c) ? ' chk' : ''}${c && c.manual ? ' man' : ''}${openRv(c) ? ' rvo' : ''}" type="button" data-cell="${s.no}-${it.no}" aria-label="${s.no}번 ${it.no}번 문항${openRv(c) ? ' · 검토 의견' : ''}">${mark(it, c)}</button></td>`;
+      const c = s.status === 'done' ? s.items[it.no] : null, tone = heatTone(it, c), chk = needsCheck(c), rv = openRv(c);
+      return `<td><button class="un-cell hc hc-${tone}${chk ? ' chk' : ''}${chk || rv ? ' hc-chk' : ''}${c && c.manual ? ' man' : ''}${rv ? ' rvo' : ''}" type="button" data-cell="${s.no}-${it.no}" aria-label="${s.no}번 ${it.no}번 문항 · ${TONE[tone]}${chk ? ' · 확인할 칸' : ''}${rv ? ' · 검토 의견' : ''}">${mark(it, c)}</button></td>`;
     }).join('');
     const tot = s.status === 'done' ? studentTotal(t, s) : null;
-    return `<tr data-strow="${s.no}"><th scope="row"><span class="un-sno">${s.no}번</span>${st}<button class="btn text tiny" type="button" data-un="retry" data-no="${s.no}">${s.status === 'done' ? '다시' : s.status === 'error' ? '다시 시도' : '채점'}</button></th>${cells}<td class="num">${tot ? `${tot.score}/${tot.total}` : ''}</td></tr>`;
+    return `<tr data-strow="${s.no}"><th scope="row"><span class="un-sno">${s.no}번</span>${st}<button class="btn text tiny" type="button" data-un="retry" data-no="${s.no}">${s.status === 'done' ? '다시' : s.status === 'error' ? '다시 시도' : '채점'}</button></th>${cells}<td class="num">${tot ? `${tot.score}/${tot.total}` : '—'}</td></tr>`;
   }).join('');
-  return `${aiRowHTML('grade')}<div class="yp-card">
-      <div class="row">${run ? `<span class="spin"></span><b>채점하는 중 · ${done}/${total}명</b>${G.run && G.run.id === id && G.run.wait ? '<b class="warn">AI 한도에 걸려 잠깐 쉬어요</b>' : ''}<button class="btn" type="button" data-un="stop">멈추기</button>` : `<button class="btn primary" type="button" data-un="grade">채점 시작</button><span class="muted">${done}/${total}명 채점함</span>`}</div>
+  const avg = g.length ? r1(g.reduce((n, s) => n + studentTotal(t, s).score, 0) / g.length) : null;
+  const foot = g.length ? `<tfoot><tr class="un-rate"><th scope="row">정답률</th>${items.map(it => `<td><span class="hh${low(it.no) ? ' low' : ''}">${rateText(rate[it.no])}</span></td>`).join('')}<td class="num" title="반 평균 점수">${avg}</td></tr></tfoot>` : '';
+  return `<section class="yp-card un-grid-card un-map-l" aria-label="학생 × 문항">
+      <div class="un-map-h"><h3>학생 × 문항</h3>${LEGEND}</div>
+      <div class="un-grid-wrap"><div class="ev-heat un-heat"><table class="un-grid"><thead>${head}</thead><tbody>${rows}</tbody>${foot}</table></div></div>
+      <p class="ev-sub un-map-note">칸을 누르면 그 칸을 고쳐요. 문항 번호를 누르면 반 전체 답을 모아 봐요. 정답률 70% 아래 문항은 주황이에요.</p></section>`;
+}
+/* 오른쪽 「쌤비서가 찾은 것」: 같은 실수 묶음 위 3개(번호 + [5분 보충 활동지] → 4단계 틀린 까닭의 그 묶음 활동 칸), 선생님 차례(채점 확인 화면), 생활기록부로 이어서 */
+function foundHTML(t) {
+  const g = graded(t).length, m = t.students.filter(s => !s.skip).length, rev = confirmList(t).length;
+  if (!g) return `<aside class="un-map-r" aria-label="쌤비서가 찾은 것"><section class="yp-card un-found"><h3>쌤비서가 찾은 것</h3><p class="ev-sub" style="margin:0">채점하면 같은 실수를 한 학생을 묶어 보여 줘요.</p></section></aside>`;
+  const groups = foundGroups(missView(t), 3);
+  // 아직 묶지 않은 학생 묶음은 「n번을 틀린 m명」, 버튼은 그 문항의 틀린 까닭으로
+  const gHTML = x => `<li class="un-fg"><p class="un-fg-t"><b>${x.pending ? `${x.no}번을 틀린 학생` : `${x.no}번 · ${esc(x.why)}`}</b> <span class="un-fg-n">${x.nos.length}명</span></p>
+      <p class="ev-sub">${esc(x.pending ? `${x.name} · [틀린 까닭 묶기]로 까닭을 묶어요` : x.line || x.name)}</p>
+      <div class="un-fg-row"><span class="un-fg-nos" role="img" aria-label="${esc(x.nos.join(', '))}번">${x.nos.map(n => `<span class="ev-chip turn" aria-hidden="true">${n}</span>`).join('')}<span class="ev-sub" aria-hidden="true">번</span></span>
+        <button class="btn un-ink-btn" type="button" data-un="miss5" data-no="${x.no}" data-i="${x.i}" aria-label="${x.no}번 ${esc(x.pending ? '틀린 학생' : x.why)} 5분 보충 활동지">5분 보충 활동지</button></div></li>`;
+  const turn = rev ? `<div class="un-fturn"><p class="un-fg-t"><b>판단을 미룬 칸 ${rev}개</b></p><p class="ev-sub">맞다고도 틀리다고도 하기 어려운 답이에요. 하나씩 봐 주세요.</p>
+      <button class="ev-turn-btn" type="button" data-un="review">선생님 차례 · ${rev}개</button></div>`
+    : '<p class="un-fdone"><span class="ev-dot" aria-hidden="true"></span>판단을 미룬 칸이 없어요</p>';
+  const w = m ? Math.round(g / m * 100) : 0;
+  return `<aside class="un-map-r" aria-label="쌤비서가 찾은 것">
+    <section class="yp-card un-found"><h3>쌤비서가 찾은 것</h3>
+      ${groups.length ? `<ul class="un-fgs">${groups.map(gHTML).join('')}</ul>` : '<p class="ev-sub" style="margin:0">틀린 학생이 없어요.</p>'}
+      ${turn}</section>
+    <section class="ev-ink-card un-recard"><p class="ev-sub">생활기록부로 이어서</p>
+      <p class="un-recard-t">${t.done ? '교과 평어 근거가 학생마다 모였어요 — 점수, 잘한 내용, 보완할 내용.' : '채점을 마치면 교과 평어 근거가 학생마다 모여요 — 점수, 잘한 내용, 보완할 내용.'}</p>
+      <div class="un-recard-bar"><span class="ev-bar"><i style="width:${w}%"></i></span><span class="ev-num">${g} / ${m}</span></div>
+      <button class="btn un-on-ink" type="button" data-go-record>평어 초안 미리 보기</button></section>
+  </aside>`;
+}
+/* 반 약한 부분(평가 하나, 옛 결과 모아 보기의 보기 — 3단계 아래 접음): 다시 가르칠 내용 · 영역별 정답률 · 문항별 정답률(낮은 차례) */
+const W = { open: new Set() };
+function weakFoldHTML(t) {
+  if (!graded(t).length) return '';
+  const stats = itemStats(t).sort((a, b) => a.rate - b.rate), re = reteach(t);
+  return `<details class="yp-card un-weak-card" data-weak="${esc(t.id)}"${W.open.has(t.id) ? ' open' : ''}><summary><b>반 약한 부분</b> <span class="muted">다시 가르칠 내용 ${re.length}개 · 문항별 정답률</span></summary>
+    <p class="muted un-acc" id="unWeakAcc">${esc(accuracyText(unitAccuracy(t), { finished: t.done, graded: true }))}</p>
+    <h4>다시 가르칠 내용</h4>${re.length ? `<ul class="un-weaklist">${re.map(x => `<li><b>${x.no}번</b> ${esc(x.content)} <span class="muted">정답률 ${rateText(x.rate)}${x.pages ? ` · ${esc(x.pages)}` : ''}</span></li>`).join('')}</ul>` : '<p class="muted" style="margin:0">정답률이 60%보다 낮은 문항이 없어요.</p>'}
+    <h4>영역별 정답률</h4><p style="margin:0">${domainStats([t]).map(d => `<span class="chip">${esc(d.name)} ${rateText(d.rate)}</span>`).join(' ') || '<span class="muted">없음</span>'}</p>
+    <h4>문항별 정답률</h4>
+    <div class="un-grid-wrap"><table class="un-weak cls-sum"><thead><tr><th>문항</th><th>평가 내용</th><th>영역</th><th>정답률</th><th>많이 쓴 오답</th></tr></thead>
+    <tbody>${stats.map(x => `<tr data-rate="${x.rate.toFixed(4)}"><td>${x.no}번</td><td>${esc(x.content)}</td><td>${esc(x.domain)}</td><td class="num">${rateText(x.rate)}</td><td>${x.wrong.map(w => `${esc(w.answer)} (${w.count}명)`).join(', ')}</td></tr>`).join('')}</tbody></table></div>
+  </details>`;
+}
+/* 결과의 「반 약한 부분」으로 오면(showResults('weak')): 그 평가 3단계, 펼쳐서 보이게 */
+export function openWeak(id) {
+  W.open.add(id);
+  openTest(id, 3);
+  const el = getBox() && getBox().querySelector('.un-weak-card');
+  if (el) { el.setAttribute('tabindex', '-1'); el.scrollIntoView({ block: 'start' }); el.focus({ preventScroll: true }); }
+}
+/* [5분 보충 활동지]: 4단계 「틀린 까닭」의 그 묶음 활동 칸으로(접혀 있으면 펼침). 아직 묶지 않은 학생(i -1)은 그 문항으로 */
+function toMiss(no, i) {
+  goStep(4);
+  const box = getBox(), ed = box.querySelector('.un-miss-ed');
+  if (ed && !ed.open) ed.open = true;
+  const g = box.querySelector(i >= 0 ? `[data-miss-g="${no}-${i}"]` : `[data-miss-it="${no}"]`), ta = g && i >= 0 && g.querySelector('textarea');
+  if (!g) return;
+  g.scrollIntoView({ block: 'center' });
+  if (ta) ta.focus({ preventScroll: true });
+  else { g.setAttribute('tabindex', '-1'); g.focus({ preventScroll: true }); }
+}
+function step3HTML(t) {
+  const id = t.id, run = busy(id);
+  const done = t.students.filter(s => !s.skip && s.status === 'done').length, total = t.students.filter(s => !s.skip).length, rev = confirmList(t).length;
+  const up = /업스테이지/.test(ai.providerName()) ? '<p class="muted cls-note">업스테이지는 이미지를 글자로 바꿔 보내요. 손글씨는 Claude·Gemini·GPT가 더 정확해요.</p>' : '';
+  const scanNote = !hasPages(id) ? '<p class="banner warn" style="margin:8px 0 0">스캔 이미지는 저장하지 않아요. 채점하려면 2단계에서 학생 문제지를 다시 넣어 주세요.</p>'
+    : noStale(t) ? '<p class="banner warn" style="margin:8px 0 0">번호를 다시 읽기 전이라 학생과 문제지 쪽이 맞지 않을 수 있어요. 칸의 문제지 그림은 번호를 읽은 뒤에 보여요([채점 시작]이나 칸의 [번호 읽기]).</p>' : '';
+  // 위: 채점·확인 단추 한 줄(+ 스캔·검토 알림), 가운데: 지도와 쌤비서가 찾은 것, 아래: 사용량·정확도·안내·문항 자리·AI로 가는 것
+  return `${aiRowHTML('grade')}<div class="yp-card un-gtool">
+      <div class="row">${run ? `<span class="spin"></span><b>채점하는 중 · ${done}/${total}명</b>${G.run && G.run.id === id && G.run.wait ? '<b class="warn">AI 한도에 걸려 잠깐 쉬어요</b>' : ''}<button class="btn" type="button" data-un="stop">멈추기</button>` : `<button class="btn primary" type="button" data-un="grade">채점 시작</button><span class="muted">${done}/${total}명 채점함</span>`}
+        <span class="un-gsep" aria-hidden="true"></span><b id="unPending">확인할 칸 ${pending(t)}개</b><button class="btn text" type="button" data-un="nextChk">다음 확인할 칸</button>${rev ? `<button class="ev-turn-btn" type="button" data-un="review">확인할 것만 보기 · ${rev}개</button>` : ''}<span class="grow"></span><button class="btn primary" type="button" data-un="finish">채점 마치기</button></div>
+      ${scanNote}${reviewBar(rvCount(t), 'data-un="nextRv"')}
+    </div>
+    <div class="un-map">${heatHTML(t, run)}${foundHTML(t)}</div>
+    <div class="yp-card un-gmore">
       ${t.aiUse && useText(t.aiUse) ? `<p class="muted cls-note" id="unAiUse">${G.usedNow.has(id) ? '' : '지난 채점 '}${esc(useText(t.aiUse))}</p>` : ''}
-      ${up}${scanNote}
-      ${reviewBar(rvCount(t), 'data-un="nextRv"')}
-      <div class="row"><b id="unPending">확인할 칸 ${pending(t)}개</b><button class="btn text" type="button" data-un="nextChk">다음 확인할 칸</button><span class="grow"></span><button class="btn primary" type="button" data-un="finish">채점 마치기</button></div>
-      ${done ? `<p class="muted cls-note un-acc" id="unAcc">${esc(accuracyText(unitAccuracy(t), { finished: t.done, graded: true }))}</p>` : ''}
-      <p class="muted cls-note">노란 칸은 확인할 칸이에요(AI가 확신하지 못함·앱과 AI가 다름·정답과 글자가 다름·서술형). 문항 번호를 누르면 반 전체 답을 모아 봐요.</p>
+      ${up}${done ? `<p class="muted cls-note un-acc" id="unAcc">${esc(accuracyText(unitAccuracy(t), { finished: t.done, graded: true }))}</p>` : ''}
+      <p class="muted cls-note">주황 테두리 칸은 확인할 칸이에요(AI가 확신하지 못함·앱과 AI가 다름·정답과 글자가 다름·서술형·두 AI가 다름). [확인할 것만 보기]로 하나씩 볼 수 있어요.</p>
       ${locRowHTML(t)}
       ${aiNoteHTML('채점 AI에는 학생 번호와 문제지 그림(정한 이름 칸은 가려요), 정답표·빈 문제지 글을 보내요. 문항 자리를 찾을 때는 한 학생의 그림과 문항 번호·평가 내용·유형만 보내요.')}
     </div>
-    <div class="yp-card un-grid-card"><div class="un-grid-wrap"><table class="un-grid"><thead>${head}</thead><tbody>${rows}</tbody></table></div></div>`;
+    ${weakFoldHTML(t)}`;
 }
+document.addEventListener('toggle', e => { const d = e.target; if (d.matches && d.matches('.un-weak-card[data-weak]')) { if (d.open) W.open.add(d.dataset.weak); else W.open.delete(d.dataset.weak); } }, true);
 
 const stuIndex = (t, no) => { const i = t.students.findIndex(s => s.no === no && !s.skip); return i >= 0 ? i : t.students.findIndex(s => s.no === no); };
 
@@ -549,16 +629,7 @@ function openCell(no, itemNo) {
     }
     sh.querySelectorAll('[data-pts]').forEach(b => b.addEventListener('click', () => { pick = Number(b.dataset.pts); sh.querySelectorAll('[data-pts]').forEach(x => x.setAttribute('aria-pressed', x === b)); }));
     // 두 의견 고르기: 검토 안은 그 답을 같은 규칙으로 채점한 점수, 그대로 두기는 메인 안
-    const choose = useRv => {
-      const t2 = getTest(t.id), s2 = t2 && t2.students[stuIndex(t2, no)];
-      if (!s2 || !s2.items[itemNo] || !s2.items[itemNo].rv) { SS().closeSheet(); return; }
-      const c2 = s2.items[itemNo];
-      if (useRv) {
-        const g = gradeCell(it, c2.rv);
-        s2.items[itemNo] = { ...c2, read: g.read, pts: g.pts, ok: true, manual: c2.manual || g.pts !== c2.pts || g.read !== c2.read, rv: { ...c2.rv, done: 'review' } };
-      } else s2.items[itemNo] = { ...c2, ok: true, rv: { ...c2.rv, done: 'main' } };
-      saveOrWarn(t2); SS().closeSheet(); render();
-    };
+    const choose = useRv => { pickRv(t.id, no, itemNo, useRv); SS().closeSheet(); render(); };
     const u = sh.querySelector('[data-rv-use]'), k = sh.querySelector('[data-rv-keep]');
     if (u) u.addEventListener('click', () => choose(true));
     if (k) k.addEventListener('click', () => choose(false));
@@ -566,18 +637,46 @@ function openCell(no, itemNo) {
       const read = sh.querySelector('#unCellRead').value.trim();
       const ip = sh.querySelector('#unCellPts');
       if (ip) pick = Math.max(0, Math.min(full, Math.round(Number(ip.value) || 0)));
-      if (read !== c.read && pick === c.pts) { const a = autoJudge(it, read); if (a != null) pick = a; }
-      const t2 = getTest(t.id), s2 = t2 && t2.students[stuIndex(t2, no)];
-      if (!s2) { SS().closeSheet(); return; }
-      const changed = pick !== c.pts || read !== c.read;
-      const next = { ...c, read, pts: pick, ok: true, manual: c.manual || changed };
-      // 손으로 고치면 검토 의견은 사라짐, 고치지 않고 확인하면 메인 안을 고른 것
-      if (changed) delete next.rv; else if (openRv(c)) next.rv = { ...c.rv, done: 'main' };
-      s2.items[itemNo] = next;
-      saveOrWarn(t2); SS().closeSheet(); render();
+      setCell(t.id, no, itemNo, { read, pts: pick, base: c });
+      SS().closeSheet(); render();
     });
   });
 }
+/* ---------- 칸 하나 정하기 (칸 확인 창 [확인]·두 의견 고르기와 채점 확인 화면이 같이 씀 — 저장은 이 두 함수뿐) ----------
+   setCell: 학생이 쓴 답(read)·점수(pts)로 정하고 확인함(ok). 답을 고쳤는데 점수를 그대로 두면 앱이 다시 맞춰 봄(autoJudge).
+   고쳤으면 선생님이 고친 칸(manual)이 되고 검토 의견은 사라짐, 고치지 않고 확인하면 검토 의견은 메인 안을 고른 것.
+   base: 비교할 칸(창을 열 때의 칸, 없으면 지금 칸). → 정했으면 true */
+export function setCell(id, no, itemNo, { read, pts, base } = {}) {
+  const t2 = getTest(id), s2 = t2 && t2.students[stuIndex(t2, no)], it = t2 && t2.key.items.find(x => x.no === itemNo);
+  if (!s2 || !it) return false;
+  const c = base || s2.items[itemNo] || gradeCell(it, undefined), full = Number(it.points) || 0;
+  const r = read == null ? String(c.read || '') : String(read).trim();
+  let pick = pts == null ? c.pts : Math.max(0, Math.min(full, Math.round(Number(pts) || 0)));
+  if (r !== c.read && pick === c.pts) { const a = autoJudge(it, r); if (a != null) pick = a; }
+  const changed = pick !== c.pts || r !== c.read;
+  const next = { ...c, read: r, pts: pick, ok: true, manual: c.manual || changed };
+  // 손으로 고치면 검토 의견은 사라짐, 고치지 않고 확인하면 메인 안을 고른 것
+  if (changed) delete next.rv; else if (openRv(c)) next.rv = { ...c.rv, done: 'main' };
+  s2.items[itemNo] = next;
+  saveOrWarn(t2);
+  return true;
+}
+/* 두 의견 고르기: 검토 안(useRv)은 그 답을 같은 규칙으로 채점한 점수, 그대로 두기는 메인 안 → 정했으면 true */
+export function pickRv(id, no, itemNo, useRv) {
+  const t2 = getTest(id), s2 = t2 && t2.students[stuIndex(t2, no)], it = t2 && t2.key.items.find(x => x.no === itemNo);
+  if (!s2 || !it || !s2.items[itemNo] || !s2.items[itemNo].rv) return false;
+  const c2 = s2.items[itemNo];
+  if (useRv) {
+    const g = gradeCell(it, c2.rv);
+    s2.items[itemNo] = { ...c2, read: g.read, pts: g.pts, ok: true, manual: c2.manual || g.pts !== c2.pts || g.read !== c2.read, rv: { ...c2.rv, done: 'review' } };
+  } else s2.items[itemNo] = { ...c2, ok: true, rv: { ...c2.rv, done: 'main' } };
+  saveOrWarn(t2);
+  return true;
+}
+/* 채점 확인 화면의 [스캔 원본·자세히]: 지금 칸 확인 창(문제지 그림·답 고치기) */
+export const openCellSheet = (no, itemNo) => openCell(no, itemNo);
+/* 이 평가의 스캔이 화면에 남아 있는지(채점 확인 화면이 [스캔 원본]을 보일지) */
+export const scanHere = (id, no) => { const t = getTest(id); return !!t && hasPages(id) && !noStale(t) && pagesOf(id, stuIndex(t, no)).length > 0; };
 function openItem(itemNo) {
   const t = cur(), it = t.key.items.find(x => x.no === itemNo);
   if (!it) return;
@@ -618,7 +717,7 @@ function nextReview() {
 }
 function askFinish() {
   const t = cur(), n = pending(t);
-  SS().openSheet(`<h3>채점 마치기</h3><p class="muted" style="margin:0">${n ? `확인하지 않은 칸 ${n}개가 있어요. 그대로 마칠까요?` : '모두 확인했어요. 마치면 결과 모아 보기에 들어가요.'} 마친 뒤에도 고칠 수 있어요.</p>
+  SS().openSheet(`<h3>채점 마치기</h3><p class="muted" style="margin:0">${n ? `확인하지 않은 칸 ${n}개가 있어요. 그대로 마칠까요?` : '모두 확인했어요. 마치면 단원평가 결과에 모여요.'} 마친 뒤에도 고칠 수 있어요.</p>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="unFinishOk">마치기</button></div>`,
   sh => sh.querySelector('#unFinishOk').addEventListener('click', () => {
     const t2 = getTest(t.id); if (!t2) return;
@@ -666,6 +765,8 @@ document.addEventListener('click', e => {
   else if (a === 'retry') startGrading(Number(b.dataset.no));
   else if (a === 'nextChk') nextCheck();
   else if (a === 'nextRv') nextReview();
+  else if (a === 'review') openReview(t.id);
+  else if (a === 'miss5') toMiss(Number(b.dataset.no), Number(b.dataset.i));
   else if (a === 'finish') askFinish();
   else if (a === 'relocate') locate(t.id, true);
 });
