@@ -684,9 +684,18 @@ document.addEventListener('input', e => { if (mine(e)) onInput(e.target); });
 document.addEventListener('change', e => { if (mine(e)) onChange(e.target); });
 document.addEventListener('click', e => { if (mine(e)) onClick(e); });
 document.addEventListener('toggle', e => { const d = e.target; if (box && box.contains(d) && d.dataset && d.dataset.mvOpen) open[d.dataset.mvOpen] = d.open; }, true);
+/* 기준 고치기 글을 떠날 때 다시 그림. 단추·칩을 누르는 동안(누름부터 뗀 뒤 click까지)은 미뤘다가 뗀 뒤에 —
+   누름 사이에 다시 그리면 누른 단추가 사라져 첫 누름이 버려짐. 떼기를 놓쳐도 2초 뒤에는 그림 */
+let pressAt = 0;
+const pressing = () => Date.now() - pressAt < 2000;
+const restale = () => { if (stale && visible() && !typing()) render(); };
+document.addEventListener('pointerdown', e => { if (box && box.contains(e.target)) pressAt = Date.now(); }, true);
+const release = () => { const at = pressAt; if (!at) return; setTimeout(() => { if (pressAt === at) pressAt = 0; restale(); }, 0); };
+document.addEventListener('pointerup', release, true);
+document.addEventListener('pointercancel', release, true);
 document.addEventListener('focusout', e => {
   if (!stale || !box || !box.contains(e.target)) return;
-  setTimeout(() => { if (stale && visible() && !typing()) render(); }, 0);
+  setTimeout(() => { if (pressing()) setTimeout(restale, 2100); else restale(); }, 0);
 });
 
 /* 다른 곳(채팅 「다면평가」「정성평가」 등)에서 이 탭으로 */

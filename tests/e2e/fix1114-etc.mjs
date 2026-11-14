@@ -90,6 +90,32 @@ await run('fix1114-etc', [
     const after = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:gongmun:list'))[0].tasks.map(t => t.text));
     assert(after.length === 12 && after[11] === '참가 학생 명단 제출', JSON.stringify(after));
   }],
+  ['다면평가: 기준 고치기에서 글을 고친 뒤 [+ 지표]·고르기 칩을 사람처럼 한 번 누르면 바로 먹힘(다시 그리기에 첫 누름이 버려지지 않음)', async () => {
+    await page.click('#menuTabs [data-tab="multi"]');
+    const MV = `${E} .mv-box`;
+    await page.waitForSelector(`${MV} .mv-page`);
+    const data = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:multi') || 'null'));
+    const humanClick = async sel => {
+      await page.locator(sel).first().scrollIntoViewIfNeeded();
+      const b = await page.locator(sel).first().boundingBox();
+      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+      await page.mouse.down(); await page.waitForTimeout(80); await page.mouse.up();
+    };
+    await page.evaluate(s => { document.querySelector(`${s} .mv-edit`).open = true; }, MV);
+    await page.fill(`${MV} [data-ce="tlabel"][data-g="0"][data-i="0"][data-t="0"]`, '23시간 이상');
+    const n0 = (await data()).quant.criteria.groups[0].items[0].tiers.length;
+    await humanClick(`${MV} [data-mv="ceAddTier"][data-g="0"][data-i="0"]`);
+    await page.waitForTimeout(200);
+    assert((await data()).quant.criteria.groups[0].items[0].tiers.length === n0 + 1, '[+ 지표]를 한 번 눌러도 지표가 더해지지 않음');
+    assert((await data()).quant.criteria.groups[0].items[0].tiers[0].label === '23시간 이상', '고친 지표 글');
+    await page.fill(`${MV} [data-ce="iname"][data-g="3"][data-i="0"]`, '업무 곤란도(부장)');
+    const id = (await data()).quant.criteria.groups[3].items[0].id;
+    await humanClick(`${MV} [data-mv-pick="${id}"][data-i="1"]`);
+    await page.waitForTimeout(200);
+    assert(((await data()).quant.values[id] || {}).v === '1', '칩을 한 번 눌러도 골라지지 않음: ' + JSON.stringify((await data()).quant.values[id]));
+    assert((await page.getAttribute(`${MV} [data-mv-pick="${id}"][data-i="1"]`, 'aria-pressed')) === 'true', '칩 표시');
+    assert((await page.textContent(`${MV} .mv-item[data-item="${id}"] .mv-item-h b`)) === '업무 곤란도(부장)', '고친 항목 이름이 카드에');
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();
