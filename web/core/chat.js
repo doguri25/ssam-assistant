@@ -16,6 +16,8 @@ import { weekday } from './calendar.js';
 import { routeText, payloadFor, isSure, INTENT_IDS, intentLabel, LANGS, langLabel, parseMemo, maskMemo, memoLine, appendMemo, nosText, safeText, handoffText } from './chat-route.js';
 import { assistPrompt, parseAssist, replyHTML, mentionedNos, planActions, offlineWay } from './chat-assist.js';
 import { offlineAnswer } from './chat-knowledge.js';
+import { dataQuestion, answerFor } from './chat-data.js';
+import { screenQuestion, screenAnswer, readScreen } from './chat-screen.js';
 import { briefing, EMPTY } from './briefing.js';
 import { gather, goRoute } from './brief-data.js';
 
@@ -216,6 +218,11 @@ export async function send(text) {
   const shown = (pm ? `${nosText(pm.nos)} ${maskMemo(pm.body).text}` : safeText(raw)) || '(이름·전화번호만 있는 글)';
   const me = push({ who: 'me', text: shown.length > 1000 ? shown.slice(0, 1000) + '…' : shown });
   mem.set(me.id, { text: said });
+  // 「이 화면에서 뭐 해?」: 채팅 창 뒤 화면(메뉴 › 탭·단계·화면 설명·다음 할 일)으로 AI 없이(스펙 2026-11-14 §3)
+  if (screenQuestion(said)) { say(screenAnswer(readScreen({ nav: get('nav', null), menus: MENUS })), { md: true, src: me.id }); return; }
+  // 앱 자료로 답할 수 있는 묻는 글(단원평가 평균·학생 점수·도달·진도·시간표·출석률·공문 기한)은 AI 없이 바로(스펙 2026-11-14 §1)
+  const dq = dataQuestion(said, { today: today(), subjects: subjectNames() });
+  if (dq) { await answerData(dq, me); return; }
   if (isSure(r)) {
     // 관찰 메모는 이름을 가리기 전 글로 넘김(메모에 넣을 때 가리고 가린 수를 알림 — 전화번호만 먼저 가림)
     const memo = r.intent === 'memo' && parseMemo(maskContacts(raw));
@@ -225,6 +232,16 @@ export async function send(text) {
   await assist({ raw, said, r, me });
 }
 
+/* ---------- 앱 자료로 답하기 (AI 없이, 학생은 번호로만) ---------- */
+const subjectNames = () => { const v = get('class:subjects', []); return (Array.isArray(v) ? v : []).map(x => x && String(x.name || '').trim()).filter(Boolean); };
+/* 답은 이 창 기록에만(local) — 다음 AI 질문의 「최근 대화」에 넣지 않아 점수가 AI로 가지 않게 */
+async function answerData(q, me) {
+  let a = null;
+  try { a = await answerFor(q, { today: today() }); } catch (e) { a = null; }
+  if (!a) { say('자료를 읽지 못했어요. 그 화면에서 확인해 주세요.', { src: me.id }); return; }
+  say(a.text, { md: true, local: true, src: me.id, chips: a.go ? [{ intent: a.go, label: `${intentLabel(a.go)} 열기`, nav: true }] : [] });
+}
+
 /* ---------- 쌤비서 도우미 (분명하지 않거나 묻는 글) ---------- */
 // 후보 버튼: 아는 할 일만(메모는 번호가 있어야 해서 뺌), 3개까지. nav면 그 메뉴로만(묻는 글을 칸에 넣지 않음)
 const chipList = (ids, nav) => [...new Set(ids)].filter(c => INTENT_IDS.includes(c) && !['memo', 'memoView'].includes(c)).slice(0, 3)
@@ -232,12 +249,14 @@ const chipList = (ids, nav) => [...new Set(ids)].filter(c => INTENT_IDS.includes
 /* 지금 앱 상태(이름 없이): 보고 있는 화면, 오늘 할 일, AI, 쓰던 가정통신문·품의, 학급 명단 수, 웹판·Windows 앱 */
 async function appState() {
   await refreshBrief();
-  const nav = get('nav', null), m = nav && MENUS.find(x => x.id === nav.menu), t = m && m.tabs.find(x => x.id === nav.tab);
+  const nav = get('nav', null);
+  let sc = { place: '' };
+  try { sc = readScreen({ nav, menus: MENUS }); } catch (e) {}
   const A = SS().ai, tk = A && typeof A.testKey === 'function' ? A.testKey() : null;
   const lc = get('letter:cur', null), pc = get('purchase:current', null);
   const items = pc && pc.form && Array.isArray(pc.form.items) ? pc.form.items.filter(i => i && String(i.name || '').trim()).length : 0;
   return {
-    place: m ? `${m.label}${t ? ' › ' + t.label : ''}` : '',
+    place: sc.place ? `${sc.place}${sc.step ? ` · ${sc.step.n}단계 「${sc.step.label}」` : ''}` : '',
     brief: (brief || []).map(l => ({ text: l.text, when: l.when })),
     ai: { ready: ai.ready(), name: A && typeof A.engineName === 'function' ? A.engineName() : ai.providerName(), trial: !!(tk && tk.using) },
     letter: { title: (lc && lc.out && lc.out.title) || '', memo: !!(lc && String(lc.memo || '').trim()) },
@@ -254,7 +273,7 @@ async function assist({ raw, said, r, me }) {
   const wait = say('답을 쓰고 있어요', { wait: true, typing: true }, { keep: false });
   let out = null, err = null;
   try {
-    const p = assistPrompt({ text: raw, history: history().filter(m => m.id !== me.id), state: await appState(), hints: r.candidates, today: today() });
+    const p = assistPrompt({ text: raw, history: history().filter(m => m.id !== me.id && !m.local), state: await appState(), hints: r.candidates, today: today() });
     if (job.ctl.signal.aborted) throw { name: 'AbortError' };
     // 채팅은 메뉴 일이 아니어서 세로 메뉴에 「AI가 일하는 중」 점을 띄우지 않음(검토 M4)
     out = parseAssist(await ai.generateJSON(p.own, { task: 'notes', work: 'none', shared: { text: p.shared }, signal: job.ctl.signal, valid: isObj }), { nos: mentionedNos(raw) });
