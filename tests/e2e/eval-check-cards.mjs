@@ -145,10 +145,14 @@ await run('eval-check-cards', [
     const f = await fin();
     assert(f.includes('4 / 5 살펴봄') && f.includes('고친 곳 3') && f.includes('같은 문장이 없어요') && f.includes('쓰면 안 되는 말 1곳'), f);
   }],
-  ['나이스에 넣기 전: 그 화면 글만 보면 「n명 모두 글이 있어요」, [나이스 차례로 복사하러 가기]는 전체복사가 있는 화면으로', async () => {
+  ['나이스에 넣기 전: 그 화면 글만 보면 「n명 모두 글이 있어요」, [나이스 차례로 복사하러 가기]는 전체복사가 있는 화면으로(행동특성은 행동특성 화면의 [나이스 차례로 복사])', async () => {
     await page.selectOption(`${B} #chkSrc`, 'hk');
     assert((await fin()).includes('3명 모두 글이 있어요'), await fin());
     assert((await page.textContent(`${B} .chk-neis-sub`)).includes('창체·평가지 채점 화면의 [전체복사]'), await page.textContent(`${B} .chk-neis-sub`));
+    await page.click(`${B} [data-chk-neis]`);
+    await page.waitForFunction(() => document.querySelector('#menuTabs [aria-current="page"]').dataset.tab === 'hk');
+    await goCheck();
+    await page.selectOption(`${B} #chkSrc`, 'cc');
     await page.click(`${B} [data-chk-neis]`);
     await page.waitForFunction(() => document.querySelector('#menuTabs [aria-current="page"]').dataset.tab === 'cc');
     await goCheck();
