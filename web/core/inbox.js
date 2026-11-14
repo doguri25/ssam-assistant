@@ -220,7 +220,7 @@ function mount() {
   let depth = 0;
   const reset = () => { depth = 0; pad.hidden = true; pad.classList.remove('on'); fab.classList.remove('drag'); };
   const near = e => e.clientX >= window.innerWidth - NEAR.w && e.clientY >= window.innerHeight - NEAR.h;
-  window.addEventListener('dragenter', e => { if (!hasFiles(e) || fab.hidden) return; depth++; fab.classList.add('drag'); }, true);
+  window.addEventListener('dragenter', e => { if (!hasFiles(e) || fab.hidden) return; depth++; fab.classList.add('drag'); fab.classList.remove('away'); }, true);
   // 채팅 창이 열려 있으면 판 대신 채팅 창이 받음(판이 창을 가리지 않게)
   window.addEventListener('dragover', e => { if (hasFiles(e) && !fab.hidden) pad.hidden = !near(e) || isChatOpen(); }, true);
   window.addEventListener('dragleave', e => { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) reset(); }, true);
@@ -228,7 +228,27 @@ function mount() {
   // 판·메뉴의 칸이 아닌 곳에 놓으면 브라우저가 파일을 열어 창이 넘어감: 아무 칸도 받지 않은 끌어 놓기는 막음
   window.addEventListener('dragover', e => { if (hasFiles(e) && !e.defaultPrevented) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'; } });
   window.addEventListener('drop', e => { if (hasFiles(e) && !e.defaultPrevented) e.preventDefault(); });
+  stepAside();
   syncFab();
+}
+/* 휴대폰(≤760px, 오른쪽 여백이 없음): 아래로 내리는 동안은 버튼이 비켜남(오른쪽 끝 단추가 밑을 지나가도 가리지 않게).
+   위로 올리거나 맨 위·맨 아래(아래 여백이 있어 가리지 않음)에 오면, 다른 메뉴로 가면, 파일을 끌어 오면 다시 보임. 채팅이 열려 있으면 그대로.
+   데스크톱은 내용 오른쪽에 버튼 자리 여백이 있어 비켜나지 않음(core/shell.css) */
+function stepAside() {
+  const phone = window.matchMedia('(max-width:760px)'), last = new WeakMap();
+  const away = v => fab.classList.toggle('away', v);
+  document.addEventListener('scroll', e => {
+    const el = e.target === document ? document.scrollingElement : e.target;
+    if (!el || el.nodeType !== 1) return;
+    if (!phone.matches || el.clientHeight < window.innerHeight / 2 || el.closest('#chatPanel, #sheetRoot')) return; // 본문처럼 큰 칸만
+    const y = el.scrollTop, prev = last.has(el) ? last.get(el) : y;
+    last.set(el, y);
+    if (fab.getAttribute('aria-expanded') === 'true' || fab.classList.contains('drag') || y <= 4 || y + el.clientHeight >= el.scrollHeight - 4) away(false);
+    else if (y - prev > 4) away(true);
+    else if (prev - y > 4) away(false);
+  }, { capture: true, passive: true });
+  document.addEventListener('menu:go', () => away(false));
+  phone.addEventListener('change', () => { if (!phone.matches) away(false); });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
 

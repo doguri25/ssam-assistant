@@ -1,6 +1,6 @@
 /* 화면 정리 공통 부품 (스펙 2026-11-14-ui-tidy) — 모든 메뉴가 같은 모양으로 씀(평가 메뉴 옛 화면은 window.SSAM.ui).
    introHTML: 화면 머리말 아래 설명. 처음 3번(앱을 켤 때마다 화면마다 한 번 셈)은 펼쳐 보이고, 그 뒤엔 접힌 「화면 설명」.
-   aiNoteHTML: 「AI로 가는 것」 — 무엇을 보내는지 접어 두고, 누르면 펼쳐져 [AI로 보낸 글 보기](설정 › AI)로 이어짐.
+   aiNoteHTML: 「AI로 가는 것」 — 무엇을 보내는지 접어 두고, 누르면 펼쳐져 [AI로 보낸 글 보기](설정 › AI)로 이어짐. 펼친 것은 다시 그려도 펼친 채(글마다).
    foldHTML: 자주 안 바꾸는 설정 — 요약 한 줄 + [바꾸기], 누르면 펼침. 다시 그려도 펼친 채로(이 실행 동안 기억). */
 const KEY = 'ssam:ui:intro';
 export const INTRO_SHOW = 3;
@@ -35,8 +35,11 @@ export function introHTML(key, text) {
 }
 
 /* text: 이 화면에서 AI로 보내는 것(번호·점수만, 이름은 보내지 않음 등) */
+const hash = t => { let h = 5381; for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) >>> 0; return h.toString(36); };
 export function aiNoteHTML(text) {
-  return `<details class="ai-note"><summary class="ai-note-sum">${LOCK}<span>AI로 가는 것</span></summary>`
+  // 펼침은 글마다 기억(화면을 다시 그려도 펼친 채)
+  const key = 'ai:' + hash(String(text == null ? '' : text)), on = opened.get(key) === true;
+  return `<details class="ai-note" data-ui-open="${key}"${on ? ' open' : ''}><summary class="ai-note-sum">${LOCK}<span>AI로 가는 것</span></summary>`
     + `<div class="ai-note-body"><p>${esc(text)}</p><button class="btn text" type="button" data-go-ailog>AI로 보낸 글 보기</button></div></details>`;
 }
 

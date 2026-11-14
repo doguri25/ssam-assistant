@@ -47,3 +47,11 @@ test('설정 접기: 요약 한 줄 + [바꾸기], 기본은 접힘, open이면 
   assert.ok(foldHTML({ key: 'k', summary: 's', body: 'b', open: true }).includes(' open'));
   assert.ok(foldHTML({ key: 'k', summary: '<s>', body: 'b' }).includes('&lt;s&gt;'), '요약은 이스케이프(본문은 HTML 그대로)');
 });
+
+test('「AI로 가는 것」: 글마다 같은 이름으로 펼침을 기억(다시 그려도 펼친 채) — 다른 글은 다른 이름', () => {
+  const k = h => (h.match(/data-ui-open="([^"]+)"/) || [])[1];
+  const a = aiNoteHTML('번호·점수만 보내요.'), b = aiNoteHTML('번호·점수만 보내요.'), c = aiNoteHTML('글만 보내요.');
+  assert.ok(k(a) && k(a).startsWith('ai:'), a);
+  assert.equal(k(a), k(b));
+  assert.notEqual(k(a), k(c));
+});
