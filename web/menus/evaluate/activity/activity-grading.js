@@ -15,6 +15,7 @@ import { go } from '../../../core/shell.js';
 import { getActivity, getSet, saveSet, listActivities } from './activity-model.js';
 import { gradeParts, validGrade, normGrade, mergeMarks, reviewParts, normReview, MARK, LEVEL } from './activity-ai.js';
 import { A, registerStep, curAct, commitAct, refresh, render, goStep, esc, SS, getBox, visible, openActivity } from './activity.js';
+import { reviewQueue } from './activity-board.js';
 import { activityAccuracy, accuracyText } from '../grade-accuracy.js';
 import { aiNoteHTML, foldHTML } from '../../../core/ui-parts.js';
 
@@ -302,7 +303,7 @@ function step4HTML(a) {
   const chk = a.students.reduce((n, s) => n + Object.values(s.marks || {}).filter(c => c.chk).length, 0);
   const rows = a.students.filter(s => !s.skip).map(s => {
     const i = a.students.indexOf(s), st = G.running.has(i) && busy(a.id) ? '<span class="spin"></span>' : s.status === 'error' ? `<span class="act-warn">${esc(s.err)}</span>` : '';
-    return `<tr><td class="ac-no">${s.no}번${s.stale ? ' <span class="chip ac-stale">다시 채점</span>' : ''}${st}${s.rvErr ? `<span class="rv-fail">${REVIEW_FAIL}</span>` : ''}</td>${a.items.map(it => cellBtn(s, it)).join('')}
+    return `<tr data-row="${s.no}"${A.focusNo === s.no ? ' class="ac-row-on"' : ''}><td class="ac-no">${s.no}번${s.stale ? ' <span class="chip ac-stale">다시 채점</span>' : ''}${st}${s.rvErr ? `<span class="rv-fail">${REVIEW_FAIL}</span>` : ''}</td>${a.items.map(it => cellBtn(s, it)).join('')}
       <td><select class="field" data-level="${s.no}" aria-label="${s.no}번 수준"><option value="">-</option>${Object.entries(LEVEL).map(([k, l]) => `<option value="${k}"${s.level === k ? ' selected' : ''}>${l}</option>`).join('')}</select></td>
       <td><input class="field" data-good="${s.no}" value="${esc(s.good)}" aria-label="${s.no}번 잘한 점"></td><td><input class="field" data-next="${s.no}" value="${esc(s.next)}" aria-label="${s.no}번 더 해 볼 점"></td></tr>`;
   }).join('');
@@ -311,13 +312,24 @@ function step4HTML(a) {
       ${a.aiUse && useText(a.aiUse) ? `<p class="muted" id="acAiUse">${G.usedNow.has(a.id) ? '' : '지난 채점 '}${esc(useText(a.aiUse))}</p>` : ''}
       ${!ready ? '<p class="muted">스캔이 이 화면에 없어요. 3단계에서 학생 활동지를 올리면 채점할 수 있어요. 채점한 결과는 그대로 고칠 수 있어요.</p>' : ''}
       ${aiNoteHTML('채점 AI에는 학생 활동지 그림(정한 이름 칸은 가려요)과 문항·기준만 보내요. 학생 번호·이름은 보내지 않아요.')}
-      ${chk ? `<p class="muted">노란 칸 ${chk}개는 AI가 확신하지 못했거나 앱 판정과 달라요. 눌러서 확인해 주세요.</p>` : ''}
+      ${chk ? `<div class="row ac-chk-row"><p class="muted" style="margin:0">노란 칸 ${chk}개는 AI가 확신하지 못했거나 앱 판정과 달라요. 눌러서 확인해 주세요.</p>${reviewQueue(a).length ? `<button class="btn" type="button" data-ac="review">확인할 것만 보기</button>` : ''}</div>` : ''}
       ${done ? `<p class="muted act-acc" id="acAcc">${esc(accuracyText(activityAccuracy(a), { finished: a.done, graded: true }))}</p>` : ''}
       <div class="ac-grid-wrap"><table class="ac-grid" id="acGrid"><thead><tr><th>번호</th>${a.items.map(it => `<th title="${esc(it.ask)}">${it.no}</th>`).join('')}<th>수준</th><th>잘한 점</th><th>더 해 볼 점</th></tr></thead><tbody>${rows}</tbody></table></div>
     </div>
     <div class="row act-next"><button class="btn primary" type="button" data-ac="toResults"${done ? '' : ' disabled'}>다음: 결과</button></div>`;
 }
-registerStep(4, { html: step4HTML });
+/* 한눈에 카드에서 온 학생(A.focusNo): 그 줄을 보이게 하고 첫 칸에 초점(한 번만) */
+function focusRow(box) {
+  const no = A.focusNo;
+  if (no == null) return;
+  A.focusNo = null;
+  const row = box.querySelector(`#acGrid tr[data-row="${no}"]`);
+  if (!row) return;
+  row.scrollIntoView({ block: 'center' });
+  const first = row.querySelector('.ac-cell, select, input');
+  if (first) first.focus({ preventScroll: true });
+}
+registerStep(4, { html: step4HTML, bind: focusRow });
 
 /* 칸 고치기: ○·△·×·안 함, 읽은 답. 검토 의견이 있으면 두 의견 */
 function openCell(no, itemNo) {
@@ -340,14 +352,30 @@ function openCell(no, itemNo) {
       if (e.target.closest('[data-rv-keep]')) { rv = null; sh.querySelector('#acCellRv').innerHTML = ''; }
     });
     sh.querySelector('#acCellOk').addEventListener('click', () => {
-      const a2 = curAct(), s2 = a2 && a2.students.find(x => x.no === no);
-      if (!s2) return;
-      const nc = { ...c, read: sh.querySelector('#acCellRead').value.trim().slice(0, 120), mark: sel, manual: true, chk: false };
-      delete nc.rv;
-      s2.marks = { ...s2.marks, [itemNo]: nc };
-      commitAct(a2); SS().closeSheet(); render();
+      if (!saveCell(no, itemNo, { mark: sel, read: sh.querySelector('#acCellRead').value }, c)) return;
+      SS().closeSheet(); render();
     });
   });
+}
+/* 칸 정하기(4단계 칸 고치기 창·채점 확인 화면이 같이 씀): 선생님이 정한 칸(manual), 노란 칸·검토 의견은 지움.
+   base: 고치기 시작할 때의 칸(없으면 지금 칸) */
+export function saveCell(no, itemNo, { mark, read }, base) {
+  const a = curAct(), s = a && a.students.find(x => x.no === no);
+  if (!s) return false;
+  const c = base || (s.marks && s.marks[itemNo]) || {};
+  const nc = { ...c, read: String(read == null ? c.read || '' : read).trim().slice(0, 120), mark, manual: true, chk: false };
+  delete nc.rv;
+  s.marks = { ...s.marks, [itemNo]: nc };
+  commitAct(a);
+  return true;
+}
+/* 잘한 점·더 해 볼 점 고치기(4단계 표·채점 확인 화면): 선생님이 고친 글은 다시 채점해도 그대로 */
+export function saveNote(no, field, value) {
+  const a = curAct(), s = a && a.students.find(x => x.no === no);
+  if (!s || !['good', 'next'].includes(field)) return false;
+  s[field] = value; s[field + 'Manual'] = true;
+  commitAct(a);
+  return true;
 }
 
 /* ---------- 누르기·입력 ---------- */
@@ -408,8 +436,5 @@ document.addEventListener('input', e => {
   if (!a) return;
   const no = +(el.dataset.good || el.dataset.next || 0);
   if (!no) return;
-  const s = a.students.find(x => x.no === no);
-  if (!s) return;
-  if (el.dataset.good) { s.good = el.value; s.goodManual = true; } else { s.next = el.value; s.nextManual = true; }
-  commitAct(a);
+  saveNote(no, el.dataset.good ? 'good' : 'next', el.value);
 });
