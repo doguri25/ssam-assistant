@@ -2243,10 +2243,11 @@ function renderPyRec() {
   v.innerHTML = `<div class="m-page py-page">${head}<div class="rw-frame"><aside class="rw-list hk-left" aria-label="학생">${list}</aside>
     <div class="rw-grid"><div class="rw-main">${art}</div><aside class="rw-side" aria-label="${no}번 근거">${side}</aside></div></div></div>`;
 }
-/* 고친 글을 그 자리에: 단원평가 평어 → unit:pyeongeo:<교과>, 평가지 채점 → 그 기록(연 기록이면 화면의 학생). AI가 바꾼 채점 글은 사용함 표시를 지움 */
-async function pySave(x, text, ev, { ai = false, mark = false } = {}) {
+/* 고친 글을 그 자리에: 단원평가 평어 → unit:pyeongeo:<교과>, 평가지 채점 → 그 기록(연 기록이면 화면의 학생). AI가 바꾼 채점 글은 사용함 표시를 지움.
+   sub·no: 그 글의 교과·번호(AI가 쓰는 동안 다른 학생·교과로 옮겨도 처음 학생 칸에 쓰게 — 없으면 지금 고른 학생) */
+async function pySave(x, text, ev, { ai = false, mark = false, sub = PYR.sub, no = PYR.sel } = {}) {
   const t = String(text || '').replace(/\s+/g, ' ').trim();
-  if (x.src === 'unit') { if (!REC().pyUnitSave(PYR.sub, Number(PYR.sel), { text: t, ev })) return false; }
+  if (x.src === 'unit') { if (!REC().pyUnitSave(sub, Number(no), { text: t, ev })) return false; }
   else {
     let s = x.gid === GR.id ? grStudent(x.sid) : null, b = null;
     if (!s) { b = await GRStore.get(x.gid); s = b && (b.students || []).find(y => y.id === x.sid); }
@@ -2265,17 +2266,20 @@ async function pyOneSentence(x, { row = -1, add = '' } = {}) {
   const list = (x.ev && x.ev.list) || [], rr = R.sentenceRows(x.text, x.ev);
   const r = row >= 0 ? rr.rows[row] : null, target = add ? list.find(e => e.id === add) : null;
   if ((row >= 0 && !r) || (add && !target)) return;
-  PYR.busyRow = { no: PYR.sel, row, add }; renderPyRec();
+  const sub = PYR.sub, no = PYR.sel;
+  PYR.busyRow = { no, row, add }; renderPyRec();
   const before = x.text;
   try {
     const out = await generate(R.sentencePrompt({ mode: add ? 'add' : 'fix', field: 'py', text: x.text, sentence: r ? r.t : '', target, list, da: S.settings.ending === 'da',
       why: r ? [...(r.none ? ['이 문장을 받치는 근거가 없어요'] : []), ...r.issues.map(i => i.why)] : [] }), { fresh: true, task: 'writing' });
     const one = R.normOne(out.text, list);
     if (!one) throw { code: 'empty_completion' };
-    if (x.text !== before) return;
+    // 그새 그 글이 바뀌었으면(직접 고침 등) 쓰지 않음 — x는 누른 때의 글이라 지금 저장된 글과 견줌
+    const now = x.src === 'unit' ? ((R.pyUnit(sub).students || {})[no] || {}).text : ((x.gid === GR.id ? grStudent(x.sid) : pyGrStu(x)) || {}).text;
+    if (String(now || '') !== before) return;
     if (add && !one.src.length) one.src = [add];
     const o = add ? R.appendSentence(x.text, x.ev, one) : R.replaceSentence(x.text, x.ev, row, [one]);
-    if (await pySave(x, o.t, o.ev, { ai: true })) toast(add ? '근거로 문장을 더했어요' : '문장을 고쳤어요'); else toast('저장하지 못했어요. 그 글을 쓰는 중인지 확인해 주세요.');
+    if (await pySave(x, o.t, o.ev, { ai: true, sub, no })) toast(add ? '근거로 문장을 더했어요' : '문장을 고쳤어요'); else toast('저장하지 못했어요. 그 글을 쓰는 중인지 확인해 주세요.');
   } catch (e) { toast(errMsg((e && e.code) || 'upstream_error', e), 4500); }
   finally { PYR.busyRow = null; renderPyRec(); }
 }
