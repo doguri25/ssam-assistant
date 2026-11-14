@@ -56,7 +56,7 @@ export function footHTML({ n = 0, max = 0, unit = '자', detail = '', warn = fal
 export function rowsHTML({ rows = [], list = [], key = '', acts = null, label = '' } = {}) {
   return evidenceRowsHTML({
     key, list, label,
-    rows: rows.map((r, i) => ({ t: r.t, src: r.src, bad: r.bad, why: [...(r.none ? ['이 문장을 받치는 근거가 없어요'] : []), ...r.issues.map(x => x.kind === 'dup' ? x.why : `「${x.word}」 ${x.why}`)], acts: r.bad && acts ? acts(i, r) : '' }))
+    rows: rows.map((r, i) => ({ t: r.t, src: r.src, bad: r.bad, why: [...(r.none ? ['이 문장을 받치는 근거가 없어요'] : []), ...r.issues.map(x => (!x.word || x.word === r.t ? x.why : `「${x.word}」 ${x.why}`))], acts: r.bad && acts ? acts(i, r) : '' }))
   });
 }
 

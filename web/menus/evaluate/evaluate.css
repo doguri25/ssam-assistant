@@ -480,6 +480,13 @@ input.field.num.sm{width:84px}
   .rw-frame > .rw-list{max-height:none}
   .py-poolbar{padding:12px 16px 0}
 }
+/* 창체 한 명씩(결과 칸 안 — 칸 너비에 맞춰 근거를 아래로) */
+.cc-frame{container-type:inline-size;min-width:0}
+.cc-frame .rw-stu:hover{background:var(--surface2)}
+.cc-frame .rw-frame > .rw-list .btn{min-height:44px}
+@container (max-width:860px){ .cc-frame .rw-grid{grid-template-columns:minmax(0,1fr)} }
+@container (max-width:560px){ .cc-frame .rw-frame{grid-template-columns:minmax(0,1fr)} }
+#ccResults .tools .left .seg button{min-height:40px}
 /* ---------- 평가지 채점 확인(스펙 §4, 공통 모양 .ev-rv): 설정 칸을 접고 결과 칸 전체에 ---------- */
 .gr.rvw{grid-template-columns:minmax(0,1fr)}
 .gr.rvw .gr-setup{display:none}

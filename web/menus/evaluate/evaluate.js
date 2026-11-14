@@ -6150,6 +6150,7 @@ function renderCCResults() {
   let body;
   if (!nos.length) body = `<div class="empty"><h3>학생 수를 먼저 넣어 주세요</h3><p>왼쪽 「학급 명단」에 학생 수와 예외 번호(전출 등)를 넣으면 번호별로 문장을 써요. 행동특성·평가지 채점과 같은 명단이에요.</p></div>`;
   else if (!acts.length) body = `<div class="empty"><h3>${info.name} 공통 활동을 넣어 주세요</h3><p>왼쪽에 활동 이름이나 내용을 넣고 「만들기」를 누르면 학생마다 다른 문장을 써요. 학생들이 쓴 학습지를 스캔해 넣으면 학생마다 학습지 내용을 살려 써요.</p></div>`;
+  else if (CHE.layout === 'one' && REC()) body = ccFrameHTML(k); // 생활기록부 글 쓰기 틀(한 명씩, 근거와)
   else body = `<ul class="gr-list cc-list ${sheetActs.length ? 'thumbs' : ''}">${nos.map((no, i) => {
       const it = A.items[no], t = ccText(k, no), st = states[i];
       const run = [...CHE.running.values()].find(r => r.k === k && r.job.nos.includes(no));
@@ -6183,7 +6184,7 @@ function renderCCResults() {
     ${upNote()}${CHE.rvErr ? RV_FAIL_HTML : ''}${CHE.reviewing ? '<p class="muted rv-busy"><span class="spin"></span> 검토 AI가 문장을 살펴보고 있어요…</p>' : ''}${rvBarHTML(nos.reduce((n, no) => { const it = A.items[no]; return n + (it && it.parts ? acts.filter(a => rvOpen(it.parts[a.id])).length : 0); }, 0))}
     ${stale && !busy ? `<div class="banner warn"><span class="grow">활동 내용이 바뀐 학생이 ${stale}명 있어요. 「만들기」를 누르면 새 활동으로 고쳐 써요. 사용함으로 표시한 학생은 그대로 둬요.</span></div>` : ''}
     ${sheetN && !busy ? `<div class="banner info"><span class="grow">학습지를 넣은 학생 ${sheetN}명은 아직 학습지 내용이 글에 들어가지 않았어요. 「남은 학생 쓰기」를 누르면 학습지를 읽고 고쳐 써요.</span></div>` : ''}
-    ${nos.length && acts.length ? `<div class="tools"><div class="left">${k === 'club' && (A.club || '').trim() ? `<span class="muted">문장 앞에 <b>(${esc(A.club.trim())})</b>를 붙여요</span>` : ''}</div>
+    ${nos.length && acts.length ? `<div class="tools"><div class="left"><div class="seg" role="group" aria-label="보기"><button type="button" data-cclayout="all" aria-pressed="${CHE.layout !== 'one'}">모두 보기</button><button type="button" data-cclayout="one" aria-pressed="${CHE.layout === 'one'}">한 명씩 근거와</button></div>${k === 'club' && (A.club || '').trim() ? `<span class="muted">문장 앞에 <b>(${esc(A.club.trim())})</b>를 붙여요</span>` : ''}</div>
       <div class="right">
         ${busy ? `<button class="btn" type="button" data-cc="stop">멈추기</button>` : `<button class="btn primary" type="button" data-cc="gen" ${need ? '' : 'disabled'}>${ICON.spark}${made ? `남은 학생 쓰기${need ? ` (${need})` : ''}` : '만들기'}</button>`}
         ${made && !busy ? `<button class="btn" type="button" data-cc="fresh">${ICON.redo}모두 다시 쓰기</button>` : ''}
@@ -6193,6 +6194,85 @@ function renderCCResults() {
       </div></div>` : ''}
     ${body}`;
 }
+
+/* ---------- 생활기록부 글 쓰기 틀 — 창체 한 명씩(스펙 2026-11-14-eval-redesign §6) ----------
+   영역(위 탭)마다 학생 한 명의 글을 문장(활동마다 한 문장)으로, 근거는 그 활동(이름 — 내용)과 학습지에서 읽은 내용(새로, AI 없이).
+   활동이 바뀌었거나 넣은 학습지를 아직 반영하지 않은 문장은 주황 + [다시 쓰기](지금 다시 쓰기와 같은 길), 기재 점검 규칙에 걸린 문장은 [고치기](AI 한 문장)·[문장 빼기].
+   아직 쓰지 않은 활동의 근거는 「아직 안 쓴 근거」 → [이 근거로 문장 더하기](그 학생 글을 활동마다 씀 — 지금 쓰기와 같은 길) */
+CHE.layout = 'all'; CHE.sel = 0;
+function ccFrameData(k) {
+  const R = REC(), A = ccArea(k), acts = ccActs(k), nos = classNos();
+  const data = new Map(nos.map(no => [no, R.ccEvidence(acts, A.items[no], { sig: ccSig, sheetNew: id => ccSheetNew(id, no, ((A.items[no] || {}).parts || {})[id]) })]));
+  const dups = R.dupKeys(nos.map(no => ({ who: no, text: data.get(no).text })));
+  const rows = no => { const d = data.get(no); return d && d.text ? R.sentenceRows(d.text, { list: d.list, sentences: d.sentences }, { dups, extra: d.extra }) : null; };
+  return { A, acts, nos, data, rows };
+}
+const ccRunning = (k, no) => [...CHE.running.values()].some(r => r.k === k && r.job.nos.includes(no)) || CHE.queue.some(j => j.k === k && j.nos.includes(no));
+function ccFrameHTML(k) {
+  const R = REC(), info = ccInfo(k), { A, acts, nos, data, rows } = ccFrameData(k);
+  if (!nos.includes(CHE.sel)) CHE.sel = nos[0];
+  const sts = nos.map(no => [no, R.recState({ text: data.get(no).text, done: !!(A.items[no] && A.items[no].d), run: ccRunning(k, no), rows: rows(no) })]);
+  const list = R.listHTML({ items: sts.map(([no, st]) => ({ attr: `data-ccsel="${no}"`, no, st, cur: no === CHE.sel, busy: st.k === 'run' })),
+    doneN: sts.filter(([, st]) => st.k === 'done').length, fixN: sts.filter(([, st]) => st.k === 'fix').length, total: nos.length });
+  const no = CHE.sel, d = data.get(no), rr = rows(no), it = A.items[no], t = ccText(k, no), next = nos[nos.indexOf(no) + 1], club = k === 'club' ? (A.club || '').trim() : '';
+  const run = ccRunning(k, no), busy = CHE.busyRow && CHE.busyRow.k === k && CHE.busyRow.no === no ? CHE.busyRow : null;
+  const acts2 = (i, r) => (r.issues.some(x => x.kind === 'stale' || x.kind === 'sheet')
+    ? `<button type="button" class="ev-turn-btn" data-ccre="${no}" ${run ? 'disabled' : ''}>다시 쓰기</button>`
+    : `<button type="button" class="ev-turn-btn rw-fix" data-ccrow="fix" data-row="${i}" ${busy || run ? 'disabled' : ''}>${busy && busy.row === i ? '<span class="spin"></span>고치는 중' : '고치기'}</button><button type="button" class="btn rw-del" data-ccrow="del" data-row="${i}" ${busy || run ? 'disabled' : ''}>문장 빼기</button>`);
+  let shot = null;
+  for (const a of acts) { const pg = CHE.sheets[a.id] ? ccSheetPages(a.id, no) : []; if (pg.length) { shot = a; break; } }
+  const art = R.articleHTML({ cls: it && it.d ? 'done' : '', attrs: `data-ccno="${no}"`, where: esc(info.name), who: `${no}번`,
+    chips: club ? `<span class="ev-chip">(${esc(club)}) 앞에 붙어요</span>` : '',
+    body: rr ? `<div class="rw-text">${R.rowsHTML({ rows: rr.rows, list: d.list, key: `cc:${k}:${no}`, label: `${no}번 문장`, acts: acts2 })}</div>` : run ? '<div class="skel" style="height:80px"></div>' : '<p class="rw-emptyp">아직 쓰지 않았어요.</p>',
+    after: it && it.parts ? acts.map(a => rvInline(it.parts[a.id], ['cc', k, no, a.id].map(encodeURIComponent).join(':'), `${no}번${acts.length > 1 ? ' ' + ((a.name || '').trim() || '활동') : ''}`)).join('') : '',
+    foot: R.footHTML({ n: charCount(t), unit: '자', acts: `${engineReady() && !run ? `<button class="btn" type="button" data-ccre="${no}">${t ? 'AI로 다시 쓰기' : 'AI로 쓰기'}</button>` : ''}<button class="btn" type="button" data-cc="copyAll">나이스 차례로 복사</button>${next ? `<button class="btn dark" type="button" data-ccnext>다음 학생 ${next}번</button>` : ''}` }),
+    tools: t ? `<span class="rw-grow"></span>${shot ? `<button class="btn" type="button" data-ccview1="${no}">학습지 보기</button>` : ''}<button class="btn" type="button" data-cccopy="${no}" aria-label="${no}번 ${esc(info.name)} 복사하고 사용함으로">${it && it.d ? ICON.check + '다시 복사' : ICON.copy + '복사하고 사용함'}</button>${it && it.d ? `<button class="btn" type="button" data-ccundo="${no}">사용 표시 지우기</button>` : ''}` : '' });
+  const side = R.sideHTML({ who: `${no}번`, from: d.list.length ? `활동 ${acts.length}${d.list.some(e => e.kind === 'sheet') ? ' · 학습지' : ''}` : '', uses: R.evidenceUse(d.list, rr && rr.known ? rr.rows : []), known: !!(rr && rr.known),
+    addAttr: engineReady() && !run ? e => `data-ccevadd="${esc(e.id)}"` : null, busy: busy ? 'x' : '', empty: '활동을 넣으면 근거가 돼요', ai: 'AI에는 이름 없이 활동·학습지 내용만 보내요.' });
+  return `<div class="cc-frame"><div class="rw-frame"><aside class="rw-list" aria-label="학생">${list}</aside>
+    <div class="rw-grid"><div class="rw-main">${art}</div><aside class="rw-side" aria-label="${no}번 근거">${side}</aside></div></div></div>`;
+}
+/* [고치기]: 기재 점검 규칙에 걸린 활동 문장 하나를 근거로 고쳐 씀(AI 한 문장) — 사용함 표시는 지움(다시 쓰기처럼) */
+async function ccRowFix(k, no, i) {
+  const R = REC(); if (!R || CHE.busyRow || ccAreaBusy(k)) return;
+  if (!engineReady()) { openSettings(); return; }
+  const { acts, data, rows } = ccFrameData(k), it = ccArea(k).items[no], rr = rows(no), r = rr && rr.rows[i];
+  const withParts = acts.filter(a => it && it.parts && it.parts[a.id] && it.parts[a.id].t), act = withParts[i];
+  if (!r || !act) return;
+  const p = it.parts[act.id], before = p.t;
+  CHE.busyRow = { k, no, row: i }; renderCCResults();
+  try {
+    const out = await generate(R.sentencePrompt({ mode: 'fix', field: 'cc', text: data.get(no).text, sentence: r.t, list: data.get(no).list, da: S.settings.ending === 'da',
+      why: [...(r.none ? ['이 문장을 받치는 근거가 없어요'] : []), ...r.issues.map(x => x.why)] }), { fresh: true, task: 'writing' });
+    const one = R.normOne(out.text, data.get(no).list);
+    if (!one) throw { code: 'empty_completion' };
+    if (p.t !== before) return;
+    p.t = one.t; delete p.rv; it.d = 0;
+    toast('문장을 고쳤어요');
+  } catch (e) { toast(errMsg((e && e.code) || 'upstream_error', e), 4500); }
+  finally { CHE.busyRow = null; CCStore.save(); renderCCResults(); }
+}
+document.addEventListener('click', e => {
+  if (S.mode !== 'cc' || !evalShown()) return;
+  const t = e.target; if (!t || !t.closest || !t.closest('#ccResults')) return;
+  const ly = t.closest('[data-cclayout]'); if (ly) { CHE.layout = ly.dataset.cclayout; renderCCResults(); return; }
+  const sel = t.closest('[data-ccsel]'); if (sel) { CHE.sel = +sel.dataset.ccsel; renderCCResults(); return; }
+  if (t.closest('[data-ccnext]')) { const nos = classNos(), n = nos[nos.indexOf(CHE.sel) + 1]; if (n) { CHE.sel = n; renderCCResults(); } return; }
+  const rowb = t.closest('[data-ccrow]');
+  if (rowb && !rowb.disabled) {
+    const k = CHE.view, no = CHE.sel, i = +rowb.dataset.row;
+    if (rowb.dataset.ccrow === 'fix') { ccRowFix(k, no, i); return; }
+    const it = ccArea(k).items[no], act = ccActs(k).filter(a => it && it.parts && it.parts[a.id] && it.parts[a.id].t)[i];
+    if (act) { delete it.parts[act.id]; CCStore.save(); renderCCResults(); toast('문장을 뺐어요. [남은 학생 쓰기]를 누르면 이 활동 문장을 다시 써요'); }
+    return;
+  }
+  const ad = t.closest('[data-ccevadd]');
+  if (ad && !ad.disabled) {
+    if (!engineReady()) { openSettings(); return; }
+    const k = CHE.view, no = CHE.sel;
+    ccAskMask([k], () => { if (ccEnqueue(k, [no])) toast(`${no}번 ${ccInfo(k).name} 글을 활동마다 다시 써요`); }, [no]);
+  }
+});
 
 /* ---------- 나이스 붙여넣기 출처 (영역마다) ---------- */
 const CC_SRC = {};
