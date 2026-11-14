@@ -165,6 +165,18 @@ await run('unit-confirm', [
     await page.click(`${V} [data-rv="table"]`);
     await page.waitForSelector(`${V} .un-one`);
   }],
+  ['키보드: 평가 목록에서 Tab으로 평가 카드에 가서 Enter로 그 평가를 엶', async () => {
+    await page.click(`${V} [data-unv="list"]`);
+    await page.waitForSelector(`${V} .un-list`);
+    await page.focus(`${V} [data-un="sample"]`);
+    await page.keyboard.press('Tab');
+    const at = await page.evaluate(() => { const a = document.activeElement, c = a && a.closest('[data-un-open]'); return c ? `${c.dataset.unOpen}:${a.dataset.un || 'open'}` : a.outerHTML.slice(0, 80); });
+    assert(/^(m2|nosub):open$/.test(at), '[예시로 채우기] 다음 초점: ' + at);
+    await page.keyboard.press('Enter');
+    await page.waitForSelector(`${V} #unFlow`);
+    assert(await page.textContent(`${V} .un-title`) === '3학년 수학 2단원 나눗셈 (1회)' || at.startsWith('nosub'), await page.textContent(`${V} .un-title`));
+    await page.click(`${V} [data-un="back"]`);
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();
