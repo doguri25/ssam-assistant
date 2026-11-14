@@ -43,7 +43,7 @@ function listHTML(t) {
       <div class="ev-rv-lh"><span>확인할 칸</span><span class="ev-num un-rv-count">${done} / ${RV.keys.length}</span></div>
       <div class="un-rv-items">${RV.keys.map((k, i) => { const [no, item] = k.split('-'), d = !isOpen(t, k);
         return `<button type="button" class="ev-rv-item${d ? ' done' : ''}" data-rvw-go="${i}"${i === RV.at && !RV.fin ? ' aria-current="true"' : ''} aria-label="${no}번 · ${item}번 문항${d ? ' · 정했어요' : ' · 확인할 칸'}"><span><b>${no}번</b> · ${item}번 문항</span></button>`; }).join('')}</div>
-      <div class="ev-rv-lh un-rv-ai"><span class="ev-sub">쌤비서가 채점한 학생</span><span class="ev-num">${g}명</span></div>
+      <div class="ev-rv-lh un-rv-ai"><span class="ev-sub">쌤비서가 채점</span><span class="ev-num">${g}명</span></div>
       <button class="btn" type="button" data-rvw="map">표로 모두 보기</button>
     </aside>`;
 }
