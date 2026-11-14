@@ -1,32 +1,113 @@
-/* 평가 › 기재 점검 (check.js): 고칠 곳은 노란 바탕 + 밑줄 + 번호 기호(색만이 아님), 누르는 칸 44px, 390px에서 가로로 넘치지 않음 */
+/* 평가 › 기재 점검 (check.js, 스펙 2026-11-14-eval-redesign §7): 공통 모양(eval-ui.css — 이 파일보다 뒤에 읽힘)의 타일·검정 카드를 씀.
+   고칠 곳은 노란 바탕 + 밑줄 + 번호 기호(색만이 아님), 지운 말은 줄 긋기, 더한 말은 밑줄, 누르는 칸 44px, 390px에서 가로로 넘치지 않음 */
 .chk-box[hidden]{display:none !important}
 .chk-box{min-width:0}
-.chk-page{gap:14px}
+.chk-page{gap:18px}
 .chk-box .m-head h2:focus{outline:none}
-.chk-sum{margin:0;font-weight:600;font-size:15px}
-.chk-tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;min-width:0}
-.chk-box .seg button,.chk-box .btn,.chk-box select.field{min-height:44px}
-.chk-kinds{min-width:0}
-.chk-kinds b{font-weight:700}
-.chk-src-l{display:flex;align-items:center;gap:6px;min-width:0;max-width:100%}
+.chk-box .btn,.chk-box select.field{min-height:44px}
+.chk-box .btn:focus-visible,.chk-box select.field:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+/* 머리: 무엇을 훑었는지 · 기재 점검 · 고칠 곳 n곳 · 화면 고르기 · 다시 점검 */
+.chk-head{align-items:flex-end}
+.chk-titles{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 320px}
+.chk-box .chk-head h2{font-size:28px;letter-spacing:-.03em;overflow-wrap:anywhere}
+.chk-left{color:var(--ink3)}
+.chk-left.turn{color:var(--turn-ink)}
+.chk-sum{margin:0;font-size:14px;color:var(--ink3)}
+.chk-head-acts{gap:8px 10px}
+.chk-src-l{display:flex;align-items:center;gap:6px;min-width:0;max-width:100%;font-size:14px;color:var(--ink2)}
 .chk-src-l .field{min-width:0;flex:1 1 auto;max-width:100%}
+/* 숫자 타일: 0이면 파랑 + 체크 */
+.chk-box .chk-tiles{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+.chk-box .chk-tiles .ev-num{display:inline-flex;align-items:center;gap:6px}
+.chk-box .ev-tile.ok:not([aria-pressed="true"]){background:var(--accent-soft)}
+.chk-box .ev-tile.ok:not([aria-pressed="true"]) .ev-num{color:var(--accent-ink)}
+.chk-tiles .chk-ok-ic{width:18px;height:18px}
+/* 본문(카드) + 오른쪽(나이스에 넣기 전) */
+.chk-body{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
+.chk-main{flex:999 1 540px;min-width:0;display:flex;flex-direction:column;gap:18px}
+.chk-aside{flex:1 1 290px;min-width:0;display:flex;flex-direction:column;gap:12px}
+@media (min-width:1000px){ .chk-aside{position:sticky;top:16px} }
+.chk-group{display:flex;flex-direction:column;gap:10px;min-width:0}
+.chk-gh{margin:4px 0 0;font:800 16px/1.4 var(--f-display,inherit);color:var(--ink)}
+.chk-gh.turn{color:var(--turn-ink)}
+.chk-gsub{margin:-4px 0 0;font-size:13.5px;color:var(--ink3)}
+.chk-more{align-self:flex-start;font-weight:700}
 .chk-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
-.chk-row{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m);padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
-.chk-src{font-size:13.5px;color:var(--ink2);overflow-wrap:anywhere}
-.chk-text,.chk-col p{margin:0;line-height:1.75;overflow-wrap:anywhere;word-break:keep-all}
+.chk-row{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-l,20px);padding:18px 22px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.chk-loc{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:4px 12px;font-size:13px;color:var(--ink3)}
+.chk-src{font-weight:500;color:var(--ink3);overflow-wrap:anywhere;min-width:0}
+.chk-src b{color:var(--ink);font-weight:800}
+.chk-tag{color:var(--turn-ink);font-weight:800}
+.chk-text,.chk-dtext,.chk-col p{margin:0;line-height:1.75;overflow-wrap:anywhere;word-break:keep-all}
+.chk-text,.chk-dtext{font-size:16.5px}
 .chk-hit{background:#fff1a8;color:inherit;border-bottom:2px solid var(--warn);border-radius:2px;padding:0 1px}
 .chk-n{font-size:11px;font-weight:700;color:var(--warn);margin:0 1px;line-height:0}
 .chk-why{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
 .chk-why .chip{white-space:normal;font-size:12.5px;gap:4px;max-width:100%}
-.chk-acts{flex-wrap:wrap;gap:6px}
+.chk-acts{flex-wrap:wrap;gap:8px}
+.chk-acts .btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.chk-acts .btn.text{font-weight:700;color:var(--accent-ink)}
+.chk-dup > .chk-acts .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .chk-hint,.chk-busy,.chk-err,.chk-left{margin:0}
 .chk-err{color:var(--err)}
+/* 지운 말 · 더한 말 */
+.chk-dtext del{background:var(--turn-soft);color:var(--turn-ink);text-decoration:line-through;text-decoration-thickness:1.5px;border-radius:4px;padding:0 3px}
+.chk-dtext ins{background:var(--accent-soft);color:var(--accent-ink);text-decoration:none;border-bottom:2px solid var(--accent);border-radius:4px 4px 0 0;padding:0 3px}
+.chk-diff{display:flex;flex-direction:column;gap:6px;min-width:0}
+.chk-dnote{margin:0;font-size:13px;color:var(--ink3)}
+.chk-dnote b{color:var(--turn-ink)}
+.chk-pair summary{cursor:pointer;min-height:44px;display:inline-flex;align-items:center;font-size:13.5px;font-weight:700;color:var(--accent-ink)}
+.chk-pair summary:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:6px}
 .chk-fix{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
 .chk-col{border:1px solid var(--line);border-radius:var(--r-s);padding:10px 12px;min-width:0;display:flex;flex-direction:column;gap:4px}
 .chk-col .lab{font-weight:600;color:var(--ink3)}
 .chk-new{border-color:var(--accent);border-width:2px}
+/* 글자 수 막대 */
+.chk-len{display:flex;align-items:center;gap:10px}
+.chk-len .ev-bar{flex:1;height:10px;background:var(--surface2,#f3f4f6)}
+.chk-len .ev-num{color:var(--turn-ink);font-size:15px}
+/* 같은 문장: 쓴 학생 번호 칩(누르면 그 글), 학생마다 고친 글 */
+.chk-whos{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.chk-whos-l{font-size:13.5px;color:var(--ink3)}
+.chk-whos-b{display:flex;flex-wrap:wrap;gap:6px}
+.chk-who{min-width:44px;min-height:44px;padding:0 8px;border-radius:10px;border:1px solid transparent;background:var(--surface2,#f3f4f6);color:var(--ink);font:inherit;font-size:15px;cursor:pointer}
+.chk-who:hover{border-color:var(--line)}
+.chk-who:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.chk-subs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.chk-sub{border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.chk-row.chk-sub{border-top:1px solid var(--line);padding-top:18px}
+.chk-sub > .chk-src{font-size:13.5px}
+/* 나이스에 넣기 전 마지막 점검(검정 카드) */
+.chk-final{display:flex;flex-direction:column;gap:14px}
+.chk-final h3{margin:0;font-size:14px;font-weight:600;color:#c9ced6}
+.chk-prog{display:flex;align-items:center;gap:12px}
+.chk-prog .ev-bar{flex:1;height:10px;background:rgba(255,255,255,.18)}
+.chk-prog .ev-bar > i{background:#fff}
+.chk-prog .ev-num{white-space:nowrap}
+.chk-done{margin:0;font-size:14px;color:#c9ced6;display:flex;flex-wrap:wrap;align-items:center;gap:0 6px}
+.chk-done b{color:#fff}
+.chk-final-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:15px}
+.chk-final-list li{display:flex;gap:10px;align-items:flex-start;min-width:0}
+.chk-final-list li > span:last-child{min-width:0;overflow-wrap:anywhere}
+.chk-final .chk-ok-ic{flex:none;margin-top:3px;color:#aab6ff}
+.chk-bang{flex:none;width:18px;height:18px;margin-top:3px;border-radius:50%;background:var(--turn);color:var(--ink);font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.chk-gap{display:block;font-size:13.5px;color:#c9ced6}
+.chk-linkbtn{min-height:44px;padding:0 4px;border:0;background:transparent;color:#fff;font:inherit;font-size:14px;font-weight:700;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.chk-neis{min-height:48px;padding:0 18px;border-radius:14px;border:0;background:#fff;color:var(--ink);font:inherit;font-size:15px;font-weight:800;cursor:pointer}
+.chk-neis:hover{filter:brightness(.95)}
+.chk-linkbtn:focus-visible,.chk-neis:focus-visible{outline:3px solid var(--turn);outline-offset:2px}
+.chk-neis-sub{margin:-6px 0 0;font-size:13px;color:#c9ced6}
+.chk-aiwhy{margin:0;padding:0 4px}
 .chk-empty{background:var(--surface);border:1px dashed var(--line);border-radius:var(--r-m);padding:16px}
 .chk-empty p{margin:0}
 /* 각 화면의 [기재 점검] 단추 */
 [data-eval-check]{min-height:44px}
-@media (max-width:600px){ .chk-fix{grid-template-columns:minmax(0,1fr)} .chk-row{padding:12px} }
+@media (max-width:600px){
+  .chk-fix{grid-template-columns:minmax(0,1fr)}
+  .chk-row{padding:14px}
+  .chk-box .chk-head h2{font-size:23px}
+  .chk-head-acts{margin-left:0;width:100%}
+  .chk-src-l{flex:1 1 180px}
+  .chk-box .chk-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .chk-box .chk-tiles .ev-tile{padding:8px 12px}
+}

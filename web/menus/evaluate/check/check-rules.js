@@ -22,6 +22,10 @@ const WHY = {
   subject: '「이 학생은」 같은 주어는 빼요',
   masked: '가린 이름(○○)은 빼요'
 };
+/* 까닭 → 짧은 이름(기재 점검 카드 오른쪽 위, 스펙 2026-11-14-eval-redesign §7) */
+const SHORT = { award: '학교 밖 대회', award2: '학교 밖 대회', cert: '자격증·인증시험', private: '사교육', family: '가족 직업·형편', abroad: '해외·어학연수',
+  paper: '논문·출간·특허', scholar: '장학금', inst: '기관·상호 이름', neg: '부정 표현', name: '학생 이름', subject: '주어', masked: '가린 이름' };
+export const WHY_SHORT = Object.fromEntries(Object.entries(WHY).map(([k, w]) => [w, SHORT[k]]));
 
 /* 문장 안에서 이 자리까지(맞은 글 포함 — 「학교 경시대회」의 학교도) 학교 안 활동이라는 말(교내·학교·학급·학년·우리 반)이 있는지.
    「학교 밖」「학교 외」「학교 대표로」「교외」가 있으면 학교 밖 대회로 봄 */
