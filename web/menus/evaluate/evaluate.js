@@ -6161,6 +6161,8 @@ storeReady.then(() => setTimeout(() => {
 const ckRef = (...p) => p.map(x => encodeURIComponent(x)).join(':');
 const ckParse = ref => String(ref || '').split(':').map(decodeURIComponent);
 const ckPick = (list, i, from, f = 't') => (list[i] && list[i][f] === from ? list[i] : list.find(o => o && o[f] === from)) || null;
+// 검토 AI가 이미 낸 고친 문장(아직 쓰거나 두지 않은 것) → 기재 점검이 지운 말·더한 말로 보여 줌
+const ckFix = (o, k = 'rv') => (rvOpen(o, k) && typeof o[k].fix === 'string' && o[k].fix.trim() ? { fix: o[k].fix } : {});
 async function checkItems() {
   await storeReady;
   await Promise.all([planReady, HKStore.ready, ccReady, classReady].map(p => Promise.resolve(p).catch(() => {})));
@@ -6174,7 +6176,7 @@ async function checkItems() {
     const sets = cur ? S.sets : await Store.loadSets(p.id);
     for (const sub of plan.subjects || []) for (const u of sub.units || []) for (const l of LV) {
       const set = sets.get(setKey(u.id, l.k));
-      ((set && set.items) || []).forEach((x, i) => { if (x && x.t) out.push({ ref: ckRef('py', p.id, u.id, l.k, i), src: 'py', label: ['교과 평어', sub.name, u.elem || u.unit, LVNAME[l.k]].filter(Boolean).join(' · '), text: x.t }); });
+      ((set && set.items) || []).forEach((x, i) => { if (x && x.t) out.push({ ref: ckRef('py', p.id, u.id, l.k, i), src: 'py', label: ['교과 평어', sub.name, u.elem || u.unit, LVNAME[l.k]].filter(Boolean).join(' · '), text: x.t, ...ckFix(x) }); });
     }
   }
   // 창체: 영역·학생·활동마다 한 문장
@@ -6182,14 +6184,14 @@ async function checkItems() {
     const A = ccArea(a.k), acts = ccActs(a.k);
     for (const no of Object.keys(A.items).map(Number).filter(n => n > 0 && inClass(n)).sort((x, y) => x - y)) for (const act of acts) {
       const it = A.items[no], pt = it && it.parts && it.parts[act.id];
-      if (pt && pt.t) out.push({ ref: ckRef('cc', a.k, no, act.id), src: 'cc', label: `창의적 체험활동 · ${a.name} · ${no}번${acts.length > 1 ? ' · ' + ((act.name || '').trim() || '활동') : ''}`, who: no, group: 'cc:' + a.k, text: pt.t });
+      if (pt && pt.t) out.push({ ref: ckRef('cc', a.k, no, act.id), src: 'cc', label: `창의적 체험활동 · ${a.name} · ${no}번${acts.length > 1 ? ' · ' + ((act.name || '').trim() || '활동') : ''}`, who: no, group: 'cc:' + a.k, text: pt.t, ...ckFix(pt) });
     }
   }
   // 행특: 고른 글·후보, 한도는 행특 설정(글자 수·나이스 바이트). 고른 글이 있으면 고르지 않은 후보는 같은 문장 견주기에서 뺌
   for (const s of hkShown()) {
     const chosen = (s.results || []).some(r => r && r.d);
     (s.results || []).forEach((r, i) => {
-      if (r && r.t) out.push({ ref: ckRef('hk', s.id, i), src: 'hk', label: `행동특성 · ${s.no}번${s.results.length > 1 ? (r.d ? ' · 고른 글' : ` · 후보 ${i + 1}`) : ''}`, who: s.no, group: 'hk', text: r.t, limit: { max: HK.settings.max, unit: HK.settings.unit }, ...(chosen && !r.d ? { dup: false } : {}) });
+      if (r && r.t) out.push({ ref: ckRef('hk', s.id, i), src: 'hk', label: `행동특성 · ${s.no}번${s.results.length > 1 ? (r.d ? ' · 고른 글' : ` · 후보 ${i + 1}`) : ''}`, who: s.no, group: 'hk', text: r.t, limit: { max: HK.settings.max, unit: HK.settings.unit }, ...(chosen && !r.d ? { dup: false } : {}), ...ckFix(r) });
     });
   }
   // 평가지 채점: 기록마다(지금 연 기록은 화면의 것). 그 화면의 평어 길이는 AI에 주는 목표(권장)라 최대 글자 수로 치지 않음(대부분이 조금 넘어 표시가 늘 뜨던 것)
@@ -6197,7 +6199,7 @@ async function checkItems() {
   for (const h of GR.history) {
     const open = h.id === GR.id, b = open ? null : await GRStore.get(h.id);
     const list = open ? GR.students : ((b && b.students) || []);
-    for (const s of list) if (!s.skip && s.text) out.push({ ref: ckRef('gr', h.id, s.id), src: 'gr', label: `평가지 채점 · ${h.title || '수행평가'} · ${s.no > 0 ? s.no + '번' : '번호 없음'}`, who: s.no > 0 ? s.no : null, group: 'gr:' + h.id, text: s.text });
+    for (const s of list) if (!s.skip && s.text) out.push({ ref: ckRef('gr', h.id, s.id), src: 'gr', label: `평가지 채점 · ${h.title || '수행평가'} · ${s.no > 0 ? s.no + '번' : '번호 없음'}`, who: s.no > 0 ? s.no : null, group: 'gr:' + h.id, text: s.text, ...ckFix(s, 'trv') });
   }
   return out;
 }

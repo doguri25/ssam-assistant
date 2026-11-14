@@ -1,7 +1,8 @@
-// 평가 › 기재 점검(스펙 2026-11-13 §4): 교과 평어·창체·행특·평가지 채점·단원평가 평어를 규칙으로 훑어
-// 「점검한 글 n개 · 고칠 곳 m곳」, 종류·화면 거르기, 문제 낱말은 노란 표시 + 번호(색만이 아님), 까닭 칩,
-// [AI로 고치기](그 글과 까닭만 — 이름·번호 없음) → 나란히 보기 → [바꾸기]는 그 화면 저장소에(옛 화면 저장이 덮어쓰지 않음, 다시 열어도) · [그대로 두기],
-// [그 글로 가기], 각 화면의 [기재 점검] 단추, 화면에 올 때마다 다시 점검, AI 키 없으면 안내, 390px에서 넘치지 않음. 글·이름은 모두 지어낸 것
+// 평가 › 기재 점검(스펙 2026-11-13 §4 · 새 모양 2026-11-14-eval-redesign §7): 교과 평어·창체·행특·평가지 채점·단원평가 평어를 규칙으로 훑어
+// 「n편을 AI 없이 훑었어요 · 고칠 곳 m곳」, 종류 타일·화면 거르기, 종류별로 묶은 카드에 문제 낱말은 노란 표시 + 번호(색만이 아님), 까닭 칩,
+// [AI로 고치기](그 글과 까닭만 — 이름·번호 없음) → 지운 말·더한 말 + 나란히 보기 → [고친 글로 바꾸기]는 그 화면 저장소에(옛 화면 저장이 덮어쓰지 않음, 다시 열어도) ·
+// [그대로 두기](세지 않음 · 다시 보기), [그 글로 가기]·쓴 학생 번호 칩, 각 화면의 [기재 점검] 단추, 화면에 올 때마다 다시 점검, AI 키 없으면 안내,
+// 390px에서 넘치지 않음. 글·이름은 모두 지어낸 것
 import { open, enter, run, assert, mockClaude } from './helpers.mjs';
 
 const t = await open();
@@ -46,10 +47,17 @@ await mockClaude(page, ({ prompt }) => {
 });
 const B = 'section[data-menu="evaluate"] .chk-box';
 const ls = k => page.evaluate(k => JSON.parse(localStorage.getItem(k) || 'null'), k);
-const sum = () => page.textContent(`${B} .chk-sum`);
-const row = label => page.locator(`${B} .chk-row`, { has: page.locator('.chk-src', { hasText: label }) });
-const tabNow = () => page.textContent('#menuTabs [aria-current="page"]');
-const goCheck = async () => { await enter(page, 'evaluate', 'check'); await page.waitForFunction(b => { const s = document.querySelector(b + ' .chk-sum'); return s && /점검한 글/.test(s.textContent); }, B); };
+// 머리의 「… n편을 AI 없이 훑었어요」·「기재 점검 · 고칠 곳 m곳」 → 「점검한 글 n개 · 고칠 곳 m곳」
+const sum = () => page.evaluate(b => {
+  const s = (document.querySelector(b + ' .chk-sum') || {}).textContent || '', h = (document.querySelector(b + ' .chk-head h2') || {}).textContent || '';
+  const n = (s.match(/(\d+)편/) || [, 0])[1], m = (h.match(/고칠 곳 (\d+)곳/) || [, 0])[1];
+  return `점검한 글 ${n}개 · 고칠 곳 ${m}곳`;
+}, B);
+// 그 글의 카드(종류를 주면 그 종류 묶음에서)
+const row = (label, kind) => page.locator(`${B} ${kind ? `[data-chk-group="${kind}"] ` : ''}.chk-row`, { has: page.locator('.chk-src', { hasText: label }) });
+const tabNow = () => page.getAttribute('#menuTabs [aria-current="page"]', 'data-tab');
+const goTab = tab => page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), tab);
+const goCheck = async () => { await goTab('check'); await page.waitForFunction(b => { const s = document.querySelector(b + ' .chk-sum'); return s && /편을 AI 없이|아직 없어요/.test(s.textContent) && !document.querySelector(b).hidden; }, B); };
 const noOverflow = () => page.evaluate(b => {
   const W = document.documentElement.clientWidth, bad = [...document.querySelectorAll(b + ' *')].filter(el => el.getBoundingClientRect().right > W + 1);
   return document.documentElement.scrollWidth <= W + 1 && !bad.length;
@@ -69,74 +77,91 @@ await page.evaluate(async () => {
 await page.reload(); await page.waitForTimeout(500);
 
 await run('eval-check', [
-  ['평가 메뉴 끝에 「기재 점검」 탭 → 「점검한 글 11개 · 고칠 곳 9곳」, 종류마다 수', async () => {
+  ['평가 메뉴 끝에 「기재 점검」 탭 → 「점검한 글 11개 · 고칠 곳 9곳」, 종류마다 수(타일)', async () => {
     await page.waitForSelector('nav.app-side [data-menu-go="evaluate"]');
     await page.click('nav.app-side [data-menu-go="evaluate"]');
     const tabs = await page.$$eval('#menuTabs [data-tab]', bs => bs.map(b => b.textContent.trim()));
-    // 탭 두 묶음(스펙 2026-11-14 §4): 채점(단원평가·활동지) | 생활기록부(평가지 채점·교과 평어·창체·행특·기재 점검)
-    assert(tabs.at(-1) === '기재 점검' && tabs.at(-2) === '행동특성', tabs.join(','));
-    await goCheck();
-    assert((await sum()).trim() === '점검한 글 11개 · 고칠 곳 9곳', await sum());
+    // 탭 6칸(스펙 2026-11-14 §1): 한눈에·단원평가·활동지·평가지 채점·생활기록부·기재 점검
+    assert(tabs.at(-1) === '기재 점검' && tabs.at(-2) === '생활기록부', tabs.join(','));
+    await page.click('#menuTabs [data-tab="check"]');
+    await page.waitForFunction(b => /편을 AI 없이/.test((document.querySelector(b + ' .chk-sum') || {}).textContent || ''), B);
+    assert(await sum() === '점검한 글 11개 · 고칠 곳 9곳', await sum());
     const kinds = await page.$$eval(`${B} [data-chk-kind]`, bs => bs.map(b => b.textContent.replace(/\s+/g, ' ').trim()));
-    assert(JSON.stringify(kinds) === JSON.stringify(['전체 9', '기재 금지 3', '부정 표현 1', '이름·주어 2', '같은 문장 2', '글자 수 1']), JSON.stringify(kinds));
-    assert(await page.locator(`${B} .chk-row`).count() === 8, '고칠 곳이 있는 글 8개');
+    assert(JSON.stringify(kinds) === JSON.stringify(['전체 9', '쓰면 안 되는 말 3', '같은 문장 2', '이름·주어 2', '글자 수 1', '부정 표현 1']), JSON.stringify(kinds));
+    assert(await page.locator(`${B} .chk-row`).count() === 8, '카드 8개(같은 문장은 한 카드)');
   }],
-  ['글마다 출처·노란 표시 + 번호 기호·까닭 칩, 같은 문장은 다른 학생 번호, 글자 수는 넘친 곳', async () => {
-    const r = row('행동특성 · 1번');
-    assert(await r.count() === 1, '행특 1번 줄');
-    const marks = await r.locator('mark.chk-hit').allTextContents();
-    assert(JSON.stringify(marks) === JSON.stringify(['김하늘', '학원']), JSON.stringify(marks));
-    const ns = await r.locator('.chk-text .chk-n [aria-hidden="true"]').allTextContents();
-    assert(JSON.stringify(ns) === JSON.stringify(['①', '②']), '번호 기호: ' + JSON.stringify(ns));
-    const chips = (await r.locator('.chk-why li').allTextContents()).map(x => x.replace(/\s+/g, ' ').trim());
-    assert(chips[0].includes('①') && chips[0].includes('학생 이름은 쓰지 않아요') && chips[1].includes('학원·과외 같은 사교육은 쓰지 않아요'), JSON.stringify(chips));
-    const bg = await r.locator('mark.chk-hit').first().evaluate(e => getComputedStyle(e).backgroundColor);
+  ['카드마다 어디·노란 표시 + 번호 기호·까닭 칩, 같은 문장은 쓴 학생 번호, 글자 수는 넘친 곳', async () => {
+    const ban = row('행동특성 · 1번', 'ban'), nm = row('행동특성 · 1번', 'name');
+    assert(await ban.count() === 1 && await nm.count() === 1, '행특 1번: 쓰면 안 되는 말·이름 카드');
+    assert(JSON.stringify(await ban.locator('mark.chk-hit').allTextContents()) === JSON.stringify(['학원']), '학원');
+    assert(JSON.stringify(await nm.locator('mark.chk-hit').allTextContents()) === JSON.stringify(['김하늘']), '김하늘');
+    const ns = await ban.locator('.chk-text .chk-n [aria-hidden="true"]').allTextContents();
+    assert(JSON.stringify(ns) === JSON.stringify(['①']), '번호 기호: ' + JSON.stringify(ns));
+    const chip = t => t.replace(/\s+/g, ' ').trim();
+    assert(chip(await ban.locator('.chk-why li').first().textContent()).includes('①') && (await ban.locator('.chk-why').textContent()).includes('학원·과외 같은 사교육은 쓰지 않아요'), '사교육 칩');
+    assert((await nm.locator('.chk-why').textContent()).includes('학생 이름은 쓰지 않아요'), '이름 칩');
+    assert((await ban.locator('.chk-tag').textContent()).trim() === '사교육', '짧은 까닭');
+    const bg = await ban.locator('mark.chk-hit').first().evaluate(e => getComputedStyle(e).backgroundColor);
     assert(/rgb\(255, 2[0-9]{2}, 1[0-9]{2}\)/.test(bg), '노란 바탕 ' + bg);
-    assert((await row('행동특성 · 2번').locator('.chk-why').textContent()).includes('다른 학생(3번) 글과 같은 문장이에요'), '같은 문장');
-    const len = row('행동특성 · 4번');
+    const dup = page.locator(`${B} [data-chk-group="dup"] .chk-row`);
+    assert(await dup.count() === 1, '같은 문장 카드 하나');
+    assert((await dup.locator('.chk-src').textContent()).includes('행동특성 · 2명이 똑같이 씀'), await dup.locator('.chk-src').textContent());
+    assert((await dup.locator('mark.chk-hit').textContent()) === S, '그 문장');
+    assert(JSON.stringify(await dup.locator('[data-chk-who]').allTextContents()) === JSON.stringify(['2', '3']), '쓴 학생 번호');
+    const len = row('행동특성 · 4번', 'len');
     assert((await len.locator('.chk-why').textContent()).includes('최대 60자보다'), await len.locator('.chk-why').textContent());
     assert((await len.locator('mark.chk-hit').textContent()).length > 0, '넘친 곳 표시');
+    assert((await len.locator('.chk-len .ev-num').textContent()).replace(/\s/g, '') === `${LONG.length}/60자`, await len.locator('.chk-len').textContent());
     for (const l of ['교과 평어 · 국어 · 인물의 마음 짐작하기 · 상', '창의적 체험활동 · 자율·자치활동 · 1번', '평가지 채점 · 수학 3단원 수행평가 · 1번', '단원평가 평어 · 수학 · 1번']) assert(await row(l).count() === 1, l);
   }],
   ['종류·화면으로 거르기', async () => {
     await page.click(`${B} [data-chk-kind="dup"]`);
     assert(await page.locator(`${B} [data-chk-kind="dup"]`).getAttribute('aria-pressed') === 'true', 'pressed');
-    const labels = await page.$$eval(`${B} .chk-row .chk-src`, e => e.map(x => x.textContent.trim()));
-    assert(JSON.stringify(labels) === JSON.stringify(['행동특성 · 2번', '행동특성 · 3번']), JSON.stringify(labels));
+    assert(await page.locator(`${B} [data-chk-kind=""]`).getAttribute('aria-pressed') === 'false', '전체 안 눌림');
+    const groups = await page.$$eval(`${B} [data-chk-group]`, e => e.map(x => x.dataset.chkGroup));
+    assert(JSON.stringify(groups) === '["dup"]', JSON.stringify(groups));
+    assert(await page.locator(`${B} .chk-row`).count() === 1, '같은 문장 카드만');
     await page.click(`${B} [data-chk-kind=""]`);
     await page.selectOption(`${B} #chkSrc`, 'cc');
-    assert((await sum()).trim() === '점검한 글 2개 · 고칠 곳 1곳', await sum());
+    assert(await sum() === '점검한 글 2개 · 고칠 곳 1곳', await sum());
     assert(await page.locator(`${B} .chk-row`).count() === 1, '창체만');
     await page.selectOption(`${B} #chkSrc`, '');
   }],
-  ['[AI로 고치기]: 그 글과 까닭만(이름·학생 번호·출처 없음) → 나란히 → [그대로 두기]는 그대로', async () => {
+  ['[AI로 고치기]: 그 글과 까닭만(이름·학생 번호·출처 없음) → 지운 말·더한 말 + 나란히 → [그대로 두기]는 글 그대로, 세지 않음, 다시 보기', async () => {
     const r = row('창의적 체험활동 · 자율·자치활동 · 1번');
     await r.locator('[data-chk-ai]').click();
-    await r.locator('.chk-fix').waitFor();
+    await r.locator('.chk-diff').waitFor();
     const p = calls.at(-1);
     assert(p.includes('수업 시간에 산만함.') && p.includes('「산만함」: 성장 중심으로 바꿔 보세요') && p.includes('창의적 체험활동 특기사항'), p.slice(0, 400));
     assert(!/\d+\s*번/.test(p) && !p.includes('자율·자치활동 · 1번'), '번호·출처');
     const cols = await r.locator('.chk-fix .chk-col').allTextContents();
     assert(cols.length === 2 && cols[0].includes('지금 글') && cols[0].includes('수업 시간에 산만함.') && cols[1].includes('고친 안') && cols[1].includes('수업에 집중하는 시간이 점점 늘어남.'), JSON.stringify(cols));
     await r.locator('[data-chk-keep]').click();
-    assert(await r.locator('.chk-fix').count() === 0, '닫힘');
+    await page.waitForFunction(b => !document.querySelector(b + ' [data-chk-group="neg"]'), B);
+    assert(await sum() === '점검한 글 11개 · 고칠 곳 8곳', await sum());
     assert((await ls('ssam:cc')).areas.auto.items[1].parts.a1.t === '수업 시간에 산만함.', '그대로');
+    assert((await ls('ssam:check:keep')).length === 1, '그대로 둔 곳 저장');
+    await page.click(`${B} [data-chk-unkeep]`);
+    await row('창의적 체험활동 · 자율·자치활동 · 1번').waitFor();
+    assert(await sum() === '점검한 글 11개 · 고칠 곳 9곳', await sum());
+    assert((await ls('ssam:check:keep') || []).length === 0, '다시 보기');
   }],
-  ['[바꾸기](행특·근거 있는 글): 화면 상태와 저장소가 바뀌고 다시 점검, 다시 열어도 그대로, 행특 화면에 「고친 글」', async () => {
-    const r = row('행동특성 · 1번');
+  ['[고친 글로 바꾸기](행특·근거 있는 글): 화면 상태와 저장소가 바뀌고 다시 점검, 다시 열어도 그대로, 행특 화면에 「고친 글」', async () => {
+    const r = row('행동특성 · 1번', 'ban');
     await r.locator('[data-chk-ai]').click();
-    await r.locator('.chk-fix').waitFor();
+    await r.locator('.chk-diff').waitFor();
     const p = calls.at(-1);
     assert(!p.includes('김하늘') && p.includes('○○○은 영어 학원에 다니며') && !/\d+\s*번/.test(p) && !p.includes('행동특성 · 1번'), p.slice(0, 500));
+    assert(await row('행동특성 · 1번', 'name').locator('.chk-diff').count() === 1, '같은 글의 다른 카드도 고친 글');
     await r.locator('[data-chk-apply]').click();
-    await page.waitForFunction(b => document.querySelector(b + ' .chk-sum').textContent.includes('고칠 곳 7곳'), B);
+    await page.waitForFunction(b => document.querySelector(b + ' .chk-head h2').textContent.includes('고칠 곳 7곳'), B);
     assert(await row('행동특성 · 1번').count() === 0, '고칠 곳이 없어 빠짐');
     const hk = await ls('ssam:hk');
     assert(hk.students[0].results[0].t === '영어 공부를 꾸준히 하며 어휘를 넓혀 감.' && hk.students[0].results[0].ev, JSON.stringify(hk.students[0].results[0]));
     await page.reload(); await page.waitForTimeout(500);
     await goCheck();
     assert((await sum()).includes('고칠 곳 7곳'), await sum());
-    await enter(page, 'evaluate', 'hk');
+    await goTab('hk');
     await page.click('[data-hkstu="h1"]');
     await page.waitForSelector('#hkEditor .hk-text');
     assert((await page.textContent('#hkEditor .hk-text')).includes('영어 공부를 꾸준히 하며 어휘를 넓혀 감.'), await page.textContent('#hkEditor .hk-text'));
@@ -144,13 +169,13 @@ await run('eval-check', [
     await page.waitForTimeout(800); // 옛 화면의 미뤄 둔 저장이 덮어쓰지 않음
     assert((await ls('ssam:hk')).students[0].results[0].t === '영어 공부를 꾸준히 하며 어휘를 넓혀 감.', '덮어씀');
   }],
-  ['[바꾸기]: 교과 평어(연 평가계획)·창체·평가지 채점(열지 않은 기록)·단원평가 평어도 저장소에, 다시 열어도', async () => {
+  ['[고친 글로 바꾸기]: 교과 평어(연 평가계획)·창체·평가지 채점(열지 않은 기록)·단원평가 평어도 저장소에, 다시 열어도', async () => {
     await goCheck();
     for (const l of ['교과 평어 · 국어 · 인물의 마음 짐작하기 · 상', '창의적 체험활동 · 자율·자치활동 · 1번', '평가지 채점 · 수학 3단원 수행평가 · 1번', '단원평가 평어 · 수학 · 1번']) {
       const r = row(l);
       await r.locator('[data-chk-ai]').click();
       await r.locator('[data-chk-apply]').click();
-      await page.waitForFunction(([b, l]) => ![...document.querySelectorAll(b + ' .chk-row .chk-src')].some(e => e.textContent.trim() === l), [B, l]);
+      await page.waitForFunction(([b, l]) => ![...document.querySelectorAll(b + ' .chk-row .chk-src')].some(e => e.textContent.trim().startsWith(l)), [B, l]);
     }
     assert((await sum()).includes('고칠 곳 3곳'), await sum());
     const un = calls.at(-1);
@@ -162,9 +187,9 @@ await run('eval-check', [
     assert((await ls('ssam:gr:g1')).students[0].text === '수학 문제를 끝까지 풀며 계산을 정확하게 해냄.', '채점');
     assert((await ls('ssam:unit:pyeongeo:수학')).students[1].text === '곱셈을 정확하게 해냄.', '단원평가 평어');
     await goCheck();
-    assert((await sum()).trim() === '점검한 글 11개 · 고칠 곳 3곳', await sum());
+    assert(await sum() === '점검한 글 11개 · 고칠 곳 3곳', await sum());
   }],
-  ['[그 글로 가기]: 그 탭 · 그 학생(문장)', async () => {
+  ['[그 글로 가기]·쓴 학생 번호: 그 탭 · 그 학생(문장)', async () => {
     // 다시 고칠 곳이 있는 글(창체 1번·채점 2번·교과 평어 2번째 문장)
     await page.evaluate(() => {
       const cc = JSON.parse(localStorage.getItem('ssam:cc')); cc.areas.auto.items[1].parts.a1.t = '수업 시간에 산만함.'; localStorage.setItem('ssam:cc', JSON.stringify(cc));
@@ -175,38 +200,38 @@ await run('eval-check', [
     await goCheck();
     await row('평가지 채점 · 수학 3단원 수행평가 · 2번').locator('[data-chk-go]').click();
     await page.waitForFunction(() => document.activeElement && document.activeElement.matches('#grResults [data-grcopy="s2"]'));
-    assert(await tabNow() === '평가지 채점', await tabNow());
+    assert(await tabNow() === 'gr', await tabNow());
     await goCheck();
     await row('교과 평어 · 국어 · 인물의 마음 짐작하기 · 상').locator('[data-chk-go]').click();
     await page.waitForFunction(() => document.activeElement && document.activeElement.matches('#listBox [data-i="1"]'));
-    assert(await tabNow() === '교과 평어' && await page.getAttribute('#lvTabs [aria-selected="true"]', 'data-lv') === 'high', await tabNow());
+    assert(await tabNow() === 'pyeongeo' && await page.getAttribute('#lvTabs [aria-selected="true"]', 'data-lv') === 'high', await tabNow());
     await goCheck();
-    await row('행동특성 · 2번').locator('[data-chk-go]').click();
+    await page.click(`${B} [data-chk-group="dup"] [data-chk-who]:text-is("2")`);
     await page.waitForFunction(() => document.activeElement && document.activeElement.closest && !!document.activeElement.closest('#hkEditor'));
-    assert(await tabNow() === '행동특성', await tabNow());
+    assert(await tabNow() === 'hk', await tabNow());
     assert((await page.textContent('#hkEditor .hk-top .badge')).trim() === '2', '2번');
     await goCheck();
     await row('창의적 체험활동 · 자율·자치활동 · 1번').locator('[data-chk-go]').click();
     await page.waitForFunction(() => document.activeElement && document.activeElement.matches('[data-cccopy="1"]'));
-    assert(await tabNow() === '창의적 체험활동', await tabNow());
-    // 고친 글은 고칠 곳이 없어 목록에 없음 → 평가지 채점 2번은 고칠 곳 없음: 단원평가는 [기재 점검] 단추로 오고 가기
+    assert(await tabNow() === 'cc', await tabNow());
+    // 평가지 채점 화면의 [기재 점검] 단추로 오면 그 화면 글만
     await enter(page, 'evaluate', 'gr');
     await page.waitForSelector('[data-grhist="g1"]');
     await page.click('[data-grhist="g1"]');
     await page.waitForSelector('#grResults [data-eval-check="gr"]');
     await page.click('#grResults [data-eval-check="gr"]');
     await page.waitForFunction(b => { const s = document.querySelector(b + ' #chkSrc'); return s && s.value === 'gr' && !document.querySelector(b).hidden; }, B);
-    assert(await tabNow() === '기재 점검', await tabNow());
+    assert(await tabNow() === 'check', await tabNow());
     assert((await sum()).includes('점검한 글 2개'), await sum());
   }],
   ['각 화면의 [기재 점검] 단추 → 그 화면 글만 · 화면에 올 때마다 다시 점검', async () => {
-    await enter(page, 'evaluate', 'hk');
+    await goTab('hk');
     await page.click('[data-hkstu="h1"]');
     await page.click('#hkEditor [data-hkr="edit"][data-i="0"]');
     await page.fill('#hkEditor [data-edit="0"]', '방과후 수학 과외를 받으며 계산 실력을 키움.');
     await page.click('#hkEditor [data-hkr="edit"][data-i="0"]');
     await page.click('#hkList [data-eval-check="hk"]');
-    await page.waitForFunction(b => document.querySelector(b + ' #chkSrc').value === 'hk' && document.querySelector(b + ' .chk-sum').textContent.includes('점검한 글 4개'), B);
+    await page.waitForFunction(b => document.querySelector(b + ' #chkSrc').value === 'hk' && /행동특성 4편/.test(document.querySelector(b + ' .chk-sum').textContent), B);
     const r = row('행동특성 · 1번');
     await r.waitFor();
     assert(JSON.stringify(await r.locator('mark.chk-hit').allTextContents()) === JSON.stringify(['과외']), '고친 글을 다시 점검');
@@ -215,10 +240,10 @@ await run('eval-check', [
     await page.click('section[data-menu="evaluate"] .unit-box [data-rv="pyeongeo"]');
     await page.click('section[data-menu="evaluate"] .unit-box [data-eval-check="unit"]');
     await page.waitForFunction(b => document.querySelector(b + ' #chkSrc').value === 'unit', B);
-    assert((await sum()).trim() === '점검한 글 1개 · 고칠 곳 0곳', await sum());
+    assert(await sum() === '점검한 글 1개 · 고칠 곳 0곳', await sum());
     assert((await page.textContent(B)).includes('고칠 곳이 없어요'), '빈 목록 안내');
     for (const k of ['py', 'cc']) {
-      await enter(page, 'evaluate', k === 'py' ? 'pyeongeo' : 'cc');
+      await goTab(k === 'py' ? 'pyeongeo' : 'cc');
       if (k === 'cc') { await page.waitForSelector('#ccResults [data-eval-check="cc"]', { state: 'attached' }); await page.evaluate(() => document.querySelector('#ccResults [data-eval-check="cc"]').click()); }
       else await page.click('#pane [data-eval-check="py"]');
       await page.waitForFunction(([b, k]) => document.querySelector(b + ' #chkSrc').value === k && !document.querySelector(b).hidden, [B, k]);
@@ -230,7 +255,7 @@ await run('eval-check', [
     await goCheck();
     await row('단원평가 평어 · 수학 · 1번').locator('[data-chk-go]').click();
     await page.waitForFunction(() => document.activeElement && document.activeElement.matches('textarea[data-py="1"]'));
-    assert(await tabNow() === '단원평가', await tabNow());
+    assert(await tabNow() === 'unit', await tabNow());
   }],
   ['AI 키가 없으면 [AI로 고치기]는 짧은 안내', async () => {
     await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: '', keys: {}, remember: true })));
