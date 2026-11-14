@@ -230,11 +230,13 @@ function headHTML(all, tests) {
     <div class="m-head un-rintro">${introLine()}</div><div class="row un-rbar">${viewSeg()}${filtersHTML(all)}</div>`;
 }
 const EMPTY = '<div class="yp-card"><p class="muted" style="margin:0">마친 단원평가가 없어요. 평가 목록에서 채점을 마치면 여기에 모여요. 바로 보려면 [예시로 채우기].</p></div>';
+/* 마친 평가는 있는데 교과를 적은 평가가 없음(교과 평어는 교과마다 씀) */
+const NO_SUBJECT = '<div class="yp-card"><p class="muted" style="margin:0">교과를 적은 단원평가가 없어요. 평가를 열어 1단계 「평가 정보」에 교과를 적으면 교과 평어를 쓸 수 있어요.</p></div>';
 function html() {
   const all = doneTests(), list = filterTests(all, { subject: R.subject, term: R.term }), tests = loaded(list);
   if (R.rv === 'pyeongeo') {
     const body = all.length ? pyHTML(loaded(all)) : '';
-    return `<div class="un-results un-pyview"><div class="un-top"><button class="btn text" type="button" data-rv="table">‹ 결과</button></div><div class="m-head"><h2 tabindex="-1">교과 평어로 넘기기</h2><p class="ev-sub">채점을 마친 단원평가로 학생마다 수준과 평어를 써요.</p></div>${body || EMPTY}</div>`;
+    return `<div class="un-results un-pyview"><div class="un-top"><button class="btn text" type="button" data-rv="table">‹ 결과</button></div><div class="m-head"><h2 tabindex="-1">교과 평어로 넘기기</h2><p class="ev-sub">채점을 마친 단원평가로 학생마다 수준과 평어를 써요.</p></div>${body || (all.length ? NO_SUBJECT : EMPTY)}</div>`;
   }
   if (R.stuNo != null && !summaryTable(tests).rows.some(r => r.no === R.stuNo)) R.stuNo = null;
   const main = tests.length ? `<div class="un-rgrid">${tableHTML(tests)}<aside class="un-rside" aria-label="반 전체">${domainHTML(tests)}${gapHTML(tests, { subject: R.subject })}${pyCardHTML(tests)}</aside></div>` : EMPTY;

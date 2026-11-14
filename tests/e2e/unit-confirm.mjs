@@ -152,6 +152,19 @@ await run('unit-confirm', [
     assert(cell[0] >= 44 && cell[1] >= 44, '칸 ' + cell);
     await page.setViewportSize({ width: 1280, height: 860 });
   }],
+  ['교과를 적지 않은 평가만 마쳤으면 [평어 초안 미리 보기]에서 교과를 적으라고 알림(「마친 단원평가가 없어요」가 아님)', async () => {
+    await page.evaluate(async () => {
+      const M = await import('./menus/evaluate/unit/unit-model.js'), u = await import('./menus/evaluate/unit/unit.js');
+      const x = M.getTest('m2'); x.id = 'nosub'; x.done = true; x.meta = { ...x.meta, subject: '' }; M.saveTest(x);
+      u.openTest('nosub', 3);
+    });
+    await page.click(`${V} [data-go-record]`);
+    await page.waitForSelector(`${V} .un-pyview`);
+    const txt = await page.textContent(`${V} .un-pyview`);
+    assert(!txt.includes('마친 단원평가가 없어요') && txt.includes('교과를 적'), txt.replace(/\s+/g, ' ').slice(0, 200));
+    await page.click(`${V} [data-rv="table"]`);
+    await page.waitForSelector(`${V} .un-one`);
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();
