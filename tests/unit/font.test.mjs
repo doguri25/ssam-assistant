@@ -1,4 +1,4 @@
-// 글꼴(설정 › 화면 › 글꼴): 6가지·기본 프리텐다드, 테마·글꼴에 따라 부를 글꼴 주소, index.html 첫 스크립트가 같은 규칙
+// 글꼴(설정 › 화면 › 글꼴): 8가지(한 줄 4칸 × 2)·기본 프리텐다드, 테마·글꼴에 따라 부를 글꼴 주소, index.html 첫 스크립트가 같은 규칙
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -8,9 +8,9 @@ import { THEMES } from '../../web/core/theme.js';
 
 const G = fam => `https://fonts.googleapis.com/css2?family=${fam ? fam + '&family=' : ''}Roboto+Mono:wght@400;500&display=swap`;
 
-test('글꼴 6가지, 기본은 프리텐다드', () => {
-  assert.deepEqual(FONTS.map(f => f.id), ['pretendard', 'suit', 'nanum', 'gowun', 'malgun', 'theme']);
-  assert.deepEqual(FONTS.map(f => f.label), ['프리텐다드', 'SUIT', '나눔고딕', '고운돋움', '맑은 고딕', '테마 글꼴']);
+test('글꼴 8가지, 기본은 프리텐다드', () => {
+  assert.deepEqual(FONTS.map(f => f.id), ['pretendard', 'suit', 'noto', 'nanum', 'gowun', 'batang', 'malgun', 'theme']);
+  assert.deepEqual(FONTS.map(f => f.label), ['프리텐다드', 'SUIT', '본고딕', '나눔고딕', '고운돋움', '고운바탕', '맑은 고딕', '테마 글꼴']);
   assert.equal(DEFAULT_FONT, 'pretendard');
   assert.equal(knownFont('suit'), true);
   assert.equal(knownFont('comic'), false);
@@ -22,9 +22,12 @@ test('부를 글꼴: 프리텐다드·SUIT는 앱 안 파일, 구글에는 숫�
   assert.deepEqual(fontLinks('paper', 'pretendard'), ['fonts/pretendard/pretendard.css', G('Noto+Serif+KR:wght@600;700')]);
 });
 
-test('부를 글꼴: 나눔고딕·고운돋움은 구글, 맑은 고딕은 내려받지 않음, 테마 글꼴은 테마마다(지금과 같음)', () => {
+test('부를 글꼴: 본고딕·나눔고딕·고운돋움·고운바탕은 구글, 맑은 고딕은 내려받지 않음, 테마 글꼴은 테마마다(지금과 같음)', () => {
   assert.deepEqual(fontLinks('dark-nav', 'nanum'), [G('Nanum+Gothic:wght@400;700;800')]);
   assert.deepEqual(fontLinks('soft', 'gowun'), [G('Gowun+Dodum')]);
+  assert.deepEqual(fontLinks('rail', 'noto'), [G('Noto+Sans+KR:wght@400;500;700;800')]);
+  assert.deepEqual(fontLinks('paper', 'batang'), [G('Gowun+Batang:wght@400;700&family=Noto+Serif+KR:wght@600;700')], '종이 문서는 명조 제목 글꼴도 함께(구글 주소 하나)');
+  assert.deepEqual(fontLinks('paper', 'nanum'), [G('Nanum+Gothic:wght@400;700;800&family=Noto+Serif+KR:wght@600;700')]);
   assert.deepEqual(fontLinks('dark-nav', 'malgun'), [G('')]);
   assert.deepEqual(fontLinks('dark-nav', 'theme'), [G('Gothic+A1:wght@400;500;600;700;800')]);
   assert.deepEqual(fontLinks('paper', 'theme'), [G('Noto+Serif+KR:wght@600;700&family=Noto+Sans+KR:wght@400;500;700')]);

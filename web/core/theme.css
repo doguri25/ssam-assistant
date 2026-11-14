@@ -62,8 +62,10 @@ html[data-theme="rail"]{
    종이 문서 테마의 명조 제목은 어느 글꼴이든 그대로 */
 html[data-font="pretendard"]{--f-pick:'Pretendard Variable',Pretendard}
 html[data-font="suit"]{--f-pick:'SUIT Variable'}
+html[data-font="noto"]{--f-pick:'Noto Sans KR'}
 html[data-font="nanum"]{--f-pick:'Nanum Gothic'}
 html[data-font="gowun"]{--f-pick:'Gowun Dodum'}
+html[data-font="batang"]{--f-pick:'Gowun Batang'}
 html[data-font="malgun"]{--f-pick:'Malgun Gothic'}
 html[data-font]:not([data-font="theme"]){
   --f-body:var(--f-pick),'Malgun Gothic','Apple SD Gothic Neo',sans-serif; --f-display:var(--f-pick),'Malgun Gothic','Apple SD Gothic Neo',sans-serif;

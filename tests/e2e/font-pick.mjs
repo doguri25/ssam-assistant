@@ -1,4 +1,4 @@
-// 글꼴 고르기(설정 › 화면 › 글꼴): 처음 켜면 프리텐다드(앱 안 파일이 실제로 불림), 6가지 칸·이름은 그 글꼴로,
+// 글꼴 고르기(설정 › 화면 › 글꼴): 처음 켜면 프리텐다드(앱 안 파일이 실제로 불림), 8가지 칸(넓은 창에서 한 줄 4칸 × 2, 빈칸 없음)·이름은 그 글꼴로,
 // 고르면 바로 바뀌고 다시 켜도 기억, 「테마 글꼴」은 테마마다(다크 내비 Gothic A1), 종이 문서의 명조 제목은 그대로
 import { open, run, assert } from './helpers.mjs';
 
@@ -20,12 +20,14 @@ await run('font-pick', [
     assert(ok, '프리텐다드 파일이 불리지 않음');
     assert(!asked.some(u => u.includes('Gothic+A1')), asked.join(' | '));
   }],
-  ['설정 › 화면 › 글꼴: 6칸·기본 표시, 이름은 그 글꼴로 보임', async () => {
+  ['설정 › 화면 › 글꼴: 8칸(1280에서 4칸 × 2줄)·기본 표시, 이름은 그 글꼴로 보임', async () => {
     await page.click('nav.app-side [data-menu-go="settings"]');
     await page.click('#menuTabs [data-tab="screen"]');
     await page.waitForSelector(`${S} .font-grid`);
     const names = await page.$$eval(`${S} [data-font-pick] .fn`, e => e.map(x => x.textContent));
-    assert(names.join(',') === '프리텐다드,SUIT,나눔고딕,고운돋움,맑은 고딕,테마 글꼴', names.join(','));
+    assert(names.join(',') === '프리텐다드,SUIT,본고딕,나눔고딕,고운돋움,고운바탕,맑은 고딕,테마 글꼴', names.join(','));
+    const rows = await page.$$eval(`${S} [data-font-pick]`, e => [...new Set(e.map(x => Math.round(x.getBoundingClientRect().top)))].length);
+    assert(rows === 2, '줄 수 ' + rows);
     assert(await page.isChecked(`${S} [data-font-pick="pretendard"] input`), '기본이 골라져 있지 않음');
     assert((await fam(`${S} [data-font-pick="nanum"] .fn`)).includes('Nanum Gothic'), await fam(`${S} [data-font-pick="nanum"] .fn`));
   }],

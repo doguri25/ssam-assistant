@@ -200,6 +200,9 @@ await run('background-jobs', [
   }],
   ['교과 평어: 만드는 동안 다른 메뉴에서도 머리 줄 「평어 n / m」이 보이고, 돌아오면 문장', async () => {
     await goTo('evaluate', 'pyeongeo');
+    // 평가지 채점 글이 있으면 학생별 교과 평어로 열림(평가계획이 없을 때) → 문장 모음으로 바꿔 평가계획을 넣음
+    await page.waitForFunction(() => [...document.querySelectorAll('#srcPaste, [data-pyv="pool"]')].some(e => e.checkVisibility()));
+    if (await page.isVisible('[data-pyv="pool"]')) await page.click('[data-pyv="pool"]');
     await page.click('#srcPaste');
     await page.fill('#pasteBox', await page.getAttribute('#pasteBox', 'placeholder'));
     await page.click('#pasteGo');

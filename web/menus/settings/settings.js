@@ -38,7 +38,7 @@ function fontCard() {
       <span class="tn"><input type="radio" name="font" value="${f.id}" ${f.id === cur ? 'checked' : ''}><span class="fn"${f.family ? ` style="font-family:${esc(f.family)},'Malgun Gothic',sans-serif"` : ''}>${esc(f.label)}</span>${f.id === 'pretendard' ? '<span class="muted">· 기본</span>' : ''}</span>
       <span class="fs"${f.family ? ` style="font-family:${esc(f.family)},'Malgun Gothic',sans-serif"` : ''}>단원평가 결과를 한눈에 봐요 123</span>
       <span class="muted">${esc(f.desc)}</span></label>`).join('')}</div>
-    <p class="muted" style="margin:0">프리텐다드·SUIT는 앱에 들어 있어 인터넷이 없어도 보여요. 나눔고딕·고운돋움은 인터넷에서 받아요(안 되면 맑은 고딕으로 보여요). 종이 문서 테마의 명조 제목은 그대로예요.</p>`);
+    <p class="muted" style="margin:0">프리텐다드·SUIT는 앱에 들어 있어 인터넷이 없어도 보여요. 본고딕·나눔고딕·고운돋움·고운바탕은 인터넷에서 받아요(안 되면 맑은 고딕으로 보여요). 종이 문서 테마의 명조 제목은 그대로예요.</p>`);
 }
 // 테마 미리보기 색 (core/theme.css와 같은 값): 틀, 바탕, 카드, 포인트
 const PREVIEW = {
