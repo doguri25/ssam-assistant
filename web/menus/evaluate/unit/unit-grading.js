@@ -717,7 +717,7 @@ function nextReview() {
 }
 function askFinish() {
   const t = cur(), n = pending(t);
-  SS().openSheet(`<h3>채점 마치기</h3><p class="muted" style="margin:0">${n ? `확인하지 않은 칸 ${n}개가 있어요. 그대로 마칠까요?` : '모두 확인했어요. 마치면 결과 모아 보기에 들어가요.'} 마친 뒤에도 고칠 수 있어요.</p>
+  SS().openSheet(`<h3>채점 마치기</h3><p class="muted" style="margin:0">${n ? `확인하지 않은 칸 ${n}개가 있어요. 그대로 마칠까요?` : '모두 확인했어요. 마치면 단원평가 결과에 모여요.'} 마친 뒤에도 고칠 수 있어요.</p>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="unFinishOk">마치기</button></div>`,
   sh => sh.querySelector('#unFinishOk').addEventListener('click', () => {
     const t2 = getTest(t.id); if (!t2) return;

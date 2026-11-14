@@ -261,7 +261,12 @@ document.addEventListener('click', e => {
   const box = getBox();
   if (!box || !box.contains(e.target) || !inView()) return;
   const v = e.target.closest('[data-rv]');
-  if (v) { R.rv = v.dataset.rv; if (v.dataset.pySub) R.pySubject = v.dataset.pySub; render(); if (R.rv === 'table') focusTop(); return; }
+  if (v) {
+    R.rv = v.dataset.rv; if (v.dataset.pySub) R.pySubject = v.dataset.pySub;
+    render();
+    if (R.rv === 'table') focusTop(); else { const h = getBox().querySelector('.un-pyview h2'); if (h) h.focus(); }
+    return;
+  }
   const st = e.target.closest('[data-stu]');
   if (st) { const no = Number(st.dataset.stu); R.stuNo = R.stuNo === no ? null : no; render(); const f = getBox().querySelector(`[data-stu="${no}"]`); if (f) f.focus(); return; }
   const b = e.target.closest('[data-un]'), a = b && b.dataset.un;
