@@ -57,3 +57,15 @@ html[data-theme="rail"]{
   html[data-theme="rail"] .side-btn{flex-direction:column;justify-content:center;gap:5px;min-height:64px;padding:6px 2px;font-size:12.5px;text-align:center}
   html[data-theme="rail"] .side-ai{display:none}
 }
+
+/* 글꼴(설정 › 화면 › 글꼴, core/font.js): <html data-font>가 테마 글꼴을 덮음. 「테마 글꼴」(theme)은 규칙 없음 → 테마 값 그대로.
+   종이 문서 테마의 명조 제목은 어느 글꼴이든 그대로 */
+html[data-font="pretendard"]{--f-pick:'Pretendard Variable',Pretendard}
+html[data-font="suit"]{--f-pick:'SUIT Variable'}
+html[data-font="nanum"]{--f-pick:'Nanum Gothic'}
+html[data-font="gowun"]{--f-pick:'Gowun Dodum'}
+html[data-font="malgun"]{--f-pick:'Malgun Gothic'}
+html[data-font]:not([data-font="theme"]){
+  --f-body:var(--f-pick),'Malgun Gothic','Apple SD Gothic Neo',sans-serif; --f-display:var(--f-pick),'Malgun Gothic','Apple SD Gothic Neo',sans-serif;
+}
+html[data-theme="paper"][data-font]:not([data-font="theme"]){--f-display:'Noto Serif KR','Malgun Gothic',serif}

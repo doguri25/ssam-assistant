@@ -1,0 +1,8 @@
+/* SUIT Variable — Copyright (c) 2022, SUNN (http://sun.fo/suit), SIL Open Font License 1.1 (LICENSE.txt) */
+@font-face {
+	font-family: 'SUIT Variable';
+	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
+	src: url('./SUIT-Variable.woff2') format('woff2-variations'), url('./SUIT-Variable.woff2') format('woff2');
+}

@@ -1,4 +1,4 @@
-// 글꼴: 바깥 글꼴 서버가 멈춰도 앱이 바로 뜨고, 고른 테마의 글꼴만 부름 (테마를 바꾸면 그 글꼴을 더 부름)
+// 글꼴: 바깥 글꼴 서버가 멈춰도 앱이 바로 뜨고, 고른 테마·글꼴에 필요한 것만 부름 (기본 프리텐다드는 앱 안 파일, 종이 문서로 바꾸면 명조 제목 글꼴을 더 부름)
 import { open, run, assert } from './helpers.mjs';
 
 const t = await open();
@@ -16,8 +16,8 @@ await run('fonts', [
     await page.click('nav.app-side [data-menu-go="plan"]', { timeout: 3000 });
     assert(await page.textContent('#menuTitle') === '계획', await page.textContent('#menuTitle'));
   }],
-  ['기본 테마(다크 내비)는 Gothic A1만 부름', async () => {
-    assert(asked.length >= 1 && asked.every(u => u.includes('Gothic+A1') && !u.includes('IBM+Plex') && !u.includes('Noto+Serif')), asked.join(' | '));
+  ['기본(다크 내비·프리텐다드)은 구글에서 숫자 글꼴만 부름(테마 글꼴 Gothic A1·IBM Plex·명조 없음)', async () => {
+    assert(asked.length >= 1 && asked.every(u => u.includes('Roboto+Mono') && !u.includes('Gothic+A1') && !u.includes('IBM+Plex') && !u.includes('Noto+Serif')), asked.join(' | '));
   }],
   ['종이 문서 테마로 바꾸면 그 글꼴(Noto Serif KR)을 부름', async () => {
     await page.click('nav.app-side [data-menu-go="settings"]'); await page.click('#menuTabs [data-tab="screen"]');

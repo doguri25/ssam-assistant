@@ -18,6 +18,13 @@
 .theme-card:has(input:checked){border:2px solid var(--accent);padding:11px}
 .theme-card .tn{display:flex;align-items:center;gap:8px;font-weight:700}
 .theme-card .tn input{width:18px;height:18px;margin:0;accent-color:var(--accent)}
+.font-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.font-card{min-width:0;padding:12px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface);display:flex;flex-direction:column;gap:6px;cursor:pointer}
+.font-card:has(input:checked){border:2px solid var(--accent);padding:11px}
+.font-card .tn{display:flex;align-items:center;gap:8px}
+.font-card .tn input{width:18px;height:18px;margin:0;accent-color:var(--accent)}
+.font-card .fn{font-size:17px;font-weight:700}
+.font-card .fs{font-size:14.5px;color:var(--ink2)}
 .tp{height:88px;border-radius:8px;overflow:hidden;border:1px solid var(--line);display:grid;grid-template-columns:26% 1fr;grid-template-rows:24% 1fr}
 .tp.narrow{grid-template-columns:12% 1fr}
 .tp i{display:block}
