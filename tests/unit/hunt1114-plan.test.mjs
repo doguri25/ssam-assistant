@@ -48,6 +48,15 @@ test('[year-outline-hidden] 지침 문장 [넣기]: 목차에 없는 칸이면 �
   assert.ok(overlap('세부 글', n) !== null);
 });
 
+test('[year-outline-goal] 작년 목차의 「추진 목표」는 목적 칸(「세부 추진 계획」이 덧붙임 칸으로 밀려 지침 문장이 목표 칸에 들어가지 않게)', () => {
+  const o = yearOutline('Ⅰ. 추진 목표\nⅡ. 추진 방침\nⅢ. 세부 추진 계획\nⅣ. 추진 일정\nⅤ. 기대 효과');
+  assert.deepEqual(o.items.map(x => [x.key, x.title]), [['purpose', '추진 목표'], ['policy', '추진 방침'], ['details', '세부 추진 계획'], ['schedule', '추진 일정'], ['evaluation', '기대 효과']]);
+  const d = normDraft({ purpose: '목표 글', details: '세부 글', outline: o.items });
+  assert.ok(insertSentence(d, 'details', '아침 독서를 한다.').details.endsWith('아침 독서를 한다.'));
+  // 목적과 목표가 함께 있으면 목적이 목적 칸, 목표는 덧붙임 칸
+  assert.deepEqual(yearOutline('1. 목적\n2. 운영 목표\n3. 세부 운영 계획').items.map(x => x.key), ['purpose', 'x1', 'details']);
+});
+
 test('[plan-staff-ai] 학급운영계획 AI 글: 작년 계획서·지침·평가계획의 「이바다 선생님」「강사 박하늘」 같은 교직원 이름은 ○○○로', async () => {
   const M = await import('../../web/menus/plan/classplan-model.js');
   const A = await import('../../web/menus/plan/classplan-ai.js');

@@ -17,7 +17,7 @@ const SRC = ['lastPlan', 'lastResult', 'guide'];
    작년 계획서의 큰 제목(Ⅰ.·1.)을 차례대로: 목적·방침·세부 추진·일정·예산·평가에 맞는 제목은 그 칸, 맞지 않는 제목(추진 근거·현황 등)은 덧붙임 칸(x1, x2 …).
    큰 제목이 셋보다 적으면 앱의 기본 차례(SECTIONS). 일정·예산 칸은 표로 */
 const SECTION_KEYS = SECTIONS.map(x => x[0]);
-const ROLE = [['purpose', /목적|필요성|배경|취지/], ['policy', /방침|방향/], ['schedule', /일정|월별|시기/], ['budget', /예산|경비|재원|사업비|소요\s*액/],
+const ROLE = [['purpose', /목적|목표|필요성|배경|취지/], ['policy', /방침|방향/], ['schedule', /일정|월별|시기/], ['budget', /예산|경비|재원|사업비|소요\s*액/],
   ['evaluation', /평가|환류|기대\s*효과|성과/], ['details', /세부|추진|운영|실천|내용|활동|방법|계획/]];
 const NOT_ROLE = /근거|관련|현황|개요|실태|분석/;
 export const isExtra = k => /^x\d{1,2}$/.test(String(k || ''));
@@ -26,9 +26,10 @@ export function yearOutline(src) {
   if (top.length < 3) return { items: [], roman: false };
   const used = new Set();
   let n = 0;
+  // 제목마다 가장 맞는 칸 하나(앞 칸이 먼저). 그 칸을 이미 앞 제목이 썼으면 덧붙임 칸(「운영 목표」가 「운영」 때문에 세부 칸을 차지하지 않게)
   const items = top.map(x => {
-    const r = !NOT_ROLE.test(x.title) && ROLE.find(([k, re]) => !used.has(k) && re.test(x.title));
-    if (r) { used.add(r[0]); return { key: r[0], title: x.title }; }
+    const r = !NOT_ROLE.test(x.title) && ROLE.find(([, re]) => re.test(x.title));
+    if (r && !used.has(r[0])) { used.add(r[0]); return { key: r[0], title: x.title }; }
     return { key: 'x' + (++n), title: x.title };
   });
   return { items, roman: /^\s*[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]\.\s*\S/m.test(String(src || '')) };
