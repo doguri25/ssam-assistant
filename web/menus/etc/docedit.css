@@ -1,0 +1,42 @@
+/* 문서·소통 › 문서 다듬기 (docedit.js) — 카드(.pc-card)·빠른 요청(.seg)·칸(.yp-f) 모양을 같이 씀 */
+.de-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 16px; align-items: start; margin-bottom: 16px; }
+@media (max-width: 900px) { .de-grid { grid-template-columns: 1fr; } }
+.de-name { margin: 0; overflow-wrap: anywhere; }
+.de-plain { margin: 0; }
+.de-chips button { min-height: 36px; }
+.de-chips button:disabled { opacity: .55; }
+.de-swap { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--line, #e4e6eb); border-radius: 12px; background: var(--surface2, #f7f8fa); }
+.de-swap-row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.de-swap-row .yp-f { flex: 1 1 140px; min-width: 0; }
+.de-swap-row > .de-arrow { padding-bottom: 10px; }
+.de-swap-row .field { min-width: 0; width: 100%; }
+.de-ask textarea.field { min-height: 84px; }
+@media (max-width: 480px) { .de-swap-row > .de-arrow { display: none; } }
+.de-arrow { color: var(--ink3, #8a8f9c); }
+.de-note { margin: 0; padding: 8px 12px; border-radius: 10px; background: var(--accent-soft, #eef0ff); color: var(--accent-ink, #3730a3); overflow-wrap: anywhere; }
+.de-prev-h { display: flex; gap: 8px 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.de-prev-h h3 { margin: 0; }
+.de-prev-h .row { margin: 0; }
+.de-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.de-chg { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line, #e4e6eb); border-left: 4px solid var(--accent, #4f46e5); border-radius: 10px; }
+.de-chg.de-del { border-left-color: var(--err, #b42318); }
+.de-chg.de-add { border-left-color: var(--ok, #157f3b); }
+.de-tag { grid-column: 1 / -1; font-size: 12px; font-weight: 700; color: var(--ink2, #4b5160); }
+.de-pair { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 4px 10px; align-items: start; min-width: 0; }
+.de-pair p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; min-width: 0; }
+.de-before { color: var(--ink2, #4b5160); }
+.de-pair del { background: var(--err-soft, #fde2e1); color: var(--err, #8a1c13); text-decoration: line-through; border-radius: 3px; }
+.de-pair ins { background: var(--ok-soft, #dcfce7); color: var(--ok, #14532d); text-decoration: none; border-radius: 3px; }
+.de-none { color: var(--ink3, #8a8f9c); }
+.de-same summary { cursor: pointer; color: var(--ink3, #8a8f9c); padding: 4px 0; }
+.de-same-list { margin: 4px 0 0; padding-left: 1.6em; color: var(--ink2, #4b5160); display: flex; flex-direction: column; gap: 2px; }
+.de-same-list li { white-space: pre-wrap; overflow-wrap: anywhere; }
+.de-same-list li.de-cell { color: var(--ink3, #8a8f9c); }
+/* 휴대폰: 전·후를 위아래로, [되돌리기]는 아래 줄 */
+@media (max-width: 640px) {
+  .de-chg { grid-template-columns: minmax(0, 1fr); }
+  .de-pair { grid-template-columns: minmax(0, 1fr); }
+  .de-pair > .de-arrow { display: none; }
+  .de-after { padding-top: 4px; border-top: 1px dashed var(--line, #e4e6eb); }
+  .de-chg [data-de-revert] { justify-self: start; }
+}

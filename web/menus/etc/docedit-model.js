@@ -30,8 +30,9 @@ export function startItems(lines) {
 }
 
 /* ---------- 보낼 글 ---------- */
-/* → { sent: [{ id, text, box }], held(보내지 않은 줄 수), back(돌아온 글의 자리 표시 → 원래 이름·연락처) } */
-export function payloadOf(items) {
+/* 줄 목록 + 선생님이 적은 요청 → { sent: [{ id, text, box }], held(보내지 않은 줄 수), ask(가린 요청 — 명단·주민번호 같은 요청이면 null),
+   back(돌아온 글의 자리 표시 → 원래 이름·연락처) }. 요청도 같은 가리개로(줄과 같은 이름은 같은 번호 — 「〔이름1〕을 〔이름2〕로 바꿔 줘」가 맞게 돌아옴) */
+export function payloadOf(items, ask = '') {
   const r = makeRedactor(), sent = [];
   let held = 0;
   for (const x of items || []) {
@@ -41,7 +42,8 @@ export function payloadOf(items) {
     if (!y) { held++; continue; }
     sent.push({ id: x.id, text: y.text, box: x.box });
   }
-  return { sent, held, back: r.back };
+  const parts = String(ask || '').split(/\r?\n/).map(l => r.line(l));
+  return { sent, held, ask: parts.some(x => !x) ? null : parts.map(x => x.text).join('\n').trim(), back: r.back };
 }
 /* 앞에서부터 약 12,000자·250줄씩 */
 export function batchLines(sent, { chars = BATCH_CHARS, max = BATCH_LINES } = {}) {

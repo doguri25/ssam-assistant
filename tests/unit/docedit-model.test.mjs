@@ -43,6 +43,15 @@ test('[docedit-send] 보낼 글: 이름·연락처는 자리 표시로, 명단·
   assert.ok(p.sent.find(x => x.id === 7).box, '표 칸 표시');
 });
 
+test('[docedit-ask] 선생님이 적은 요청의 이름·연락처도 가림(줄과 같은 자리 표시 번호), 명단 같은 요청은 보내지 않음(null)', () => {
+  const p = payloadOf(startItems(LINES), '이바다 선생님 줄을 한가람 주무관께 맞게 고쳐 줘. 문의 010-2222-3333');
+  assert.ok(p.ask && !/이바다|한가람|010-2222-3333/.test(p.ask), p.ask);
+  assert.equal(p.ask, '〔이름1〕 선생님 줄을 〔이름2〕 주무관께 맞게 고쳐 줘. 문의 {{2}}');
+  assert.equal(p.back(p.ask), '이바다 선생님 줄을 한가람 주무관께 맞게 고쳐 줘. 문의 010-2222-3333');
+  assert.equal(payloadOf(startItems(LINES), '김하늘 080101-3123456 줄을 지워 줘').ask, null);
+  assert.equal(payloadOf(startItems(LINES)).ask, '');
+});
+
 test('[docedit-batch] 묶음: 약 12,000자·250줄을 넘으면 앞에서부터 나눔', () => {
   const many = Array.from({ length: 600 }, (_, i) => ({ id: i + 1, text: `${i + 1}번째 줄입니다.` }));
   const b = batchLines(many);
