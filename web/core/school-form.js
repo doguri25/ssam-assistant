@@ -1,7 +1,7 @@
 /* 학교 양식(.hwpx)으로 내려받기 — 계획서(연간·행사·학급운영계획)가 함께 씀.
    내려받기 단추 자리에 「양식 [쌤비서 기본 문서 ▾]」와 [양식 넣기]: 학교 계획서 양식을 고르면 [학교 양식으로 한글 내려받기]가
    그 양식(머리·결재란·글꼴 그대로)의 제목·본문 자리에 문서를 채워 내려받음. 양식은 문서·소통 › 가정통신문·결과 보고와 같은 저장소.
-   화면은 formSlotHTML(이름, 기본 단추 HTML)로 그리고 registerFormDoc(이름, () => ({ doc, name }))로 내려받을 문서를 알려 줌 */
+   화면은 formSlotHTML(이름, 기본 단추 HTML)로 그리고 registerFormDoc(이름, () => ({ doc, name, date? }))로 내려받을 문서를 알려 줌(date: 날짜 자리에 넣을 날 — 없으면 오늘) */
 import { forms, newFormId, MAX_FORM } from './form-store.js';
 import { readForm, findRoles, fillForm, rolesValid } from './hwpx-form.js';
 import { docToLetter } from './body-table.js';
@@ -57,14 +57,14 @@ async function addForm(key, file) {
   finally { C.adding = Math.max(0, C.adding - 1); if (C.list) paint(); else load(); }
 }
 
-/* 고른 양식에 문서를 채워 내려받기 → 알림 글 */
-export async function exportToForm(id, doc, name) {
+/* 고른 양식에 문서를 채워 내려받기 → 알림 글. date('YYYY-MM-DD'): 날짜 자리에 넣을 날(회의록은 회의 날), 없으면 오늘 */
+export async function exportToForm(id, doc, name, date = '') {
   const rec = await (await forms()).get(id);
   if (!rec || rec.kind !== 'hwpx') { C.list = null; load(); return '양식을 찾지 못했어요. 기본 문서로 내려받아 주세요.'; }
   if (!rolesValid(rec.roles, { date: false })) return '이 양식의 제목·본문 자리를 문서·소통 › 가정통신문 › [양식 맞추기]에서 정해 주세요.';
   const parsed = await readForm(rec.bytes);
   const t = new Date(), iso = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
-  const { bytes, warn } = await fillForm(parsed, rec.roles, { ...docToLetter(doc), date: iso, reply: null });
+  const { bytes, warn } = await fillForm(parsed, rec.roles, { ...docToLetter(doc), date: /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? date : iso, reply: null });
   const where = await saveFile(`${String(name || doc.title || '계획서').replace(/[\\/:*?"<>|]/g, '_')}.hwpx`, bytes, 'application/hwp+zip');
   return (globalThis.window && window.__TAURI__ ? `다운로드 폴더에 저장했어요: ${String(where).split(/[\\/]/).pop()}` : `「${rec.name}」 양식으로 한글 파일을 내려받았어요`)
     + (warn.includes('no-border') ? ' · 이 양식에는 표 테두리를 더할 수 없어 표는 글로 넣었어요' : '');
@@ -94,7 +94,7 @@ if (typeof document !== 'undefined' && !globalThis.__ssamSchoolForm) {
     const x = fn && fn();
     if (!x || !x.doc || !id) { toast('내려받을 문서가 없어요.', 4000); return; }
     b.disabled = true;
-    try { toast(await exportToForm(id, x.doc, x.name), 7000); }
+    try { toast(await exportToForm(id, x.doc, x.name, x.date), 7000); }
     catch (err) { toast(`한글 파일을 만들지 못했어요: ${String((err && err.message) || err || '').slice(0, 80)}`, 7000); }
     finally { b.disabled = false; }
   });

@@ -3,6 +3,7 @@
 import { isDate, weekday } from '../../core/calendar.js';
 import { unitPos } from '../class/class-model.js';
 import { dueSoon } from '../etc/gongmun-ai.js';
+import { dueTodos } from '../etc/minutes-ai.js';
 import { sessionsOn, nextMark, setMark, fmtTime } from '../class/camp-model.js';
 import { totalScore, missingItems } from '../etc/multi-quant.js';
 import { missingCount } from '../etc/multi-qual.js';
@@ -55,15 +56,21 @@ export function lessonCard(view, time, { hasTimetable = true } = {}) {
   return { state: 'list', rows, left: rows.filter(r => r.status === 'left').length, off: '' };
 }
 
-/* 공문 기한 카드: 지남·오늘·D-n(7일 안, 다 한 것 빼고) 3개까지. tone: err(지남·오늘) · warn(D-1·D-2) · info */
+/* 기한 배지: 지남·오늘·D-n. tone: err(지남·오늘) · warn(D-1·D-2) · info */
+const dueBadge = n => ({
+  badge: n < 0 ? '지남' : n === 0 ? '오늘' : `D-${n}`,
+  note: n < 0 ? `${-n}일 지났어요` : n === 0 ? '오늘까지예요' : `${n}일 남았어요`,
+  tone: n <= 0 ? 'err' : n <= 2 ? 'warn' : 'info',
+  sym: n <= 0 ? '!' : ''
+});
+/* 공문 기한 카드: 지남·오늘·D-n(7일 안, 다 한 것 빼고) 3개까지 */
 export function gongmunCard(docs, today) {
-  return dueSoon(Array.isArray(docs) ? docs : [], today).map(d => ({
-    id: d.id, title: d.title || d.name || '공문', n: d.n,
-    badge: d.n < 0 ? '지남' : d.n === 0 ? '오늘' : `D-${d.n}`,
-    note: d.n < 0 ? `${-d.n}일 지났어요` : d.n === 0 ? '오늘까지예요' : `${d.n}일 남았어요`,
-    tone: d.n <= 0 ? 'err' : d.n <= 2 ? 'warn' : 'info',
-    sym: d.n <= 0 ? '!' : ''
-  }));
+  return dueSoon(Array.isArray(docs) ? docs : [], today).map(d => ({ id: d.id, title: d.title || d.name || '공문', n: d.n, ...dueBadge(d.n) }));
+}
+/* 같은 카드의 「회의 할 일」(스펙 2026-11-15 2장): 회의록에서 끝내지 않은 할 일 가운데 기한이 7일 안(지남 포함) 3개까지, 공문 기한과 같은 배지.
+   id: 그 회의록(누르면 그 회의록), meeting: 회의 이름 */
+export function minutesCard(meetings, today) {
+  return dueTodos(meetings, today, { max: 3 }).map(t => ({ id: t.id, i: t.i, title: t.task, meeting: t.title, n: t.n, ...dueBadge(t.n) }));
 }
 
 /* ---------- 교과캠프 출석 ---------- */
@@ -118,7 +125,7 @@ export function multiLine(m) {
 const RECENT_DAYS = 14; // 이보다 오래된 품의 초안은 이어서 하기에 넣지 않음
 /* brief: briefing.js 줄(공문은 카드에 있어 뺌), recent: 품의 최근 작성(library.js listRecent), multi: multiLine 결과. 5줄까지 — 품의·다면평가 자리를 남김 */
 export function continueRows({ brief = [], recent = [], multi = null, now = Date.now() } = {}) {
-  const lines = (Array.isArray(brief) ? brief : []).filter(l => isObj(l) && l.kind !== 'gongmun');
+  const lines = (Array.isArray(brief) ? brief : []).filter(l => isObj(l) && l.kind !== 'gongmun' && l.kind !== 'minutes'); // 공문 기한·회의 할 일은 카드에
   const d = (Array.isArray(recent) ? recent : []).filter(r => isObj(r) && isObj(r.draft) && now - (Number(r.at) || 0) <= RECENT_DAYS * 864e5)
     .sort((a, b) => b.at - a.at)[0];
   const extras = [
@@ -128,13 +135,13 @@ export function continueRows({ brief = [], recent = [], multi = null, now = Date
   return [...lines.slice(0, Math.max(0, 5 - extras.length)), ...extras].slice(0, 5);
 }
 
-/* 「오늘 챙길 일 n가지」: 공문 기한 줄 + 오늘 남은 수업 + 캠프 출석(덜 했으면 한 가지) */
-export const todoCount = ({ gongmun = [], lessons = null, camp = null } = {}) =>
-  (Array.isArray(gongmun) ? gongmun.length : 0) + ((lessons && lessons.left) || 0) + (camp && camp.left ? 1 : 0);
+/* 「오늘 챙길 일 n가지」: 공문 기한 줄 + 회의 할 일 줄 + 오늘 남은 수업 + 캠프 출석(덜 했으면 한 가지) */
+export const todoCount = ({ gongmun = [], minutes = [], lessons = null, camp = null } = {}) =>
+  (Array.isArray(gongmun) ? gongmun.length : 0) + (Array.isArray(minutes) ? minutes.length : 0) + ((lessons && lessons.left) || 0) + (camp && camp.left ? 1 : 0);
 export const headline = n => (n > 0 ? `오늘 챙길 일 ${n}가지` : EMPTY);
 
-/* 처음 쓰는 선생님: 공문·시간표·캠프·이어서 할 일이 하나도 없음 → 시작 안내 3단계 */
-export const isBlank = ({ docs = [], hasTimetable = false, camps = [], rows = [] } = {}) => !docs.length && !hasTimetable && !camps.length && !rows.length;
+/* 처음 쓰는 선생님: 공문·회의록·시간표·캠프·이어서 할 일이 하나도 없음 → 시작 안내 3단계 */
+export const isBlank = ({ docs = [], minutes = [], hasTimetable = false, camps = [], rows = [] } = {}) => !docs.length && !(Array.isArray(minutes) && minutes.length) && !hasTimetable && !camps.length && !rows.length;
 export const starter = ({ aiReady = false, roster = false } = {}) => [
   { id: 'ai', text: 'AI 정하기', done: !!aiReady },
   { id: 'roster', text: '학급 명단 넣기', done: !!roster },

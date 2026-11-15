@@ -39,6 +39,7 @@
 .hm-line{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:6px 8px;border:0;border-radius:8px;background:transparent;color:var(--ink);font:inherit;font-size:14px;text-align:left}
 .hm-line:hover{background:var(--surface2)}
 .hm-line-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hm-line-k{color:var(--ink2);font-size:12px;margin-right:6px}
 .hm-badge{display:inline-flex;align-items:center;justify-content:center;gap:2px;flex:none;min-width:48px;padding:3px 8px;border-radius:999px;border:1px solid transparent;font-size:12px;font-weight:800;font-variant-numeric:tabular-nums}
 .hm-badge.t-err{background:var(--err-soft);color:var(--err);border-color:var(--err)}
 .hm-badge.t-warn{background:var(--warn-soft);color:var(--warn)}

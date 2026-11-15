@@ -10,6 +10,7 @@ import { briefing } from '../../core/briefing.js';
 import { gather, goRoute, today } from '../../core/brief-data.js';
 import { ensureYears, isDemoYear } from '../../core/years.js';
 import { listDocs } from '../etc/gongmun-model.js';
+import { listMinutes } from '../etc/minutes-model.js';
 import { makeCtx, dayView, hasTimetable } from '../class/class-model.js';
 import { listCamps, getCamp, saveCamp, currentCampId, setCurrentCamp, markRest, fmtDate } from '../class/camp-model.js';
 import { listRecent } from '../purchase/library.js';
@@ -45,15 +46,15 @@ function data() {
   const pick = todays.find(x => x.camp.id === campPick) || todays[0] || null;
   const camp = pick ? H.campCard(pick.camp, t) : null;
   const rows = H.continueRows({ brief: brief || [], recent: listRecent(), multi: H.multiLine(getMulti()) });
-  const gm = H.gongmunCard(docs, t);
-  return { t, time, gm, lessons, camp, todays, rows, blank: H.isBlank({ docs, hasTimetable: tt, camps, rows }) };
+  const gm = H.gongmunCard(docs, t), meetings = listMinutes(), mn = H.minutesCard(meetings, t);
+  return { t, time, gm, mn, lessons, camp, todays, rows, blank: H.isBlank({ docs, minutes: meetings, hasTimetable: tt, camps, rows }) };
 }
 /* 1분마다: 날짜·지금 교시가 바뀌었으면 다시 그림 */
 const sigOf = d => `${d.t}|${d.lessons.rows.map(r => r.now).join(',')}`;
 
 /* ---------- 그리기 ---------- */
 function headHTML(d) {
-  const a = aiState(), n = H.todoCount({ gongmun: d.gm, lessons: d.lessons, camp: d.camp }), y = year(), demo = isDemoYear(y);
+  const a = aiState(), n = H.todoCount({ gongmun: d.gm, minutes: d.mn, lessons: d.lessons, camp: d.camp }), y = year(), demo = isDemoYear(y);
   // [3분 둘러보기](core/tour.js가 누르기를 받음): 체험 중이면 안내를 처음부터
   const tour = demo ? '<button type="button" class="btn tonal hm-tour" data-tour="steps">안내 다시 보기</button>'
     : '<button type="button" class="btn tonal hm-tour" data-tour="start" aria-haspopup="dialog"><span aria-hidden="true">▶</span>3분 둘러보기</button>';
@@ -70,11 +71,16 @@ const dropHTML = () => `<div class="hm-drop" id="hmDrop" data-hm-drop>
     <button class="btn primary" type="button" data-hm="pick">파일 고르기</button>
   </div>`;
 
+/* 공문 기한 + 회의 할 일(회의록, 같은 모양 — 누르면 그 회의록): 가까운 차례 */
+const badgeHTML = x => `<span class="hm-badge t-${x.tone}" title="${esc(x.note)}">${x.sym ? `<span aria-hidden="true">${x.sym}</span>` : ''}${esc(x.badge)}<span class="sr-only"> (${esc(x.note)})</span></span>`;
 function gmHTML(d) {
-  const rows = d.gm.map(x => `<li><button type="button" class="hm-line" data-hm-go="gongmun"><span class="hm-badge t-${x.tone}" title="${esc(x.note)}">${x.sym ? `<span aria-hidden="true">${x.sym}</span>` : ''}${esc(x.badge)}<span class="sr-only"> (${esc(x.note)})</span></span><span class="hm-line-t">${esc(x.title)}</span></button></li>`).join('');
-  return `<section class="hm-card hm-gm" aria-labelledby="hmGmH"><div class="hm-card-h"><h3 id="hmGmH">공문 기한</h3></div>
+  const lines = [...d.gm.map(x => ({ n: x.n, html: `<button type="button" class="hm-line" data-hm-go="gongmun">${badgeHTML(x)}<span class="hm-line-t">${esc(x.title)}</span></button>` })),
+    ...d.mn.map(x => ({ n: x.n, html: `<button type="button" class="hm-line" data-hm-mn="${esc(x.id)}" title="${esc(x.meeting)}">${badgeHTML(x)}<span class="hm-line-t"><span class="hm-line-k">회의 할 일</span>${esc(x.title)}</span></button>` }))]
+    .sort((a, b) => a.n - b.n);
+  const rows = lines.map(l => `<li>${l.html}</li>`).join('');
+  return `<section class="hm-card hm-gm" aria-labelledby="hmGmH"><div class="hm-card-h"><h3 id="hmGmH">${d.mn.length ? '공문·회의 기한' : '공문 기한'}</h3></div>
     ${rows ? `<ul class="hm-list">${rows}</ul>` : '<p class="muted hm-none">가까운 기한이 없어요</p>'}
-    <div class="hm-card-f"><button type="button" class="btn text" data-hm-go="gongmun">공문 처리</button></div></section>`;
+    <div class="hm-card-f"><button type="button" class="btn text" data-hm-go="gongmun">공문 처리</button>${d.mn.length ? '<button type="button" class="btn text" data-hm-go="minutes">회의록</button>' : ''}</div></section>`;
 }
 function lessonHTML(d) {
   const c = d.lessons;
@@ -139,7 +145,7 @@ function draw() {
 }
 /* 다시 그린 뒤에도 누르던 단추에 초점이 남게 */
 function keyOf(el) {
-  for (const a of ['data-hm-mark', 'data-hm-camp', 'data-hm', 'data-hm-row', 'data-hm-go']) if (el.hasAttribute(a)) return `[${a}="${CSS.escape(el.getAttribute(a))}"]`;
+  for (const a of ['data-hm-mark', 'data-hm-camp', 'data-hm', 'data-hm-row', 'data-hm-mn', 'data-hm-go']) if (el.hasAttribute(a)) return `[${a}="${CSS.escape(el.getAttribute(a))}"]`;
   return '';
 }
 async function refresh() {
@@ -159,6 +165,7 @@ function onClick(e) {
   if (g) {
     const to = g.dataset.hmGo;
     if (to === 'gongmun') go('etc', 'gongmun');
+    else if (to === 'minutes') go('etc', 'minutes');
     else if (to === 'today') go('class', 'today');
     else if (to === 'progress') go('class', 'progress');
     else if (to === 'ai') go('settings', 'ai');
@@ -166,6 +173,8 @@ function onClick(e) {
     else if (to === 'camp') { const k = data().camp; if (k && k.id !== currentCampId()) setCurrentCamp(k.id); goRoute({ to: 'camp', section: 'att' }); } // 보던 캠프로
     return;
   }
+  const mn = t.closest('[data-hm-mn]');
+  if (mn) { goRoute({ to: 'minutes', id: mn.dataset.hmMn }); return; }
   const r = t.closest('[data-hm-row]');
   if (r) { const row = data().rows[+r.dataset.hmRow]; if (row) goRoute(row.route); return; }
   const m = t.closest('[data-hm-mark]');

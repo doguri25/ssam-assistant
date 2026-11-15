@@ -9,16 +9,16 @@ const pad2 = n => String(n).padStart(2, '0');
 export const today = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
 
 export async function gather(t = today()) {
-  const mods = await Promise.all(['../menus/etc/gongmun-model.js', '../menus/plan/event-model.js', '../menus/evaluate/unit/unit-model.js', '../menus/evaluate/activity/activity-model.js']
+  const mods = await Promise.all(['../menus/etc/gongmun-model.js', '../menus/plan/event-model.js', '../menus/evaluate/unit/unit-model.js', '../menus/evaluate/activity/activity-model.js', '../menus/etc/minutes-model.js']
     .map(p => import(p).catch(() => null)));
-  const [gm, evm, um, am] = mods;
+  const [gm, evm, um, am, mm] = mods;
   const units = um ? um.listTests().slice(0, 15).map(s => { const x = um.getTest(s.id); return x && { id: x.id, title: s.title, date: (x.meta && x.meta.date) || s.date, done: !!x.done, sample: !!(x.meta && x.meta.sample), students: x.students || [] }; }).filter(Boolean) : [];
   const activities = am ? am.listActivities().slice(0, 15).map(s => { const x = am.getActivity(s.id); return x && { id: x.id, title: s.title || (x.meta && x.meta.title), date: (x.meta && x.meta.date) || s.date, done: !!x.done, sample: !!(x.meta && x.meta.sample), students: x.students || [] }; }).filter(Boolean) : [];
   const ids = get('grs', []);
   const grs = (Array.isArray(ids) ? ids : []).slice(0, 3).map(id => { const b = get('gr:' + id, null); return b && typeof b === 'object' ? { id, title: b.title, students: Array.isArray(b.students) ? b.students : [] } : null; }).filter(Boolean);
   // 금요일: 다음 주 주간학습안내를 이미 쓰기 시작했는지(글이 있는 칸)
   const w = get('class:weekly:' + addDays(t, 3), null), filled = v => (typeof v === 'string' ? !!v.trim() : v && typeof v === 'object' ? Object.values(v).some(filled) : false);
-  return { today: t, docs: gm ? gm.listDocs() : [], events: listEvents(), plans: evm ? evm.listEventPlans() : [], units, activities, grs, weekly: { started: !!(w && (filled(w.notes) || filled(w.cells))) } };
+  return { today: t, docs: gm ? gm.listDocs() : [], meetings: mm ? mm.listMinutes() : [], events: listEvents(), plans: evm ? evm.listEventPlans() : [], units, activities, grs, weekly: { started: !!(w && (filled(w.notes) || filled(w.cells))) } };
 }
 
 async function optional(path, name) {
@@ -27,6 +27,7 @@ async function optional(path, name) {
 export async function goRoute(r) {
   if (!r) return;
   if (r.to === 'gongmun') go('etc', 'gongmun');
+  else if (r.to === 'minutes') { const fn = await optional('../menus/etc/minutes.js', 'openMinutes'); if (fn) fn(r.id); else go('etc', 'minutes'); }
   else if (r.to === 'event') {
     go('plan', 'event');
     const b = r.id && document.querySelector(`section[data-menu="plan"] [data-ev="${CSS.escape(r.id)}"]`);
