@@ -47,9 +47,11 @@ export function loadFontLinks(hrefs) {
 }
 export const ensureFonts = (themeId, fontId) => loadFontLinks(fontLinks(themeId, fontId));
 
+/* 저장된 글꼴, 저장소에 없거나 막혔으면 지금 화면의 글꼴(index.html 첫 스크립트·setFont가 정함 — 저장하지 못해도 이 창에서는 고른 글꼴) */
 export function getFont() {
   try { const v = JSON.parse(localStorage.getItem(KEY)); if (knownFont(v)) return v; } catch (e) {}
-  return DEFAULT_FONT;
+  const shown = typeof document !== 'undefined' ? document.documentElement.dataset.font : '';
+  return knownFont(shown) ? shown : DEFAULT_FONT;
 }
 export function setFont(id) {
   if (!knownFont(id)) id = DEFAULT_FONT;

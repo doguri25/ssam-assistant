@@ -11,9 +11,11 @@ const KEY = 'ssam:theme', DEFAULT = 'dark-nav';
 /* 테마를 바꾸면 그 테마·지금 글꼴에 맞는 글꼴만 더 부름(core/font.js) */
 const known = id => THEMES.some(t => t.id === id);
 
+/* 저장된 테마, 저장소에 없거나 막혔으면 지금 화면의 테마(저장하지 못해도 이 창에서는 고른 테마) */
 export function getTheme() {
   try { const v = JSON.parse(localStorage.getItem(KEY)); if (known(v)) return v; } catch (e) {}
-  return DEFAULT;
+  const shown = typeof document !== 'undefined' ? document.documentElement.dataset.theme : '';
+  return known(shown) ? shown : DEFAULT;
 }
 export function setTheme(id) {
   if (!known(id)) id = DEFAULT;
