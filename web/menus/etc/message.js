@@ -214,10 +214,10 @@ export function readAll() {
   readJob(x, tok, paste, files);
   return 'started';
 }
-let reading = null; // AI가 읽는 중인 쪽지(최근에서 그 쪽지를 다시 열면 이 쪽지를 엶 — 옛 사본을 열면 다 읽은 글이 화면에 오지 않고, 고치면 최근 쪽지가 옛 글로 덮임)
+let reading = null, readingTok = 0; // AI가 읽는 중인 쪽지와 그 읽기 번호(최근에서 그 쪽지를 다시 열면 이 쪽지를 「읽는 중」 그대로 엶 — 옛 사본을 열면 다 읽은 글이 화면에 오지 않고, 고치면 최근 쪽지가 옛 글로 덮임)
 async function readJob(x, tok, paste, files) {
   const here = () => tok === readTok && cur() === x; // 읽는 동안 다른 쪽지로 옮기지 않았나
-  reading = x;
+  reading = x; readingTok = tok;
   try {
     const texts = paste.trim() ? [paste] : [], images = [];
     for (const f of files) {
@@ -288,8 +288,8 @@ document.addEventListener('click', e => {
     const id = op.dataset.msgOpen || op.dataset.msgAgain, r = listMessages().find(y => y.id === id);
     if (!r) return;
     const again = !!op.dataset.msgAgain;
-    // AI가 읽는 중인 쪽지를 다시 열면 그 쪽지를 그대로(지금 쪽지면 읽기도 그대로 이어짐)
-    if (!again && reading && reading.id === r.id) { if (reading !== x) { switchDraft(reading); M.files = []; saveDraft(d); } render(); return; }
+    // AI가 읽는 중인 쪽지를 다시 열면 그 쪽지를 「읽는 중」 그대로(읽기가 이 화면에 이어짐 — 두 번 읽지 않게, 다 읽으면 이 화면에)
+    if (!again && reading && reading.id === r.id) { if (reading !== x) { d = reading; readTok = readingTok; M.busy = true; M.msg = '읽는 중…'; M.files = []; saveDraft(d); } render(); return; }
     M.files = [];
     switchDraft({ id: again ? newMessageId() : r.id, m: r.m, len: r.len, attach: r.attach.map(a => ({ ...a })), edited: false, body: '', title: '', again: again || r.again });
     if (!again && r.edited && r.body) { d.body = r.body; d.title = r.title; d.edited = true; } else compose(true);

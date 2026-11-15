@@ -68,6 +68,28 @@ await run('fix1114-etc', [
     const body = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:msg:list'))[0].body);
     assert(body.includes('시청각실 2') && body.includes('3학년 담임'), '최근 쪽지 본문: ' + body);
   }],
+  ['쪽지: 읽는 중인 쪽지를 최근에서 다시 열면 「읽는 중…」 그대로(두 번 읽지 않음), 다 읽으면 「쪽지를 썼어요」(최근에 넣었다고 하지 않음)', async () => {
+    await page.click(`${MS} [data-msg="new"]`);
+    await page.fill(`${MS} #msgPaste`, '2026 AI 활용 수업 연수 3차 안내');
+    await page.click(`${MS} [data-msg="read"]`);
+    await page.waitForFunction(s => (document.querySelector(`${s} [data-mf="title"]`) || {}).value.startsWith('AI 연수'), MS);
+    delay = 1500;
+    const before = m;
+    await page.click(`${MS} [data-msg="read"]`);
+    await page.waitForTimeout(150);
+    await page.click(`${MS} [data-msg="new"]`);
+    await page.click(`${MS} #msgRecent [data-msg-open]`);
+    await page.waitForTimeout(100);
+    assert(await page.isDisabled(`${MS} [data-msg="read"]`), '다시 연 쪽지의 [쪽지 쓰기]가 눌림(두 번 읽을 수 있음)');
+    await page.click(`${MS} [data-msg="read"]`, { force: true }).catch(() => {});
+    await page.waitForFunction(s => !document.querySelector(`${s} [data-msg="read"]`).disabled, MS, { timeout: 8000 }); // 다 읽음
+    delay = 0;
+    await page.waitForTimeout(300);
+    assert((await page.textContent('#toast')).includes('쪽지를 썼어요'), '알림: ' + await page.textContent('#toast'));
+    assert(m === before + 1, 'AI를 두 번 부름: ' + (m - before));
+    assert(!(await page.textContent('#toast')).includes('최근 쪽지에 넣었어요'), '알림: ' + await page.textContent('#toast'));
+    assert(!(await page.isDisabled(`${MS} [data-msg="read"]`)), '다 읽은 뒤에도 [쪽지 쓰기]가 막힘');
+  }],
   ['공문 처리: 할 일이 12개인 공문에 할 일을 더 치고 Enter → 사라지지 않고 「12개까지」 알림, 친 글은 칸에 그대로', async () => {
     await page.evaluate(() => {
       const tasks = Array.from({ length: 12 }, (_, i) => ({ text: `할 일 ${i + 1}`, due: '', done: false }));
