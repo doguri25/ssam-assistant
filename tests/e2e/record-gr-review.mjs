@@ -65,6 +65,8 @@ await run('record-gr-review', [
     assert((await cur()).startsWith('5번'), await cur());
     await page.keyboard.press('ArrowLeft');
     assert((await cur()).startsWith('3번'), await cur());
+    // 다시 그린 뒤 초점 되돌리기(setTimeout 0)가 끝난 다음에 초점을 뺌 — 바쁠 때 되돌리기가 뺀 뒤에 와서 「밖에서 움직임」으로 보이던 것
+    await page.waitForFunction(v => document.activeElement && document.activeElement.matches(`${v} .ev-rv-item[aria-current="true"]`), V);
     await page.evaluate(() => { document.activeElement.blur(); document.body.focus(); });
     await page.keyboard.press('ArrowRight');
     assert((await cur()).startsWith('3번'), '밖에서 움직임');
