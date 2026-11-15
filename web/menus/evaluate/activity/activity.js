@@ -84,7 +84,7 @@ function listHTML() {
     <span class="chip${s.done ? ' ok' : ''}">${s.done ? '확정' : s.n ? '채점 중' : '준비 중'}</span>
     <span class="grow"></span><button class="btn text" type="button" data-ac="del" data-id="${esc(s.id)}">지우기</button></li>`).join('');
   return `<div class="m-head"><h2>활동지</h2>${introHTML('activity', '활동지를 넣으면 문항마다 ○·△·×로 보고, 학생마다 잘한 점·더 해 볼 점을 써요.')}</div>
-    <div class="row"><button class="btn primary" type="button" data-ac="new">새 활동지</button><button class="btn" type="button" data-ac="sample">예시로 채우기</button>${views.records ? '<button class="btn" type="button" data-ac="records">학생별 모아 보기</button>' : ''}</div>
+    <div class="row"><button class="btn primary" type="button" data-ac="new">새 활동지</button>${views.make ? '<button class="btn" type="button" data-ac="make">활동지 만들기</button>' : ''}<button class="btn" type="button" data-ac="sample">예시로 채우기</button>${views.records ? '<button class="btn" type="button" data-ac="records">학생별 모아 보기</button>' : ''}</div>
     ${year ? `<p class="act-year" id="acYear">${esc(year)}</p>` : ''}
     ${list.length ? `<ul class="act-list">${cards}</ul>` : '<div class="yp-card"><p class="muted" style="margin:0">아직 활동지가 없어요. [새 활동지]로 활동지 파일을 넣어 주세요. 바로 보려면 [예시로 채우기].</p></div>'}`;
 }
@@ -305,6 +305,8 @@ document.addEventListener('click', e => {
   else if (act === 'back') { A.view = 'list'; A.draft = null; render(); }
   else if (act === 'sample') { const s = sampleActivity(); if (saveActivity(s)) { render(); toast('예시 활동지를 넣었어요'); } }
   else if (act === 'records' && views.records) { A.view = 'records'; render(); }
+  // 활동지 만들기(스펙 2026-11-15-docedit-minutes-quiz §3): activity-maker.js가 registerView('make')로 붙임
+  else if (act === 'make' && views.make) { A.view = 'make'; if (views.make.open) views.make.open(); render(); box.scrollIntoView({ block: 'start' }); }
   else if (act === 'del') {
     const id = b.dataset.id, s = listActivities().find(x => x.id === id);
     SS().openSheet(`<h3>「${esc((s && s.title) || '활동지')}」를 지울까요?</h3><p class="muted" style="margin:0">채점 결과와 학생별 기록도 함께 지워져요.</p>

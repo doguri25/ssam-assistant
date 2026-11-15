@@ -1,0 +1,50 @@
+/* 문항·활동지 만들기 (unit-maker.js·activity-maker.js·make-pick.js) — 휴대폰(390·360px)에서도 가로로 넘치지 않게 칸은 줄을 바꿈 */
+.un-mkpage,.act-page{min-width:0}
+.mk-card,.mk-done,.mk-item,.mk-made{min-width:0}
+.mk-pick{display:flex;flex-direction:column;gap:12px;min-width:0}
+.mk-scope{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,200px),1fr));gap:10px 12px;min-width:0}
+.mk-opts{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,110px),1fr));gap:10px 12px;min-width:0;max-width:560px}
+.mk-scope .mk-wide,.mk-scope .mk-lessons,.mk-scope .mk-hint{grid-column:1/-1}
+.mk-pick .field{width:100%;box-sizing:border-box;min-width:0}
+.mk-hint{margin:0}
+.mk-lessons,.mk-kinds{border:1px solid var(--line);border-radius:var(--r-s,10px);margin:0;padding:8px 12px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.mk-kinds{flex-direction:row;flex-wrap:wrap;gap:4px 18px}
+.mk-lessons legend,.mk-kinds legend{padding:0 4px}
+.mk-chk{display:flex;align-items:center;gap:8px;min-height:40px;cursor:pointer;min-width:0}
+.mk-chk input{width:20px;height:20px;flex:none;margin:0}
+.mk-lt{min-width:0;overflow-wrap:anywhere}
+.mk-all{font-weight:700;border-bottom:1px dashed var(--line);margin-bottom:2px}
+.mk-next{flex:none;font-size:12px}
+.mk-items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.mk-item{gap:10px}
+.mk-ihead{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;min-width:0}
+.mk-no{font:700 16px/1.2 var(--f-display)}
+.mk-type{width:auto;min-width:0;max-width:100%}
+.mk-pts{display:inline-flex;align-items:center;gap:4px}
+.mk-pts .field{width:72px;box-sizing:border-box}
+.mk-ihead .grow{flex:1 1 0;min-width:0}
+.mk-f{display:flex;flex-direction:column;gap:4px;min-width:0}
+.mk-f .field{width:100%;box-sizing:border-box;min-width:0}
+/* 문항 칸 글 상자는 두세 줄(평가 화면 기본 200px는 너무 큼) */
+.mk-item textarea.field,.mk-pick textarea.field{min-height:64px;font-size:14px}
+.mk-choices{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,200px),1fr));gap:6px 10px;min-width:0}
+.mk-ch{display:flex;align-items:center;gap:6px;min-width:0}
+.mk-cn{flex:none;width:1.4em;text-align:center;font-weight:700}
+.mk-ch .field{flex:1;min-width:0;width:auto}
+.mk-ans{max-width:200px}
+.mk-meta3,.mk-two{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,180px),1fr));gap:8px 12px;min-width:0}
+.mk-warn{margin:0;color:var(--err);font-size:13.5px;font-weight:500}
+.mk-warn:empty{display:none}
+.mk-busy{margin:0;display:flex;align-items:center;gap:8px}
+.mk-sum{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.mk-probs{margin:0;color:var(--err);font-size:13.5px}
+.mk-probs[hidden]{display:none}
+.mk-title{max-width:480px}
+.mk-title .field{width:100%;box-sizing:border-box}
+#mkBusy{display:inline-flex;align-items:center;gap:8px}
+.mk-out .exp-split{max-width:100%}
+.mk-out .exp-split>[data-exp-main]{min-width:0;white-space:normal}
+@media (max-width:600px){
+  .mk-ihead .grow{flex-basis:100%;height:0}
+  .mk-ans{max-width:none}
+}

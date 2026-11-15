@@ -28,7 +28,7 @@ const PDFJS = 'PDF를 읽는 도구를 불러오지 못했어요. 인터넷 연�
 const NAMED = name => `「${name}」 파일은 학생 이름이 적힌 글이라 넣지 않았어요. 학생 문제지는 스캔한 PDF·사진으로 넣어 주세요`;
 const SUBJECTS = ['국어', '수학', '사회', '과학', '영어', '도덕', '음악', '미술', '체육', '실과'];
 
-/* 화면 상태: view 'home'(처음: 결과 한 화면 또는 목록으로 정함) | 'list' | 'results' | 'test' | 'review'(채점 확인).
+/* 화면 상태: view 'home'(처음: 결과 한 화면 또는 목록으로 정함) | 'list' | 'results' | 'test' | 'review'(채점 확인) | 'make'(문항 만들기 — unit-maker.js).
    from: 평가를 열기 전 화면('list' | 'results', 밖에서 열었으면 null — 나오면 첫 화면). 저장 전의 새 평가는 draft에 둠(정답표가 생기면 저장) */
 export const U = { view: 'home', from: null, id: null, draft: null, step: 1, msg: { id: null, key: '', paper: '' } };
 const stepViews = {};
@@ -36,6 +36,9 @@ let resultsView = null, reviewView = null, box = null, curTab = null;
 export const registerStep = (n, v) => { stepViews[n] = v; };
 export const registerResults = v => { resultsView = v; };
 export const registerReview = v => { reviewView = v; };
+/* 문항 만들기(스펙 2026-11-15-docedit-minutes-quiz §3): { html(), open(), paperRow(t), bind?(box) } — unit-maker.js가 붙임. 목록의 [문항 만들기]로 엶 */
+let maker = null;
+export const registerMaker = m => { maker = m; };
 /* 첫 화면: 채점을 마친 평가가 있으면 결과 한 화면, 없으면 평가 목록(시작 안내) */
 export const home = () => (listTests().some(s => s.done) ? 'results' : 'list');
 const keepFrom = () => { if (U.view === 'list' || U.view === 'results') U.from = U.view; else if (U.view === 'home') U.from = null; };
@@ -125,7 +128,7 @@ function listHTML() {
     <span class="muted">${esc(s.date)} · 학생 ${s.n}명${s.avg != null ? ` · 반 평균 ${s.avg}점` : ''}</span>${accOf(s) ? `<span class="muted un-c-acc">${esc(accOf(s))}</span>` : ''}
     <span class="chip${s.done ? ' ok' : ''}">${s.done ? '마침' : '채점 중'}</span>
     <span class="grow"></span><button class="btn text" type="button" data-un="del" data-id="${esc(s.id)}">지우기</button></li>`).join('');
-  return `<div class="row"><button class="btn primary" type="button" id="unNew">새 단원평가</button><button class="btn" type="button" data-un="sample">예시로 채우기</button>${list.some(s => s.sample) ? '<button class="btn text" type="button" data-un="sampleDel">예시 지우기</button>' : ''}</div>
+  return `<div class="row"><button class="btn primary" type="button" id="unNew">새 단원평가</button>${maker ? '<button class="btn" type="button" data-un="make">문항 만들기</button>' : ''}<button class="btn" type="button" data-un="sample">예시로 채우기</button>${list.some(s => s.sample) ? '<button class="btn text" type="button" data-un="sampleDel">예시 지우기</button>' : ''}</div>
     ${year ? `<p class="un-year" id="unYear">${esc(year)}</p>` : ''}
     ${list.length ? `<ul class="un-list">${cards}</ul>` : '<div class="yp-card"><p class="muted" style="margin:0">아직 단원평가가 없어요. [새 단원평가]로 학생 문제지(스캔한 것)와 답안을 넣어 주세요. 바로 보려면 [예시로 채우기].</p></div>'}`;
 }
@@ -160,7 +163,7 @@ const moreOpen = new Map();
 const openMore = id => moreOpen.set(id, true);
 function keyHTML(t) {
   const m = U.msg.id === t.id ? U.msg : { key: '', paper: '' }, hasPaper = !!(t.paper && t.paper.text);
-  return `<div class="yp-card">
+  return `${maker && maker.paperRow ? maker.paperRow(t) : ''}<div class="yp-card">
       <h3>학생 문제지·답안</h3>
       <p class="muted cls-note">반 전체 스캔(PDF·사진)과 선생님 답안(정답·이원 분류표)을 넣어요.</p>
       ${papers ? papers.html(t) : ''}
@@ -208,16 +211,19 @@ function draw() {
   const t = U.view === 'test' || U.view === 'review' ? cur() : null;
   if ((U.view === 'test' || U.view === 'review') && !t) U.view = home();
   if (U.view === 'review' && !reviewView) U.view = 'test';
+  if (U.view === 'make' && !maker) U.view = home();
   let inner;
-  if (U.view === 'test') inner = testHTML(t);
+  if (U.view === 'make') inner = maker.html();
+  else if (U.view === 'test') inner = testHTML(t);
   else if (U.view === 'review') inner = reviewView.html(t);
   else if (U.view === 'results') inner = resultsView ? resultsView.html() : '';
   else inner = `<div class="m-head"><h2>단원평가</h2>${introLine()}</div>${viewSeg()}${listHTML()}`;
-  box.innerHTML = `<div class="m-page un-page${U.view === 'results' ? ' un-rpage' : U.view === 'review' ? ' un-rvpage' : ''}">${inner}</div>`;
+  box.innerHTML = `<div class="m-page un-page${U.view === 'results' ? ' un-rpage' : U.view === 'review' ? ' un-rvpage' : U.view === 'make' ? ' un-mkpage' : ''}">${inner}</div>`;
   stepsInView(box);
   if (U.view === 'test' && stepViews[U.step] && stepViews[U.step].bind) stepViews[U.step].bind(box, t);
   if (U.view === 'results' && resultsView && resultsView.bind) resultsView.bind(box);
   if (U.view === 'review' && reviewView.bind) reviewView.bind(box, t);
+  if (U.view === 'make' && maker.bind) maker.bind(box);
 }
 
 /* ---------- 1단계: 학생 문제지·답안 ---------- */
@@ -463,6 +469,7 @@ document.addEventListener('click', e => {
   if (a === 'sample') { fillSample(); return; }
   if (a === 'sampleDel') { listTests().filter(s => s.sample).forEach(s => removeTest(s.id)); toast('예시 평가를 지웠어요'); render(); return; }
   if (a === 'back') { leave(); return; }
+  if (a === 'make') { if (maker) { keepFrom(); U.view = 'make'; U.id = null; U.draft = null; if (maker.open) maker.open(); render(); box.scrollIntoView({ block: 'start' }); } return; }
   // 목록 아래쪽 평가를 열어도 평가 화면은 맨 위(평가 이름·띠·단계 탭)부터 보이게
   if (!a) { const o = e.target.closest('[data-un-open]'); if (o) { openTest(o.dataset.unOpen); box.scrollIntoView({ block: 'start' }); } return; }
   if (!inStep(1)) return;
