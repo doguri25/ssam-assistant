@@ -1,6 +1,6 @@
 /* 계획서 「새 서식으로 바꾸기」 (스펙 2026-11-15 1B, 방식 나 — 제목·본문 자리만 남기고 본문을 새로 채움). 화면 없음(Node 시험에서도 씀).
    새 서식(.hwpx) 글의 큰 제목(목차 읽기 1단계)에 지금 초안 칸(옛 칸)을 맞춤: 규칙 먼저(같은 제목 → 같은 역할 → 비슷한 제목),
-   남은 것은 AI 답 { map: [{ to: 새 칸, from: [옛 칸 id] }], write: [{ to: 새 칸, text }] }(모르는 id는 버림). 옮길 곳 없는 옛 칸은 화면에서 [이 칸에 붙이기].
+   남은 것은 AI 답 { map: [{ to: 새 칸, from: [옛 칸 id] }], write: [{ to: 새 칸, text }] }(모르는 id는 버림). 옮길 곳 없는 옛 칸은 기본으로 가까운 칸에 붙여 두고 화면 [이 칸에 붙이기]에서 바꿈.
    옛 칸 읽기와 바꾼 초안 만들기는 계획서마다: 연간계획(목차 key·글, 일정·예산 표) · 행사계획(계획서 글의 큰 제목 칸) · 학급운영계획(큰 제목 묶음, 작은 칸은 따라감) */
 import { parseOutline, roleOf, withRoles, newId, normGuide } from './classplan-model.js';
 import { SECTIONS, TEXT_SECTIONS, yearOutline, sectionRole, isExtra, normDraft } from './year-model.js';
@@ -76,12 +76,21 @@ export function needsAI(olds, heads, rules) {
 }
 
 /* ---------- AI ---------- */
-/* AI로 보낼 글: 새 칸 [n1]…(규칙이 맞춘 옛 칸 표시), 옛 칸 [o1]… 제목과 글. 이름·전화번호·이메일은 자리 표시(core/redact.js), 주민번호·명단 줄은 보내지 않음
+/* 여러 글을 한 가리개로 한꺼번에(여러 줄 명단·「이름」 머리 칸 표 규칙, 한 번 알아낸 이름은 모든 글에서) — 보내지 않을 줄만 뺌 */
+function redactAll(r, texts) {
+  const flat = [], of = [];
+  texts.forEach((t, k) => str(t).split('\n').forEach(l => { flat.push(l); of.push(k); }));
+  const out = texts.map(() => []);
+  r.lines(flat).forEach((x, j) => { if (x) out[of[j]].push(x.text); });
+  return out.map(ls => ls.join('\n'));
+}
+/* AI로 보낼 글: 새 칸 [n1]…(규칙이 맞춘 옛 칸 표시), 옛 칸 [o1]… 제목과 글. 이름·전화번호·이메일은 자리 표시(core/redact.js — 모든 칸을 한 가리개로), 주민번호·명단 줄은 보내지 않음
    → { prompt, back(돌아온 글에 원래 값을 되돌림) } */
 export function reformPrompt({ kind, title, context = '', olds, heads, rules }) {
   const r = makeRedactor();
-  const red = t => str(t).split('\n').map(l => r.line(l)).filter(Boolean).map(x => x.text).join('\n');
-  const byId = new Map(olds.map(o => [o.id, o]));
+  const [rTitle, rCtx, ...rest] = redactAll(r, [title, context, ...heads.map(h => h.title), ...olds.map(o => o.title), ...olds.map(o => o.text)]);
+  const hT = rest.slice(0, heads.length), oT = rest.slice(heads.length, heads.length + olds.length), oX = rest.slice(heads.length + olds.length);
+  const ix = new Map(olds.map((o, i) => [o.id, i]));
   const R = (rules || []).map(x => x || []);
   const at = new Map();
   R.forEach((ids, i) => ids.forEach(id => at.set(id, i)));
@@ -89,14 +98,14 @@ export function reformPrompt({ kind, title, context = '', olds, heads, rules }) 
   const empty = heads.map((h, i) => i).filter(i => !(R[i] || []).length && !heads[i].fixed).map(i => 'n' + (i + 1));
   let budget = MAX_ALL;
   const clip = t => { const s = t.slice(0, Math.max(0, Math.min(MAX_SEC, budget))); budget -= s.length; return s + (s.length < t.length ? '\n…(뒷부분 줄임)' : ''); };
-  const headLines = heads.map((h, i) => `[n${i + 1}] ${red(h.title)}${(R[i] || []).length ? ` ← 옛 칸 ${R[i].map(id => `「${red(byId.get(id).title)}」`).join('·')}` : h.fixed ? ` ← ${h.fixed} 그대로` : ''}`);
-  const oldLines = olds.map(o => {
-    const t = red(o.text).trim();
-    return `[${o.id}] ${red(o.title)}${at.has(o.id) ? ` (n${at.get(o.id) + 1}로 옮김)` : ' (아직 갈 곳 없음)'}${t ? `\n"""\n${clip(t)}\n"""` : ' (글 없음)'}`;
+  const headLines = heads.map((h, i) => `[n${i + 1}] ${hT[i]}${(R[i] || []).length ? ` ← 옛 칸 ${R[i].map(id => `「${oT[ix.get(id)]}」`).join('·')}` : h.fixed ? ` ← ${h.fixed} 그대로` : ''}`);
+  const oldLines = olds.map((o, i) => {
+    const t = oX[i].trim();
+    return `[${o.id}] ${oT[i]}${at.has(o.id) ? ` (n${at.get(o.id) + 1}로 옮김)` : ' (아직 갈 곳 없음)'}${t ? `\n"""\n${clip(t)}\n"""` : ' (글 없음)'}`;
   });
-  const ctx = red(context).trim();
+  const ctx = rCtx.trim();
   const prompt = `[새 서식 맞추기]\n학교 계획서(${kind})를 학교의 새 서식 차례로 옮기려고 해요. 지금 초안의 칸(옛 칸)을 새 서식의 큰 제목(새 칸)에 맞춰 주세요.\n`
-    + `계획서: ${red(title)}\n${ctx ? ctx + '\n' : ''}\n`
+    + `계획서: ${rTitle}\n${ctx ? ctx + '\n' : ''}\n`
     + `새 칸(새 서식의 큰 제목, 이 차례 그대로):\n${headLines.join('\n')}\n\n`
     + `지금 초안의 옛 칸:\n${oldLines.join('\n')}\n\n`
     + '규칙:\n'
@@ -120,8 +129,11 @@ export function normReform(v, oldIds, n) {
 }
 
 /* ---------- 합치기 ---------- */
-/* 규칙 + AI 답 → { to: [{ title, from: [옛 칸 id](옛 차례), write(AI가 새로 쓴 글) }], orphans(옮길 곳 없는 옛 칸), attached({ 옛 칸: 붙인 새 칸 }) }.
-   AI가 옮긴 옛 칸은 아직 갈 곳 없던 것만(한 곳에만), 새로 쓴 글은 옮겨 오는 칸이 없는 새 칸(표 칸 빼고)만 */
+/* 규칙 + AI 답 → { to: [{ title, from: [옛 칸 id](옛 차례), write(AI가 새로 쓴 글) }], orphans(옮길 곳 없는 옛 칸), attached({ 옛 칸: 붙인 새 칸 }), order(옛 차례) }.
+   AI가 옮긴 옛 칸은 아직 갈 곳 없던 것만(한 곳에만), 새로 쓴 글은 옮겨 오는 칸이 없는 새 칸(표 칸 빼고)만.
+   옮길 곳 없는 옛 칸은 글이 빠지지 않게 기본으로 붙여 둠(AI가 없거나 실패해도): 그 칸을 받는 표 칸(연간계획 일정·예산 — 표는 그대로 남음) →
+   옛 차례에서 바로 앞에 있던 옛 칸이 옮겨 간 새 칸 → 바로 뒤 옛 칸이 옮겨 간 새 칸 → 마지막 새 칸(받을 수 있는 칸만).
+   선생님이 「붙이지 않음」을 고르면 빠짐(attachOrphan) */
 export function mergeReform(heads, olds, rules, answer, { accepts } = {}) {
   const order = new Map(olds.map((o, k) => [o.id, k])), byId = new Map(olds.map(o => [o.id, o]));
   const to = heads.map((h, i) => ({ title: h.title, from: [...((rules && rules[i]) || [])], write: '' }));
@@ -132,36 +144,52 @@ export function mergeReform(heads, olds, rules, answer, { accepts } = {}) {
     for (const id of m.from || []) if (byId.has(id) && !used.has(id) && (!accepts || accepts(heads[m.to], byId.get(id)))) { used.add(id); to[m.to].from.push(id); }
   }
   for (const w of a.write || []) if (to[w.to] && !to[w.to].from.length && !to[w.to].write && !heads[w.to].fixed) to[w.to].write = w.text;
+  const orphans = olds.filter(o => !used.has(o.id)).map(o => o.id), attached = {};
+  const headOf = new Map();
+  to.forEach((x, i) => x.from.forEach(id => headOf.set(id, i)));
+  const fits = (i, o) => !accepts || accepts(heads[i], o);
+  const tables = accepts ? [...heads.keys()].filter(j => heads[j].fixed) : [];
+  for (const id of orphans) {
+    const k = order.get(id), o = byId.get(id);
+    const near = [...olds.slice(0, k).reverse(), ...olds.slice(k + 1)].map(x => headOf.get(x.id)).filter(i => i != null);
+    const i = [...tables, ...near, ...[...heads.keys()].reverse()].find(j => fits(j, o));
+    if (i != null) { to[i].from.push(id); attached[id] = i; }
+  }
   for (const x of to) x.from.sort((p, q) => order.get(p) - order.get(q));
-  return { to, orphans: olds.filter(o => !used.has(o.id)).map(o => o.id), attached: {} };
+  return { to, orphans, attached, order: olds.map(o => o.id) };
 }
-/* 옮길 곳 없는 옛 칸을 새 칸(i, 0부터)에 붙임 — -1이면 붙이지 않음. 옮길 곳 없는 칸이 아니면 그대로 */
+/* 옮길 곳 없는 옛 칸을 새 칸(i, 0부터)에 붙임(옛 차례 자리에) — -1이면 붙이지 않음. 옮길 곳 없는 칸이 아니면 그대로 */
 export function attachOrphan(f, id, i) {
   if (!f || !f.orphans.includes(id)) return f;
   const attached = { ...f.attached };
   const to = f.to.map(x => ({ ...x, from: x.from.filter(y => y !== id) }));
-  if (i >= 0 && to[i]) { to[i].from.push(id); attached[id] = i; } else delete attached[id];
+  if (i >= 0 && to[i]) {
+    to[i].from.push(id); attached[id] = i;
+    if (f.order) to[i].from.sort((p, q) => f.order.indexOf(p) - f.order.indexOf(q));
+  } else delete attached[id];
   return { ...f, to, attached };
 }
 
 /* ---------- 연간계획: 목차 key·글 ---------- */
 const won = n => Number(n || 0).toLocaleString('ko-KR');
 const dayText = s => (s.date ? `${+s.date.slice(5, 7)}월 ${+s.date.slice(8, 10)}일` : s.month ? `${s.month}월` : '');
-/* 초안 → 옛 칸(화면 차례: 목차, 없으면 기본 차례). 일정·예산 표는 줄 글로(글 칸에 붙이면 그 글) */
+/* 초안 → 옛 칸(화면 차례: 목차, 없으면 기본 차례). 일정·예산 표는 줄 글로(글 칸에 붙이면 그 글). 역할은 새 칸과 같이 제목으로(sectionRole) */
 export function yearOlds(d) {
   const order = d && d.outline && d.outline.length ? d.outline.map(o => [o.key, o.title]) : SECTIONS;
   return order.map(([key, title], i) => ({
-    id: 'o' + (i + 1), key, title, role: isExtra(key) ? '' : key,
+    id: 'o' + (i + 1), key, title, role: sectionRole(title),
     text: key === 'schedule' ? ((d && d.schedule) || []).map(s => [dayText(s), s.title].filter(Boolean).join(' ')).join('\n')
       : key === 'budget' ? ((d && d.budget) || []).map(b => `${b.name} ${won(b.amount)}원${b.note ? ` (${b.note})` : ''}`).join('\n')
       : str(d && d[key])
   }));
 }
-/* 새 서식 글 → 새 칸(연간계획 목차 읽기 그대로 key를 정함: 목적·방침·세부·일정·예산·평가, 그 밖은 덧붙임 칸). 일정·예산 칸은 표 그대로 */
+/* 새 서식 글 → 새 칸(연간계획 목차 읽기 그대로 key를 정함: 목적·방침·세부·일정·예산·평가, 그 밖은 덧붙임 칸). 일정·예산 칸은 표 그대로.
+   맞추기 역할은 제목 하나만 보고(sectionRole — 행사·학급운영계획과 같이): 목차 읽기가 앞 칸부터 차지한 key(「추진 배경」이 목적 칸)로 맞추지 않게,
+   「추진 배경·추진 목표」처럼 목적 같은 제목이 둘이면 어느 쪽인지 몰라 역할로는 맞추지 않음 */
 export function yearHeads(text) {
   const o = yearOutline(text);
   return {
-    heads: o.items.map(x => ({ title: x.title, key: x.key, role: isExtra(x.key) ? '' : x.key, ...(x.key === 'schedule' ? { fixed: '일정 표' } : x.key === 'budget' ? { fixed: '예산 표' } : {}) })),
+    heads: o.items.map(x => ({ title: x.title, key: x.key, role: sectionRole(x.title), ...(x.key === 'schedule' ? { fixed: '일정 표' } : x.key === 'budget' ? { fixed: '예산 표' } : {}) })),
     roman: o.roman
   };
 }
@@ -180,15 +208,34 @@ export function applyYear(d, f, H, olds) {
   return normDraft(v);
 }
 
+/* ---------- 제목 줄에 함께 적힌 글 ---------- */
+/* 큰 제목 → { title(맞출 제목), lead(제목 줄에 함께 적힌 글 — 새 제목으로 바뀌어도 그 칸 글 첫 줄로 남김), cut(쌍점에서 자름) }.
+   쌍점(:·：) 앞이 제목, 뒤가 글(「목적: 협동심과 체력 증진」, 시각 「09:00」의 쌍점은 아님). 괄호 안 쌍점이면 그 줄 글 전체를 글 첫 줄로도 남김.
+   long: 쌍점이 없어도 짧은 제목보다 긴 줄(숫자가 있거나 20자 넘음)은 그 줄 글 전체를 글 첫 줄로도 남김(「일시 2027. 10. 7.(목)」) */
+const COLON = /^(.*?[^\d\s:：])\s*[:：]\s*(.*)$/;
+function headSplit(t, { long = false } = {}) {
+  const m = COLON.exec(t);
+  if (m && !/[(（[][^)）\]]*$/.test(m[1])) return { title: m[1].trim(), lead: m[2].trim(), cut: true };
+  // 괄호 안 쌍점(「개요 (장소: 강당)」)은 자르지 않고 그 줄 글 전체를 남김
+  return { title: t, lead: m || (long && (/\d/.test(t) || t.replace(/\s/g, '').length > 20)) ? t : '' };
+}
+/* 새 제목(h) 아래 넣을 제목 줄 글: 새 제목과 같으면 없음(같은 줄을 글로 다시 쓰지 않게), 쌍점에서 자른 글이 비슷하지 않은 제목 칸으로 가면 「옛 제목: 글」(「일시: …」가 「운영 개요」 아래로) */
+const leadLine = (o, h) => (!o.lead || norm(o.lead) === norm(h.title) ? '' : o.cut && similar(o.title, h.title) < SIMILAR ? `${o.title}: ${o.lead}` : o.lead);
+const oldText = (o, h) => (o.lead ? join([leadLine(o, h), o.body]) : o.text);
+
 /* ---------- 행사계획: 계획서 글 ---------- */
 const NUM_HEAD = new RegExp(`^\\s*(?:[${ROMAN}]|\\d{1,2})\\.\\s*`);
-/* 계획서 글 → { pre(첫 큰 제목 앞 글), olds(큰 제목마다 칸: 제목 줄 다음부터 다음 큰 제목 앞까지) }. 큰 제목이 없으면 글 전체가 한 칸 */
+/* 계획서 글 → { pre(첫 큰 제목 앞 글), olds(큰 제목마다 칸: 제목 줄에 함께 적힌 글(lead) + 제목 줄 다음부터 다음 큰 제목 앞까지(body)) }. 큰 제목이 없으면 글 전체가 한 칸.
+   학교 새 서식으로 바꾼 계획서의 서식 제목 줄(docs.form)은 제목만 */
 export function eventOlds(e) {
   const text = str(e && e.docs && e.docs.plan), lines = text.split('\n'), at = planHeadLines(e, text);
   if (!at.length) return { pre: '', olds: text.trim() ? [{ id: 'o1', title: '세부 계획', role: 'details', text: tidy(text) }] : [] };
+  const formed = new Set(((e && e.docs && e.docs.form) || []).map(norm));
   const olds = at.map((ln, i) => {
-    const title = lines[ln].trim().replace(NUM_HEAD, '') || lines[ln].trim();
-    return { id: 'o' + (i + 1), title, role: planRole(title), text: tidy(lines.slice(ln + 1, at[i + 1] == null ? lines.length : at[i + 1]).join('\n')) };
+    const t = lines[ln].trim().replace(NUM_HEAD, '') || lines[ln].trim();
+    const { title, lead, cut } = formed.has(norm(lines[ln])) ? { title: t, lead: '' } : headSplit(t, { long: true });
+    const body = tidy(lines.slice(ln + 1, at[i + 1] == null ? lines.length : at[i + 1]).join('\n'));
+    return { id: 'o' + (i + 1), title: title || t, role: planRole(title || t), lead, cut: !!cut, body, text: join([lead, body]) };
   });
   return { pre: tidy(lines.slice(0, at[0]).join('\n')), olds };
 }
@@ -199,14 +246,15 @@ export function applyEvent(e, f, H, pre, olds) {
   const out = pre ? [pre] : [];
   H.heads.forEach((h, i) => {
     out.push(form[i]);
-    const body = join([...f.to[i].from.map(id => (byId.get(id) || {}).text), f.to[i].write]);
+    const body = join([...f.to[i].from.map(id => byId.get(id)).filter(Boolean).map(o => oldText(o, h)), f.to[i].write]);
     if (body) out.push(body);
   });
   return { plan: out.join('\n'), form };
 }
 
 /* ---------- 학급운영계획: 목차 칸 ---------- */
-/* 목차 → 옛 칸(큰 제목 묶음 — 작은 칸은 그 묶음에 따라감). AI에는 묶음의 글과 작은 칸 「제목: 글」 */
+/* 목차 → 옛 칸(큰 제목 묶음 — 작은 칸은 그 묶음에 따라감). AI에는 묶음의 글과 작은 칸 「제목: 글」.
+   큰 제목에 쌍점으로 함께 적힌 글(「급훈: 서로 돕는 반」)은 lead — 새 제목으로 바꿀 때 그 칸 글 첫 줄로 */
 export function classOlds(p) {
   const groups = [];
   let cur = null;
@@ -215,7 +263,10 @@ export function classOlds(p) {
     else cur.kids.push(x);
   }
   const d = (p && p.draft) || {};
-  return groups.map(g => ({ ...g, role: planRole(g.title), text: join([d[g.head.id], ...g.kids.map(k => (str(d[k.id]).trim() ? `${k.title}: ${d[k.id]}` : ''))]) }));
+  return groups.map(g => {
+    const { title, lead, cut } = headSplit(str(g.title).trim());
+    return { ...g, title: title || g.title, role: planRole(title || g.title), lead, cut: !!cut, text: join([lead, d[g.head.id], ...g.kids.map(k => (str(d[k.id]).trim() ? `${k.title}: ${d[k.id]}` : ''))]) };
+  });
 }
 /* 바꾼 목차·칸 글: 새 큰 제목마다(옮겨 온 묶음이 하나면 그 칸 id 그대로) 묶음의 작은 칸이 그 아래로, 큰 제목 글은 옮겨 온 글 + 새로 쓴 글.
    지침 항목의 칸은 옮겨 간 칸으로, 칸 역할(시수·월별·평가 표)은 다시 정함 → { outline, draft, guide } */
@@ -226,7 +277,7 @@ export function applyClass(p, f, H, olds) {
     const gs = f.to[i].from.map(id => byId.get(id)).filter(Boolean);
     const id = gs.length === 1 ? gs[0].head.id : newId();
     outline.push({ id, title: h.title, level: 1 });
-    const own = join([...gs.map(g => d[g.head.id]), f.to[i].write]);
+    const own = join([...gs.map(g => join([leadLine(g, h), d[g.head.id]])), f.to[i].write]);
     if (own) draft[id] = own;
     for (const g of gs) {
       idMap[g.head.id] = id;

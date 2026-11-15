@@ -53,17 +53,24 @@ export const pickedForm = key => String(get(KEY(key), '') || '');
 export function pickForm(key, id) { set(KEY(key), String(id || '')); paint(); }
 
 /* .hwpx 양식(바이트)을 학교 양식 저장소에 넣음 → { rec, ok(제목·본문 자리를 찾음), picked(이 종류에 골라 둠) }.
-   replace: 같은 이름 양식이 있으면 그 자리에 바꿔 넣음. pick: true(늘 골라 둠) · 'empty'(이 종류에 고른 양식이 없고 제목·본문 자리를 찾았을 때만 — 저절로 고른 양식 때문에 내려받기가 막히지 않게) · false.
+   from: 어디서 저장했는지(「lastPlan:year」 작년 계획서 서식·「reform:event」 새 서식으로 바꾸기 등 — 양식에 함께 저장).
+   replace: 같은 이름이면서 같은 from인 양식만 그 자리에 바꿔 넣음(가정통신문 등 다른 기능·다른 계획서의 양식, from 없이 저장한 양식은 그대로 두고 새로 넣음).
+   바꿔 넣는 파일이 그 양식과 같으면 제목·본문 자리는 그대로(선생님이 [양식 맞추기]에서 손으로 정했을 수 있어서).
+   pick: true(늘 골라 둠) · 'empty'(이 종류에 고른 양식이 없고 제목·본문 자리를 찾았을 때만 — 저절로 고른 양식 때문에 내려받기가 막히지 않게) · false.
    .hwpx가 아니면 { code: 'NOT_HWPX' }, 5MB가 넘으면 { code: 'TOO_BIG' }, 못 읽으면 { code: 'READ' }를 던짐 */
-export async function saveForm(key, u8, name, { pick = true, replace = false } = {}) {
+const sameBytes = (a, b) => { if (!a || !b || a.length !== b.length) return false; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; return true; };
+export async function saveForm(key, u8, name, { pick = true, replace = false, from = '' } = {}) {
   if (!(u8 && u8[0] === 0x50 && u8[1] === 0x4B)) throw { code: 'NOT_HWPX' };
   if (u8.length > MAX_FORM) throw { code: 'TOO_BIG' };
   let parsed;
   try { parsed = await readForm(u8); } catch (e) { throw { code: 'READ' }; }
   const st = await forms(), list = (await st.list()).filter(f => f.kind === 'hwpx');
   const nm = String(name || '').trim() || '학교 양식';
-  const same = replace ? list.find(f => f.name === nm) : null;
-  const rec = { id: same ? same.id : newFormId(), name: nm, kind: 'hwpx', bytes: u8, roles: findRoles(parsed.lines), savedAt: Date.now() };
+  const same = replace && from ? list.find(f => f.name === nm && f.from === from) : null;
+  let old = null;
+  if (same) { try { old = await st.get(same.id); } catch (e) { old = null; } }
+  const roles = old && old.roles && sameBytes(old.bytes instanceof Uint8Array ? old.bytes : old.bytes && new Uint8Array(old.bytes), u8) ? old.roles : findRoles(parsed.lines);
+  const rec = { id: same ? same.id : newFormId(), name: nm, kind: 'hwpx', bytes: u8, roles, savedAt: Date.now(), ...(from ? { from } : {}) };
   await st.put(rec);
   const cur = pickedForm(key), ok = rolesValid(rec.roles, { date: false });
   const picked = pick === true || (pick === 'empty' && ok && !list.some(f => f.id === cur));

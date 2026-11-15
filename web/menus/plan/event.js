@@ -42,6 +42,8 @@ const STEP_OF = { options: 2, docs: 3, items: 4, result: 4 }; // AI 일 → 결�
 const cap = t => String(t).slice(0, MAX_SRC);
 let warnedFull = false;
 let curDoc = 'plan'; // 3단계에서 보고 있는 문서
+/* 문서마다 학교 양식 고르기 자리: 계획서는 「event」(작년 계획서 서식·새 서식으로 바꾸기가 골라 두는 자리), 안전 점검표·가정통신문은 따로(계획서 서식으로 나가지 않게) */
+const formKey = docId => (docId === 'plan' ? 'event' : 'event-' + docId);
 let showMemos = false; // 1단계 「지난 행사 개선 메모 불러오기」 목록
 let showPlans = false; // 1단계 참고 자료 「연간계획에서 불러오기」 목록
 const qrCache = {}; // 폼 주소 → QR 그림(data URL)
@@ -306,7 +308,7 @@ function step3() {
     body += `<div id="evLetterBox">${letterBoxHTML(miss)}</div><div class="ev-qr" id="evLetterQr">${letterQrHTML()}</div>`;
   }
   return `${refNotesHTML(ev.refNotes.docs, ev.refNotes.stale)}<div id="evRvBox">${rvBox()}</div><div class="yp-card">${tabs}${body}
-      <div class="row yp-out"><button class="btn" type="button" data-e="copyDoc">복사</button>${formSlotHTML('event', exportButton('data-e="hwpx"'))}${curDoc === 'plan' ? reformHTML('event') : ''}<span class="grow"></span>
+      <div class="row yp-out"><button class="btn" type="button" data-e="copyDoc">복사</button>${formSlotHTML(formKey(curDoc), exportButton('data-e="hwpx"'))}${curDoc === 'plan' ? reformHTML('event') : ''}<span class="grow"></span>
         <button class="btn text" type="button" data-e="docs">다시 만들기 (고친 내용은 사라져요)</button></div></div>
     <div class="yp-card"><h3>품의로 이어 가기</h3><p class="muted">품의 › 새 품의로 넘어가며 행사 정보와 고른 안의 예산 줄을 채워요.</p>
       <div class="row"><button class="btn" type="button" data-e="purchase">품의로 이어 가기</button></div></div>`;
@@ -508,8 +510,8 @@ function updateRv(id) {
   const r = box.querySelector('#evRain'); if (r) r.classList.toggle('rv-mark', hasOpen(ev, 'rain'));
 }
 
-/* 학교 양식(.hwpx)으로 내려받기: 보고 있는 문서(계획서·안전 점검표·가정통신문) */
-registerFormDoc('event', () => { if (!ev || !ev.docs) return null; const doc = docDoc(ev, curDoc); return { doc, name: doc.title }; });
+/* 학교 양식(.hwpx)으로 내려받기: 문서(계획서·안전 점검표·가정통신문)마다 고른 양식 따로(formKey) */
+for (const [docId] of DOCS) registerFormDoc(formKey(docId), () => { if (!ev || !ev.docs) return null; const doc = docDoc(ev, docId); return { doc, name: doc.title }; });
 /* 3단계 계획서 탭 [새 서식으로 바꾸기](reform.js): 계획서 글의 큰 제목 칸 → 새 서식의 제목 줄 차례로 글을 다시 씀(docs.form — 한글 파일·다시 만들기가 그 차례) */
 registerReform('event', {
   kind: '행사계획',
