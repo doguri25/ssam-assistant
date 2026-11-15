@@ -110,7 +110,7 @@ export function spliceText(xml, p, text) {
 
 /* 첫 글자 모양으로 글을 통째로(hwpx-form setText — 탭·줄바꿈은 한글 요소로) */
 const MARK = 'ssam-edit';
-const setWhole = (xml, p, text) => setText(xml, p, MARK).replace(MARK, tEsc(text));
+const setWhole = (xml, p, text) => setText(xml, p, MARK).replace(MARK, () => tEsc(text)); // 함수로 넣음: 새 글의 「$'」「$&」「$$」는 글자 그대로
 /* 본 문단 tp를 복제한 새 문단(문단 모양·글자 모양만, 쪽·단 나누기는 뺌) */
 const clonePara = (xml, tp, text, id) => noBreak(openTag(xml, tp).replace(/\bid="[^"]*"/, `id="${id}"`))
   + `<hp:run charPrIDRef="${charPrOf(xml, tp)}"><hp:t>${tEsc(text)}</hp:t></hp:run></hp:p>`;

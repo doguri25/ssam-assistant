@@ -27,7 +27,7 @@ const DOC = makeHwpx({ title: '2026학년도 새싹초등학교 독서교육 운
 const orig = await readForm(DOC);
 const prompts = [];
 const idsOf = p => { const m = new Map(); for (const x of p.matchAll(/^\[(\d+)\] (.*)$/gm)) m.set(x[2], +x[1]); return m; };
-await mockClaude(page, ({ prompt }) => {
+await mockClaude(page, async ({ prompt }) => {
   if (!prompt.startsWith('[문서 다듬기]')) return '{}';
   prompts.push(prompt);
   const id = idsOf(prompt);
@@ -41,6 +41,10 @@ await mockClaude(page, ({ prompt }) => {
     ], note: '공문체로 다듬었어요.' });
   }
   if (prompt.includes('짧게 줄여 줘')) return JSON.stringify({ changes: [{ id: id.get('  가. 학생들이 책 읽는 즐거움을 알게 하고자 함.'), op: 'replace', text: '  가. 책 읽는 즐거움을 알게 함.' }], note: '짧게 줄였어요.' });
+  // 자리 표시가 깨진 답: 없는 번호 〔이름9〕 → 그 줄은 고치지 않음
+  if (prompt.includes('[요청] 깨진 자리 표시')) return JSON.stringify({ changes: [{ id: id.get('1. 운영 목적'), op: 'replace', text: '1. 〔이름9〕 운영 목적' }], note: '' });
+  // 늦게 오는 답(새 파일을 읽는 동안 [다듬기]를 누른 경우 시험)
+  if (prompt.includes('[요청] 느린 요청')) { await new Promise(r => setTimeout(r, 1500)); return JSON.stringify({ changes: [], note: '' }); }
   return JSON.stringify({ changes: [], note: '' });
 });
 const B = 'section[data-menu="etc"] .de-box';
@@ -106,6 +110,16 @@ await run('docedit', [
     await page.waitForFunction(s => document.querySelectorAll(`${s} .de-chg`).length === 4, B);
     assert(!(await page.textContent(`${B} #dePrev`)).includes('책 읽는 즐거움을 알게 함.'), '한 단계 되돌리지 않음');
   }],
+  ['AI 답의 자리 표시가 깨진 줄(없는 번호)은 고치지 않고 「n줄은 이름 자리 표시가 깨져 고치지 않았어요」', async () => {
+    const n0 = prompts.length;
+    await page.fill(`${B} #deAsk`, '깨진 자리 표시 시험');
+    await page.click(`${B} [data-de="run"]`);
+    await page.waitForFunction(() => ((document.querySelector('#toast') || {}).textContent || '').includes('자리 표시가 깨져'), null, { timeout: 8000 });
+    assert(prompts.length === n0 + 1, 'AI ' + prompts.length);
+    assert((await toastText()).includes('1줄은 이름 자리 표시가 깨져 고치지 않았어요'), await toastText());
+    assert(await entries() === 4 && !(await page.textContent(`${B} #dePrev`)).includes('이름9'), '깨진 글이 들어감');
+    assert(await page.locator(`${B} [data-de="run"]`).isEnabled(), '[다듬기]');
+  }],
   ['칩 「날짜·학년도 바꾸기」: 문서의 학년도를 짐작해 묻고, [모두 바꾸기]는 AI 없이', async () => {
     const n0 = prompts.length;
     await page.click(`${B} [data-de-chip="swap"]`);
@@ -166,6 +180,25 @@ await run('docedit', [
     await drop(`${B} .de-file`, '독서교육-계획.hwpx', DOC);
     await page.waitForFunction(s => (document.querySelector(`${s} .de-name`) || {}).textContent?.includes('독서교육-계획.hwpx'), B);
     assert(await page.isHidden(`${B} .de-plain`) && await entries() === 0, '새 .hwpx');
+  }],
+  ['새 파일을 읽는 동안 [다듬기]는 막히고(run → busy), 다 읽은 뒤 「다듬는 중…」에 멈추지 않음', async () => {
+    await page.fill(`${B} #deAsk`, '느린 요청');
+    const r = await page.evaluate(async b64 => {
+      const m = await import('./menus/etc/docedit.js');
+      const u8 = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const slow = { name: '느린 안내.hwpx', arrayBuffer: () => new Promise(res => setTimeout(() => res(u8.buffer), 500)) };
+      const adding = m.addFile(slow);
+      await new Promise(res => setTimeout(res, 100));
+      const btn = () => document.querySelector('section[data-menu="etc"] .de-box [data-de="run"]');
+      const during = { disabled: btn().disabled, st: m.run('느린 요청') };
+      const put = await adding;
+      await new Promise(res => setTimeout(res, 2000)); // 늦은 답(1.5초)이 온 뒤
+      return { ...during, put, after: { disabled: btn().disabled, label: btn().textContent.trim() } };
+    }, Buffer.from(DOC).toString('base64'));
+    assert(r.put === true, '파일 넣기 ' + JSON.stringify(r));
+    assert(r.disabled && r.st === 'busy', '읽는 동안 ' + JSON.stringify(r));
+    assert(!r.after.disabled && r.after.label === '다듬기', '멈춤 ' + JSON.stringify(r));
+    assert((await page.textContent(`${B} .de-name`)).includes('느린 안내.hwpx') && await entries() === 0, '새 문서');
   }],
   ['다른 화면에서 putDoceditFile(파일, { ask }) → 문서 다듬기 탭에 넣고 그 요청으로 바로 다듬기', async () => {
     await go('home');

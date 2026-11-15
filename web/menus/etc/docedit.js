@@ -68,10 +68,10 @@ function newDoc() {
 
 /* ---------- 다듬기 (AI) ---------- */
 /* 요청으로 다듬기: 바로 상태를 돌려주고 AI는 이어서. 요청 글도 이름·연락처를 가려 보냄(줄과 같은 자리 표시)
-   → 'started' | 'busy' | 'no-doc' | 'no-ask' | 'no-ai' | 'held-ask'(요청에 주민번호·명단) | 'nothing'(보낼 줄 없음) */
+   → 'started' | 'busy'(다듬는 중·새 파일을 읽는 중) | 'no-doc' | 'no-ask' | 'no-ai' | 'held-ask'(요청에 주민번호·명단) | 'nothing'(보낼 줄 없음) */
 export function run(ask = S.ask) {
   const a = String(ask || '').trim();
-  if (S.busy) return 'busy';
+  if (S.busy || S.adding) return 'busy';
   if (!S.doc) { toast('먼저 문서를 넣어 주세요.'); return 'no-doc'; }
   if (!a) { toast('어떻게 다듬을지 적거나 빠른 요청을 눌러 주세요.'); const ta = box && box.querySelector('#deAsk'); if (ta) ta.focus(); return 'no-ask'; }
   if (!ai.ready()) { toast('설정 › AI에서 키를 넣어 주세요', 5000); return 'no-ai'; }
@@ -86,7 +86,8 @@ const runLabel = () => (S.busy ? `<span class="spin"></span>다듬는 중…${S.
 /* ask: 가린 요청 */
 async function job(ask, p) {
   const tok = S.tok, bs = batchLines(p.sent), all = [], notes = [];
-  let err = null;
+  let err = null, broken = 0;
+  const stale = () => { if (tok === S.tok) return false; S.busy = false; S.step = ''; render(); return true; }; // 그새 다른 문서를 넣음: 받은 답은 버리고 [다듬기]는 다시 쓰게
   for (let i = 0; i < bs.length; i++) {
     S.step = bs.length > 1 ? `${i + 1}/${bs.length}` : '';
     const rb = box && box.querySelector('[data-de="run"]');
@@ -94,21 +95,23 @@ async function job(ask, p) {
     try {
       const v = await ai.generateJSON(docPrompt({ ask, lines: bs[i], part: [i + 1, bs.length] }),
         { task: 'doc', valid: o => !!o && typeof o === 'object' && (Array.isArray(o) || Array.isArray(o.changes)) });
-      const r = normChanges(v, { ids: new Set(bs[i].map(x => x.id)), back: p.back });
+      const r = normChanges(v, { ids: new Set(bs[i].map(x => x.id)), back: p.back, bad: p.bad });
       all.push(...r.changes);
+      broken += r.broken;
       if (r.note) notes.push(r.note);
     } catch (e) { err = e || {}; break; }
-    if (tok !== S.tok) return;
+    if (stale()) return;
   }
-  if (tok !== S.tok) return; // 그새 다른 문서를 넣음
+  if (stale()) return;
   S.busy = false; S.step = '';
   const next = applyChanges(S.items, all), n = stepCount(S.items, next);
   if (n) step(next);
   if (notes.length || !err) S.note = notes.join(' '); // 실패해 받은 것이 없으면 앞 메모를 둠
   render();
   const held = p.held ? ` 명단·주민번호가 든 줄과 이름만 든 칸 ${p.held}줄은 AI로 보내지 않았어요.` : '';
-  if (err) toast(`${err.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 눌러 주세요.' : ai.errorMessage(err.code, err)}${n ? ` 앞 부분에서 고친 ${n}줄은 넣어 두었어요.` : ''}`, 7000);
-  else toast(n ? `${n}줄을 고쳤어요. 바뀐 줄을 확인해 주세요.${held}` : 'AI가 고칠 줄을 찾지 못했어요. 요청을 조금 더 자세히 적어 주세요.', 6000);
+  const bad = broken ? ` ${broken}줄은 이름 자리 표시가 깨져 고치지 않았어요.` : '';
+  if (err) toast(`${err.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 눌러 주세요.' : ai.errorMessage(err.code, err)}${n ? ` 앞 부분에서 고친 ${n}줄은 넣어 두었어요.` : ''}${bad}`, 7000);
+  else toast(n ? `${n}줄을 고쳤어요. 바뀐 줄을 확인해 주세요.${bad}${held}` : broken ? `${bad.trim()} 다시 눌러 주세요.` : 'AI가 고칠 줄을 찾지 못했어요. 요청을 조금 더 자세히 적어 주세요.', 6000);
 }
 
 /* ---------- 날짜·학년도 바꾸기 (AI 없이) ---------- */
@@ -205,7 +208,7 @@ function pageHTML() {
         <div class="seg de-chips" role="group" aria-label="빠른 요청">${CHIPS.map(c => `<button type="button" data-de-chip="${c.id}"${c.id === 'swap' ? ` aria-pressed="${!!S.swap}"` : ''}${S.busy ? ' disabled' : ''}>${esc(c.label)}</button>`).join('')}</div>
         ${swapHTML()}
         <label class="yp-f"><span class="lab">요청</span><textarea class="field" id="deAsk" rows="3" placeholder="예) 공문체로 다듬어 줘 · 학부모님이 읽기 쉽게 바꿔 줘 · 2번 항목을 한 줄로 줄여 줘">${esc(S.ask)}</textarea></label>
-        <div class="row"><button class="btn primary" type="button" data-de="run"${d && !S.busy ? '' : ' disabled'}>${runLabel()}</button>
+        <div class="row"><button class="btn primary" type="button" data-de="run"${d && !S.busy && !S.adding ? '' : ' disabled'}>${runLabel()}</button>
           <button class="btn text" type="button" data-de="undo"${S.hist.length && !S.busy ? '' : ' disabled'}>한 단계 되돌리기${S.hist.length ? ` (${S.hist.length})` : ''}</button></div>
         ${S.note ? `<p class="de-note"><b>AI</b> ${esc(S.note)}</p>` : ''}
         ${aiNoteHTML(NOTE)}
