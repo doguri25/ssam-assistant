@@ -20,6 +20,8 @@ import {
   normSections, normMonthly, normEvalRows, normGuide, guideStatus, insertSentence, draftText, hoursRows, planTitle, planDoc, planText
 } from './classplan-model.js';
 import { overlap } from './year-model.js';
+import { reformHTML, registerReform, keepLastForm } from './reform.js';
+import { formHeads, withPlanRoles, classOlds, applyClass } from './reform-model.js';
 import { guidePrompt, draftPrompt, evalPrompt } from './classplan-ai.js';
 import { parseJindo } from '../class/class-import.js';
 import { currentYear } from '../../core/years.js';
@@ -223,7 +225,10 @@ async function addFiles(target, files) {
         p.sourceNames[target] = [...p.sourceNames[target], f.name];
         if (target === 'guide') p.guide = null; // 지침이 늘면 지침 항목을 다시 뽑음
       });
-      if (r.dropped || r.masked) toast(privacyMsg(r), 7000);
+      // 작년 계획서가 .hwpx면 그 서식도 학교 양식으로(.hwp·PDF면 .hwpx 안내) — 알림은 한 번에
+      const fm = target === 'lastPlan' ? await keepLastForm('classplan', f) : '';
+      const pm = r.dropped || r.masked ? privacyMsg(r) : '';
+      if (pm || fm) toast([pm, fm].filter(Boolean).join(' '), 7000);
     } catch (e) { toast(fileMessage(e && e.code), 5000); }
   }
   delete reading[id];
@@ -443,7 +448,7 @@ function exportHTML() {
       ${plan.attach.length ? `<div class="cp-buim"><b>붙임</b><ol id="cpBuim">${plan.attach.map(a => `<li>${esc(KIND_NAME[a.kind] || '첨부')}(${esc(a.name)}) 1부.</li>`).join('')}</ol></div>` : ''}
       ${plan.monthly.length && noSec('monthly') ? '<p class="muted">목차에 「월별」 칸이 없어 월별 활동 표는 한글 파일에 들어가지 않아요. 2단계에서 칸을 더해 주세요.</p>' : ''}
       ${!d ? '<p class="banner warn"><span class="grow">3단계에서 초안을 먼저 써 주세요.</span></p>' : fin ? '<p class="banner ok"><span class="grow">확정한 계획이에요. 고치면 다시 「작성 중」이 돼요.</span></p>' : ''}
-      <div class="row yp-out">${d ? formSlotHTML('classplan', exportButton('data-c="hwpx"')) : exportButton('data-c="hwpx"', { disabled: true })}<span class="grow"></span>
+      <div class="row yp-out">${d ? formSlotHTML('classplan', exportButton('data-c="hwpx"')) + reformHTML('classplan') : exportButton('data-c="hwpx"', { disabled: true })}<span class="grow"></span>
         <button class="btn primary" type="button" data-c="final"${d ? '' : ' disabled'}>${fin ? '다시 확정' : '확정'}</button></div>
     </div>`;
 }
@@ -482,6 +487,26 @@ function toClass(aid) {
 }
 /* 학교 양식(.hwpx)으로 내려받기 */
 registerFormDoc('classplan', () => (plan && plan.draft ? { doc: planDoc(plan), name: planTitle(plan) } : null));
+/* 4단계 [새 서식으로 바꾸기](reform.js): 목차 큰 제목 묶음(작은 칸은 따라감) → 새 서식의 큰 제목 차례로 outline·칸 글을 바꿈 */
+registerReform('classplan', {
+  kind: '학급운영계획',
+  id: () => plan && plan.id,
+  ready: () => !!(plan && plan.draft),
+  busy: () => !!busy[plan.id],
+  title: () => planTitle(plan),
+  context: () => [plan.grade && plan.room && `학급: ${plan.grade}학년 ${plan.room}반`, (plan.boys != null || plan.girls != null) && `학생 수: 남 ${plan.boys == null ? '-' : plan.boys}명, 여 ${plan.girls == null ? '-' : plan.girls}명`,
+    plan.motto.trim() && `급훈: ${plan.motto}`].filter(Boolean).join('\n'),
+  heads: text => { const H = formHeads(text); return { ...H, heads: withPlanRoles(H.heads) }; },
+  read: () => {
+    flushSave();
+    const id = plan.id, was = { outline: plan.outline, draft: plan.draft, guide: plan.guide }, olds = classOlds(was);
+    return { olds, apply: (f, H) => apply(id, p => { const o = applyClass(was, f, H, olds); p.outline = o.outline; p.draft = o.draft; p.guide = o.guide; p.rv = []; unfinal(p); }) };
+  },
+  snapshot: () => JSON.parse(JSON.stringify({ outline: plan.outline, draft: plan.draft, guide: plan.guide, rv: plan.rv })),
+  restore: s => apply(plan.id, p => { Object.assign(p, s); unfinal(p); }),
+  rerender: () => { if (visible()) renderMain(); },
+  done: '3단계 「초안」에서 칸 글을 확인해 주세요.'
+});
 async function downloadHwpx() {
   if (!plan.draft) return;
   try { toast(await exportDoc(planDoc(plan), planTitle(plan)), 6000); }

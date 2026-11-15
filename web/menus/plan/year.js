@@ -16,7 +16,9 @@ import { stepsHTML } from '../../core/steps.js';
 import { keepFiles } from '../../core/keep-files.js';
 import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import { rvBoxHTML, runPlanReview, onRvClick, markDone, dropOpen, hasOpen, clearState } from './plan-review.js';
-import { SECTIONS, TEXT_SECTIONS, yearOutline, textKeys, insertKey, isExtra, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent, normReview, normGuide, normDraft, overlap, guideStatus, insertSentence, planDoc, planText, textForAI, ownerForAI, fitSchedule } from './year-model.js';
+import { reformHTML, registerReform, keepLastForm } from './reform.js';
+import { yearOlds, yearHeads, yearAccepts, applyYear } from './reform-model.js';
+import { SECTIONS, TEXT_SECTIONS, yearOutline, draftOutline, textKeys, insertKey, isExtra, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent, normReview, normGuide, normDraft, overlap, guideStatus, insertSentence, planDoc, planText, textForAI, ownerForAI, fitSchedule } from './year-model.js';
 
 const STEPS = ['자료 넣기', '작년 평가', '지침 점검', '초안', '일정'];
 const SRC = [
@@ -232,7 +234,7 @@ function step4() {
   // 작년(기존) 계획서 목차로 쓴 초안은 그 차례·제목 그대로
   const order = d.outline && d.outline.length ? d.outline.map(o => [o.key, o.title]) : SECTIONS;
   return `<div id="ypOverlapBox">${overlapHTML()}</div><div id="ypRvBox">${rvBox()}</div>
-    ${d.outline && d.outline.length ? '<p class="muted" id="ypOutlineUsed">작년(기존) 계획서 목차 그대로예요. 한글 파일도 이 차례로 나가요.</p>' : ''}
+    ${d.outline && d.outline.length ? `<p class="muted" id="ypOutlineUsed">${d.fromForm ? '학교 새 서식 차례 그대로예요(5단계 [새 서식으로 바꾸기]).' : '작년(기존) 계획서 목차 그대로예요.'} 한글 파일도 이 차례로 나가요.</p>` : ''}
     <div class="yp-card" id="ypDraft">${order.map(sec).join('')}
       <div class="row"><button class="btn text" type="button" data-y="draft">다시 만들기 (고친 내용은 사라져요)</button></div></div>`;
 }
@@ -263,7 +265,7 @@ function step5() {
       <h3>내보내기와 확정</h3>
       <p class="muted">확정하면 일정이 학사일정에 들어가고, 다음 해 「작년 계획서」로 불러올 수 있어요.</p>
       ${fin ? '<p class="banner ok"><span class="grow">확정한 계획이에요. 고치면 다시 「작성 중」이 돼요.</span></p>' : ''}
-      <div class="row yp-out">${formSlotHTML('year', exportButton('data-y="hwpx"'))}<button class="btn" type="button" data-copy="schedule">일정 복사</button><span class="grow"></span>
+      <div class="row yp-out">${formSlotHTML('year', exportButton('data-y="hwpx"'))}${reformHTML('year')}<button class="btn" type="button" data-copy="schedule">일정 복사</button><span class="grow"></span>
         <button class="btn primary" type="button" data-y="final">${fin ? '다시 확정' : '확정'}</button></div>
     </div>`;
 }
@@ -374,6 +376,26 @@ async function runGuide() {
 
 /* 학교 계획서 양식(.hwpx)으로 내려받기: 지금 계획 */
 registerFormDoc('year', () => (plan && plan.draft ? { doc: planDoc(plan), name: `${plan.year}학년도 ${plan.name || '업무'} 운영 계획` } : null));
+/* 5단계 [새 서식으로 바꾸기](reform.js): 초안 칸(목차 차례) → 새 서식의 큰 제목 차례로 outline·글을 바꿈(지침 점검·작년 비교는 새 textKeys로) */
+registerReform('year', {
+  kind: '연간계획',
+  id: () => plan && plan.id,
+  ready: () => !!(plan && plan.draft),
+  busy: () => !!busy[plan.id],
+  title: () => `${plan.year}학년도 ${plan.name || '업무'} 운영 계획`,
+  context: () => [`업무: ${plan.name}`, plan.goal.trim() && `올해 목표: ${textForAI(plan.goal)}`].filter(Boolean).join('\n'),
+  heads: yearHeads,
+  accepts: yearAccepts,
+  read: () => {
+    flushSave();
+    const id = plan.id, d = plan.draft, olds = yearOlds(d);
+    return { olds, apply: (f, H) => apply(id, p => { p.draft = applyYear(d, f, H, olds); p.rv = []; unconfirm(p); }) };
+  },
+  snapshot: () => ({ draft: JSON.parse(JSON.stringify(plan.draft)), rv: plan.rv }),
+  restore: s => apply(plan.id, p => { p.draft = s.draft; p.rv = s.rv; unconfirm(p); }),
+  rerender: () => { if (visible()) renderMain(); },
+  done: '4단계 「초안」에서 칸 글을 확인해 주세요.'
+});
 
 /* ---------- AI: 초안 ---------- */
 function draftPrompt(p) {
@@ -389,15 +411,16 @@ function draftPrompt(p) {
     picked.length && `올해 반영할 개선 방향: ${picked.join(' / ')}`,
     p.guide && p.guide.length && `지침에서 꼭 넣을 항목:\n${p.guide.map(g => `- ${g.item}: ${g.sentence}`).join('\n')}`
   ].filter(Boolean).join('\n');
-  const O = yearOutline(p.sources.lastPlan);
+  // 학교 새 서식으로 바꾼 초안이면 그 목차, 아니면 작년(기존) 계획서 목차(year-model draftOutline)
+  const O = draftOutline(p), formed = !!(p.draft && p.draft.fromForm);
   // 작년(기존) 계획서 목차로 쓰면 그 목차에 있는 글 칸만 씀(없는 칸 글은 화면·한글 파일에 나오지 않음)
   const keys = O.items.length ? textKeys({ outline: O.items }) : TEXT_SECTIONS;
   const KO = { purpose: '목적', policy: '방침', details: '세부 추진 계획', evaluation: '평가 계획' };
   return `[연간계획 초안]\n학교 업무 연간계획서 초안을 써 주세요.\n\n${lines}\n\n`
-    + (p.sources.lastPlan.trim() ? `작년(기존) 계획서${O.items.length ? ' — 이 계획서의 목차·짜임·문체를 그대로 따름' : '(참고만)'}:\n"""\n${srcAI(p.sources.lastPlan).slice(0, 12000)}\n"""\n\n` : '')
-    + (O.items.length ? `작년(기존) 계획서 목차(이 차례·제목 그대로 씀. 제목은 앱이 붙이니 칸에는 그 제목 아래 내용만):\n${O.items.map((o, i) => `${i + 1}. ${o.title} → ${o.key}`).join('\n')}\n\n` : '')
+    + (p.sources.lastPlan.trim() ? `작년(기존) 계획서${formed ? '(짜임·문체만 참고 — 목차는 아래 학교 새 서식 목차)' : O.items.length ? ' — 이 계획서의 목차·짜임·문체를 그대로 따름' : '(참고만)'}:\n"""\n${srcAI(p.sources.lastPlan).slice(0, 12000)}\n"""\n\n` : '')
+    + (O.items.length ? `${formed ? '학교 새 서식' : '작년(기존) 계획서'} 목차(이 차례·제목 그대로 씀. 제목은 앱이 붙이니 칸에는 그 제목 아래 내용만):\n${O.items.map((o, i) => `${i + 1}. ${o.title} → ${o.key}`).join('\n')}\n\n` : '')
     + '규칙:\n- ' + keys.map(k => `${k}(${KO[k] || (O.items.find(o => o.key === k) || {}).title || k})`).join('·')
-    + (O.items.length ? '은 작년(기존) 계획서의 그 제목 아래 글과 같은 짜임(「가.」「1)」 목록 차례·줄 수)과 문체(「~한다」)로 씀\n' : '은 학교 계획서 문체(「~한다」, 「가.」「1)」 목록)로 씀\n')
+    + (O.items.length && !formed ? '은 작년(기존) 계획서의 그 제목 아래 글과 같은 짜임(「가.」「1)」 목록 차례·줄 수)과 문체(「~한다」)로 씀\n' : '은 학교 계획서 문체(「~한다」, 「가.」「1)」 목록)로 씀\n')
     + '- 작년 계획서 문장을 그대로 옮기지 말고 올해 목표·지침 표현으로 새로 씀. 단, 법령·근거 문장(「~법 제○조」 등)은 그대로 둠\n'
     + `- schedule: 6~12개, 각 일정의 date는 ${p.year}-03-01 ~ ${p.year + 1}-02-28 사이 평일 'YYYY-MM-DD'\n`
     + '- budget: 항목·금액(원, 숫자)·비고. 예산이 주어지면 합계를 그 안으로\n- 메모에 없는 숫자·사실은 지어내지 않음\n\n'
@@ -417,8 +440,8 @@ async function runDraft() {
     apply(id, p => {
       // 작년 계획서 날짜를 그대로 옮긴 일정은 이 계획 학년도의 같은 달·날로
       // 작년(기존) 계획서 목차 그대로(없으면 기본 차례)
-      const O = yearOutline(p.sources.lastPlan);
-      const d = normDraft({ ...v, outline: O.items, roman: O.roman }), f = fitSchedule(d.schedule, p.year);
+      const O = draftOutline(p);
+      const d = normDraft({ ...v, outline: O.items, roman: O.roman, fromForm: !!(p.draft && p.draft.fromForm) }), f = fitSchedule(d.schedule, p.year);
       moved = f.moved; year = p.year;
       p.draft = { ...d, schedule: f.schedule }; p.rv = []; unconfirm(p);
     });
@@ -505,7 +528,10 @@ async function addFiles(target, files) {
         if (target === 'guide') p.guide = null; // 지침이 늘면 3단계에서 지침 항목을 다시 뽑음(학급운영계획과 같음)
       };
       if (plan.id === id) { add(plan); persist(); } else apply(id, add);
-      if (r.cols.length || r.dropped || r.masked) toast(personalMsg(r), 7000);
+      // 작년 계획서가 .hwpx면 그 서식도 학교 양식으로(.hwp·PDF면 .hwpx 안내) — 알림은 한 번에
+      const fm = target === 'lastPlan' ? await keepLastForm('year', f) : '';
+      const pm = r.cols.length || r.dropped || r.masked ? personalMsg(r) : '';
+      if (pm || fm) toast([pm, fm].filter(Boolean).join(' '), 7000);
     } catch (e) { toast(fileMessage(e && e.code), 5000); }
   }
   delete reading[id];

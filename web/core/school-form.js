@@ -41,19 +41,46 @@ async function load() {
   paint();
 }
 
+/* 양식 넣기에서 못 넣은 까닭 → 알림 글 */
+const FORM_ERR = {
+  NOT_HWPX: '학교 양식은 한글에서 「.hwpx」로 저장한 파일을 넣어 주세요.',
+  TOO_BIG: '양식 파일이 5MB보다 커요. 그림을 줄여 다시 저장해 주세요.',
+  READ: '양식 파일을 읽지 못했어요. 한글(.hwpx) 파일을 넣어 주세요.'
+};
+export const formError = code => FORM_ERR[code] || FORM_ERR.READ;
+/* 이 문서 종류(key)에 골라 둔 양식 id('' = 쌤비서 기본 문서), 고르기 */
+export const pickedForm = key => String(get(KEY(key), '') || '');
+export function pickForm(key, id) { set(KEY(key), String(id || '')); paint(); }
+
+/* .hwpx 양식(바이트)을 학교 양식 저장소에 넣음 → { rec, ok(제목·본문 자리를 찾음), picked(이 종류에 골라 둠) }.
+   replace: 같은 이름 양식이 있으면 그 자리에 바꿔 넣음. pick: true(늘 골라 둠) · 'empty'(이 종류에 고른 양식이 없고 제목·본문 자리를 찾았을 때만 — 저절로 고른 양식 때문에 내려받기가 막히지 않게) · false.
+   .hwpx가 아니면 { code: 'NOT_HWPX' }, 5MB가 넘으면 { code: 'TOO_BIG' }, 못 읽으면 { code: 'READ' }를 던짐 */
+export async function saveForm(key, u8, name, { pick = true, replace = false } = {}) {
+  if (!(u8 && u8[0] === 0x50 && u8[1] === 0x4B)) throw { code: 'NOT_HWPX' };
+  if (u8.length > MAX_FORM) throw { code: 'TOO_BIG' };
+  let parsed;
+  try { parsed = await readForm(u8); } catch (e) { throw { code: 'READ' }; }
+  const st = await forms(), list = (await st.list()).filter(f => f.kind === 'hwpx');
+  const nm = String(name || '').trim() || '학교 양식';
+  const same = replace ? list.find(f => f.name === nm) : null;
+  const rec = { id: same ? same.id : newFormId(), name: nm, kind: 'hwpx', bytes: u8, roles: findRoles(parsed.lines), savedAt: Date.now() };
+  await st.put(rec);
+  const cur = pickedForm(key), ok = rolesValid(rec.roles, { date: false });
+  const picked = pick === true || (pick === 'empty' && ok && !list.some(f => f.id === cur));
+  if (picked) set(KEY(key), rec.id);
+  try { C.list = (await st.list()).filter(f => f.kind === 'hwpx'); } catch (e) { C.list = null; }
+  paint();
+  return { rec, ok, picked };
+}
+
 /* 양식 넣기: .hwpx만(모양 그대로 채움). 제목·본문 자리를 못 찾으면 문서·소통 › 가정통신문 › [양식 맞추기]에서 */
 async function addForm(key, file) {
   C.adding++; paint();
   try {
     const u8 = new Uint8Array(await file.arrayBuffer());
-    if (!(u8[0] === 0x50 && u8[1] === 0x4B)) { toast('학교 양식은 한글에서 「.hwpx」로 저장한 파일을 넣어 주세요.', 6000); return; }
-    if (u8.length > MAX_FORM) { toast('양식 파일이 5MB보다 커요. 그림을 줄여 다시 저장해 주세요.', 6000); return; }
-    const parsed = await readForm(u8);
-    const rec = { id: newFormId(), name: String(file.name || '학교 양식').replace(/\.[^.]+$/, ''), kind: 'hwpx', bytes: u8, roles: findRoles(parsed.lines), savedAt: Date.now() };
-    await (await forms()).put(rec);
-    C.list = null; set(KEY(key), rec.id);
-    toast(rolesValid(rec.roles, { date: false }) ? `「${rec.name}」 양식을 넣었어요. 이 양식으로 내려받아요.` : `「${rec.name}」 양식을 넣었어요. 제목·본문 자리를 문서·소통 › 가정통신문 › [양식 맞추기]에서 정해 주세요.`, 7000);
-  } catch (e) { toast('양식 파일을 읽지 못했어요. 한글(.hwpx) 파일을 넣어 주세요.', 6000); }
+    const { rec, ok } = await saveForm(key, u8, String(file.name || '학교 양식').replace(/\.[^.]+$/, ''));
+    toast(ok ? `「${rec.name}」 양식을 넣었어요. 이 양식으로 내려받아요.` : `「${rec.name}」 양식을 넣었어요. 제목·본문 자리를 문서·소통 › 가정통신문 › [양식 맞추기]에서 정해 주세요.`, 7000);
+  } catch (e) { toast(formError(e && e.code), 6000); }
   finally { C.adding = Math.max(0, C.adding - 1); if (C.list) paint(); else load(); }
 }
 

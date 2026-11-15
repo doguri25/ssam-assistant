@@ -140,7 +140,8 @@ function normEvent(v) {
   e.options = v.options == null ? null : normOptions(v.options);
   e.picked = Number.isInteger(v.picked) && e.options && v.picked >= 0 && v.picked < e.options.length ? v.picked : null;
   const d = isObj(v.docs) ? v.docs : {};
-  e.docs = { plan: str(d.plan), safety: str(d.safety), letter: str(d.letter), rain: str(d.rain), done: d.done === true };
+  // form: 계획서를 학교 새 서식으로 바꾼 뒤의 큰 제목 줄(「새 서식으로 바꾸기」 — 그 차례로 한글 파일·다시 만들기)
+  e.docs = { plan: str(d.plan), safety: str(d.safety), letter: str(d.letter), rain: str(d.rain), done: d.done === true, form: strs(d.form).slice(0, 12) };
   e.rv = normRv(v.rv).filter(x => ['plan', 'safety', 'letter', 'rain'].includes(x.section));
   e.refs = normRefs(v.refs);
   const rn = isObj(v.refNotes) ? v.refNotes : {};
@@ -188,11 +189,34 @@ const pickedOption = e => (e.options && e.picked != null ? e.options[e.picked] :
 
 /* 계획서 글이 작년·기존 계획서 목차(큰 제목 셋 이상)로 쓰였으면 그 글 그대로: 큰 제목 줄은 소제목, 나머지는 문단.
    큰 제목은 목차 읽기와 같은 줄(차례·「1.」 작은 줄은 큰 제목이 아님). 글에 시간표·예산이 없으면 붙임 표로 더함.
-   작년·기존 계획서가 없거나 글에 큰 제목이 없으면 null(앱의 개요 표·시간표·세부 계획 차례) */
+   작년·기존 계획서가 없거나 글에 큰 제목이 없으면 null(앱의 개요 표·시간표·세부 계획 차례). 학교 새 서식으로 바꾼 계획서는 작년 계획서 없이도 그 서식 차례 */
 const squash = s => String(s || '').replace(/[\s\p{P}\p{S}]/gu, '');
+/* 계획서 글의 큰 제목 줄 번호: 학교 새 서식으로 바꾼 계획서는 그 서식 제목 줄(차례대로, 띄어쓰기·문장부호 무시 — 본문의 「1. 경기 종목」이 큰 제목이 되지 않게),
+   셋 넘게 찾지 못하면(다시 만든 글이 제목 줄을 바꿈 등) 목차 읽기와 같은 큰 제목 줄 */
+export function planHeadLines(e, text) {
+  const form = (e && e.docs && e.docs.form) || [];
+  if (form.length) {
+    const at = [];
+    let j = 0;
+    String(text || '').split('\n').forEach((l, i) => {
+      const q = squash(l);
+      if (!q) return;
+      const k = form.findIndex((f, n) => n >= j && squash(f) === q);
+      if (k >= 0) { at.push(i); j = k + 1; }
+    });
+    if (at.length >= Math.min(3, form.length)) return at;
+  }
+  return topLines(text);
+}
+/* 학교 새 서식으로 바꾼 계획서를 다시 만들 때 따를 목차 규칙 줄(없으면 '') */
+export function planFormRule(e) {
+  const f = (e && e.docs && e.docs.form) || [];
+  return f.length ? `- plan: 학교 새 서식의 목차를 그대로 따름(이 제목 줄을 그대로 씀): ${f.join(' / ')}. 각 제목 아래는 학교 계획서 문체(「가.」「1)」 목록)로 올해 행사 내용을 씀\n` : '';
+}
 function ownOutlineBlocks(e, text, opt) {
-  if (!(e.refs || []).some(r => r && r.kind === 'last' && String(r.text || '').trim())) return null;
-  const at = new Set(topLines(text));
+  const formed = !!(e.docs && e.docs.form && e.docs.form.length);
+  if (!formed && !(e.refs || []).some(r => r && r.kind === 'last' && String(r.text || '').trim())) return null;
+  const at = new Set(planHeadLines(e, text));
   if (at.size < 3) return null;
   const blocks = [];
   let buf = [];

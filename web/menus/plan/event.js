@@ -23,7 +23,9 @@ import { putReportSources } from './report.js';
 import { putLetterDraft } from '../etc/letter.js';
 import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import { letterBodyFromEvent } from '../etc/letter-ai.js';
-import { KINDS, DOCS, REF_KINDS, normRefs, guessKind, planOutlineRule, refsBlock, normRefNotes, newEvent, listEventPlans, getEvent, saveEvent, deleteEvent, currentEventId, setCurrentEvent, normOptions, letterMissing, docDoc, confirmBlockers, normItems, maskResult } from './event-model.js';
+import { reformHTML, registerReform, keepLastForm, HWPX_HINT } from './reform.js';
+import { formHeads, withPlanRoles, eventOlds, applyEvent } from './reform-model.js';
+import { KINDS, DOCS, REF_KINDS, normRefs, guessKind, planOutlineRule, planFormRule, refsBlock, normRefNotes, newEvent, listEventPlans, getEvent, saveEvent, deleteEvent, currentEventId, setCurrentEvent, normOptions, letterMissing, docDoc, confirmBlockers, normItems, maskResult } from './event-model.js';
 
 const STEPS = ['행사 정보', '구성안', '문서', '설문·결과'];
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -43,6 +45,7 @@ let curDoc = 'plan'; // 3단계에서 보고 있는 문서
 let showMemos = false; // 1단계 「지난 행사 개선 메모 불러오기」 목록
 let showPlans = false; // 1단계 참고 자료 「연간계획에서 불러오기」 목록
 const qrCache = {}; // 폼 주소 → QR 그림(data URL)
+const refFiles = new Map(); // 참고 자료 id → 넣은 파일(이 화면에서만 — 종류를 「작년·기존 계획서」로 바꾸면 그 서식도 학교 양식으로)
 const TARGETS = [['student', '학생'], ['parent', '학부모'], ['staff', '교직원']];
 const FEW = n => `응답이 적어요(${n}명). 결과를 일반화하기 어려워요.`;
 const blankSurvey = () => ({ target: 'student', items: [], formUrl: '', result: null, textSummary: '', report: '', nextMemo: '' });
@@ -199,20 +202,31 @@ const refTotal = x => x.refs.reduce((n, r) => n + r.text.length, 0);
 /* 참고 자료를 그 행사(id)에 더함 — 파일을 읽는 동안 다른 행사로 가도 섞이지 않게 */
 /* 참고 자료를 바꾸면: 지난 「반영한 것」은 다시 만들기 전까지 옛 자료 기준이라 표시 */
 const refsChanged = x => { if (x.refNotes.options.length || x.refNotes.docs.length) x.refNotes = { ...x.refNotes, stale: true }; };
-/* 참고 자료 넣기: 학생 이름·연락처 열과 명단·전화번호 줄은 빼고 이름은 가려 넣음(저장하지도 AI로 보내지도 않음) */
-function addRef(id, ref0) {
+/* 참고 자료 넣기: 학생 이름·연락처 열과 명단·전화번호 줄은 빼고 이름은 가려 넣음(저장하지도 AI로 보내지도 않음).
+   note: 함께 띄울 알림(작년 계획서 서식 저장 등). → 넣은 자료 id(글이 없으면 null) */
+function addRef(id, ref0, note = '') {
   const p = stripPersonal(ref0.text), ref = { ...ref0, text: p.text };
-  if (!String(ref.text || '').trim()) { toast(`「${ref.name}」에는 글이 없어 넣지 않았어요`, 5000); return; }
-  if (p.cols.length || p.dropped || p.masked) toast(personalMsg(p), 7000);
+  if (!String(ref.text || '').trim()) { toast(`「${ref.name}」에는 글이 없어 넣지 않았어요`, 5000); return null; }
+  const pm = p.cols.length || p.dropped || p.masked ? personalMsg(p) : '';
+  if (pm || note) toast([pm, note].filter(Boolean).join(' '), 7000);
+  const rid = 'ref' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const add = x => {
     const before = refTotal(x) + ref.text.length;
-    x.refs = normRefs([...x.refs, { ...ref, id: 'ref' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }]);
+    x.refs = normRefs([...x.refs, { ...ref, id: rid }]);
     if (refTotal(x) < before) toast('참고 자료는 모두 합쳐 6만 자까지만 저장해요', 5000);
     refsChanged(x);
     if (x.status === 'final') { x.status = 'draft'; removeEvents('event:' + x.id); }
   };
   if (ev.id === id) { add(ev); persist(); if (visible() && ev.step === 1) renderMain(); }
   else apply(id, add);
+  return rid;
+}
+/* 파일로 넣는 참고 자료: 「작년·기존 계획서」(파일 이름으로 알아봄)가 .hwpx면 그 서식도 학교 양식으로(.hwp·PDF면 안내), 파일은 이 화면에서만 기억 */
+async function addRefFile(id, f, text) {
+  const kind = guessKind(f.name);
+  const note = kind === 'last' && String(text || '').trim() ? await keepLastForm('event', f) : '';
+  const rid = addRef(id, { kind, name: f.name, text }, note);
+  if (rid) refFiles.set(rid, f);
 }
 function refSheet(r) {
   const S = window.SSAM;
@@ -292,7 +306,7 @@ function step3() {
     body += `<div id="evLetterBox">${letterBoxHTML(miss)}</div><div class="ev-qr" id="evLetterQr">${letterQrHTML()}</div>`;
   }
   return `${refNotesHTML(ev.refNotes.docs, ev.refNotes.stale)}<div id="evRvBox">${rvBox()}</div><div class="yp-card">${tabs}${body}
-      <div class="row yp-out"><button class="btn" type="button" data-e="copyDoc">복사</button>${formSlotHTML('event', exportButton('data-e="hwpx"'))}<span class="grow"></span>
+      <div class="row yp-out"><button class="btn" type="button" data-e="copyDoc">복사</button>${formSlotHTML('event', exportButton('data-e="hwpx"'))}${curDoc === 'plan' ? reformHTML('event') : ''}<span class="grow"></span>
         <button class="btn text" type="button" data-e="docs">다시 만들기 (고친 내용은 사라져요)</button></div></div>
     <div class="yp-card"><h3>품의로 이어 가기</h3><p class="muted">품의 › 새 품의로 넘어가며 행사 정보와 고른 안의 예산 줄을 채워요.</p>
       <div class="row"><button class="btn" type="button" data-e="purchase">품의로 이어 가기</button></div></div>`;
@@ -445,7 +459,7 @@ function docsPrompt(e) {
     + `종류: ${kindName(e.kind)}\n행사명: ${e.name}\n목적: ${e.purpose || '(없음)'}\n대상: ${e.grades}\n날짜: ${e.date}\n장소: ${e.place} (${e.outdoor ? '야외' : '실내'})\n예산: ${e.budget || '(정하지 않음)'}\n학교: ${s.name || '(학교명 없음)'}\n`
     + (o ? `\n고른 구성안(${o.label}): ${o.summary}\n시간표:\n${o.timetable.map(t => `- ${t.time} ${t.activity}${t.place ? ' (' + t.place + ')' : ''}`).join('\n')}\n필요 인력: ${o.staffNeed || '-'}\n예산 내역: ${o.budget.map(b => `${b.name} ${b.amount}원`).join(', ') || '-'}\n` : '')
     + refsPart(e)
-    + '\n규칙:\n' + (planOutlineRule(e.refs) || '- plan: 학교 계획서 문체(「가.」「1)」 목록), 개요·운영 방침·세부 운영·안전 대책·평가 순\n')
+    + '\n규칙:\n' + (planFormRule(e) || planOutlineRule(e.refs) || '- plan: 학교 계획서 문체(「가.」「1)」 목록), 개요·운영 방침·세부 운영·안전 대책·평가 순\n')
     + '- safety: 「- 」로 시작하는 점검 항목 목록\n'
     + '- letter: 학부모가 읽기 쉬운 말로. 날짜(일시)·준비물·복장·문의처(학교 교무실 전화)를 꼭 넣음\n'
     + (e.outdoor ? '- rain: 비가 오면 어떻게 할지(장소·시간 바꾸기) 두세 줄\n' : '- rain: 빈 글\n')
@@ -461,7 +475,8 @@ async function runDocs() {
   try {
     const v = await ai.generateJSON(docsPrompt(ev), { task: 'plan', valid: x => x && !Array.isArray(x) && typeof x === 'object' && (typeof x.letter === 'string' || typeof x.plan === 'string') });
     const t = x => (Array.isArray(x) ? x.filter(y => typeof y === 'string').join('\n') : typeof x === 'string' ? x : '');
-    apply(id, e => { e.docs = { plan: t(v.plan), safety: t(v.safety), letter: t(v.letter), rain: t(v.rain), done: false }; e.rv = []; e.refNotes = { ...e.refNotes, docs: normRefNotes(v.refNotes), stale: false }; if (e.status === 'final') { e.status = 'draft'; removeEvents('event:' + e.id); } });
+    // 학교 새 서식으로 바꾼 계획서는 다시 만들어도 그 서식 차례(form)
+    apply(id, e => { e.docs = { plan: t(v.plan), safety: t(v.safety), letter: t(v.letter), rain: t(v.rain), done: false, form: e.docs.form }; e.rv = []; e.refNotes = { ...e.refNotes, docs: normRefNotes(v.refNotes), stale: false }; if (e.status === 'final') { e.status = 'draft'; removeEvents('event:' + e.id); } });
     clearState(id);
     finish(id, 'docs');
     reviewDocs(id);
@@ -495,6 +510,33 @@ function updateRv(id) {
 
 /* 학교 양식(.hwpx)으로 내려받기: 보고 있는 문서(계획서·안전 점검표·가정통신문) */
 registerFormDoc('event', () => { if (!ev || !ev.docs) return null; const doc = docDoc(ev, curDoc); return { doc, name: doc.title }; });
+/* 3단계 계획서 탭 [새 서식으로 바꾸기](reform.js): 계획서 글의 큰 제목 칸 → 새 서식의 제목 줄 차례로 글을 다시 씀(docs.form — 한글 파일·다시 만들기가 그 차례) */
+registerReform('event', {
+  kind: '행사계획',
+  id: () => ev && ev.id,
+  ready: () => !!(ev && ev.docs && ev.docs.plan.trim()),
+  busy: () => !!busy[ev.id],
+  title: () => `${ev.name} 운영 계획`,
+  context: () => [`행사: ${ev.name} (${kindName(ev.kind)})`, ev.purpose.trim() && `목적: ${textForAI(ev.purpose)}`, ev.date && `일시: ${ev.date}`, ev.grades.trim() && `대상: ${ev.grades}`,
+    ev.place.trim() && `장소: ${ev.place} (${ev.outdoor ? '야외' : '실내'})`, ev.budget.trim() && `예산: ${textForAI(ev.budget)}`].filter(Boolean).join('\n'),
+  heads: text => { const H = formHeads(text); return { ...H, heads: withPlanRoles(H.heads) }; },
+  read: () => {
+    flushSave();
+    const id = ev.id, { pre, olds } = eventOlds(ev);
+    return { olds, apply: (f, H) => apply(id, e => {
+      const o = applyEvent(e, f, H, pre, olds);
+      e.docs = { ...e.docs, plan: o.plan, form: o.form }; e.rv = e.rv.filter(x => x.section !== 'plan');
+      if (e.status === 'final') { e.status = 'draft'; removeEvents('event:' + e.id); }
+    }) };
+  },
+  snapshot: () => ({ plan: ev.docs.plan, form: [...(ev.docs.form || [])], rv: ev.rv }),
+  restore: s => apply(ev.id, e => {
+    e.docs = { ...e.docs, plan: s.plan, form: s.form }; e.rv = s.rv;
+    if (e.status === 'final') { e.status = 'draft'; removeEvents('event:' + e.id); }
+  }),
+  rerender: () => { if (visible() && ev.step === 3) renderMain(); },
+  done: '계획서 글을 확인해 주세요.'
+});
 async function downloadDoc() {
   const doc = docDoc(ev, curDoc);
   try { toast(await exportDoc(doc, doc.title), 6000); }
@@ -620,14 +662,21 @@ document.addEventListener('change', e => {
   } else if (el.dataset.refkind) {
     const r = ev.refs.find(x => x.id === el.dataset.refkind);
     if (r) { r.kind = el.value; unconfirm(); persist(); }
+    // 「작년·기존 계획서」로 바꾸면 그 파일(.hwpx)의 서식도 학교 양식으로 — 이 화면에서 넣은 파일만(원본은 저장하지 않음)
+    if (r && el.value === 'last') {
+      const f = refFiles.get(r.id);
+      if (f) keepLastForm('event', f).then(m => { if (m) toast(m, 7000); });
+      else if (/\.(hwp|pdf)$/i.test(r.name)) toast(HWPX_HINT + '.', 6000);
+    }
   } else if (el.id === 'evRefFile') {
     const files = [...el.files]; el.value = '';
     const id = ev.id;
     if (!saved) persist();
     (async () => {
       for (const f of files) {
-        try { addRef(id, { kind: guessKind(f.name), name: f.name, text: await readText(f) }); }
-        catch (err) { toast(fileMessage(err && err.code), 5000); }
+        let text;
+        try { text = await readText(f); } catch (err) { toast(fileMessage(err && err.code), 5000); continue; }
+        await addRefFile(id, f, text);
       }
     })();
   } else if (el.id === 'evFile') {
@@ -704,7 +753,7 @@ document.addEventListener('click', e => {
   else if (a === 'refPaste') refSheet(null);
   else if (a === 'refPlan') { showPlans = !showPlans; renderMain(); }
   else if (a === 'refView') { const r = ev.refs.find(x => x.id === b.dataset.id); if (r) refSheet(r); }
-  else if (a === 'refDel') { ev.refs = ev.refs.filter(x => x.id !== b.dataset.id); refsChanged(ev); unconfirm(); persist(); renderMain(); }
+  else if (a === 'refDel') { refFiles.delete(b.dataset.id); ev.refs = ev.refs.filter(x => x.id !== b.dataset.id); refsChanged(ev); unconfirm(); persist(); renderMain(); }
   else if (a === 'docs') runDocs();
   else if (a === 'letterDone') { if (!letterMissing(ev.docs.letter).length) { ev.docs.done = true; persist(); const lb = box.querySelector('#evLetterBox'); if (lb) lb.innerHTML = letterBoxHTML([]); toast('가정통신문을 완성했어요'); } }
   else if (a === 'copyDoc') {
@@ -757,7 +806,7 @@ async function refsFrom(id, files, texts) {
   for (const f of files) {
     let text = texts && texts.get(f);
     if (text == null) { try { text = await readText(f); } catch (e) { toast(fileMessage(e && e.code), 5000); continue; } }
-    addRef(id, { kind: guessKind(f.name), name: f.name, text });
+    await addRefFile(id, f, text);
   }
 }
 registerInbox('event-plan', {

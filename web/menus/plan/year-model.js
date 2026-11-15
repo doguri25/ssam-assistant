@@ -21,6 +21,13 @@ const ROLE = [['purpose', /목적|목표|필요성|배경|취지/], ['policy', /
   ['evaluation', /평가|환류|기대\s*효과|성과/], ['details', /세부|추진|운영|실천|내용|활동|방법|계획/]];
 const NOT_ROLE = /근거|관련|현황|개요|실태|분석/;
 export const isExtra = k => /^x\d{1,2}$/.test(String(k || ''));
+/* 제목 하나의 역할(목적·방침·일정·예산·평가·세부 중 처음 맞는 것, 「근거·현황·개요」 등은 없음 '') — 새 서식으로 바꾸기에서 옛 칸과 새 제목을 맞출 때 */
+export function sectionRole(title) {
+  const t = String(title || '');
+  if (NOT_ROLE.test(t)) return '';
+  const r = ROLE.find(([, re]) => re.test(t));
+  return r ? r[0] : '';
+}
 export function yearOutline(src) {
   const top = parseOutline(src).filter(x => x.level === 1).slice(0, 12);
   if (top.length < 3) return { items: [], roman: false };
@@ -37,6 +44,9 @@ export function yearOutline(src) {
   return { items, roman: /^\s*[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]\.\s*\S/m.test(String(src || '')) };
 }
 const ROMAN = 'ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ';
+/* 초안을 쓸 목차: 학교 새 서식으로 바꾼 초안이면 그 목차, 아니면 작년(기존) 계획서 목차(없으면 빈 목록 — 기본 차례) */
+export const draftOutline = p => (p && p.draft && p.draft.fromForm && p.draft.outline.length
+  ? { items: p.draft.outline.map(o => ({ ...o })), roman: !!p.draft.roman } : yearOutline(p && p.sources ? p.sources.lastPlan : ''));
 /* 초안의 글 칸: 기본 넷 + 목차의 덧붙임 칸. 작년(기존) 계획서 목차로 쓴 초안은 목차에 있는 칸만(화면·한글 파일에 나오는 칸 — 없는 칸 글로 지침 「반영됨」을 세거나 검토하지 않게) */
 export const textKeys = d => {
   const o = ((d && d.outline) || []).map(x => x.key);
@@ -144,6 +154,8 @@ export function normDraft(v) {
     seen.add(k); d.outline.push({ key: k, title: t.slice(0, 60) });
   }
   d.roman = !!v.roman && d.outline.length > 0;
+  // 목차가 학교 새 서식(「새 서식으로 바꾸기」)에서 왔는지 — 「다시 만들기」도 이 차례로
+  d.fromForm = !!v.fromForm && d.outline.length > 0;
   for (const o of d.outline) if (isExtra(o.key)) d[o.key] = text(v[o.key]);
   return d;
 }
