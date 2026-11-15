@@ -183,3 +183,51 @@ test('[rf-origin] 작년 계획서·새 서식 양식 저장: 같은 이름이�
   assert.notEqual(c.rec.id, 'fmOld');
   assert.deepEqual([...(await st.get('fmOld')).bytes], [...letter]);
 });
+
+const count = (s, x) => s.split(x).length - 1;
+
+test('[rf-head-short] 행사계획: 쌍점 없는 짧은 제목 줄(「1. 목적 협동심과 체력 증진」「2. 장소 본교 운동장」)도 제목 낱말 뒤 글은 그 칸 글 첫 줄로 — 새 서식으로 바꿔도 한 번만 남음', () => {
+  const plan = '1. 목적 협동심과 체력 증진\n2. 장소 본교 운동장\n3. 대상 전교생\n4. 세부 운영\n가. 개회식';
+  const e = ev(plan);
+  const { olds } = R.eventOlds(e);
+  assert.deepEqual(olds.map(o => [o.title, o.text]), [['목적', '협동심과 체력 증진'], ['장소', '본교 운동장'], ['대상', '전교생'], ['세부 운영', '가. 개회식']]);
+  assert.equal(olds[0].role, 'purpose', '제목 낱말로 역할');
+  // AI 없이(규칙만 — 옮길 곳 없는 장소·대상은 앞 칸에 붙음) · AI가 장소·대상을 운영 개요로 옮김
+  for (const answer of [null, { map: [{ to: 1, from: ['o2', 'o3'] }], write: [] }]) {
+    const { out } = reformEvent(e, answer);
+    for (const s of ['협동심과 체력 증진', '장소: 본교 운동장', '대상: 전교생', '가. 개회식']) assert.equal(count(out.plan, s), 1, `${s} 한 번:\n${out.plan}`);
+    assert.ok(out.plan.includes('Ⅰ. 추진 목적\n협동심과 체력 증진'), '비슷한 제목 칸이면 글만: ' + out.plan);
+    if (answer) assert.ok(out.plan.includes('Ⅱ. 운영 개요\n장소: 본교 운동장\n대상: 전교생\nⅢ.'), out.plan);
+  }
+  // 같은 제목 줄 서식으로 옮기면 제목 줄 글을 다시 쓰지 않음
+  const { pre, olds: o2 } = R.eventOlds(e);
+  const H = R.formHeads('1. 목적 협동심과 체력 증진\n2. 장소 본교 운동장\n3. 대상 전교생\n4. 세부 운영'), hs = R.withPlanRoles(H.heads);
+  assert.equal(R.applyEvent(e, R.mergeReform(hs, o2, R.ruleMap(o2, hs), null), H, pre, o2).plan, plan);
+  // 「2. 장소: 본교 운동장」(쌍점)은 그대로
+  const c = R.eventOlds(ev('1. 목적\n가. 협동심\n2. 장소: 본교 운동장\n3. 세부 운영\n가. 개회식')).olds;
+  assert.deepEqual([c[1].title, c[1].text, c[1].cut], ['장소', '본교 운동장', true]);
+  assert.equal(count(reformEvent(ev('1. 목적\n가. 협동심\n2. 장소: 본교 운동장\n3. 세부 운영\n가. 개회식')).out.plan, '장소: 본교 운동장'), 1);
+  // 따옴표로 시작하는 글도 제목 낱말 뒤에서 자름
+  assert.deepEqual(['방침', '「모두가 즐기는 운동회」'], (o => [o.title, o.text])(R.eventOlds(ev('1. 목적\n가. 협동심\n2. 방침 「모두가 즐기는 운동회」\n3. 세부 운영')).olds[1]));
+});
+
+test('[rf-head-short] 제목 그대로인 큰 제목(「세부 운영」「추진 목적」「평가 및 환류」「평가 계획」「예산 내역」…)은 나누지 않음 — 행사·학급운영계획', () => {
+  const titles = ['세부 운영', '추진 목적', '안전 대책', '평가 및 환류', '평가 계획', '예산 내역', '목적 및 필요성', '기대 효과 및 환류', '일시 및 장소', '유의 사항', '내용 요약', '일정 계획(안)', '평가 결과 분석', '평가 결과 공유', '기대 효과', '평가 (교사용)', '대상 학년 및 인원'];
+  const e = ev(titles.map((t, i) => `${i + 1}. ${t}\n가. 본문${i + 1}`).join('\n'));
+  const { olds } = R.eventOlds(e);
+  assert.deepEqual(olds.map(o => o.title), titles);
+  olds.forEach((o, i) => assert.equal(o.text, `가. 본문${i + 1}`, o.title));
+  assert.equal(olds[4].role, 'eval', '「평가 계획」 전체로 역할');
+  const outline = C.withRoles(titles.map((t, i) => ({ id: 's' + (i + 1), title: t, level: 1 })));
+  const co = R.classOlds({ outline, draft: {}, guide: null });
+  assert.deepEqual(co.map(o => [o.title, o.text]), titles.map(t => [t, '']));
+  // 학급운영계획: 제목 낱말 뒤 글(「목표 서로 돕는 반」)은 나눔, 「평가 계획」은 그대로
+  const p = { outline: C.withRoles([{ id: 's1', title: '목표 서로 돕는 반', level: 1 }, { id: 's2', title: '학급 현황', level: 1 }, { id: 's3', title: '평가 계획', level: 1 }]),
+    draft: { s1: '바른 말을 쓴다.', s2: '남 12명 여 13명', s3: '수행평가 중심' }, guide: null };
+  const po = R.classOlds(p);
+  assert.deepEqual(po.map(o => o.title), ['목표', '학급 현황', '평가 계획']);
+  const H = R.formHeads('Ⅰ. 학급 교육 목표\nⅡ. 학급 현황 및 조직\nⅢ. 평가 계획'), hs = R.withPlanRoles(H.heads);
+  const out = R.applyClass(p, R.mergeReform(hs, po, R.ruleMap(po, hs), null), H, po);
+  assert.equal(out.draft[out.outline[0].id], '서로 돕는 반\n바른 말을 쓴다.');
+  assert.equal(count(Object.values(out.draft).join('\n'), '서로 돕는 반'), 1);
+});
