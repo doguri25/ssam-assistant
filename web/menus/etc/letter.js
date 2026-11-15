@@ -163,7 +163,9 @@ export function write() {
   writeJob(x);
   return 'started';
 }
+let writing = null; // AI가 쓰는 중인 가정통신문(최근에서 그 글을 다시 열면 이 글을 엶 — 옛 글 사본을 열면 다 쓴 글이 화면에 오지 않고, 고치면 최근 글이 옛 글로 덮임)
 async function writeJob(x) {
+  writing = x;
   try {
     // 학년도: 오늘이 든 학년도(1·2월은 앞 해, 쪽지·공문 처리와 같게). 설정의 계획 학년도는 1월부터 다음 해라 쓰지 않음
     const year = schoolYearOf(today());
@@ -180,6 +182,7 @@ async function writeJob(x) {
   } catch (e) {
     toast(e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 눌러 주세요.' : ai.errorMessage(e && e.code, e), 6000);
   }
+  writing = null;
   F.busy = false;
   live();
 }
@@ -594,7 +597,11 @@ document.addEventListener('click', async e => {
   const del = e.target.closest('[data-lf-del]');
   if (del) { x.sources.splice(+del.dataset.lfDel, 1); save(); render(); return; }
   const op = e.target.closest('[data-lf-open]');
-  if (op) { const r = listLetters().find(y => y.id === op.dataset.lfOpen); if (r) { cur = fitOld({ ...r }); delete cur.at; saveCurrent(cur); rcReset(); render(); } return; }
+  if (op) {
+    const r = listLetters().find(y => y.id === op.dataset.lfOpen);
+    if (r) { if (writing && writing.id === r.id) cur = writing; else { cur = fitOld({ ...r }); delete cur.at; } saveCurrent(cur); rcReset(); render(); }
+    return;
+  }
   const lg = e.target.closest('[data-lf-lang]');
   if (lg) { F.trLang = lg.dataset.lfLang; render(); return; }
   const b = e.target.closest('[data-lf]');
@@ -634,6 +641,23 @@ document.addEventListener('click', async e => {
     copyText(s || '').then(ok => toast(ok ? '번역을 복사했어요. 알림 앱에 붙여 넣으세요' : '복사하지 못했어요'));
   }
 });
+/* 회신서 표 번호 칸을 고친 뒤(칸을 떠날 때 change) 다시 그리기: 바로 그리면 누른 칸·[✕]·Tab으로 옮겨 간 칸이 사라져 초점·첫 누름이 버려짐 →
+   누르는 동안은 뗀 뒤(click 뒤)로 미루고, 다 그린 뒤 초점은 같은 칸(번호 칸이면 그 줄 번호 칸)에. 떼기를 놓쳐도 2초 뒤에는 그림 */
+const RCP = { at: 0, due: false };
+const rcPressing = () => Date.now() - RCP.at < 2000;
+function rcFlush() {
+  if (!RCP.due || rcPressing()) return;
+  RCP.due = false;
+  const a = document.activeElement, k = a && box && box.contains(a) && a.dataset && a.dataset.rcNo != null ? `[data-rc-no="${a.dataset.rcNo}"]` : '';
+  render();
+  const n = k && box.querySelector(k);
+  if (n && document.activeElement !== n) n.focus({ preventScroll: true });
+}
+const rcLater = () => { RCP.due = true; setTimeout(rcFlush, 0); if (rcPressing()) setTimeout(rcFlush, 2100); };
+document.addEventListener('pointerdown', e => { if (mine(e)) RCP.at = Date.now(); }, true);
+const rcUp = () => { if (!RCP.at) return; RCP.at = 0; setTimeout(rcFlush, 0); };
+document.addEventListener('pointerup', rcUp, true);
+document.addEventListener('pointercancel', rcUp, true);
 document.addEventListener('change', e => {
   if (!mine(e)) return;
   const el = e.target, x = c();
@@ -643,7 +667,7 @@ document.addEventListener('change', e => {
   if (el.id === 'lfReplyOn' && x.out) { x.out.replyOn = el.checked; save(x, { push: true }); render(); return; }
   if (el.id === 'lfRcFile') { const fs = [...el.files]; el.value = ''; if (fs.length) rcAdd(fs); return; }
   if (el.dataset.rcA != null) { const r = x.collect.rows[+el.dataset.rcA], f = el.dataset.rcF; if (r) { r.answers[f] = el.value; r.unsure = r.unsure.filter(u => u !== f); save(x, { push: true }); render(); } return; }
-  if (el.dataset.rcNo != null) { const r = x.collect.rows[+el.dataset.rcNo], n = +el.value; if (r) { r.no = Number.isInteger(n) && n >= 1 && n <= 99 ? n : null; save(x, { push: true }); render(); } return; }
+  if (el.dataset.rcNo != null) { const r = x.collect.rows[+el.dataset.rcNo], n = +el.value; if (r) { r.no = Number.isInteger(n) && n >= 1 && n <= 99 ? n : null; save(x, { push: true }); rcLater(); } return; }
 });
 document.addEventListener('input', e => {
   if (!mine(e)) return;

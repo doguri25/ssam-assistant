@@ -7,7 +7,7 @@ import { routeText } from '../../web/core/chat-route.js';
 import { searchGuide } from '../../web/core/chat-knowledge.js';
 import { maskFor } from '../../web/menus/etc/multi-ai.js';
 import { parseTier, parseDeduct, toNum, itemScore, deriveItem, defaultQuant, allItems } from '../../web/menus/etc/multi-quant.js';
-import { remapQuant, shiftPick } from '../../web/menus/etc/multi-model.js';
+import { remapQuant, shiftPick, normMulti } from '../../web/menus/etc/multi-model.js';
 import { evidenceLabel } from '../../web/menus/etc/multi-evidence.js';
 import { normReport, parseQualText, DEFAULT_QUAL } from '../../web/menus/etc/multi-qual.js';
 
@@ -69,6 +69,32 @@ test('지표를 지우면 고른 차례를 당기고, 지운 지표를 골랐으
   const values = { a: { v: '2' }, b: { v: '1' }, c: { v: '0', deduct: '1' } };
   shiftPick(values, 'a', 1); shiftPick(values, 'b', 1); shiftPick(values, 'c', 3);
   assert.deepEqual(values, { a: { v: '1' }, b: {}, c: { v: '0', deduct: '1' } });
+});
+
+test('수 넣기·횟수 항목의 지표를 지워도 넣은 수(22시간)는 그대로 — 고르기 항목만 차례를 당김', () => {
+  const values = { h: { v: '22', count: '', deduct: '' }, k: { v: '1', count: '', deduct: '' }, c: { v: '', count: '3', deduct: '' }, p: { v: '2' } };
+  shiftPick(values, 'h', 1, 'range'); shiftPick(values, 'k', 1, 'range'); shiftPick(values, 'c', 0, 'count'); shiftPick(values, 'p', 1, 'choice');
+  assert.deepEqual(values, { h: { v: '22', count: '', deduct: '' }, k: { v: '1', count: '', deduct: '' }, c: { v: '', count: '3', deduct: '' }, p: { v: '1' } });
+  // 예시 기준 「주당 수업시수」에 22시간 → 「20시간 미만」 지표를 지워도 22시간·25점
+  const it = allItems(defaultQuant()).find(i => i.name === '주당 수업시수'), vals = { [it.id]: { v: '22' } };
+  shiftPick(vals, it.id, 2, it.kind);
+  assert.equal(vals[it.id].v, '22');
+  assert.equal(itemScore(it, vals[it.id]), 25);
+});
+
+test('기준 고치기에서 지표 글을 비운 채 두면 다시 열 때 그 지표는 빠지고, 고른 지표는 같은 지표 그대로(다른 지표로 넘어가지 않음)', () => {
+  const m = normMulti(null), it = allItems(m.quant.criteria).find(i => i.name === '업무 곤란도');
+  m.quant.values[it.id] = { v: '2', count: '', deduct: '' }; // 보직교사 18점
+  const other = allItems(m.quant.criteria).find(i => i.name === '학생 지도 실적');
+  m.quant.values[other.id] = { v: '0', count: '', deduct: '' };
+  it.tiers[0].label = ''; // 「교무부장, 비교과」 글을 지움
+  other.tiers[0].label = ' '; // 고른 지표의 글을 지움
+  const back = normMulti(JSON.parse(JSON.stringify(m)));
+  const it2 = allItems(back.quant.criteria).find(i => i.id === it.id), o2 = allItems(back.quant.criteria).find(i => i.id === other.id);
+  assert.equal(it2.tiers.length, 3);
+  assert.ok(/보직교사/.test(it2.tiers[+back.quant.values[it.id].v].label), JSON.stringify(back.quant.values[it.id]));
+  assert.equal(itemScore(it2, back.quant.values[it.id]), 18);
+  assert.equal(back.quant.values[other.id].v, undefined, '고른 지표가 빠지면 비움');
 });
 
 test('근거자료 제목 줄: 시행이 줄 가운데여도 시행 번호·날짜(관련 공문 번호가 아님), COVID-19는 번호 아님, 「제 2025-12345 호」', () => {

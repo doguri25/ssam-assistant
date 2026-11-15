@@ -12,7 +12,7 @@ import { schoolYearOf } from '../../core/calendar.js';
 import { registerInbox } from '../../core/inbox.js';
 import { cleanSheet } from '../evaluate/activity/activity-read.js';
 import { KINDS, gongmunPrompt, normGongmun, dday, ddayText, validDue } from './gongmun-ai.js';
-import { listDocs, putDoc, removeDoc, getDoc, newDocId, MAX_DOCS } from './gongmun-model.js';
+import { listDocs, putDoc, removeDoc, getDoc, newDocId, MAX_DOCS, MAX_TASKS } from './gongmun-model.js';
 import { putMessageFiles } from './message.js';
 import { putLetterSources } from './letter.js';
 import { putReportSources } from '../plan/report.js';
@@ -248,6 +248,8 @@ document.addEventListener('keydown', e => {
   const el = e.target, d = docOf(el);
   if (el.dataset.gmTadd == null || !d || !el.value.trim()) return;
   e.preventDefault();
+  // 넘치면 저장할 때 빠지므로 더하지 않고 친 글은 칸에 둠
+  if (d.tasks.length >= MAX_TASKS) { toast(`할 일은 ${MAX_TASKS}개까지 넣을 수 있어요. 다 한 할 일을 [✕]로 빼고 더해 주세요.`, 6000); return; }
   d.tasks.push({ text: el.value.trim().slice(0, 120), due: '', done: false }); d.touched = true; putDoc(d); delete S.tadd[d.id]; render();
 });
 document.addEventListener('toggle', e => { if (box && e.target.classList && e.target.classList.contains('gm-done-box')) S.showDone = e.target.open; }, true);

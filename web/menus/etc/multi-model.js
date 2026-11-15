@@ -5,7 +5,7 @@
      qual: { criteria(null이면 예시 서식), formId, formName, draft, report, filled: { [칸 길]: true } } }
    넣은 기준 양식 원본·근거자료 파일은 IndexedDB forms('multi')(백업 파일에 들어가지 않음) */
 import { get, set } from '../../core/store.js';
-import { normCriteria, defaultQuant, allItems } from './multi-quant.js';
+import { normCriteria, defaultQuant, allItems, toNum } from './multi-quant.js';
 import { normQualCriteria, defaultQual, normReport } from './multi-qual.js';
 import { notesText } from './multi-evidence.js';
 
@@ -35,15 +35,29 @@ const normEvidence = list => {
     .map(e => ({ id: typeof e.id === 'string' && e.id ? e.id : rid('ev'), fileId: e.fileId, name: clip(e.name, 120), label: clip(e.label, 200), edited: !!e.edited })).slice(0, 30);
   return out.length ? out : undefined;
 };
+/* 저장한 기준에서 빠지는 지표(기준 고치기에서 글을 비운 채 둔 것 등)가 있으면 고르기 항목의 고른 차례를 맞춤 — 다른 지표로 넘어가지 않게, 고른 지표가 빠지면 비움 */
+function keepPicks(raw, criteria, values) {
+  const news = new Map(allItems(criteria).map(i => [i.id, i]));
+  for (const g of arr(isObj(raw) ? raw.groups : null)) for (const it of arr(isObj(g) ? g.items : null)) {
+    const e = isObj(it) && values[it.id], n = e && news.get(it.id);
+    if (!n || n.kind !== 'choice' || it.kind !== 'choice' || !/^\d+$/.test(str(e.v))) continue;
+    const at = [];
+    let k = 0;
+    for (const t of arr(it.tiers)) at.push(isObj(t) && str(t.label).trim() && toNum(t.points) != null && k < 20 ? k++ : -1);
+    const j = at[+e.v];
+    if (j === -1) delete e.v; else if (j != null) e.v = String(j);
+  }
+  return values;
+}
 export function normMulti(v) {
   const o = isObj(v) ? v : {}, q = isObj(o.quant) ? o.quant : {}, l = isObj(o.qual) ? o.qual : {};
-  const qualCriteria = normQualCriteria(l.criteria);
+  const qualCriteria = normQualCriteria(l.criteria), criteria = normCriteria(q.criteria);
   return {
     view: VIEWS.includes(o.view) ? o.view : 'quant',
     info: normInfo(o.info),
     quant: {
-      criteria: normCriteria(q.criteria) || defaultQuant(), formId: clip(q.formId, 60), formName: clip(q.formName, 120),
-      values: objOf(q.values, normEntry), evidence: objOf(q.evidence, normEvidence),
+      criteria: criteria || defaultQuant(), formId: clip(q.formId, 60), formName: clip(q.formName, 120),
+      values: criteria ? keepPicks(q.criteria, criteria, objOf(q.values, normEntry)) : objOf(q.values, normEntry), evidence: objOf(q.evidence, normEvidence),
       notes: objOf(q.notes, x => (typeof x === 'string' ? x.slice(0, 2000) : undefined)), notesEdited: objOf(q.notesEdited, x => (x === true ? true : undefined))
     },
     qual: {
@@ -92,10 +106,11 @@ export function remapQuant(quant, criteria) {
   const dropped = Object.entries(quant.evidence || {}).filter(([id]) => !moved.has(id)).flatMap(([, list]) => arr(list));
   return { quant: out, dropped };
 }
-/* 기준 고치기에서 지표를 지움: 고른 지표 차례를 당기고, 지운 지표를 골랐으면 비움 */
-export function shiftPick(values, itemId, delIndex) {
+/* 기준 고치기에서 지표를 지움: 고른 지표 차례를 당기고, 지운 지표를 골랐으면 비움.
+   kind(지우기 전 항목 꼴)가 고르기가 아니면 v는 넣은 수(22시간)라 그대로 둠 */
+export function shiftPick(values, itemId, delIndex, kind = 'choice') {
   const e = values && values[itemId];
-  if (!e || e.v === undefined || !/^\d+$/.test(str(e.v))) return values;
+  if (kind !== 'choice' || !e || e.v === undefined || !/^\d+$/.test(str(e.v))) return values;
   const v = +e.v;
   if (v === delIndex) delete e.v; else if (v > delIndex) e.v = String(v - 1);
   return values;
