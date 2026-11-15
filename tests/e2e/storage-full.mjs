@@ -94,6 +94,18 @@ await run('storage-full', [
     await page.evaluate(() => localStorage.removeItem('zz-test-junk'));
     assert(txt.includes('저장 공간이 70% 넘게 찼어요'), txt.slice(0, 300));
   }],
+  ['품의 넣는 방식을 저장하지 못하면 「바꿨어요」 대신 알림, 고른 칸은 저장된 방식으로 돌아감', async () => {
+    await page.click('nav.app-side [data-menu-go="settings"]'); await page.click('#menuTabs [data-tab="purchase"]');
+    await page.waitForSelector(`${S} input[name="pcFlow"]`);
+    await page.evaluate(() => { document.querySelector('#toast').textContent = ''; });
+    await full('^ssam:purchase:flow$');
+    await page.click(`${S} input[name="pcFlow"][value="ask"]`);
+    await page.waitForTimeout(100);
+    await ok();
+    assert((await toast()).includes('저장 공간이 모자라') && !(await toast()).includes('바꿨어요'), await toast());
+    assert(await page.isChecked(`${S} input[name="pcFlow"][value="oneshot"]`), '저장하지 못한 방식이 골라진 채');
+    assert(await page.evaluate(() => localStorage.getItem('ssam:purchase:flow')) === null, '저장됨');
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();

@@ -473,7 +473,8 @@ document.addEventListener('click', e => {
 document.addEventListener('change', e => {
   const ib = e.target.dataset && e.target.dataset.ibSet;
   if (ib && box && box.contains(e.target)) { const ok = setInboxSettings({ [ib]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }); toast(ok ? '떠 있는 버튼 설정을 바꿨어요' : FULL_MSG, ok ? undefined : 8000); return; }
-  if (box && e.target.name === 'pcFlow' && box.contains(e.target)) { setPurchaseFlow(e.target.value); toast('품의 넣는 방식을 바꿨어요'); return; }
+  // 저장하지 못하면(저장 공간이 꽉 참) 「바꿨어요」라고 하지 않고, 고른 칸은 저장된 방식으로 되돌림
+  if (box && e.target.name === 'pcFlow' && box.contains(e.target)) { const ok = setPurchaseFlow(e.target.value); if (!ok) again(); toast(ok ? '품의 넣는 방식을 바꿨어요' : FULL_MSG, ok ? undefined : 8000); return; }
   if (box && e.target.id === 'setReviewAi' && box.contains(e.target)) { const ok = setDefaultReview(aiFromValue(e.target.value)); again(); toast(ok ? '기본 검토 AI를 저장했어요' : FULL_MSG, ok ? undefined : 8000); return; }
   if (!box || !box.contains(e.target) || !['rosterFile', 'backupFile'].includes(e.target.id)) return;
   const f = e.target.files[0], id = e.target.id; e.target.value = '';
