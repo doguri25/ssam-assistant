@@ -1,6 +1,6 @@
 // 계획서 「새 서식으로 바꾸기」 + 작년 계획서 서식 함께 저장 (스펙 2026-11-15 1B): 연간·행사·학급운영계획.
 // 작년 계획서를 .hwpx로 넣으면 학교 양식 「작년 계획서 서식 · 파일 이름」으로 저장(고른 양식이 없으면 골라 둠), .hwp·PDF면 .hwpx 안내.
-// 내려받기 줄 [새 서식으로 바꾸기] → 새 서식 큰 제목에 초안 칸을 맞춘 미리 보기(옛 칸 이름·AI가 새로 씀·옮길 곳 없음 [이 칸에 붙이기]) → [이대로 바꾸기]·[되돌리기]
+// 내려받기 줄 [새 서식으로 바꾸기] → 새 서식 큰 제목에 초안 칸을 맞춘 미리 보기(옛 칸 이름·AI가 새로 씀·옮길 곳 없음 [이 칸에 붙이기] — 기본은 가까운 칸에 붙여 둠) → [이대로 바꾸기]·[되돌리기]
 import { join } from 'node:path';
 import { open, run, assert, mockClaude, ROOT } from './helpers.mjs';
 import { makeHwpx } from '../../web/core/hwpx.js';
@@ -96,19 +96,22 @@ await run('plan-reform', [
     await page.waitForSelector('#rfSheet #rfMap');
     const m = await mapTexts();
     assert(m.length === 7, m.join(' / '));
-    assert(m[0].startsWith('Ⅰ. 목적') && m[0].includes('← 목적'), m[0]);
+    assert(m[0].startsWith('Ⅰ. 목적') && m[0].includes('← 추진 근거 · 목적'), '옮길 곳 없는 추진 근거는 바로 뒤 목적이 간 칸에 붙여 둠: ' + m[0]);
     assert(m[1].includes('← 운영 방침') && m[3].includes('← 추진 일정') && m[5].includes('← 기대 효과'), m.join(' / '));
     assert(m[6].includes('Ⅶ. 홍보 계획') && m[6].includes('AI가 새로 씀') && m[6].includes('이바다 선생님이 독서 소식'), m[6]);
     const orph = await page.$$eval('#rfOrphans li b', bs => bs.map(b => b.textContent));
     assert(orph.join('|') === '추진 근거', '일정 표 칸으로 옮기라는 AI 답은 버려 옮길 곳 없음: ' + orph.join('|'));
     const opts = await page.$$eval('#rfOrphans select[data-rf-attach] option', os => os.map(o => o.textContent));
     assert(opts[0] === '붙이지 않음' && !opts.some(o => o.includes('일정') || o.includes('예산')) && opts.length === 6, '표 칸에는 글 칸을 붙이지 않음: ' + opts.join('|'));
+    assert(await page.$eval('#rfOrphans select[data-rf-attach="o1"]', s => s.value) === '0', '기본은 붙여 둠(붙이지 않음이 아님)');
     const pr = prompts.filter(p => p.startsWith('[새 서식 맞추기]')).at(-1);
     assert(pr && pr.includes('[o1] 추진 근거') && pr.includes('[n7] 홍보 계획') && pr.includes('〔이름1〕') && pr.includes('{{1}}'), pr && pr.slice(0, 600));
     assert(!pr.includes('이바다') && !pr.includes('041-123-4567'), '이름·전화번호가 AI로 감');
     assert(await page.isVisible('#rfSheet .ai-note'), 'AI로 가는 것 안내');
   }],
   ['[이 칸에 붙이기] → [이대로 바꾸기]: 초안이 새 차례(글·덧붙임 칸), 그 서식을 학교 양식으로 저장해 골라 둠, [되돌리기]가 생김', async () => {
+    await page.selectOption('#rfOrphans select[data-rf-attach="o1"]', '-1');
+    assert(!(await mapTexts())[0].includes('추진 근거'), '「붙이지 않음」');
     await page.selectOption('#rfOrphans select[data-rf-attach="o1"]', '0');
     assert((await mapTexts())[0].includes('추진 근거'), '붙인 칸 표시');
     await page.click('#rfSheet [data-rf-ok]');
@@ -116,7 +119,7 @@ await run('plan-reform', [
     await toastHas('새 서식 차례로 바꿨어요');
     const p = await page.evaluate(async id => (await import('./menus/plan/year-model.js')).getPlan(id), YP);
     assert(p.draft.outline.map(o => o.title).join('|') === '목적|추진 방침|세부 추진 계획|월별 추진 일정|소요 예산|평가|홍보 계획', p.draft.outline.map(o => o.title).join('|'));
-    assert(p.draft.fromForm === true && p.draft.purpose.startsWith('책을 즐겨 읽는') && p.draft.purpose.includes('이바다 선생님 041-123-4567'), p.draft.purpose);
+    assert(p.draft.fromForm === true && p.draft.purpose.startsWith('1. 2027 독서교육 기본계획') && p.draft.purpose.includes('책을 즐겨 읽는') && p.draft.purpose.includes('이바다 선생님 041-123-4567'), '옛 차례대로: ' + p.draft.purpose);
     assert(p.draft.x1 === '가. 학교 누리집에 이바다 선생님이 독서 소식을 올린다.', p.draft.x1);
     const nf = await formId('새싹초 새 서식');
     assert(nf && (await picked('year')) === nf, '새 서식을 골라 둠');
@@ -208,10 +211,22 @@ await run('plan-reform', [
     await page.click('#rfSheet [data-rf-ok]');
     await toastHas('새 서식 차례로 바꿨어요');
     const v = await page.inputValue(`${P} textarea[data-docf="plan"]`);
-    assert(v === '2027 가을 운동회 운영 계획\n1. 추진 목적\n가. 협동심을 기른다.\n2. 운영 개요\n가. 일시: 2027. 5. 6.\n3. 세부 운영 계획\n1. 경기 종목\n4. 안전 관리\n가. 보건실 운영\n5. 평가 및 환류\n가. 만족도 조사', v);
+    assert(v === '2027 가을 운동회 운영 계획\n1. 추진 목적\n가. 협동심을 기른다.\n2. 운영 개요\n가. 일시: 2027. 5. 6.\n가. 모두가 즐기는 운동회\n3. 세부 운영 계획\n1. 경기 종목\n4. 안전 관리\n가. 보건실 운영\n5. 평가 및 환류\n가. 만족도 조사', '옮길 곳 없는 운영 방침도 앞 칸에: ' + v);
     const heads = await page.evaluate(async id => { const m = await import('./menus/plan/event-model.js'); return m.docDoc(m.getEvent(id), 'plan').blocks.filter(b => b.type === 'h').map(b => b.text); }, EV);
     assert(heads.join('|') === '1. 추진 목적|2. 운영 개요|3. 세부 운영 계획|4. 안전 관리|5. 평가 및 환류', heads.join('|'));
     assert((await picked('event')) === (await formId('운동회 새 서식')), '새 서식을 골라 둠');
+    // 계획서 서식은 계획서 탭에만: 안전 점검표·가정통신문 탭은 따로 고름(기본 문서로 내려받음)
+    for (const doc of ['letter', 'safety']) {
+      await page.click(`${P} [data-doc="${doc}"]`);
+      await page.waitForSelector(`${P} textarea[data-docf="${doc}"]`);
+      await page.waitForSelector(`${P} .sf-slot select[data-sf-pick]`);
+      assert(await page.$eval(`${P} .sf-slot select[data-sf-pick]`, s => s.value) === '', `${doc} 탭에 계획서 서식이 골라짐`);
+      assert(await page.locator(`${P} .sf-slot [data-e="hwpx"]`).count() === 1 && await page.locator(`${P} [data-sf-export]`).count() === 0, `${doc} 탭은 기본 내려받기`);
+      assert(await page.locator(`${P} .sf-slot[data-sf="event-${doc}"]`).count() === 1, `${doc} 탭은 따로 고름`);
+    }
+    await page.click(`${P} [data-doc="plan"]`);
+    await page.waitForSelector(`${P} [data-sf-export="event"]`);
+    assert(await page.$eval(`${P} select[data-sf-pick="event"]`, s => s.options[s.selectedIndex].textContent) === '운동회 새 서식', '계획서 탭은 새 서식');
     await page.click(`${P} [data-rf-undo="event"]`);
     await toastHas('되돌렸어요');
     assert((await page.inputValue(`${P} textarea[data-docf="plan"]`)).includes('Ⅱ. 운영 방침'), '되돌림');

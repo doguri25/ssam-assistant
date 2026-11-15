@@ -68,20 +68,22 @@ test('AI 답 다듬기: 모르는 새 칸·옛 칸 id는 버리고, 빈 글은 �
   assert.deepEqual(R.normReform(null, ['o1'], 2), { map: [], write: [] });
 });
 
-test('맞춤 합치기: 규칙 + AI(옛 칸은 한 곳만, 옛 차례대로) + 새로 쓴 글(옮겨 오는 칸이 있으면 버림), 옮길 곳 없는 칸, [이 칸에 붙이기]', () => {
+test('맞춤 합치기: 규칙 + AI(옛 칸은 한 곳만, 옛 차례대로) + 새로 쓴 글(옮겨 오는 칸이 있으면 버림), 옮길 곳 없는 칸(기본은 가까운 칸에 붙임), [이 칸에 붙이기]', () => {
   const olds = ['o1', 'o2', 'o3', 'o4'].map((id, i) => ({ id, title: 'T' + i }));
   const heads = [{ title: 'A' }, { title: 'B' }, { title: 'C' }, { title: 'D' }];
   const f = R.mergeReform(heads, olds, [['o2'], [], [], []], { map: [{ to: 0, from: ['o1'] }, { to: 1, from: ['o2'] }], write: [{ to: 0, text: '버림' }, { to: 2, text: '새로 쓴 글' }] });
-  assert.deepEqual(f.to.map(x => x.from), [['o1', 'o2'], [], [], []]);
+  assert.deepEqual(f.to.map(x => x.from), [['o1', 'o2', 'o3', 'o4'], [], [], []], '옮길 곳 없는 칸은 앞에서 맞춘 칸에 붙여 둠');
   assert.deepEqual(f.to.map(x => x.write), ['', '', '새로 쓴 글', '']);
   assert.deepEqual(f.orphans, ['o3', 'o4']);
+  assert.deepEqual(f.attached, { o3: 0, o4: 0 });
   const g = R.attachOrphan(f, 'o4', 3);
   assert.deepEqual(g.to[3].from, ['o4']);
-  assert.deepEqual(g.attached, { o4: 3 });
+  assert.deepEqual(g.attached, { o3: 0, o4: 3 });
   const h = R.attachOrphan(g, 'o4', 1);
   assert.deepEqual([h.to[1].from, h.to[3].from], [['o4'], []], '다른 칸으로 옮김');
-  const k = R.attachOrphan(h, 'o4', -1);
+  const k = R.attachOrphan(R.attachOrphan(h, 'o4', -1), 'o3', -1);
   assert.deepEqual(k.to.map(x => x.from), [['o1', 'o2'], [], [], []], '붙이지 않음');
+  assert.deepEqual(k.attached, {});
   assert.deepEqual(R.attachOrphan(k, 'o1', 2).to[2].from, [], '옮길 곳 없는 칸만 붙임');
 });
 
@@ -148,9 +150,11 @@ test('행사계획: 계획서 글을 큰 제목 칸으로 나눔 → 새 제목 
   assert.deepEqual(rules, [[], ['o1'], ['o3'], [], ['o5']]);
   const f = R.mergeReform(hs, olds, rules, { map: [{ to: 3, from: ['o4'] }], write: [{ to: 0, text: '가. 협동심을 기른다.' }] });
   assert.deepEqual(f.orphans, ['o2']);
+  assert.deepEqual(f.attached, { o2: 1 }, '옮길 곳 없는 운영 방침은 바로 앞 개요가 간 칸에 붙여 둠');
   const out = R.applyEvent(e, f, H, pre, olds);
   assert.deepEqual(out.form, ['1. 추진 목적', '2. 운영 개요', '3. 세부 운영 계획', '4. 안전 관리', '5. 평가 및 환류']);
-  assert.equal(out.plan, '2027 가을 운동회 운영 계획\n1. 추진 목적\n가. 협동심을 기른다.\n2. 운영 개요\n가. 일시: 2027. 5. 6.\n3. 세부 운영 계획\n1. 경기 종목\n4. 안전 관리\n가. 보건실 운영\n5. 평가 및 환류\n가. 만족도 조사');
+  assert.equal(out.plan, '2027 가을 운동회 운영 계획\n1. 추진 목적\n가. 협동심을 기른다.\n2. 운영 개요\n가. 일시: 2027. 5. 6.\n가. 모두가 즐기는 운동회\n3. 세부 운영 계획\n1. 경기 종목\n4. 안전 관리\n가. 보건실 운영\n5. 평가 및 환류\n가. 만족도 조사');
+  assert.ok(!R.applyEvent(e, R.attachOrphan(f, 'o2', -1), H, pre, olds).plan.includes('모두가 즐기는'), '「붙이지 않음」이면 빠짐');
   // 작년 계획서(참고 자료)가 없어도 그 서식 차례 그대로(본문의 「1. 경기 종목」은 큰 제목이 아님)
   const e2 = E.saveEvent({ ...e, docs: { ...e.docs, plan: out.plan, form: out.form } });
   assert.deepEqual(e2.docs.form, out.form, '저장해도 남음');
@@ -177,13 +181,15 @@ test('학급운영계획: 큰 제목 묶음(작은 칸은 따라감) → 새 큰
   assert.deepEqual(rules, [['o2'], ['o1'], ['o3'], ['o4'], []]);
   const f = R.mergeReform(hs, olds, rules, { map: [], write: [{ to: 4, text: '학부모 상담 주간을 운영한다.' }] });
   assert.deepEqual(f.orphans, ['o5']);
-  const out = R.applyClass(p, f, H, olds);
+  const kept = R.applyClass(p, f, H, olds);
+  assert.equal(kept.draft[kept.outline[6].id], '3월 학급 세우기\n버릴 글', '기본은 바로 앞 칸에 붙여 둠');
+  const out = R.applyClass(p, R.attachOrphan(f, 'o5', -1), H, olds);
   assert.deepEqual(out.outline.map(x => [x.title, x.level]), [['학급 교육 목표', 1], ['학급 현황 및 조직', 1], ['학급 실태', 2], ['학급 조직', 2], ['평가 계획', 1], ['교과 평가 계획', 2], ['월별 운영 계획', 1], ['학부모 소통', 1]]);
   assert.equal(out.outline[0].id, 's4', '한 칸이 그대로 오면 id도 그대로');
   assert.equal(out.draft.s4, '서로 돕는 반');
   assert.equal(out.draft.s2, '남 12명 여 13명');
   assert.equal(out.draft[out.outline[7].id], '학부모 상담 주간을 운영한다.');
-  assert.ok(!Object.values(out.draft).includes('버릴 글'), '붙이지 않은 칸 글은 빠짐');
+  assert.ok(!Object.values(out.draft).some(v => v.includes('버릴 글')), '붙이지 않은 칸 글은 빠짐');
   assert.equal(out.outline.find(x => x.title === '교과 평가 계획').role, 'eval');
   assert.equal(out.outline.find(x => x.title === '월별 운영 계획').role, 'monthly');
   assert.equal(out.guide[0].section, 's4');
@@ -195,20 +201,20 @@ test('학급운영계획: 큰 제목 묶음(작은 칸은 따라감) → 새 큰
   assert.equal(out2.guide[0].section, out2.outline[0].id);
 });
 
-test('학교 양식 저장 도우미: 같은 이름은 바꿔 넣고, 「고른 양식이 없을 때만」 고름, .hwpx가 아니면 code', async () => {
+test('학교 양식 저장 도우미: 같은 이름·같은 출처는 바꿔 넣고, 「고른 양식이 없을 때만」 고름, .hwpx가 아니면 code', async () => {
   const A = makeHwpx({ title: '작년 계획서', blocks: [{ type: 'p', text: '본문' }, { type: 'p', text: '2026. 3. 2.' }, { type: 'p', text: '새싹초등학교장' }] });
-  const r1 = await SF.saveForm('year', A, '작년 계획서 서식 · 독서', { pick: 'empty', replace: true });
+  const r1 = await SF.saveForm('year', A, '작년 계획서 서식 · 독서', { pick: 'empty', replace: true, from: 'lastPlan:year' });
   assert.equal(r1.picked, true);
   assert.equal(SF.pickedForm('year'), r1.rec.id);
-  const r2 = await SF.saveForm('year', A, '작년 계획서 서식 · 독서', { pick: 'empty', replace: true });
-  assert.equal(r2.rec.id, r1.rec.id, '같은 이름은 그 자리에');
+  const r2 = await SF.saveForm('year', A, '작년 계획서 서식 · 독서', { pick: 'empty', replace: true, from: 'lastPlan:year' });
+  assert.equal(r2.rec.id, r1.rec.id, '같은 이름(같은 출처)은 그 자리에');
   const r3 = await SF.saveForm('year', A, '다른 양식', { pick: 'empty' });
   assert.equal(r3.picked, false, '이미 고른 양식이 있으면 그대로');
   assert.equal(SF.pickedForm('year'), r1.rec.id);
-  const r4 = await SF.saveForm('event', A, '작년 계획서 서식 · 독서', { pick: 'empty', replace: true });
+  const r4 = await SF.saveForm('event', A, '작년 계획서 서식 · 독서', { pick: 'empty', replace: true, from: 'lastPlan:event' });
   assert.equal(r4.picked, true);
   const list = await (await (await import('../../web/core/form-store.js')).forms()).list();
-  assert.equal(list.filter(f => f.name === '작년 계획서 서식 · 독서').length, 1);
+  assert.equal(list.filter(f => f.name === '작년 계획서 서식 · 독서').length, 2, '계획서 종류마다 따로(다른 계획서 양식을 덮지 않음)');
   await SF.saveForm('year', A, '새 서식', { pick: true });
   assert.notEqual(SF.pickedForm('year'), r1.rec.id, 'pick: true는 늘 고름');
   SF.pickForm('year', r1.rec.id);

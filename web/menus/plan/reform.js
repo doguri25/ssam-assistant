@@ -29,14 +29,14 @@ export function reformHTML(key) {
     + (id && undo.has(`${key}:${id}`) ? `<button class="btn text" type="button" data-rf-undo="${esc(key)}" title="새 서식으로 바꾸기 전 초안으로">되돌리기</button>` : '');
 }
 
-/* 작년 계획서 파일을 넣을 때: .hwpx면 그 서식도 학교 양식 「작년 계획서 서식 · 파일 이름」으로 저장(같은 이름은 바꿈)하고 이 계획서 종류에 고른 양식이 없으면 골라 둠.
+/* 작년 계획서 파일을 넣을 때: .hwpx면 그 서식도 학교 양식 「작년 계획서 서식 · 파일 이름」으로 저장(이 계획서 종류의 작년 계획서 서식 중 같은 이름은 바꿈)하고 이 계획서 종류에 고른 양식이 없으면 골라 둠.
    .hwp·PDF면 .hwpx로 넣으라는 안내. → 알림 한 줄(없으면 '') */
 export async function keepLastForm(key, file) {
   const name = String((file && file.name) || '');
   if (/\.hwpx$/i.test(name)) {
     try {
       const n = lastFormName(name);
-      const { picked, ok } = await saveForm(key, new Uint8Array(await file.arrayBuffer()), n, { pick: 'empty', replace: true });
+      const { picked, ok } = await saveForm(key, new Uint8Array(await file.arrayBuffer()), n, { pick: 'empty', replace: true, from: 'lastPlan:' + key });
       return picked ? `작년 계획서 서식도 학교 양식에 저장해 골라 두었어요(「${n}」). 내려받으면 그 모양으로 나가요.`
         : `작년 계획서 서식도 학교 양식에 저장했어요(「${n}」).${ok ? '' : NO_ROLES}`;
     } catch (e) { return ''; }
@@ -60,7 +60,7 @@ async function start(key, file) {
   try { text = await readText(file); } catch (e) { toast(fileMessage(e && e.code), 6000); return; }
   const H = a.heads(text);
   if (H.heads.length < 3) {
-    try { const { ok } = await saveForm(key, u8, name, { pick: true, replace: true }); toast('큰 제목을 찾지 못해 양식으로만 저장했어요.' + (ok ? '' : NO_ROLES), 7000); }
+    try { const { ok } = await saveForm(key, u8, name, { pick: true, replace: true, from: 'reform:' + key }); toast('큰 제목을 찾지 못해 양식으로만 저장했어요.' + (ok ? '' : NO_ROLES), 7000); }
     catch (e) { toast(formError(e && e.code), 6000); }
     a.rerender();
     return;
@@ -125,7 +125,7 @@ function paint(st) {
   body.innerHTML = `<p class="muted rf-lead">「${esc(st.name)}」의 큰 제목 ${st.H.heads.length}개에 지금 초안 칸을 맞췄어요. 확인하고 [이대로 바꾸기]를 눌러 주세요.</p>
     ${st.note ? `<p class="banner warn" role="status"><span class="grow">${esc(st.note)}</span></p>` : ''}
     <ol class="rf-map" id="rfMap">${mapItems(st)}</ol>
-    ${orphans.length ? `<div class="rf-orphans" id="rfOrphans"><h4>옮길 곳 없음</h4><p class="muted">붙이지 않은 칸의 글은 바꾼 초안에서 빠져요.</p>
+    ${orphans.length ? `<div class="rf-orphans" id="rfOrphans"><h4>옮길 곳 없음</h4><p class="muted">글이 빠지지 않게 가까운 칸에 붙여 두었어요. 「붙이지 않음」을 고르면 그 칸의 글은 바꾼 초안에서 빠져요.</p>
       <ul>${orphans.map(o => `<li><b>${esc(o.title)}</b><label class="rf-attach"><span class="lab">이 칸에 붙이기</span>
         <select class="field" data-rf-attach="${esc(o.id)}" aria-label="「${esc(o.title)}」을 붙일 새 칸"><option value="-1">붙이지 않음</option>
         ${st.H.heads.map((h, i) => (!a.accepts || a.accepts(h, o) ? `<option value="${i}"${f.attached[o.id] === i ? ' selected' : ''}>${esc(num(st, i) + h.title)}</option>` : '')).join('')}</select></label></li>`).join('')}</ul></div>` : ''}`;
@@ -144,7 +144,7 @@ async function confirm(st) {
   undo.set(`${st.key}:${st.id}`, { snap, form: prev });
   let msg = '새 서식 차례로 바꿨어요.';
   try {
-    const { rec, ok } = await saveForm(st.key, st.u8, st.name, { pick: true, replace: true });
+    const { rec, ok } = await saveForm(st.key, st.u8, st.name, { pick: true, replace: true, from: 'reform:' + st.key });
     msg += ` 「${rec.name}」 양식으로 내려받아요.` + (ok ? '' : NO_ROLES);
   } catch (e) { msg += ` 서식을 학교 양식으로 저장하지 못했어요: ${formError(e && e.code)}`; }
   if (S().closeSheet) S().closeSheet();
