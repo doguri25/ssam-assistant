@@ -227,7 +227,7 @@ function pageHTML() {
     <div class="m-head"><div><h2>결과 보고</h2>${introHTML('report', '계획서·공문과 한 일·사진으로 결과 보고 공문과 보고서를 써요.')}</div>
       <div class="row"><button class="btn text" type="button" data-rp="new">새 결과 보고</button></div></div>
     ${aiRowHTML('report')}
-    ${aiNoteHTML('넣은 문서 글·한 일·사진을 보내요. 명단·전화번호가 적힌 줄은 빼고 보내요.')}
+    ${aiNoteHTML('넣은 문서 글·한 일·사진을 보내요. 명단·전화번호가 적힌 줄은 빼고, 교직원 이름은 ○○○로 가려서 보내요.')}
     <div class="msg-grid">
       <section class="pc-card"><h3>넣기</h3>
         <div class="msg-drop rp-drop" data-rp-drop>

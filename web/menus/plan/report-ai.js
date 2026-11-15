@@ -3,6 +3,7 @@
 import { normDate, fmtDay } from '../etc/message-ai.js';
 import { schoolYearOf, yearOfMonth } from '../../core/calendar.js';
 import { attachText } from '../purchase/rules.js';
+import { maskStaff, maskContacts } from '../../core/privacy.js';
 
 export const SOURCE_KINDS = [['plan', '계획서'], ['official', '관련 공문'], ['last', '작년 보고서'], ['etc', '기타']];
 const KIND_IDS = SOURCE_KINDS.map(k => k[0]);
@@ -28,9 +29,11 @@ export function guessSourceKind(name, text, year) {
 }
 
 /* nPhotos: 앞에 붙인 행사 사진 수, nDocImages: 그 뒤 글로 읽지 못한 문서(스캔본) 쪽 그림 수 */
+// 교직원 이름·연락처는 ○○○로(계획 3종 textForAI와 같게)
+const forAI = t => maskStaff(maskContacts(t)).text;
 export function reportPrompt({ sources = [], memo = '', nPhotos = 0, nDocImages = 0, year } = {}) {
   const docs = sources.filter(s => s && String(s.text || '').trim())
-    .map(s => `[${kindLabel(s.kind)}: ${String(s.name || '글').slice(0, 60)}]\n${String(s.text).slice(0, 6000)}`).join('\n\n');
+    .map(s => `[${kindLabel(s.kind)}: ${String(s.name || '글').slice(0, 60)}]\n${forAI(String(s.text).slice(0, 6000))}`).join('\n\n');
   const hasLast = sources.some(s => s && s.kind === 'last' && String(s.text || '').trim());
   return ['[결과 보고]',
     `학교 행사·사업이 끝난 뒤 쓰는 결과 보고의 내용을 뽑고 씁니다. 학년도: ${year || new Date().getFullYear()}.`,
@@ -43,7 +46,7 @@ export function reportPrompt({ sources = [], memo = '', nPhotos = 0, nDocImages 
     `- sections: 결과 보고서의 소제목과 줄. ${hasLast ? '작년 보고서의 소제목 차례와 문체를 따르되 올해 내용으로 씁니다(개요·사진은 앱이 따로 만들므로 빼고).' : '「목적」·「추진 내용」·「성과」·「반성 및 개선 방안」 차례로.'} 줄은 짧은 개조식(~함, ~임).`,
     nPhotos ? '- photos: 사진마다 설명 한 줄(차례대로, 사진 수만큼)' : '- photos: []',
     '- 한 일 메모와 문서에 없는 성과·숫자·만족도는 지어내지 않습니다. 사람 이름·전화번호·이메일은 쓰지 않습니다.',
-    '', docs ? docs : '(넣은 문서 없음)', '', '[한 일]', String(memo || '').slice(0, 4000) || '(메모 없음)',
+    '', docs ? docs : '(넣은 문서 없음)', '', '[한 일]', forAI(String(memo || '').slice(0, 4000)) || '(메모 없음)',
     '', '[출력] JSON 하나만 출력합니다.',
     '{"name":"…","related":[{"no":"","date":"","title":""}],"period":{"start":"","end":"","time":""},"place":"","target":"","count":"","summary":"…","sections":[{"h":"목적","lines":["…"]}],"photos":["…"]}']
     .filter(l => l !== '').join('\n').replace('[출력]', '\n[출력]');

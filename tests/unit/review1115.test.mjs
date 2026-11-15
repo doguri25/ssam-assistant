@@ -58,3 +58,10 @@ test('[pur-kin-words] 품의 이름 가리기: 「유치원 학부모」「학�
   assert.equal(maskNames('김하늘 학생 체험학습비'), '○○○ 학생 체험학습비');
   assert.equal(maskNames('학생 이바다 준비물'), '학생 ○○○ 준비물');
 });
+
+test('[report-staff] 결과 보고 AI 요청: 넣은 문서·한 일 메모의 교직원 이름은 ○○○로(계획 3종과 같게)', async () => {
+  const { reportPrompt } = await import('../../web/menus/plan/report-ai.js');
+  const p = reportPrompt({ sources: [{ kind: 'plan', name: '계획서', text: '담당: 이바다 선생님\n운영: 한가람 주무관' }], memo: '김하늘 선생님이 사회를 봄', year: 2026 });
+  for (const n of ['이바다', '한가람', '김하늘']) assert.ok(!p.includes(n), n + ' 가 AI 요청에 그대로');
+  assert.ok(p.includes('○○○ 선생님'), p);
+});
