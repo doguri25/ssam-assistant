@@ -38,3 +38,11 @@ test('[redact-text] 여러 줄 글: 뺀 줄 수와 함께, 되돌리기는 모�
   assert.match(t.back(t.text), /이바다 선생님이 버스 예약/);
   assert.match(t.back(t.text), /김하늘 학생 안전 지도/);
 });
+
+test('[redact-staff-ro] 직함 뒤 「으로·로·부터·처럼」이 붙어도 교직원 이름을 가림(「한가람 선생님으로 정함」)', async () => {
+  const { maskStaff } = await import('../../web/core/privacy.js');
+  for (const s of ['한가람 선생님으로 정함', '이바다 주무관으로 바꿈', '한가람 부장님부터 발표', '이바다 선생님처럼 진행'])
+    assert.ok(!/한가람|이바다/.test(maskStaff(s).text), s + ' → ' + maskStaff(s).text);
+  // 직함이 아닌 낱말 뒤는 그대로
+  assert.equal(maskStaff('선생님으로서 할 일').text, '선생님으로서 할 일');
+});
