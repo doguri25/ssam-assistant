@@ -30,20 +30,31 @@ export function startItems(lines) {
 }
 
 /* ---------- 보낼 글 ---------- */
+/* 문단 안 줄바꿈(한글 <hp:lineBreak/>)은 AI에 이 표시로 보내고 돌아온 글에서 다시 줄바꿈으로(글의 줄바꿈은 「뒤에 더하기」라서) */
+export const BR = '⏎';
+const BR_BACK = new RegExp(`[ \\t]*${BR}`, 'g'); // 돌아온 ⏎(앞에 AI가 더한 빈칸까지) → 줄바꿈
+/* 보내지 않는 줄(명단·주민번호·계좌 줄, 이름만 든 칸)의 이름 모양 낱말 — 다른 줄에서도 가리게 */
+function heldNames(texts) {
+  const out = makeRedactor().lines(texts);
+  return texts.filter((t, k) => !out[k] || nameCell(t.trim())).flatMap(t => t.match(/[가-힣]+/g) || []).filter(nameCell);
+}
 /* 줄 목록 + 선생님이 적은 요청 → { sent: [{ id, text, box }], held(보내지 않은 줄 수), ask(가린 요청 — 명단·주민번호 같은 요청이면 null),
-   back(돌아온 글의 자리 표시 → 원래 이름·연락처) }. 요청도 같은 가리개로(줄과 같은 이름은 같은 번호 — 「〔이름1〕을 〔이름2〕로 바꿔 줘」가 맞게 돌아옴) */
+   back(돌아온 글의 자리 표시 → 원래 이름·연락처), bad(돌아온 글에 없는 번호·깨진 자리 표시가 있는지) }.
+   한 가리개로 문서 전체를 한꺼번에(한 줄에 한 명씩인 명단·「이름」 머리 칸 아래 표, 한 줄에서 알아낸 이름은 다른 줄에서도).
+   이 문서의 원래 글·요청에서 이름을 먼저 배움(이어서 고칠 때 AI가 「학생」 같은 말을 뺀 글도 가리게).
+   요청도 같은 가리개로(줄과 같은 이름은 같은 번호 — 「〔이름1〕을 〔이름2〕로 바꿔 줘」가 맞게 돌아옴) */
 export function payloadOf(items, ask = '') {
-  const r = makeRedactor(), sent = [];
-  let held = 0;
-  for (const x of items || []) {
-    if (x.del || !x.text.trim()) continue;
-    if (nameCell(x.text.trim())) { held++; continue; } // 이름만 든 칸·줄(명단 표의 이름 칸 등)
-    const y = r.line(x.text.replace(/\r?\n/g, ' '));
-    if (!y) { held++; continue; }
-    sent.push({ id: x.id, text: y.text, box: x.box });
-  }
-  const parts = String(ask || '').split(/\r?\n/).map(l => r.line(l));
-  return { sent, held, ask: parts.some(x => !x) ? null : parts.map(x => x.text).join('\n').trim(), back: r.back };
+  const r = makeRedactor(), all = items || [], sent = [];
+  const live = all.filter(x => !x.del && x.text.trim());
+  const cells = live.filter(x => nameCell(x.text.trim())), send = live.filter(x => !nameCell(x.text.trim())); // 이름만 든 칸·줄(명단 표의 이름 칸 등)은 보내지 않음
+  const asks = String(ask || '').split(/\r?\n/), origs = all.map(x => x.orig).filter(t => t && t.trim());
+  r.learn([...origs, ...asks]);
+  for (const n of heldNames([...live.map(x => x.text), ...origs])) if (!r.names.includes(n)) r.names.push(n);
+  const outs = r.lines(send.map(x => x.text.replace(/\r/g, '')));
+  let held = cells.length;
+  send.forEach((x, k) => { if (outs[k]) sent.push({ id: x.id, text: outs[k].text.replace(/\n/g, BR), box: x.box }); else held++; });
+  const parts = r.lines(asks);
+  return { sent, held, ask: parts.some(x => !x) ? null : parts.map(x => x.text).join('\n').trim(), back: r.back, bad: r.bad };
 }
 /* 앞에서부터 약 12,000자·250줄씩 */
 export function batchLines(sent, { chars = BATCH_CHARS, max = BATCH_LINES } = {}) {
@@ -78,6 +89,7 @@ export function docPrompt({ ask = '', lines = [], part = null } = {}) {
     '- 한 줄은 한 문단입니다. 두 줄을 합치려면 하나를 replace하고 나머지는 delete합니다. 새 표를 만들거나 차례를 크게 바꾸지 않습니다.',
     ...(cells.length ? [`- 표 칸 줄: ${ranges(cells)}. 칸에 들어갈 만큼 짧게 쓰고, 지우면 그 칸이 비어요.`] : []),
     '- 〔이름1〕·{{1}} 같은 자리 표시는 가린 이름·연락처입니다. 고치지 말고 그 자리에 둡니다.',
+    ...(lines.some(l => l.text.includes(BR)) ? [`- ${BR}는 한 줄(문단) 안의 줄바꿈입니다. 고친 글에도 그 자리에 ${BR}를 그대로 둡니다(앞뒤에 빈칸을 더하지 않음).`] : []),
     '- 줄 머리의 번호(1. 가. 1) 가) ①·□·-)와 앞 공백·탭은 요청이 없으면 그대로 둡니다.',
     '- 문서에 없는 날짜·숫자·이름·사실을 지어내지 않고, 뜻이 바뀌지 않게 고칩니다.',
     '- 사람이 쓴 자연스러운 한국어로 씁니다(번역투·「~를 통해」·이중 피동 없이).',
@@ -89,28 +101,51 @@ export function docPrompt({ ask = '', lines = [], part = null } = {}) {
 
 /* ---------- AI 답 ---------- */
 const OPS = { replace: 'replace', edit: 'replace', change: 'replace', update: 'replace', delete: 'delete', remove: 'delete', del: 'delete', after: 'after', insert: 'after', add: 'after' };
-/* { changes: [{ id, op, text }], note } (배열만 온 답도) → 보낸 줄(ids)만, 이름 되돌림. 빈 replace·빈 after는 버림, 글의 줄바꿈은 뒤에 더하기로 */
-export function normChanges(v, { ids = new Set(), back = t => t } = {}) {
+/* { changes: [{ id, op, text }], note } (배열만 온 답도) → { changes, note, broken }: 보낸 줄(ids)만, 이름 되돌림. 빈 replace·빈 after는 버림,
+   글의 줄바꿈은 뒤에 더하기로, ⏎는 문단 안 줄바꿈으로. 자리 표시가 깨진 글(bad — 없는 번호·「{{1」·「[이름1]」)은 버리고 센 수(broken) — 그 줄은 그대로 */
+export function normChanges(v, { ids = new Set(), back = t => t, bad = () => false } = {}) {
   const list = Array.isArray(v) ? v : v && typeof v === 'object' && Array.isArray(v.changes) ? v.changes : [];
   const changes = [];
+  let broken = 0;
   for (const c of list) {
     if (!c || typeof c !== 'object') continue;
     const id = typeof c.id === 'number' ? c.id : parseInt((/\d+/.exec(String(c.id == null ? '' : c.id)) || [''])[0], 10);
     const op = OPS[String(c.op || '').toLowerCase().trim()];
     if (!op || !ids.has(id)) continue;
     if (op === 'delete') { changes.push({ id, op, text: '' }); continue; }
-    const parts = back(String(c.text == null ? '' : c.text).replace(/\r/g, '').replace(/^\s*\[\d+\]\s*/, '')).split('\n').map(s => s.replace(/\s+$/, '')).filter(s => s.trim());
+    const raw = String(c.text == null ? '' : c.text).replace(/\r/g, '').replace(/^\s*\[\d+\]\s*/, '');
+    if (bad(raw)) { broken++; continue; }
+    const parts = back(raw).split('\n').map(s => s.replace(/\s+$/, '').replace(BR_BACK, '\n')).filter(s => s.trim());
     if (!parts.length) continue;
     parts.forEach((t, k) => changes.push({ id, op: k === 0 ? op : 'after', text: t }));
   }
-  const note = back(String((v && !Array.isArray(v) && typeof v === 'object' && v.note) || '')).replace(/\s+/g, ' ').trim().slice(0, 300);
-  return { changes, note };
+  const note = back(String((v && !Array.isArray(v) && typeof v === 'object' && v.note) || '')).replace(BR_BACK, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+  return { changes, note, broken };
 }
 
 /* ---------- 고치기·되돌리기 ---------- */
 const leadOf = t => (/^[ \t　]*/.exec(String(t || '')) || [''])[0];
 /* AI가 앞 공백을 빼먹은 글: 같은 단계 번호(「가.」 줄을 「가.」 줄로)면 원래 줄의 앞 공백을 붙임 */
 const withLead = (text, like) => (!leadOf(text) && leadOf(like) && levelOf(text) === levelOf(like) ? leadOf(like) + text : text);
+const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/* AI가 ⏎(문단 안 줄바꿈)를 빼먹고 빈칸으로 이은 글: 원래 줄바꿈 앞뒤 낱말이 빈칸을 사이에 두고 그대로 있으면 그 자리에 줄바꿈(다음 줄 앞 공백도) */
+function keepBreaks(text, like) {
+  if (!like.includes('\n') || text.includes('\n')) return text;
+  const segs = like.split('\n');
+  let out = text, from = 0;
+  for (let k = 0; k + 1 < segs.length; k++) {
+    const a = (/\S+(?=\s*$)/.exec(segs[k]) || [''])[0], b = (/\S+/.exec(segs[k + 1]) || [''])[0];
+    if (!a || !b) continue;
+    const re = new RegExp(`${reEsc(a)}[ \\t]+${reEsc(b)}`, 'g');
+    re.lastIndex = from;
+    const m = re.exec(out);
+    if (!m) continue;
+    const at = m.index + a.length, nl = '\n' + leadOf(segs[k + 1]);
+    out = out.slice(0, at) + nl + out.slice(m.index + m[0].length - b.length);
+    from = at + nl.length;
+  }
+  return out;
+}
 export function applyChanges(items, changes) {
   const out = (items || []).map(x => ({ ...x }));
   let next = Math.max(0, ...out.map(x => x.id)) + 1;
@@ -119,7 +154,7 @@ export function applyChanges(items, changes) {
     const k = out.findIndex(x => x.id === c.id);
     if (k < 0) continue;
     const it = out[k];
-    if (c.op === 'replace') { it.text = withLead(c.text, it.text); it.del = false; }
+    if (c.op === 'replace') { it.text = withLead(keepBreaks(c.text, it.text), it.text); it.del = false; }
     else if (c.op === 'delete') { if (it.src == null) out.splice(k, 1); else it.del = true; }
     else if (c.op === 'after') {
       const j = out.findIndex(x => x.id === (tail.get(c.id) || c.id));

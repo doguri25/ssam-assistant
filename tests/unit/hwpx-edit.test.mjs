@@ -109,6 +109,21 @@ test('[hwpx-edit-zip] 결과는 다시 열리는 .hwpx: 파일 차례 그대로(
   assert.deepEqual(texts(same), texts(f));
 });
 
+test('[hwpx-edit-dollar] 통째로 바꿀 때(견줄 수 없는 문단) 새 글의 $(「$\'」「$&」「$$」)는 글자 그대로 — XML이 깨지지 않음', async () => {
+  // 글자 조각 안에 다른 글이 든 문단: 바뀐 곳만 바꾸지 못해 첫 글자 모양으로 통째로
+  const f = await readForm(await handForm(secPr => PARA(`<hp:run charPrIDRef="0">${secPr}</hp:run>${RUN(0, '안내')}`)
+    + PARA('<hp:run charPrIDRef="0"><hp:t>가격<hp:x>표</hp:x></hp:t></hp:run>')));
+  const i = at(f, '가격표');
+  assert.ok(i >= 0, texts(f).join(' | '));
+  for (const t of ['가격\t$\'', 'US$&', '$$5', '$` 앞']) {
+    const { bytes } = writeHwpx(f, { [i]: { text: t } });
+    const sec = await secOf(bytes);
+    assert.doesNotThrow(() => checkXml(sec), t);
+    assert.ok(!sec.includes('ssam-edit'), t);
+    assert.equal((await readForm(bytes)).lines[i].text, t);
+  }
+});
+
 test('[hwpx-edit-final] 고친 뒤 줄 글(미리 보기·기본 문서용): 지운 줄은 빼고(표 칸은 빈 글), 더한 줄은 그 뒤에', () => {
   const lines = [{ text: '가' }, { text: '나', inBox: true }, { text: '' }, { text: '다' }];
   assert.deepEqual(finalLines(lines, { 0: { text: '가가', after: [{ text: '가2' }] }, 1: { del: true }, 3: { del: true } }), ['가가', '가2', '', '']);
