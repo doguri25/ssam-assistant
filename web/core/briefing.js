@@ -25,13 +25,15 @@ function eventRoute(source) {
 export function briefing({ today, docs = [], meetings = [], events = [], plans = [], units = [], activities = [], grs = [], weekly = null } = {}) {
   if (!isDate(today)) return [];
   const out = [];
-  // 1. 공문 제출 기한: 지났거나 7일 안(다 한 공문 빼고), 가까운 차례
-  docs.filter(d => d && !d.done && isDate(d.due)).map(d => ({ d, n: diff(d.due, today) })).filter(x => x.n <= 7).sort((a, b) => a.n - b.n)
-    .forEach(({ d, n }) => out.push({ kind: 'gongmun', text: `공문 「${d.title || d.name || '공문'}」 제출`, when: dWhen(n), hot: n <= 1, route: { to: 'gongmun', id: d.id } }));
-  // 1-2. 회의 할 일(회의록): 끝내지 않은 할 일 가운데 기한이 지났거나 7일 안, 가까운 차례 — 공문 기한과 같은 모양, 누르면 그 회의록
-  (Array.isArray(meetings) ? meetings : []).flatMap(m => (m && Array.isArray(m.todos) ? m.todos.map(t => ({ m, t })) : []))
-    .filter(({ t }) => t && !t.done && isDate(t.due) && String(t.task || '').trim()).map(x => ({ ...x, n: diff(x.t.due, today) })).filter(x => x.n <= 7).sort((a, b) => a.n - b.n)
-    .forEach(({ m, t, n }) => out.push({ kind: 'minutes', text: `회의 할 일 「${String(t.task).trim()}」`, when: dWhen(n), hot: n <= 1, route: { to: 'minutes', id: m.id } }));
+  // 1. 공문 제출 기한(다 한 공문 빼고)과 회의 할 일(회의록에서 끝내지 않은 할 일, 누르면 그 회의록): 지났거나 7일 안,
+  //    둘을 섞어 가까운 차례(같은 날이면 공문 먼저) — 같은 모양
+  const gm = docs.filter(d => d && !d.done && isDate(d.due))
+    .map(d => ({ n: diff(d.due, today), kind: 'gongmun', text: `공문 「${d.title || d.name || '공문'}」 제출`, route: { to: 'gongmun', id: d.id } }));
+  const mn = (Array.isArray(meetings) ? meetings : []).flatMap(m => (m && Array.isArray(m.todos) ? m.todos.map(t => ({ m, t })) : []))
+    .filter(({ t }) => t && !t.done && isDate(t.due) && String(t.task || '').trim())
+    .map(({ m, t }) => ({ n: diff(t.due, today), kind: 'minutes', text: `회의 할 일 「${String(t.task).trim()}」`, route: { to: 'minutes', id: m.id } }));
+  [...gm, ...mn].filter(x => x.n <= 7).sort((a, b) => a.n - b.n)
+    .forEach(({ n, kind, text, route }) => out.push({ kind, text, when: dWhen(n), hot: n <= 1, route }));
   // 2. 학사일정: 오늘~7일(행사계획 날짜 포함, 공문 일정은 위에서). 같은 날 같은 일정은 한 번
   const seen = new Set(), end7 = addDays(today, 7);
   events.filter(e => e && isDate(e.date) && e.source !== 'gongmun' && e.date >= today && e.date <= end7)

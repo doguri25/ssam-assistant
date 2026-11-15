@@ -71,7 +71,7 @@ test('오늘 수업 카드: 시간표가 없으면 안내, 쉬는 날·수업 �
   assert.equal(lessonCard({ date: WED, off: '', slots: [] }, '10:00', { hasTimetable: true }).state, 'empty');
 });
 
-test('공문 기한 카드: 지남·오늘·D-n(7일 안, 다 한 것 빼고) 3개까지, 배지 글·기호·색', () => {
+test('공문 기한 카드: 오늘·D-n 먼저, 지남은 그 뒤(7일 안, 다 한 것 빼고) 3개까지, 배지 글·기호·색', () => {
   const docs = [
     { id: 'a', title: '안전 점검 결과 보고', due: '2026-11-09', done: false, at: 1 },
     { id: 'b', title: '과학의 날 참가 신청', due: '2026-11-13', done: false, at: 2 },
@@ -81,11 +81,14 @@ test('공문 기한 카드: 지남·오늘·D-n(7일 안, 다 한 것 빼고) 3�
     { id: 'f', name: '이름만 있는 공문.hwp', title: '', due: '2026-11-16', done: false, at: 6 },
     { id: 'g', title: '네 번째', due: '2026-11-17', done: false, at: 7 }];
   const r = gongmunCard(docs, WED);
-  assert.deepEqual(r.map(x => x.id), ['a', 'c', 'b']);
-  assert.deepEqual(r.map(x => x.badge), ['지남', '오늘', 'D-2']);
-  assert.deepEqual(r.map(x => x.tone), ['err', 'err', 'warn']);
-  assert.equal(r[0].note, '2일 지났어요');
-  assert.ok(r[0].sym && r[1].sym, '급한 것은 기호');
+  // 남은 것이 3개면 지난 공문은 카드 밖(오래 잊은 공문이 오늘·D-2를 가리지 않게), 적으면 그 뒤
+  assert.deepEqual(r.map(x => x.id), ['c', 'b', 'f']);
+  assert.deepEqual(r.map(x => x.badge), ['오늘', 'D-2', 'D-5']);
+  assert.deepEqual(r.map(x => x.tone), ['err', 'warn', 'info']);
+  const late = gongmunCard([docs[0], docs[1]], WED);
+  assert.deepEqual(late.map(x => [x.id, x.badge, x.tone]), [['b', 'D-2', 'warn'], ['a', '지남', 'err']]);
+  assert.equal(late[1].note, '2일 지났어요');
+  assert.ok(r[0].sym && late[1].sym && !r[1].sym, '급한 것은 기호');
   assert.equal(gongmunCard([docs[5]], WED)[0].title, '이름만 있는 공문.hwp');
   assert.equal(gongmunCard([docs[5]], WED)[0].badge, 'D-5');
   assert.equal(gongmunCard([docs[5]], WED)[0].tone, 'info');

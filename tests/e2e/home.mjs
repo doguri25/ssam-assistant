@@ -74,12 +74,12 @@ await run('home', [
     assert(p.length === 1 && p[0] === '파일 고르기', JSON.stringify(p));
     assert((await page.textContent(`${H} .hm-drop`)).includes('무엇이든 여기에 놓으세요'), '놓는 칸 글');
   }],
-  ['공문 기한: 지남·D-2·D-5(다 한 것 빼고), 배지에 글, [공문 처리] → 문서·소통 › 공문 처리', async () => {
+  ['공문 기한: D-2·D-5 먼저, 지난 공문은 그 뒤(다 한 것 빼고), 배지에 글, [공문 처리] → 문서·소통 › 공문 처리', async () => {
     const rows = await page.locator(`${H} .hm-gm .hm-line`).allInnerTexts();
     assert(rows.length === 3, JSON.stringify(rows));
     const badges = await page.locator(`${H} .hm-gm .hm-badge`).evaluateAll(bs => bs.map(b => b.childNodes.length && [...b.childNodes].filter(n => !(n.classList && n.classList.contains('sr-only'))).map(n => n.textContent).join('')));
-    assert(JSON.stringify(badges) === JSON.stringify(['!지남', 'D-2', 'D-5']), JSON.stringify(badges));
-    assert(rows[0].includes('안전 점검 결과 보고') && !rows.join('').includes('다 한 공문'), JSON.stringify(rows));
+    assert(JSON.stringify(badges) === JSON.stringify(['D-2', 'D-5', '!지남']), JSON.stringify(badges));
+    assert(rows[2].includes('안전 점검 결과 보고') && !rows.join('').includes('다 한 공문'), JSON.stringify(rows));
     await page.click(`${H} .hm-gm .hm-card-f [data-hm-go="gongmun"]`);
     assert(await title() === '문서·소통' && await tabNow() === '공문 처리', `${await title()} › ${await tabNow()}`);
     await page.click('nav.app-side [data-menu-go="home"]');

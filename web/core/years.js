@@ -2,6 +2,7 @@
    공통 키(AI 키·테마 등)는 학년도와 상관없이 그대로. 백업 파일에는 공통 키를 넣지 않음 */
 import { schoolYearOf, HOLIDAYS, weekday, addDays } from './calendar.js';
 import { dueEvents } from '../menus/etc/gongmun-ai.js';
+import { carryMinutes } from '../menus/etc/minutes-model.js';
 import { periodStart } from '../menus/class/class-import.js';
 
 const PREFIX = 'ssam:';
@@ -83,6 +84,9 @@ export function carryOver(snap, newYear, { classSetup = false } = {}) {
   if (openDocs.length) out['gongmun:list'] = JSON.stringify(openDocs);
   if (Array.isArray(cal) || openDocs.length) out.calendar = JSON.stringify([...(Array.isArray(cal) ? cal : []).filter(e => e && typeof e.date === 'string' && e.date >= `${newYear}-03-01` && e.source !== 'gongmun'),
     ...dueEvents(openDocs).map(e => ({ ...e, source: 'gongmun' }))]);
+  // 끝내지 않은 할 일이 있는 회의록도 가져감(2월 회의의 3월 할 일이 「오늘」에 남게), 다 끝낸 회의록은 지난 학년도에
+  const openMeets = carryMinutes(parse(snap['minutes:list']));
+  if (openMeets.length) out['minutes:list'] = JSON.stringify(openMeets);
   const sc = parse(snap.school);
   // 방학·재량휴업일은 새 학년도(3월 1일부터)에 시작하는 것만 (2월에 미리 넣은 새 학년도 일정 — 학사일정과 같게)
   const inNew = b => isObj(b) && typeof b.from === 'string' && typeof b.to === 'string' && b.from >= `${newYear}-03-01` && b.from < `${newYear + 1}-03-01`;

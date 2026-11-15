@@ -203,11 +203,12 @@ test('[minutes-due] 끝내지 않은 할 일 가운데 기한이 7일 안(지남
 
 test('[minutes-home] 「오늘」 기한 카드의 회의 할 일: 공문 기한과 같은 배지, 할 일 수에 더함, 이어서 하기에는 넣지 않음', () => {
   const c = minutesCard(MEETINGS, TODAY);
-  assert.deepEqual(c.map(x => [x.id, x.title, x.badge, x.tone, x.sym]), [['b', '지난 일', '지남', 'err', '!'], ['b', '오늘 할 일', '오늘', 'err', '!'], ['a', '버스 예약', 'D-5', 'info', '']]);
-  assert.equal(c[0].note, '2일 지났어요');
+  // 오늘·D-n 먼저, 지난 할 일은 그 뒤(today-1115)
+  assert.deepEqual(c.map(x => [x.id, x.title, x.badge, x.tone, x.sym]), [['b', '오늘 할 일', '오늘', 'err', '!'], ['a', '버스 예약', 'D-5', 'info', ''], ['b', '지난 일', '지남', 'err', '!']]);
+  assert.equal(c[2].note, '2일 지났어요');
   // 공문 카드와 같은 배지 꼴
   const g = gongmunCard([{ id: 'g', title: '공문', due: '2026-11-20', done: false }], TODAY)[0];
-  assert.deepEqual([g.badge, g.tone, g.note], [c[2].badge, c[2].tone, c[2].note]);
+  assert.deepEqual([g.badge, g.tone, g.note], [c[1].badge, c[1].tone, c[1].note]);
   assert.equal(todoCount({ gongmun: [{}], minutes: c, lessons: null, camp: null }), 4);
   const rows = continueRows({ brief: [{ kind: 'minutes', text: '회의 할 일 「버스 예약」' }, { kind: 'plan', text: '행사계획' }] });
   assert.deepEqual(rows.map(r => r.kind), ['plan']);
@@ -222,7 +223,7 @@ test('[minutes-brief] 채팅 「오늘 할 일」에 「회의 할 일」: 지�
   assert.deepEqual(k.map(x => x.when), ['2일 지남', '오늘', 'D-5']);
   assert.deepEqual(k.map(x => x.hot), [true, true, false]);
   assert.deepEqual(k[0].route, { to: 'minutes', id: 'b' });
-  // 공문 기한 바로 뒤
-  assert.deepEqual(l.slice(0, 4).map(x => x.kind), ['gongmun', 'minutes', 'minutes', 'minutes']);
+  // 공문 기한(D-2)과 섞어 가까운 차례(today-1115)
+  assert.deepEqual(l.slice(0, 4).map(x => x.kind), ['minutes', 'minutes', 'gongmun', 'minutes']);
   assert.deepEqual(briefing({ today: TODAY, meetings: [null, { id: 'x', todos: 'x' }] }), []);
 });
