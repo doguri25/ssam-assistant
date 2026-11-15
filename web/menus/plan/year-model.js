@@ -26,10 +26,12 @@ export function yearOutline(src) {
   if (top.length < 3) return { items: [], roman: false };
   const used = new Set();
   let n = 0;
-  // 제목마다 가장 맞는 칸 하나(앞 칸이 먼저). 그 칸을 이미 앞 제목이 썼으면 덧붙임 칸(「운영 목표」가 「운영」 때문에 세부 칸을 차지하지 않게)
+  // 제목마다 맞는 칸을 앞 칸부터: 앞 제목이 쓴 칸이면 다음으로 맞는 칸(「월별 세부 추진 계획」은 세부, 「추진 목표 및 방침」은 방침).
+  // 세부 칸은 그 제목에 가장 맞는 칸이거나 「세부」가 있을 때만(「운영 목표」가 「운영」 때문에 세부 칸을 차지하지 않게). 맞는 칸이 없으면 덧붙임 칸
   const items = top.map(x => {
-    const r = !NOT_ROLE.test(x.title) && ROLE.find(([, re]) => re.test(x.title));
-    if (r && !used.has(r[0])) { used.add(r[0]); return { key: r[0], title: x.title }; }
+    const hits = NOT_ROLE.test(x.title) ? [] : ROLE.filter(([, re]) => re.test(x.title));
+    const r = hits.find(([k]) => !used.has(k) && (k !== 'details' || hits[0][0] === 'details' || /세부/.test(x.title)));
+    if (r) { used.add(r[0]); return { key: r[0], title: x.title }; }
     return { key: 'x' + (++n), title: x.title };
   });
   return { items, roman: /^\s*[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]\.\s*\S/m.test(String(src || '')) };

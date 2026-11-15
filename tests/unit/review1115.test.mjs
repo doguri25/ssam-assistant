@@ -40,3 +40,11 @@ test('[ev-outline-tables] 작년 목차로 쓴 계획서 글에 시간표·예�
   const full = 'Ⅰ. 목적\n가. 체력을 기른다.\nⅡ. 방침\n가. 모두 참여\nⅢ. 세부 운영 계획\n가. 09:00 개회식\n나. 10:00 이어달리기\nⅣ. 평가\n가. 예산: 상품 100,000원';
   assert.deepEqual(E.docDoc(ev(full), 'plan').blocks.filter(b => b.type === 'h').map(b => b.text), ['Ⅰ. 목적', 'Ⅱ. 방침', 'Ⅲ. 세부 운영 계획', 'Ⅳ. 평가']);
 });
+
+test('[year-outline-fallthrough] 앞 칸을 이미 쓴 제목은 다음으로 맞는 칸으로(「월별 세부 추진 계획」은 세부, 「추진 목표 및 방침」은 방침) — 「운영 목표」는 세부 칸을 차지하지 않음', async () => {
+  const { yearOutline } = await import('../../web/menus/plan/year-model.js');
+  const keys = src => yearOutline(src).items.map(x => x.key);
+  assert.deepEqual(keys('1. 목적\n2. 추진 일정\n3. 월별 세부 추진 계획\n4. 평가'), ['purpose', 'schedule', 'details', 'evaluation']);
+  assert.deepEqual(keys('Ⅰ. 목적\nⅡ. 추진 목표 및 방침\nⅢ. 세부 추진 계획\nⅣ. 평가'), ['purpose', 'policy', 'details', 'evaluation']);
+  assert.deepEqual(keys('Ⅰ. 목적\nⅡ. 운영 목표\nⅢ. 세부 추진 계획\nⅣ. 평가'), ['purpose', 'x1', 'details', 'evaluation']);
+});
