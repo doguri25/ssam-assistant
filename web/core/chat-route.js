@@ -12,6 +12,8 @@ export const INTENTS = [
   ['letter', '가정통신문', '보호자께 보내는 가정통신문·안내장'],
   ['translate', '가정통신문 번역', '가정통신문을 베트남어·중국어·러시아어·영어로 번역'],
   ['gongmun', '공문 처리', '받은 공문의 제출 기한·할 일 정리'],
+  ['minutes', '회의록', '협의회·회의 메모를 안건·협의·결정·할 일 회의록으로 정리'],
+  ['docedit', '문서 다듬기', '한글(.hwpx) 문서를 넣고 공문체·짧게·맞춤법처럼 말로 고치기(모양 그대로)'],
   ['report', '결과 보고', '행사·사업 결과 보고서'],
   ['year', '연간계획', '업무 연간 운영 계획'],
   ['event', '행사계획', '운동회·학예회·현장체험학습 같은 행사 계획'],
@@ -56,6 +58,8 @@ const RULES = [
   // 「학부모님께 … 안내문 보내야 해」「안내문 써 줘」: 안내문은 가정통신문(선생님들께 보내는 안내는 쪽지)
   ['letter', /(?:학부모|보호자|부모)\s*님?(?:께|에게|한테)?.{0,30}(?:안내문|알림장|통신문)/, 3.5], ['letter', /안내문|알림장/, 2.5],
   ['gongmun', /공문/, 2.5], ['gongmun', /공문\s*(?:처리|정리|기한|목록)/, 3.5],
+  ['minutes', /회의록|협의록|협의회\s*(?:록|내용|결과)|회의\s*(?:내용|결과)\s*(?:정리|써|만들)/, 4],
+  ['docedit', /(?:문서|한글\s*(?:파일|문서)|hwpx?)(?:[^\n]{0,14})(?:다듬|고쳐|손봐|교정|맞춤법)|문서\s*다듬기|공문체로\s*(?:바꿔|고쳐|다듬)/i, 4],
   ['report', /결과\s*보고|보고서/, 3], ['report', /결과\s*보고(?:서)?\s*로/, 3.5],
   ['year', /연간\s*(?:업무\s*)?(?:운영\s*)?계획|업무\s*계획/, 3],
   ['event', /행사\s*계획|(?:운동회|학예회|체험\s*학습|수학여행|발표회|축제|행사)\s*(?:운영\s*)?계획/, 3.5], ['event', /운동회|학예회|체험\s*학습|수학여행|발표회/, 1.5], ['event', /행사/, 1],
@@ -96,10 +100,10 @@ const trimTail = t => { let s = String(t || '').trim(), p; do { p = s; s = s.rep
 /* 할 일 낱말을 뺀 남은 글 (내용이 있는지 보려고) */
 const KW = {
   purchase: /품의\s*(?:서|초안)?(?:\s*초안)?/g, message: /(?:안내\s*)?쪽지(?:로|를|\s*초안)?/g, letter: /가정\s*통신문(?:으로|을|\s*초안)?|안내장(?:으로|을)?/g,
-  gongmun: /공문(?:\s*처리)?(?:을|으로)?/g, report: /결과\s*보고(?:서)?(?:를)?/g
+  gongmun: /공문(?:\s*처리)?(?:을|으로)?/g, report: /결과\s*보고(?:서)?(?:를)?/g, minutes: /(?:회의록|협의록)(?:으로|을|를)?/g
 };
 // 글 앞의 「가정통신문 써 줘」「쪽지:」「공문 처리」+줄바꿈 (뒤에 내용이 이어질 때)
-const LEAD_W = '(?:가정\\s*통신문|안내장|(?:안내\\s*)?쪽지|공문(?:[ \\t]*처리)?|결과\\s*보고(?:서)?)';
+const LEAD_W = '(?:가정\\s*통신문|안내장|(?:안내\\s*)?쪽지|공문(?:[ \\t]*처리)?|결과\\s*보고(?:서)?|회의록|협의록)';
 const LEAD_V = '[ \\t]*(?:좀[ \\t]*)?(?:써|만들어|작성해|처리해|정리해|부탁해)[ \\t]*';
 const LEAD = new RegExp(`^${LEAD_W}(?:${LEAD_V}(?:줘|주세요|줄래요?)?)?[ \\t]*(?:[:,.][ \\t]*\\n?|\\n)\\s*|^${LEAD_W}${LEAD_V}(?:줘|주세요|줄래요?)[ \\t]*[:,.]?\\s*`);
 const meat = s => String(s || '').replace(/[^가-힣a-zA-Z0-9]/g, '');
@@ -110,7 +114,7 @@ const tidy = s => String(s || '').replace(/\r\n?/g, '\n').split('\n').map(l => l
 export function payloadFor(intent, text) {
   const t = tidy(text);
   if (intent === 'purchase') { const s = trimTail(tidy(t.replace(KW.purchase, ' '))); return { text: meat(s).length >= 2 ? s : '' }; }
-  if (['message', 'letter', 'gongmun', 'report'].includes(intent)) {
+  if (['message', 'letter', 'gongmun', 'report', 'minutes'].includes(intent)) {
     const s = trimTail(t).replace(LEAD, ''), rest = meat(s.replace(KW[intent], ''));
     return { text: rest.length >= 4 ? s : '' };
   }
@@ -197,7 +201,7 @@ export const isSure = r => !!(r && r.intent && r.confidence >= 0.6);
 
 /* ---------- 묻는 글 ---------- */
 // 글 넣는 일(분명하면 부탁 꼬리가 있을 때 묻는 낱말이 있어도 명령)
-const WRITE_IDS = ['purchase', 'message', 'letter', 'gongmun', 'report'];
+const WRITE_IDS = ['purchase', 'message', 'letter', 'gongmun', 'report', 'minutes'];
 // 어떻게·왜·뭐·무슨·차이·뜻: 묻는 말(명령 꼬리가 있어도)
 export const HOW = /어떻게|어떡|무엇|뭐(?:야|예요|에요|지|가|를|부터|해야|하면|라고|\s*(?:있|써|해|하|넣|골라|고르))|뭔가요|뭔지|무슨|왜(?=\s|[?？요죠지냐]|$)|차이(?:가|는|점|를)?|뜻이|의미가|설명해/;
 // 「~하는 법·방법·순서·요령」: 묻는 말(「신청하는 방법 안내 가정통신문」처럼 뒤에 「안내」가 오면 넣을 내용)

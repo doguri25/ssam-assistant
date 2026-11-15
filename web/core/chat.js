@@ -387,6 +387,14 @@ async function run(intent, p = {}) {
       empty: '문서·소통 › 공문 처리로 왔어요. 명단·전화번호 줄을 빼니 넣을 공문 글이 없어요. 공문 파일을 끌어 놓거나 글을 붙여 넣어 주세요.' });
     afterGo(); return;
   }
+  if (intent === 'minutes') {
+    if (!p.text) { go('etc', 'minutes'); say('문서·소통 › 회의록으로 왔어요. 회의 메모를 붙여 넣거나 파일을 넣어 주세요.'); afterGo(); return; }
+    const st = await (await import('../menus/etc/minutes.js')).putMinutesText(p.text).catch(() => 'error');
+    tell(st, { started: '회의록에 넣고 안건·협의 내용·결정 사항·할 일로 정리하고 있어요. 다 되면 확인해 주세요.', 'no-ai': `회의록에 메모를 넣었어요. ${NO_AI}`,
+      busy: '다른 회의록을 정리하는 중이에요. 다 되면 다시 말해 주세요.', empty: '문서·소통 › 회의록으로 왔어요. 정리할 회의 메모를 붙여 넣어 주세요.' });
+    afterGo(); return;
+  }
+  if (intent === 'docedit') { go('etc', 'docedit'); say('문서·소통 › 문서 다듬기로 왔어요. 한글(.hwpx) 파일을 넣고 「공문체로 다듬어 줘」처럼 고칠 내용을 적어 주세요. 모양(글꼴·문단·결재란)은 그대로 둬요.'); afterGo(); return; }
   if (intent === 'report') {
     if (!p.text) { go('plan', 'report'); say('계획 › 결과 보고로 왔어요. 계획서·공문이나 한 일을 넣어 주세요.'); afterGo(); return; }
     const m = await import('../menus/plan/report.js');
