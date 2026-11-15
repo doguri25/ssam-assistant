@@ -50,12 +50,12 @@ await run('years-more', [
     await page.unroute('https://api.anthropic.com/**');
     await page.reload(); await page.waitForTimeout(500);
   }],
-  ['AI 키를 기억하지 않게 했으면 새 학년도 창에서 알려 줌', async () => {
+  ['웹판은 키가 이 탭에 남아 학년도를 옮겨도 그대로라 새 학년도 창에 「키를 다시 넣어야」 안내가 없음(그 안내는 Windows 앱에서 「키 기억하기」를 껐을 때만)', async () => {
     await page.evaluate(() => { const e = JSON.parse(localStorage.getItem('ssam:engine')); e.remember = false; localStorage.setItem('ssam:engine', JSON.stringify(e)); });
     await yearsTab();
     await page.click(`${S} [data-set="newYear"]`);
     await page.waitForSelector('#sheetRoot .sheet');
-    assert((await page.textContent('#sheetRoot .sheet')).includes('AI 키를 기억하지 않게'), '안내 없음');
+    assert(!(await page.textContent('#sheetRoot .sheet')).includes('AI 키를 기억하지 않게'), '웹판에 옛 안내가 보임');
     await page.click('#sheetRoot [data-close]');
     await page.evaluate(() => { const e = JSON.parse(localStorage.getItem('ssam:engine')); e.remember = true; localStorage.setItem('ssam:engine', JSON.stringify(e)); });
   }],

@@ -267,7 +267,7 @@ await run('eval-check', [
     await page.selectOption(`${B} #chkSrc`, '');
   }],
   ['AI 키가 없으면 [AI로 고치기]는 짧은 안내', async () => {
-    await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: '', keys: {}, remember: true })));
+    await page.evaluate(() => { sessionStorage.removeItem('ssam:keys'); localStorage.setItem('ssam:engine', JSON.stringify({ engine: '', keys: {}, remember: true })); }); // 웹판 키는 이 탭(sessionStorage)에
     await page.reload(); await page.waitForTimeout(500);
     await goCheck();
     const n = calls.length;

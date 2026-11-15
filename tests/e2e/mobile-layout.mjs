@@ -12,9 +12,8 @@ await page.addInitScript(() => {
 await page.goto(url);
 await page.waitForTimeout(500);
 await page.evaluate(() => import('./core/tour.js').then(m => m.startTour()));
-await page.click('#tourGo');
-await page.waitForLoadState('load');
-await page.waitForFunction(() => document.querySelector('.demo-band, [data-demo-band]') || localStorage.getItem('ssam:demo'), null, { timeout: 8000 }).catch(() => {});
+// [둘러보기 시작]은 체험 자료를 옮긴 뒤 앱을 다시 엶 — 그 새로 고침을 기다림(바쁠 때 늦게 와서 다음 시험 중에 화면이 다시 열리지 않게)
+await Promise.all([page.waitForNavigation({ waitUntil: 'load', timeout: 30000 }), page.click('#tourGo')]);
 await page.waitForTimeout(800);
 await page.evaluate(() => import('./core/tour.js').then(m => m.closeSteps()));
 

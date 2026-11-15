@@ -260,7 +260,7 @@ await run('home', [
     await page.setViewportSize({ width: 1280, height: 860 });
   }],
   ['처음 쓰는 선생님(다 비었으면): 시작 안내 3단계', async () => {
-    await page.evaluate(() => { localStorage.clear(); localStorage.setItem('ssam:__seeded', '1'); });
+    await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); localStorage.setItem('ssam:__seeded', '1'); }); // 웹판 키는 이 탭(sessionStorage)에
     await page.reload(); await page.waitForSelector(`${H} .hm-start`);
     const steps = await page.locator(`${H} .hm-steps li b`).allInnerTexts();
     assert(steps.join('|') === 'AI 정하기|학급 명단 넣기|파일 놓기', steps.join('|'));
