@@ -4,7 +4,6 @@
   display:grid;place-items:center;color:var(--on-accent,#fff);background:transparent;
   transition:transform .18s cubic-bezier(.2,.8,.3,1.2),filter .18s ease,opacity .16s ease,visibility 0s}
 /* 휴대폰에서 아래로 내리는 동안 비켜남(core/inbox.js stepAside): 보이지 않고 눌리지 않음 */
-.inbox-fab.away{opacity:0;transform:translateY(20px) scale(.85);pointer-events:none;visibility:hidden;transition:transform .16s ease,opacity .16s ease,visibility 0s .16s}
 .inbox-fab .ib-glyph{display:block;width:100%;height:100%;filter:drop-shadow(0 2px 2px rgba(0,0,0,.14)) drop-shadow(0 8px 12px color-mix(in srgb,var(--accent,#4f46e5) 45%,transparent))}
 .ssam-mark{display:block;width:100%;height:100%;overflow:visible}
 .ssam-mark .sm-fill{fill:var(--accent,#4f46e5)}
@@ -42,7 +41,7 @@ html[data-theme="mono"] .ssam-mark .sm-line{stroke:#9ca3af}
 .inbox-pad.on{border-style:solid;border-color:var(--accent,#4f46e5);background:var(--accent-soft,#eef0ff)}
 .inbox-pad.on .ib-pad-icon{transform:translateY(3px);background:var(--accent,#4f46e5);color:var(--on-accent,#fff)}
 @keyframes ibPadIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:none}}
-@media (prefers-reduced-motion:reduce){.inbox-fab,.inbox-fab.away,.inbox-fab .ib-badge,.inbox-pad .ib-pad-icon{transition:none}.inbox-fab.drag::after,.inbox-pad{animation:none}.inbox-fab:hover,.inbox-fab[aria-expanded="true"]{transform:none}}
+@media (prefers-reduced-motion:reduce){.inbox-fab,.inbox-fab .ib-badge,.inbox-pad .ib-pad-icon{transition:none}.inbox-fab.drag::after,.inbox-pad{animation:none}.inbox-fab:hover,.inbox-fab[aria-expanded="true"]{transform:none}}
 .ib-guess{margin:4px 0}
 .ib-notes{margin:0;padding-left:20px;color:var(--danger,#b91c1c)}
 .ib-fields{display:grid;gap:8px}
@@ -99,13 +98,12 @@ html[data-theme="mono"] .ssam-mark .sm-line{stroke:#9ca3af}
 .chat-drop{display:none}
 .chat-panel.drop{outline:2px dashed var(--accent,#4f46e5);outline-offset:-6px}
 .chat-panel.drop .chat-drop{display:grid;place-items:center;position:absolute;inset:0;background:color-mix(in srgb,var(--accent-soft,#eef0ff) 88%,transparent);font-weight:700;color:var(--accent-ink,#3730a3);pointer-events:none}
-/* 휴대폰(≤760px): 버튼·놓기 판·채팅 창은 아래 탭(--bottom-h, core/shell.css) 위로 */
+/* 휴대폰(≤760px): 떠 있는 「쌤」 버튼·놓기 판은 숨김(좁은 화면에서 본문 단추를 덮음 — 채팅은 머리 줄 말풍선 단추 #chatTop, 파일은 채팅 창 📎).
+   채팅 창은 아래 탭(--bottom-h, core/shell.css) 바로 위까지 */
 @media (max-width:760px){
-  .inbox-fab{right:16px;bottom:calc(var(--bottom-h,0px) + 12px)}
-  .inbox-pad{bottom:calc(var(--bottom-h,0px) + 8px)}
-  .chat-panel{bottom:calc(var(--bottom-h,0px) + 80px);height:min(560px,calc(100vh - var(--bottom-h,0px) - 96px))}
-  .chat-panel.nofab{bottom:calc(var(--bottom-h,0px) + 12px);height:min(600px,calc(100vh - var(--bottom-h,0px) - 28px))}
+  .inbox-fab,.inbox-pad{display:none}
+  .chat-panel,.chat-panel.nofab{bottom:calc(var(--bottom-h,0px) + 12px);height:min(600px,calc(100vh - var(--bottom-h,0px) - 28px))}
 }
-@media (max-width:480px){.chat-panel{right:12px;width:calc(100vw - 24px);height:calc(100vh - var(--bottom-h,0px) - 96px)}.chat-panel.nofab{height:calc(100vh - var(--bottom-h,0px) - 28px)}}
+@media (max-width:480px){.chat-panel,.chat-panel.nofab{right:12px;width:calc(100vw - 24px);height:calc(100vh - var(--bottom-h,0px) - 28px)}}
 @media (prefers-reduced-motion:reduce){.chat-panel{animation:none}}
 @media print{.inbox-fab,.inbox-pad,.chat-panel{display:none}}

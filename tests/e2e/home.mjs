@@ -208,15 +208,14 @@ await run('home', [
     assert(await page.isVisible('.app-logo .logo-mark'), '로고 마크');
     assert(await page.getAttribute('#bottomTabs [data-menu-go="home"]', 'aria-current') === 'page', '오늘 칸이 켜져야 함');
   }],
-  ['390px: 쌤 버튼은 아래 탭 위, 마지막 글을 가리지 않게 내용 아래 여백', async () => {
-    const f = await page.locator('#inboxFab').boundingBox(), bar = await page.locator('#bottomTabs').boundingBox();
-    assert(f.y + f.height <= bar.y, `버튼 ${JSON.stringify(f)} / 아래 탭 ${JSON.stringify(bar)}`);
-    const pad = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('#app')).paddingBottom));
-    assert(pad >= f.height, '내용 아래 여백 ' + pad);
+  ['390px: 떠 있는 쌤 버튼은 숨기고(본문 단추를 덮지 않게 — 채팅은 머리 줄 말풍선), 알림은 아래 탭 위', async () => {
+    assert(!(await page.locator('#inboxFab').isVisible()), '휴대폰에서 떠 있는 쌤 버튼이 보임');
+    assert(await page.isVisible('#chatTop'), '머리 줄 말풍선 단추');
+    const bar = await page.locator('#bottomTabs').boundingBox();
     await page.evaluate(() => window.SSAM.toast('시험 알림'));
     await page.waitForTimeout(400);
     const tb = await page.locator('#toast').boundingBox();
-    assert(tb.y + tb.height <= f.y + 1, `알림이 버튼·아래 탭 위에: ${JSON.stringify(tb)}`);
+    assert(tb.y + tb.height <= bar.y, `알림이 아래 탭 위에: ${JSON.stringify(tb)} / ${JSON.stringify(bar)}`);
   }],
   ['390px: 가로 메뉴는 한 줄 가로 스크롤 칩, 아래 탭으로 메뉴 옮김', async () => {
     await page.click('#bottomTabs [data-menu-go="evaluate"]');

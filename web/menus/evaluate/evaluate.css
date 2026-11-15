@@ -586,6 +586,8 @@ input.field.num.sm{width:84px}
 .chip.warn{background:var(--warn-soft);color:var(--warn)}
 .chip .spin{width:11px;height:11px}
 .gr-go{position:sticky;bottom:0;z-index:2;background:var(--surface);padding:10px 0;border-top:1px solid var(--line2);box-shadow:0 -6px 12px -10px rgba(31,41,61,.25)}
+/* 휴대폰: 본문 칸 아래 여백 때문에 아래 탭보다 위에 떠서 밑의 칸·단추와 겹침 — 붙이지 않고 설정 끝에 둠 */
+@media (max-width:760px){.gr-go{position:static;padding:4px 0 0;border-top:0;box-shadow:none}.gr-setup{scroll-padding-bottom:0}}
 .gr-setup>:last-child{margin-bottom:28px}
 .gr-hist{list-style:none;margin:0;padding:0;display:grid;gap:2px}
 .gr-hist li{display:flex;align-items:center;gap:4px}

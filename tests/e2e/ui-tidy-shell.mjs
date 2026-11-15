@@ -134,39 +134,22 @@ await run('ui-tidy-shell', [
     const o = await underFab('section[data-menu="class"] :is(button, input, select, textarea, summary)');
     assert(!o.length, '맨 아래에서 가림: ' + o.join(', '));
   }],
-  ['390px: 아래로 내리는 동안 쌤 버튼이 비켜남(오른쪽 끝 단추가 밑을 지나가도 가리지 않음) — 위로 올리거나 맨 위·맨 아래, 채팅이 열려 있으면 그대로', async () => {
+  ['390px: 떠 있는 쌤 버튼은 숨김(본문 단추를 덮지 않게 — 채팅은 머리 줄 말풍선), 1366은 내려도 쌤 버튼이 그대로', async () => {
     await go('class', 'camp');
     await page.waitForSelector('section[data-menu="class"] .cp-page');
     const shown = () => page.evaluate(() => { const f = document.querySelector('#inboxFab'); return !f.hidden && f.checkVisibility({ opacityProperty: true, visibilityProperty: true }) && getComputedStyle(f).pointerEvents !== 'none'; });
-    const wait = (want, why) => page.waitForFunction(w => { const f = document.querySelector('#inboxFab'); return (!f.hidden && f.checkVisibility({ opacityProperty: true, visibilityProperty: true }) && getComputedStyle(f).pointerEvents !== 'none') === w; }, want, { timeout: 3000 }).catch(() => { throw new Error(why); });
     const to = y => page.evaluate(y => new Promise(r => { document.querySelector('#app').scrollTop = y; requestAnimationFrame(() => requestAnimationFrame(r)); }), y);
-    const max = await page.evaluate(() => { const a = document.querySelector('#app'); return a.scrollHeight - a.clientHeight; });
-    assert(max > 300, '내려 볼 만큼 길지 않음 ' + max);
-    await to(0); await wait(true, '맨 위에서 안 보임');
-    await to(80); await to(160); await wait(false, '아래로 내리는데 그대로 떠 있음');
-    // 비켜난 동안은 눌리지도 않고, 밑의 단추를 가리지 않음
-    const hit = await page.evaluate(() => { const r = document.querySelector('#inboxFab').getBoundingClientRect(); const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return el && el.closest('#inboxFab') ? 'fab' : 'under'; });
-    assert(hit === 'under', '비켜난 버튼이 눌림');
-    await to(100); await wait(true, '위로 올려도 안 보임');
-    await to(200); await wait(false, '다시 내리는데 그대로');
-    await toBottom(); await wait(true, '맨 아래에서 안 보임(아래 여백이 있어 가리지 않음)');
-    await to(0); await wait(true, '맨 위');
-    // 채팅이 열려 있으면 내려도 그대로
-    await page.click('#inboxFab');
-    await page.waitForFunction(() => document.querySelector('#inboxFab').getAttribute('aria-expanded') === 'true');
-    await to(80); await to(160); await page.waitForTimeout(300);
-    assert(await shown(), '채팅이 열렸는데 비켜남');
-    await page.click('#inboxFab');
-    await page.waitForFunction(() => document.querySelector('#inboxFab').getAttribute('aria-expanded') === 'false');
-    // 다른 메뉴로 가면 다시 보임
-    await to(80); await to(200); await wait(false, '내림');
-    await page.click('#bottomTabs [data-menu-go="purchase"]'); await wait(true, '다른 메뉴로 가도 안 보임');
+    assert(!(await shown()), '휴대폰에서 떠 있는 쌤 버튼이 보임');
+    await page.click('#chatTop');
+    await page.waitForSelector('#chatPanel:not([hidden])');
+    await page.click('#chatTop');
+    await page.waitForSelector('#chatPanel', { state: 'hidden' });
     await page.setViewportSize({ width: 1366, height: 768 });
     await go('class', 'camp'); await page.waitForSelector('section[data-menu="class"] .cp-page');
     await page.evaluate(() => { document.querySelector('#app').scrollTop = 0; });
     for (const y of [80, 160, 240]) await to(y);
     await page.waitForTimeout(300);
-    assert(await shown(), '데스크톱은 오른쪽 여백이 있어 비켜나지 않음');
+    assert(await shown(), '데스크톱에서 내리면 쌤 버튼이 사라짐');
     await page.setViewportSize({ width: 390, height: 844 });
   }],
   ['390px: 메뉴 화면마다 가로로 넘치지 않음(화면 설명·「AI로 가는 것」·접기 펼쳐도)', async () => {

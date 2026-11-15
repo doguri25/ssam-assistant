@@ -103,11 +103,9 @@ section[data-menu="evaluate"][hidden]{display:none}
   .bt-btn[aria-current="page"]::before{content:'';position:absolute;top:0;left:24%;right:24%;height:3px;border-radius:0 0 3px 3px;background:var(--accent)}
   .bt-btn:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
   .bt-btn.working::after{content:'';position:absolute;top:6px;left:calc(50% + 9px);width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--surface);animation:side-work 1.4s ease-in-out infinite}
-  /* 내용 아래 여백: 쌤 버튼(아래 탭 위 12px·58px로 떠 있음)이 마지막 글·단추를 가리지 않게(옛 평가 화면도 — 본문 #app이 스크롤됨) */
-  body:has(#inboxFab:not([hidden])) #app{padding-bottom:88px}
   .m-page{padding:20px 16px}
-  /* 알림은 아래 탭·쌤 버튼 위로 */
-  .toast{bottom:calc(var(--bottom-h) + 80px);transform:translate(-50%,calc(100% + var(--bottom-h) + 100px))}
+  /* 알림은 아래 탭 위로(휴대폰에는 떠 있는 쌤 버튼이 없음 — core/inbox.css) */
+  .toast{bottom:calc(var(--bottom-h) + 16px);transform:translate(-50%,calc(100% + var(--bottom-h) + 36px))}
   /* 나이스·에듀파인 붙여넣기 패널(평가 화면)도 아래 탭 위로 */
   .neis{bottom:calc(var(--bottom-h) + 12px);max-height:calc(100% - var(--bottom-h) - 88px)}
 }

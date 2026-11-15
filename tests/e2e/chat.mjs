@@ -585,13 +585,14 @@ await run('chat', [
     await page.waitForSelector(C, { state: 'hidden' });
     await page.evaluate(() => { const b = document.getElementById('inboxFab'); if (b) b.hidden = false; });
   }],
-  ['390px 폭: 채팅 창이 화면 안, 가로로 넘치지 않음', async () => {
+  ['390px 폭: 머리 줄 말풍선으로 연 채팅 창이 화면 안·아래 탭 위, 가로로 넘치지 않음(휴대폰에는 떠 있는 쌤 버튼이 없음)', async () => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await openChat();
-    const p = await page.locator(C).boundingBox();
+    if (await page.isHidden(C)) await page.click('#chatTop');
+    await page.waitForSelector(`${C}:not([hidden])`);
+    const p = await page.locator(C).boundingBox(), bar = await page.locator('#bottomTabs').boundingBox();
     assert(p && p.x >= 0 && p.x + p.width <= 390 && p.y >= 0, JSON.stringify(p));
-    const f = await page.locator('#inboxFab').boundingBox();
-    assert(f.y >= p.y + p.height, '버튼을 가림');
+    assert(p.y + p.height <= bar.y + 1, '아래 탭을 가림');
+    assert(!(await page.locator('#inboxFab').isVisible()), '휴대폰에서 떠 있는 쌤 버튼이 보임');
     await page.setViewportSize({ width: 1280, height: 860 });
   }],
   ['페이지 오류 없음(없는 파일 없음)', async () => {
