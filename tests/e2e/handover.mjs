@@ -270,7 +270,7 @@ await run('handover', [
     assert(!(await page.$('#sheetRoot .ho-sheet')), '옛 창이 열림');
   }],
   ['AI 키가 없으면 [AI로 정리]는 설정 › AI 안내만', async () => {
-    await page.evaluate(() => localStorage.removeItem('ssam:engine'));
+    await page.evaluate(() => { sessionStorage.removeItem('ssam:keys'); localStorage.removeItem('ssam:engine'); });
     await page.addInitScript(() => localStorage.removeItem('ssam:engine'));
     await page.reload(); await page.waitForTimeout(400);
     await tab(); // 켜면 「오늘」이라 다시 들어감

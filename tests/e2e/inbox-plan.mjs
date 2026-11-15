@@ -82,7 +82,7 @@ await run('inbox-plan', [
     await page.evaluate(async () => (await import('./core/inbox.js')).setInboxSettings({ plan: 'draft' }));
   }],
   ['AI를 정하지 않았으면 자료로만 넣고 안내', async () => {
-    await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: {}, remember: true })));
+    await page.evaluate(() => { sessionStorage.removeItem('ssam:keys'); localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: {}, remember: true })); });
     await page.reload(); await page.waitForTimeout(400);
     const n0 = prompts.length;
     await pick(join(FIXTURES, 'classplan-last.txt'));

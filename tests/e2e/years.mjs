@@ -12,6 +12,8 @@ const tmp = mkdtempSync(join(tmpdir(), 'years-'));
 const ENGINE = JSON.stringify({ engine: 'claude', keys: { claude: 'sk-secret-123' }, remember: true });
 await page.addInitScript(e => { if (!localStorage.getItem('ssam:engine')) localStorage.setItem('ssam:engine', e); }, ENGINE);
 const ls = k => page.evaluate(k => localStorage.getItem('ssam:' + k), k);
+/* AI 키: 웹판은 저장소에 남기지 않고 이 탭(sessionStorage)에만 — 학년도를 옮겨 앱이 다시 열려도 이 탭의 키·고른 AI는 그대로 */
+const keyKept = () => page.evaluate(() => { const e = JSON.parse(localStorage.getItem('ssam:engine') || 'null'), k = JSON.parse(sessionStorage.getItem('ssam:keys') || 'null'); return !!e && e.engine === 'claude' && !!k && k.claude === 'sk-secret-123' && !JSON.stringify(e).includes('sk-secret'); });
 const yearsTab = async () => { await page.click('nav.app-side [data-menu-go="settings"]'); await page.click('#menuTabs [data-tab="years"]'); await page.waitForSelector(`${S} [data-yr]`); };
 const reloadAfter = async sel => { await Promise.all([page.waitForEvent('load'), page.click(sel)]); await page.waitForTimeout(500); };
 let backupPath = '', subjects = '';
@@ -65,7 +67,7 @@ await run('years', [
     const hk = JSON.parse(await ls('hk') || '{"students":[]}');
     assert(await ls('class:subjects') === null && hk.students.length === 0, '안 비워짐');
     assert((await ls('yearplans')).includes('독서 교육'), '연간계획이 없음');
-    assert(await ls('engine') === ENGINE, 'AI 키가 바뀜');
+    assert(await keyKept(), 'AI 키가 바뀜');
     await page.click('nav.app-side [data-menu-go="plan"]'); await page.click('#menuTabs [data-tab="year"]');
     assert((await page.textContent('section[data-menu="plan"] #ypList')).includes('독서 교육'), '연간계획 목록');
   }],
@@ -100,7 +102,7 @@ await run('years', [
     await page.check('#sheetRoot input[data-ry="2026"]');
     await reloadAfter('#sheetRoot #yrRestoreOk');
     assert(await ls('class:subjects') === subjects, '돌아오지 않음');
-    assert(await ls('engine') === ENGINE, 'AI 키가 바뀜');
+    assert(await keyKept(), 'AI 키가 바뀜');
   }],
   ['다른 탭이 학년도를 옮기면 이 탭도 다시 열려 지난 자료를 새 학년도에 쓰지 않음', async () => {
     const other = await t.ctx.newPage();

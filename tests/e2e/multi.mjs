@@ -333,7 +333,7 @@ await run('multi', [
     assert(await page.inputValue(`${P} [data-mv-path="basics.그 밖의 실적사항"]`) === '학생대회 지도 1회', '정성 보고서');
   }],
   ['AI가 없으면: [넣기]가 낱말로 나눔, 사진 기준 양식은 안내, 사진 근거자료는 파일 이름', async () => {
-    await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: {}, remember: true })));
+    await page.evaluate(() => { sessionStorage.removeItem('ssam:keys'); localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: {}, remember: true })); });
     await page.reload(); await page.waitForTimeout(500);
     await tab();
     const n0 = reqs.length;

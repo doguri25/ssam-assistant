@@ -866,7 +866,13 @@ const E = {
   models: { claude: PROVIDERS.claude.models[0][0], gemini: PROVIDERS.gemini.models[0][0], openai: PROVIDERS.openai.models[0][0], upstage: PROVIDERS.upstage.models[0][0] },
   remember: true
 };
+/* 웹판 AI 키: 브라우저 저장소(localStorage)는 같은 주소(예: ○○.github.io)의 다른 웹페이지도 읽어서 키를 남기지 않고 이 탭(sessionStorage)에만 둠 —
+   새로 고침·학년도 옮기기처럼 앱이 다시 열려도 이 탭에서는 그대로, 탭을 닫으면 지워짐. 「키 기억하기」는 Windows 앱만 */
+const TAB_KEYS = 'ssam:keys';
+const noKeys = () => ({ claude: '', gemini: '', openai: '', upstage: '' });
+const hasKey = k => Object.values(k || {}).some(v => typeof v === 'string' && v.trim());
 function loadEngine() {
+  let old = false;
   try {
     const v = JSON.parse(localStorage.getItem('ssam:engine') || 'null');
     if (v) {
@@ -875,16 +881,25 @@ function loadEngine() {
       if (UPSTAGE_RETIRED.includes(E.models.upstage)) E.models.upstage = PROVIDERS.upstage.models[0][0];
       if (v.keys) Object.assign(E.keys, v.keys);
       if (typeof v.remember === 'boolean') E.remember = v.remember;
+      old = !IN_APP && hasKey(v.keys);
     }
   } catch (e) {}
+  if (IN_APP) return;
+  try {
+    const s = JSON.parse(sessionStorage.getItem(TAB_KEYS) || 'null');
+    if (s) for (const k of Object.keys(E.keys)) if (typeof s[k] === 'string' && s[k].trim()) E.keys[k] = s[k];
+  } catch (e) {}
+  // 예전 버전이 저장소에 남긴 키: 이 탭으로 옮기고 저장소에서 지움
+  if (old) saveEngine();
 }
 function saveEngine() {
   try {
     localStorage.setItem('ssam:engine', JSON.stringify({
       engine: E.engine, models: E.models, remember: E.remember,
-      keys: E.remember ? E.keys : { claude: '', gemini: '', openai: '', upstage: '' }
+      keys: IN_APP && E.remember ? E.keys : noKeys()
     }));
   } catch (e) {}
+  if (!IN_APP) { try { sessionStorage.setItem(TAB_KEYS, JSON.stringify(E.keys)); } catch (e) {} }
 }
 loadEngine();
 // 예전에 Claude Fable 모델을 골라 두었으면 Opus로 바꿈 (한 번만)
@@ -2701,11 +2716,11 @@ function drawEngine(sh) {
       <select class="field" id="apiModel">${P.models.map(([v, l]) => `<option value="${esc(v)}" ${E.models[p] === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}<option value="__custom" ${known ? '' : 'selected'}>직접 입력</option></select>
       <input class="field mono" id="apiModelCustom" type="text" placeholder="모델 이름 (예: ${esc(P.models[0][0])})" value="${known ? '' : esc(E.models[p])}" ${known ? 'hidden' : ''}>
     </div>
-    <label class="switch"><input type="checkbox" id="keyRemember" ${E.remember ? 'checked' : ''}>${HERE}에 키 기억하기</label>
-    ${!IN_APP && /\.github\.io$/i.test(location.hostname) ? `<p class="muted" style="margin:0">웹판은 ${esc(location.hostname)} 주소를 같은 계정의 다른 웹페이지와 함께 써요. 함께 쓰는 PC에서는 키를 기억하지 않거나 Windows 앱을 쓰는 것이 안전해요.</p>` : ''}
+    ${IN_APP ? `<label class="switch"><input type="checkbox" id="keyRemember" ${E.remember ? 'checked' : ''}>${HERE}에 키 기억하기</label>`
+      : `<p class="muted" style="margin:0">웹판은 키를 저장하지 않아요. 이 탭에만 잠깐 두어서 탭을 닫으면 지워지니, 다음에 열 때 다시 넣어 주세요(같은 주소의 다른 웹페이지가 키를 읽지 못하게). 키를 기억해 두려면 Windows 앱을 써요.</p>`}
     <div class="row"><button class="btn tonal" type="button" id="keyTest">연결 확인</button><span class="muted" id="keyMsg"></span></div>
     ${p === 'upstage' && TEST.on && !(E.keys.upstage || '').trim() ? `<p class="banner info" style="margin:0"><span class="grow">키를 넣지 않으면 <b>시험용 업스테이지</b>(${esc(untilText())}까지, 하루 ${TEST.daily}번)로 써요. 쌤비서 중계 서버를 거쳐 업스테이지로 가고, 보낸 글은 저장하지 않아요.</span></p>` : ''}
-    <p class="muted" style="margin:0">키 받는 곳: <a href="${esc(P.keyUrl)}" target="_blank" rel="noopener">${esc(P.keyHost)}</a><br>키는 ${HERE}에만 저장되고, 평어를 만들 때 ${esc(P.name)} 회사로만 보내져요. 사용 요금은 키 주인에게 청구돼요.</p>`;
+    <p class="muted" style="margin:0">키 받는 곳: <a href="${esc(P.keyUrl)}" target="_blank" rel="noopener">${esc(P.keyHost)}</a><br>키는 ${IN_APP ? `${HERE}에만 저장되고` : '이 탭에만 잠깐 두고'}, 평어를 만들 때 ${esc(P.name)} 회사로만 보내져요. 사용 요금은 키 주인에게 청구돼요.</p>`;
   const key = box.querySelector('#apiKey');
   key.addEventListener('input', () => { E.keys[p] = key.value.trim(); saveEngine(); box.querySelector('#keyMsg').textContent = ''; updateGen(); });
   box.querySelector('#keyShow').addEventListener('click', e => { const on = key.type === 'password'; key.type = on ? 'text' : 'password'; e.target.textContent = on ? '숨기기' : '보기'; });
@@ -2716,7 +2731,8 @@ function drawEngine(sh) {
     saveEngine();
   });
   custom.addEventListener('input', () => { if (custom.value.trim()) { E.models[p] = custom.value.trim(); saveEngine(); } });
-  box.querySelector('#keyRemember').addEventListener('change', e => { E.remember = e.target.checked; saveEngine(); });
+  const rem = box.querySelector('#keyRemember');
+  if (rem) rem.addEventListener('change', e => { E.remember = e.target.checked; saveEngine(); });
   box.querySelector('#keyTest').addEventListener('click', async e => {
     const msg = box.querySelector('#keyMsg');
     if (!keyOf(p)) { msg.textContent = '키를 먼저 넣어 주세요.'; return; }

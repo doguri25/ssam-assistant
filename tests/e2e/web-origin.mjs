@@ -1,4 +1,4 @@
-// 웹판 주소(github.io)를 같은 계정의 다른 페이지와 함께 쓰는 것을 알림: AI 키 기억하기 옆 안내, 저장 공간의 다른 페이지 몫
+// 웹판 주소(github.io)를 같은 계정의 다른 페이지와 함께 쓰는 것을 알림: AI 키는 저장하지 않고 이 탭에만(안내), 저장 공간의 다른 페이지 몫
 import { readFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import { open, run, assert, WEB } from './helpers.mjs';
@@ -19,14 +19,17 @@ const S = 'section[data-menu="settings"]';
 const aiText = async () => { await page.click('nav.app-side [data-menu-go="settings"]'); await page.click('#menuTabs [data-tab="ai"]'); await page.waitForTimeout(200); return page.textContent(S); };
 
 await run('web-origin', [
-  ['github.io 웹판: AI 키 기억하기 옆에 같은 주소의 다른 페이지도 읽을 수 있다는 안내', async () => {
+  ['github.io 웹판: 같은 주소를 다른 페이지와 함께 써서 AI 키는 저장하지 않고 이 탭에만 둔다는 안내(「키 기억하기」 스위치 없음)', async () => {
     await page.goto('https://doguri25.github.io/ssam-assistant/');
     await page.waitForTimeout(600);
     const txt = await aiText();
-    assert(txt.includes('doguri25.github.io 주소를 같은 계정의 다른 웹페이지와 함께 써요'), txt.slice(0, 300));
+    assert(txt.includes('doguri25.github.io 주소를 같은 계정의 다른 웹페이지와 함께 써요') && txt.includes('키를 저장하지 않고 이 탭에만'), txt.slice(0, 300));
+    assert(!txt.includes('키 기억하기'), '옛 「키 기억하기」 안내가 남음');
     await page.click(`${S} [data-set="openAi"]`);
-    await page.waitForSelector('#keyRemember');
-    assert((await page.textContent('#sheetRoot')).includes('같은 계정의 다른 웹페이지와 함께 써요'), '키 창에 안내 없음');
+    await page.waitForSelector('#apiKey');
+    assert(await page.locator('#keyRemember').count() === 0, '웹판에 「키 기억하기」 스위치가 있음');
+    assert((await page.textContent('#sheetRoot')).includes('웹판은 키를 저장하지 않아요'), '키 창에 안내 없음');
+    assert(!JSON.stringify(await page.evaluate(() => localStorage.getItem('ssam:engine'))).includes('sk-test'), '저장소에 키가 남음');
     await page.keyboard.press('Escape');
   }],
   ['학년도 화면: 같은 주소의 다른 페이지가 쓰는 저장 공간을 따로 보여 줌', async () => {

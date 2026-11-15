@@ -206,7 +206,7 @@ await run('unit-locate', [
     slowLoc = 0;
   }],
   ['AI 키가 없어도 적어 둔 자리로는 그 문항만(요청 없음)', async () => {
-    await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: {}, remember: true })));
+    await page.evaluate(() => { sessionStorage.removeItem('ssam:keys'); localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: {}, remember: true })); });
     await page.reload(); await page.waitForTimeout(500);
     await toUnit();
     await page.click(`${V} [data-un-open="${id}"]`);

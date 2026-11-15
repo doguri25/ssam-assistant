@@ -201,7 +201,7 @@ await run('class-plan', [
     await page.click(`${V} [data-cp="${(await page.evaluate(async () => (await import('./menus/plan/classplan-model.js')).listPlans().find(p => p.sourceNames.lastPlan.length).id))}"]`);
   }],
   ['AI를 정하지 않았으면 초안을 부르지 않고 안내', async () => {
-    await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: {}, remember: true })));
+    await page.evaluate(() => { sessionStorage.removeItem('ssam:keys'); localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: {}, remember: true })); });
     await page.reload(); await page.waitForTimeout(400); await go();
     const s3 = page.locator(`${V} ol.steps [data-step="3"]`);
     if (await s3.count()) await s3.click();

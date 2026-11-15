@@ -394,7 +394,7 @@ await run('chat', [
     slow = 0;
   }],
   ['검토 고침 M1: AI가 준비되지 않으면 「쓰고 있어요·뽑고 있어요·번역하고 있어요」 대신 설정 안내', async () => {
-    await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: '' }, remember: true })));
+    await page.evaluate(() => { sessionStorage.removeItem('ssam:keys'); localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: '' }, remember: true })); });
     await page.reload(); await page.waitForTimeout(400);
     const n = prompts.length;
     for (const [text, no] of [['가정통신문 영어로', '번역하고 있어요'], ['11월 12일 3시 과학실 AI 연수 안내 쪽지 써 줘', '쓰고 있어요'], ['가정통신문 써 줘: 12월 24일 겨울방학식 안내', '쓰고 있어요'],
@@ -417,7 +417,7 @@ await run('chat', [
     await page.reload(); await page.waitForTimeout(400);
   }],
   ['검토 고침 M2(11-10): AI 없이 「학사일정 어떻게 넣어?」는 안내(오늘 할 일을 띄우지 않음), 「감사 자료 어떻게 준비해?」는 인사가 아님', async () => {
-    await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: '' }, remember: true })));
+    await page.evaluate(() => { sessionStorage.removeItem('ssam:keys'); localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: '' }, remember: true })); });
     await page.reload(); await page.waitForTimeout(400);
     const a = await sendWait('학사일정 어떻게 넣어?');
     assert(!a.includes('맨 위에 모았어요') && !a.includes('오늘은 급한 일이 없어요') && a.includes('AI를 켜면'), a);

@@ -28,7 +28,7 @@ function testKeyNote() {
   if (!t || !t.on) return '';
   return `<p class="banner info" style="margin:0 0 8px"><span class="grow">${t.using ? '지금은 <b>시험용 업스테이지 AI</b>를 쓰고 있어요' : '이 앱에는 <b>시험용 업스테이지 AI</b>가 들어 있어요'}(${esc(t.untilText)}까지, 하루 ${Number(t.daily) || 400}번). 써 보시라고 넣어 둔 것이라 기한이 지나면 쓸 수 없어요. 내 AI 키를 넣으면 그 키로 써요.</span></p>`;
 }
-const sharedNote = () => (sharedHost() ? `<p class="banner warn" style="margin:0 0 8px">웹판은 ${esc(sharedHost())} 주소를 같은 계정의 다른 웹페이지와 함께 써요. AI 키를 기억하게 하면 그 페이지들도 이 키를 읽을 수 있어요. 함께 쓰는 PC에서는 Windows 앱을 쓰거나 [AI 바꾸기]에서 「키 기억하기」를 꺼 주세요.</p>` : '');
+const sharedNote = () => (sharedHost() ? `<p class="banner info" style="margin:0 0 8px">웹판은 ${esc(sharedHost())} 주소를 같은 계정의 다른 웹페이지와 함께 써요. 그래서 AI 키를 저장하지 않고 이 탭에만 잠깐 둬요(탭을 닫으면 다시 넣어야 해요). 키를 기억해 두려면 Windows 앱을 써요.</p>` : '');
 const won = n => Number(n).toLocaleString('ko-KR');
 
 /* 글꼴 고르기(core/font.js): 이름·보기 글은 그 글꼴로 보임(「테마 글꼴」은 지금 테마 글꼴 — 테마를 바꾸면 themeFont로 맞춤) */
@@ -292,7 +292,7 @@ function loadYears() {
     .then(() => { if (curTab === 'years') again(); });
 }
 /* AI 키를 「기억하기」 없이 넣었으면 학년도를 옮겨 앱을 다시 열 때 키를 다시 넣어야 함 */
-const keyNote = () => { try { const e = JSON.parse(localStorage.getItem('ssam:engine') || 'null'); return e && e.remember === false ? '<p class="banner warn" style="margin:0">AI 키를 기억하지 않게 해 두셨어요. 학년도를 옮기면 앱을 다시 여니 키를 다시 넣어야 해요.</p>' : ''; } catch (e) { return ''; } };
+const keyNote = () => { if (!window.__TAURI__) return ''; /* 웹판은 키가 이 탭에 남아 학년도를 옮겨도 그대로 */ try { const e = JSON.parse(localStorage.getItem('ssam:engine') || 'null'); return e && e.remember === false ? '<p class="banner warn" style="margin:0">AI 키를 기억하지 않게 해 두셨어요. 학년도를 옮기면 앱을 다시 여니 키를 다시 넣어야 해요.</p>' : ''; } catch (e) { return ''; } };
 const sheetBtns = (okId, okLabel, extra = '') => `<div class="row" style="justify-content:flex-end">${extra}<span class="grow"></span><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="${okId}">${okLabel}</button></div>`;
 const onOk = (id, fn) => sh => {
   sh.querySelector('#' + id).addEventListener('click', fn);
