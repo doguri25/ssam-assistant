@@ -165,6 +165,27 @@ await run('tour', [
     await page.keyboard.press('Escape');
     await page.waitForSelector(POP, { state: 'detached' });
   }],
+  ['Esc는 하나씩: 채팅 창 안에서 누르면 채팅만 닫히고 말풍선은 그대로, 말풍선에 초점이 있으면 말풍선만 닫힘', async () => {
+    const chatOpen = () => page.evaluate(() => { const p = document.getElementById('chatPanel'); return !!p && !p.hidden; });
+    await page.click(`${BAND} [data-tour="steps"]`);
+    await waitStep(1);
+    await page.evaluate(() => document.getElementById('inboxFab').click());
+    await page.waitForSelector('#chatPanel:not([hidden])');
+    assert(await page.evaluate(() => document.getElementById('chatPanel').contains(document.activeElement)), '채팅 칸에 초점');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    assert(!(await chatOpen()), '채팅이 닫히지 않음');
+    assert(await page.locator(POP).count() === 1, '말풍선도 같이 닫힘');
+    await page.evaluate(() => document.getElementById('inboxFab').click());
+    await page.waitForSelector('#chatPanel:not([hidden])');
+    await page.focus(`${POP} [data-tour="next"]`);
+    await page.keyboard.press('Escape');
+    await page.waitForSelector(POP, { state: 'detached' });
+    assert(await chatOpen(), '채팅도 같이 닫힘');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    assert(!(await chatOpen()), '다음 Esc에 채팅이 닫히지 않음');
+  }],
   ['[체험 끝내기] → 원래 자료로: 「원래 자료로 돌아왔어요」, 학년도 키가 글자 하나까지 같음, 체험용 보관 자료·demo 지움', async () => {
     await reloadAfter(`${BAND} [data-tour="exit"]`);
     await toastHas('원래 자료로 돌아왔어요');

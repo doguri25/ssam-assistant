@@ -393,6 +393,20 @@ await run('background-jobs', [
     assert(saved.includes('과학 교육 계획부터'), '정리한 글이 덮임: ' + saved);
     delay = 0;
   }],
+  ['검토 AI(업무 대신 logAs로 부름)도 그 업무 메뉴에 점: 품의에서 부른 단원평가 채점 검토가 도는 동안 계획으로 가면 평가에 점(품의가 아님)', async () => {
+    delay = 1500;
+    await goTo('purchase');
+    await page.evaluate(() => {
+      const model = window.SSAM.ai.providers().find(p => p.id === 'claude').models[0][0]; // 모델 이름은 앱 목록에서
+      window.__rv = import('./core/ai.js').then(m => m.generate('[검토 시험]', { use: { engine: 'claude', model }, role: 'review', logAs: 'grade' }));
+    });
+    await until(() => waiting > 0, 5000, '검토 요청');
+    await goTo('plan');
+    assert(await dots() === 'evaluate', '점: ' + await dots());
+    await page.evaluate(() => window.__rv);
+    await until(async () => (await dots()) === '', 5000, '점이 사라짐');
+    delay = 0;
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();

@@ -57,3 +57,32 @@ test('index.html 첫 스크립트: 테마·글꼴을 먼저 정하고 font.js와
   assert.deepEqual(d.links, fontLinks('dark-nav', 'pretendard'));
   assert.equal(runInline('dark-nav', 'comic').font, 'pretendard', '모르는 글꼴은 기본');
 });
+
+/* 글꼴은 테마처럼 모든 학년도가 같이 씀: 학년도를 옮기거나 새 학년도를 시작해도 그대로, 백업 파일에 넣지 않음 */
+test('글꼴(ssam:font)은 학년도 자료가 아님 — 학년도를 옮겨도 고른 글꼴이 그대로', async () => {
+  const { isYearKey, GLOBAL, snapshot, moveTo } = await import('../../web/core/years.js');
+  assert.ok(GLOBAL.includes('font'), '공통 키');
+  assert.equal(isYearKey('font'), false);
+  const m = new Map([['ssam:years', JSON.stringify({ current: 2026 })], ['ssam:font', JSON.stringify('nanum')], ['ssam:theme', JSON.stringify('paper')], ['ssam:hk', '{"x":1}']]);
+  const ls = { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k), key: i => [...m.keys()][i] ?? null, get length() { return m.size; } };
+  assert.equal('font' in snapshot(ls), false, '백업·보관함에 넣지 않음');
+  const store = new Map();
+  const r = await moveTo(2027, { ls, archive: { get: async y => store.get(y) || null, put: async (y, s) => { store.set(y, s); } }, data: {} });
+  assert.equal(r.ok, true);
+  assert.equal(m.get('ssam:font'), JSON.stringify('nanum'), '새 학년도로 가도 고른 글꼴');
+  assert.equal(m.get('ssam:theme'), JSON.stringify('paper'));
+  assert.equal(m.has('ssam:hk'), false, '학년도 자료는 비움');
+});
+
+/* 설정의 「테마 글꼴」 칸 미리 보기: themeFamily가 theme.css의 테마마다 본문 글꼴(--f-body 첫 글꼴)과 같음 */
+test('「테마 글꼴」 미리 보기 글꼴 = 테마마다 본문 글꼴(theme.css)', async () => {
+  const { themeFamily } = await import('../../web/core/font.js');
+  const css = readFileSync(new URL('../../web/core/theme.css', import.meta.url), 'utf8');
+  for (const { id } of THEMES) {
+    const block = new RegExp(`html\\[data-theme="${id}"\\]\\{([^}]*)\\}`).exec(css);
+    assert.ok(block, id);
+    const body = /--f-body:\s*([^,;]+)/.exec(block[1]);
+    assert.equal(themeFamily(id), body[1].trim(), id);
+  }
+  assert.equal(themeFamily('nope'), themeFamily('dark-nav'));
+});

@@ -54,6 +54,20 @@ await run('font-pick', [
     await page.click(`${S} [data-theme-pick="dark-nav"]`);
     assert((await fam('.app-top h1')).startsWith('"Pretendard Variable"'), '다크 내비 제목 ' + await fam('.app-top h1'));
   }],
+  ['「테마 글꼴」 칸의 이름·보기 글은 지금 테마의 글꼴로(고른 글꼴이 아님), 테마를 바꾸면 그 테마 글꼴로', async () => {
+    assert(await page.getAttribute('html', 'data-font') === 'pretendard' && await page.getAttribute('html', 'data-theme') === 'dark-nav', '시작 상태');
+    const T = `${S} [data-font-pick="theme"]`;
+    assert((await fam(`${T} .fn`)).startsWith('"Gothic A1"'), '다크 내비: ' + await fam(`${T} .fn`));
+    assert((await fam(`${T} .fs`)).startsWith('"Gothic A1"'), '보기 글: ' + await fam(`${T} .fs`));
+    await page.click(`${S} [data-theme-pick="mono"]`);
+    assert((await fam(`${T} .fn`)).startsWith('"IBM Plex Sans KR"'), '모노 라인: ' + await fam(`${T} .fn`));
+    await page.click(`${S} [data-theme-pick="paper"]`);
+    assert((await fam(`${T} .fn`)).startsWith('"Noto Sans KR"'), '종이 문서: ' + await fam(`${T} .fn`));
+    assert((await fam('body')).startsWith('"Pretendard Variable"'), '본문은 고른 글꼴 그대로');
+    await page.waitForTimeout(150);
+    assert(asked.some(u => u.includes('IBM+Plex+Sans+KR')), '모노 라인 글꼴을 부르지 않음');
+    await page.click(`${S} [data-theme-pick="dark-nav"]`);
+  }],
   ['390px: 글꼴 칸이 가로로 넘치지 않음', async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(150);

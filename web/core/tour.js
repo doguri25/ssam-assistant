@@ -222,9 +222,9 @@ document.addEventListener('click', e => {
   else if (a === 'skip') closeSteps();
   else if (a === 'exit') exitDemo();
 });
-// Esc: 말풍선을 닫음(확인 창이 떠 있거나 채팅 창 안에서 누르면 그쪽이 먼저)
+// Esc: 말풍선을 닫음(확인 창이 떠 있거나 채팅 창 안에서 누르면 그쪽이 먼저 — 채팅이 그 Esc로 닫혔으면(defaultPrevented) 말풍선은 그대로)
 document.addEventListener('keydown', e => {
-  if (e.key !== 'Escape' || cur < 0) return;
+  if (e.key !== 'Escape' || cur < 0 || e.defaultPrevented) return;
   const sheet = $('sheetRoot'), chat = document.querySelector('.chat-panel:not([hidden])');
   if ((sheet && sheet.childElementCount) || (chat && chat.contains(document.activeElement))) return;
   closeSteps();

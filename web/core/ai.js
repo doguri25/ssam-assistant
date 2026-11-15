@@ -20,7 +20,12 @@ export function generate(prompt, { signal, images, careful, task, role, use, sha
   const a = A();
   if (!a) return Promise.reject({ code: 'no_engine' });
   inflight++;
-  return Promise.resolve(a.generate(prompt, { signal, images, careful, fresh: true, task, role, use, shared, meter, work, logAs })).finally(() => { inflight--; });
+  // 검토 AI처럼 task 없이 logAs(업무)로 부르면 그 업무 메뉴에 「AI가 일하는 중」 점을 여기서 띄움(평가 메뉴의 AI 부르기는 task로만 셈 —
+  // 그대로 두면 부를 때 보던 메뉴에 점이 떠서, 다른 메뉴에서 도는 채점 검토가 엉뚱한 메뉴에 보였음)
+  const W = typeof window !== 'undefined' && window.SSAM_WORK;
+  const own = !task && logAs && work !== 'none' && typeof W === 'function' ? W(logAs) : null;
+  return Promise.resolve(a.generate(prompt, { signal, images, careful, fresh: true, task, role, use, shared, meter, work: own ? 'none' : work, logAs }))
+    .finally(() => { inflight--; if (own) own(); });
 }
 
 export const ready = () => !!(A() && A().engineReady());
