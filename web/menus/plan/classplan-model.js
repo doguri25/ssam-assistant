@@ -69,6 +69,8 @@ function headings(src) {
   });
   return out;
 }
+/* 큰 제목 줄의 줄 번호(차례를 거른 본문 자리) — 그 글을 큰 제목마다 나눌 때 */
+export const topLines = src => headings(src).filter(h => h.level === 1).map(h => h.line);
 /* 작년 계획서 글 → 목차 [{ id, title, level(1·2), role }] */
 export const parseOutline = src => withRoles(headings(src).map((h, i) => ({ id: 's' + (i + 1), title: h.title, level: h.level })));
 

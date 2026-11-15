@@ -1,6 +1,6 @@
 /* 행사계획 자료와 계산 (화면 없음 — Node 시험에서도 씀).
    행사 목록은 ssam:events, 보고 있는 행사는 ssam:event:current. 학사일정 출처는 'event:<id>' */
-import { parseOutline } from './classplan-model.js';
+import { parseOutline, topLines } from './classplan-model.js';
 import { get, set } from '../../core/store.js';
 import { isDate } from '../../core/calendar.js';
 import { personalColumn } from '../../core/survey.js';
@@ -187,21 +187,33 @@ export function confirmBlockers(e) {
 const pickedOption = e => (e.options && e.picked != null ? e.options[e.picked] : null);
 
 /* 계획서 글이 작년·기존 계획서 목차(큰 제목 셋 이상)로 쓰였으면 그 글 그대로: 큰 제목 줄은 소제목, 나머지는 문단.
+   큰 제목은 목차 읽기와 같은 줄(차례·「1.」 작은 줄은 큰 제목이 아님). 글에 시간표·예산이 없으면 붙임 표로 더함.
    작년·기존 계획서가 없거나 글에 큰 제목이 없으면 null(앱의 개요 표·시간표·세부 계획 차례) */
 const squash = s => String(s || '').replace(/[\s\p{P}\p{S}]/gu, '');
-function ownOutlineBlocks(e, text) {
+function ownOutlineBlocks(e, text, opt) {
   if (!(e.refs || []).some(r => r && r.kind === 'last' && String(r.text || '').trim())) return null;
-  const top = parseOutline(text).filter(x => x.level === 1);
-  if (top.length < 3) return null;
+  const at = new Set(topLines(text));
+  if (at.size < 3) return null;
   const blocks = [];
-  let buf = [], k = 0;
+  let buf = [];
   const flush = () => { if (buf.some(l => l.trim())) blocks.push({ type: 'p', text: buf.join('\n').trim() }); buf = []; };
-  for (const raw of String(text).split('\n')) {
-    const m = /^\s*(?:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]|\d{1,2})\.\s*(\S.*)$/.exec(raw);
-    if (m && top[k] && squash(m[1]).startsWith(squash(top[k].title))) { flush(); blocks.push({ type: 'h', text: raw.trim() }); k++; continue; }
-    buf.push(raw);
-  }
+  String(text).split('\n').forEach((raw, i) => {
+    if (at.has(i)) { flush(); blocks.push({ type: 'h', text: raw.trim() }); } else buf.push(raw);
+  });
   flush();
+  if (opt) {
+    const has = s => squash(text).includes(squash(s));
+    const tt = (opt.timetable || []).filter(t => t && t.activity);
+    let n = 0;
+    if (tt.length && tt.filter(t => has(t.activity)).length * 2 < tt.length) {
+      blocks.push({ type: 'h', text: `붙임 ${++n}. 시간표` }, { type: 'table', head: true, rows: [['시간', '활동', '장소'], ...tt.map(t => [t.time, t.activity, t.place])] });
+    }
+    const bd = (opt.budget || []).filter(b => b && b.name);
+    if (bd.length && !bd.some(b => has(b.name))) {
+      const sum = bd.reduce((s, b) => s + (+b.amount || 0), 0);
+      blocks.push({ type: 'h', text: `붙임 ${++n}. 예산 내역` }, { type: 'table', head: true, rows: [['항목', '금액'], ...bd.map(b => [b.name, won(b.amount)]), ['합계', won(sum)]] });
+    }
+  }
   return blocks;
 }
 
@@ -217,7 +229,7 @@ export function docDoc(e, docId) {
   }
   if (docId === 'letter') return { title: `${e.name} 안내`, blocks: [{ type: 'p', text: d.letter || '' }] };
   // 작년·기존 계획서 목차로 쓴 계획서는 그 목차 그대로(「1. 개요」·「Ⅰ. 개요」가 겹치지 않게)
-  const own = ownOutlineBlocks(e, d.plan || '');
+  const own = ownOutlineBlocks(e, d.plan || '', opt);
   if (own) return { title: `${e.name} 운영 계획`, blocks: own };
   const blocks = [
     { type: 'h', text: '1. 개요' },

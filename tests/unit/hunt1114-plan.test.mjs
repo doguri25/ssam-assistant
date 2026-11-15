@@ -107,7 +107,8 @@ test('[ev-outline-doc] 행사 계획서를 작년·기존 계획서 목차로 �
   const doc = E.docDoc(e, 'plan');
   assert.equal(doc.title, '가을 운동회 운영 계획');
   const heads = doc.blocks.filter(b => b.type === 'h').map(b => b.text);
-  assert.deepEqual(heads, ['Ⅰ. 개요', 'Ⅱ. 운영 방침', 'Ⅲ. 세부 운영', 'Ⅳ. 안전 대책', 'Ⅴ. 평가']);
+  // 계획서 글에 시간표(개회식)·예산(상품)이 없으니 붙임 표로 더함(review1115 [ev-outline-tables])
+  assert.deepEqual(heads, ['Ⅰ. 개요', 'Ⅱ. 운영 방침', 'Ⅲ. 세부 운영', 'Ⅳ. 안전 대책', 'Ⅴ. 평가', '붙임 1. 시간표', '붙임 2. 예산 내역']);
   const all = doc.blocks.map(b => b.text || '').join('\n');
   for (const s of ['1. 일시: 2027. 5. 6.(목)', '가. 경기 종목: 이어달리기', '가. 만족도 설문']) assert.ok(all.includes(s), s);
   // 작년·기존 계획서가 없으면(또는 계획서 글에 큰 제목이 없으면) 지금처럼 개요 표·시간표·세부 계획
