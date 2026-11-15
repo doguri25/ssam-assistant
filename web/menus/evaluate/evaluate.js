@@ -2243,10 +2243,11 @@ function renderPyRec() {
   v.innerHTML = `<div class="m-page py-page">${head}<div class="rw-frame"><aside class="rw-list hk-left" aria-label="학생">${list}</aside>
     <div class="rw-grid"><div class="rw-main">${art}</div><aside class="rw-side" aria-label="${no}번 근거">${side}</aside></div></div></div>`;
 }
-/* 고친 글을 그 자리에: 단원평가 평어 → unit:pyeongeo:<교과>, 평가지 채점 → 그 기록(연 기록이면 화면의 학생). AI가 바꾼 채점 글은 사용함 표시를 지움 */
-async function pySave(x, text, ev, { ai = false, mark = false } = {}) {
+/* 고친 글을 그 자리에: 단원평가 평어 → unit:pyeongeo:<교과>, 평가지 채점 → 그 기록(연 기록이면 화면의 학생). AI가 바꾼 채점 글은 사용함 표시를 지움.
+   sub·no: 그 글의 교과·번호(AI가 쓰는 동안 다른 학생·교과로 옮겨도 처음 학생 칸에 쓰게 — 없으면 지금 고른 학생) */
+async function pySave(x, text, ev, { ai = false, mark = false, sub = PYR.sub, no = PYR.sel } = {}) {
   const t = String(text || '').replace(/\s+/g, ' ').trim();
-  if (x.src === 'unit') { if (!REC().pyUnitSave(PYR.sub, Number(PYR.sel), { text: t, ev })) return false; }
+  if (x.src === 'unit') { if (!REC().pyUnitSave(sub, Number(no), { text: t, ev })) return false; }
   else {
     let s = x.gid === GR.id ? grStudent(x.sid) : null, b = null;
     if (!s) { b = await GRStore.get(x.gid); s = b && (b.students || []).find(y => y.id === x.sid); }
@@ -2265,19 +2266,29 @@ async function pyOneSentence(x, { row = -1, add = '' } = {}) {
   const list = (x.ev && x.ev.list) || [], rr = R.sentenceRows(x.text, x.ev);
   const r = row >= 0 ? rr.rows[row] : null, target = add ? list.find(e => e.id === add) : null;
   if ((row >= 0 && !r) || (add && !target)) return;
-  PYR.busyRow = { no: PYR.sel, row, add }; renderPyRec();
+  const sub = PYR.sub, no = PYR.sel;
+  PYR.busyRow = { no, row, add }; renderPyRec();
   const before = x.text;
   try {
     const out = await generate(R.sentencePrompt({ mode: add ? 'add' : 'fix', field: 'py', text: x.text, sentence: r ? r.t : '', target, list, da: S.settings.ending === 'da',
       why: r ? [...(r.none ? ['이 문장을 받치는 근거가 없어요'] : []), ...r.issues.map(i => i.why)] : [] }), { fresh: true, task: 'writing' });
     const one = R.normOne(out.text, list);
     if (!one) throw { code: 'empty_completion' };
-    if (x.text !== before) return;
+    // 그새 그 글이 바뀌었으면(직접 고침 등) 쓰지 않음 — x는 누른 때의 글이라 지금 저장된 글과 견줌
+    const now = x.src === 'unit' ? ((R.pyUnit(sub).students || {})[no] || {}).text : ((x.gid === GR.id ? grStudent(x.sid) : pyGrStu(x)) || {}).text;
+    if (String(now || '') !== before) return;
     if (add && !one.src.length) one.src = [add];
     const o = add ? R.appendSentence(x.text, x.ev, one) : R.replaceSentence(x.text, x.ev, row, [one]);
-    if (await pySave(x, o.t, o.ev, { ai: true })) toast(add ? '근거로 문장을 더했어요' : '문장을 고쳤어요'); else toast('저장하지 못했어요. 그 글을 쓰는 중인지 확인해 주세요.');
+    if (await pySave(x, o.t, o.ev, { ai: true, sub, no })) toast(add ? '근거로 문장을 더했어요' : '문장을 고쳤어요'); else toast('저장하지 못했어요. 그 글을 쓰는 중인지 확인해 주세요.');
   } catch (e) { toast(errMsg((e && e.code) || 'upstream_error', e), 4500); }
   finally { PYR.busyRow = null; renderPyRec(); }
+}
+/* 나이스에 넣을 번호: 학급 명단 차례 그대로(글이 없는 학생은 빈 칸으로 넘어가 뒤 학생이 앞 칸으로 밀리지 않게, 예외 번호·명단 밖 번호는 나이스에 칸이 없어 뺌).
+   명단이 없으면 1번부터 글이 있는 마지막 번호까지(빈 번호는 빈 칸 — 평가지 채점의 빈 번호 채우기와 같게) */
+function pyNeisNos(nos) {
+  if (CLASS.count) return classNos();
+  const ex = new Set(CLASS.except), max = Math.max(0, ...nos);
+  return Array.from({ length: max }, (_, i) => i + 1).filter(n => !ex.has(n));
 }
 function pyNeisSrc(map) {
   return { key: 'py', what: '교과 평어', field: '교과 학습 발달 상황', title: pySubName(PYR.sub),
@@ -2309,7 +2320,7 @@ document.addEventListener('click', async e => {
   else if (a === 'cancel') { PYR.edit = false; renderPyRec(); }
   else if (a === 'save' && x) { const v = ($('#pyEdit') || {}).value || ''; if (await pySave(x, v, x.ev)) { PYR.edit = false; toast('고친 글을 저장했어요'); } else toast('저장하지 못했어요'); renderPyRec(); }
   else if (a === 'copy' && x) copyText(x.text).then(ok => toast(ok ? `${PYR.sel}번 교과 평어를 복사했어요` : '복사가 막혔어요.'));
-  else if (a === 'neis') neisCopyAll(pyNeisSrc(map), nos.map(String));
+  else if (a === 'neis') neisCopyAll(pyNeisSrc(map), pyNeisNos(nos).map(String));
   else if (a === 'redo' && x) {
     if (x.src === 'unit') { R.pyOpenUnit(PYR.sub, PYR.sel); toast('단원평가 결과에서 [평어 쓰기]로 다시 써요', 4000); }
     else { if (x.gid !== GR.id) await grOpenHistory(x.gid); setMode('gr'); const s = grStudent(x.sid); if (s) { if (s.level && s.status === 'done' && !['grading', 'ranking', 'writing'].includes(GR.phase)) { s.stale = true; grWrite([s.id]); toast(`${s.no}번 평어를 다시 써요`); } } }
@@ -2317,6 +2328,14 @@ document.addEventListener('click', async e => {
 });
 document.addEventListener('change', e => {
   if (e.target && e.target.id === 'pySubject' && S.mode === 'pyeongeo') { PYR.sub = e.target.value; PYR.edit = false; PYR.sel = 0; renderPyRec(); }
+});
+/* 다른 탭(기재 점검·평가지 채점 등)에 갔다 돌아오면 학생별 글을 다시 읽어 그림 — 옛 글을 보이다가 [직접 고치기]·[문장 빼기]로 그 옛 글을 저장해
+   그새 고친 글을 되돌리지 않게. 직접 고치는 중이면 그대로 둠(치던 글을 지키려고) */
+document.addEventListener('menu:go', e => {
+  const d = (e && e.detail) || {};
+  if (d.menu !== 'evaluate' || d.tab !== 'pyeongeo' || PYR.edit) return;
+  PYR.recs = null;
+  if (S.mode === 'pyeongeo' && pyMode() === 'stu') renderPyRec();
 });
 /* 넣기 화면 머리말 아래 설명(index.html의 글)을 「화면 설명」으로: 처음 몇 번만 펼쳐 보임 */
 function heroIntro() {
@@ -6817,6 +6836,7 @@ async function checkShow(ref) {
     const sub = S.plan && S.plan.subjects.find(x => x.units.some(u => u.id === p[2]));
     if (!sub) return;
     S.subject = sub.name; S.unitId = p[2]; S.lv = p[3]; S.showPane = true; S.remainOnly = false;
+    PYR.view = 'pool'; PYR.edit = false; // 학생별 교과 평어로 보던 중이면 문장 모음으로
     renderAll(); focus([`#listBox [data-i="${+p[4]}"]`]);
   } else if (p[0] === 'hk') {
     if (!hkStudent(p[1])) return;
@@ -6824,13 +6844,14 @@ async function checkShow(ref) {
     focus([`#hkEditor [data-ri="${+p[2]}"] .hk-text`, `#hkEditor [data-edit="${+p[2]}"]`]);
   } else if (p[0] === 'cc') {
     if (!ccInfo(p[1])) return;
-    CHE.view = p[1]; CHE.showRes = true; $('#ccView').classList.add('show-pane'); renderCC();
-    focus([`#ccResults [data-cccopy="${+p[2]}"]`]);
+    // 「한 명씩 근거와」로 보던 중이면 그 학생을 고름(아니면 보던 학생 글이 보임)
+    CHE.view = p[1]; CHE.sel = +p[2]; CHE.showRes = true; $('#ccView').classList.add('show-pane'); renderCC();
+    focus([`#ccResults [data-cccopy="${+p[2]}"]`, `#ccResults [data-ccsel="${+p[2]}"]`]);
   } else if (p[0] === 'gr') {
     if (p[1] !== GR.id) {
       if (GR.running.size || ['grading', 'ranking', 'writing'].includes(GR.phase)) { toast('채점하는 중이라 그 기록은 열지 않았어요'); return; }
       await grOpenHistory(p[1]);
-    } else { GR.showRes = true; $('#grView').classList.add('show-pane'); renderGR(); }
+    } else { GR.rvw = null; GR.showRes = true; $('#grView').classList.add('show-pane'); renderGR(); } // 채점 확인 화면을 열어 두었으면 닫고 결과로
     focus([`#grResults [data-grcopy="${CSS.escape(p[2])}"]`]);
   }
 }

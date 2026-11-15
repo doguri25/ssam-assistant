@@ -22,7 +22,9 @@ export function sentenceRows(text, ev, { limit = null, dups = null, extra = null
   if (!t) return { rows: [], known: false, edited: false, over: null, bad: 0 };
   const ss = ev && Array.isArray(ev.sentences) ? ev.sentences.filter(s => s && one(s.t)) : [];
   const edited = !!ss.length && one(joinSentences(ss)) !== t;
-  const al = ss.length ? alignSentences(ss, t) : null;
+  // 한 문장 근거 글을 손으로 여러 문장으로 고쳤으면 근거를 모름(글 전체를 한 줄로 맞추면 [고치기]·[문장 빼기]가 글 전체를 바꾸거나 지움)
+  const grew = edited && ss.length === 1 && splitSentences(t).length > splitSentences(one(ss[0].t)).length;
+  const al = ss.length && !grew ? alignSentences(ss, t) : null;
   const known = !!(al && al.length);
   let rows = known ? al.map(s => ({ t: one(s.t), src: Array.isArray(s.src) ? s.src.slice() : [] })) : splitSentences(t).map(s => ({ t: s.t, src: null }));
   let at = 0;
