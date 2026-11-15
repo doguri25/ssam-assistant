@@ -87,8 +87,10 @@ test('[minutes-norm] AI 답 → 칸: 글·목록 정리, 머리 기호 뺌, 날�
     { task: '안전 교육 자료 만들기', who: '', due: '', done: false },
     { task: '날 이상함', who: '', due: '', done: false }]);
   assert.deepEqual(n.next, { date: '2026-11-26', topic: '체험학습 사전 교육' });
-  // 1·2월은 다음 해(학년도 규칙), 지난 회의(60일 넘게 앞)도 그 해 그대로(회의 날은 지난 날)
-  assert.equal(normMinutes({ date: '2-10' }, { year: 2026, today: TODAY }).date, '2027-02-10');
+  // 1·2월은 다음 해(학년도 규칙), 지난 회의(60일 넘게 앞)도 그 해 그대로(회의 날은 지난 날) —
+  // 붙인 날이 오늘보다 7일 넘게 뒤면 지난해(11월에 적은 「2-10」 회의는 지난 2월, 2026-11-15 검토 고침)
+  assert.equal(normMinutes({ date: '2-10' }, { year: 2026, today: '2027-02-12' }).date, '2027-02-10');
+  assert.equal(normMinutes({ date: '2-10' }, { year: 2026, today: TODAY }).date, '2026-02-10');
   assert.equal(normMinutes({ date: '9-3', todos: [{ task: '보고', due: '9-10' }] }, { year: 2026, today: TODAY }).date, '2026-09-03');
   assert.equal(normMinutes({ date: '9-3', todos: [{ task: '보고', due: '9-10' }] }, { year: 2026, today: TODAY }).todos[0].due, '2026-09-10');
   // 망가진 답

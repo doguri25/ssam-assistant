@@ -11,16 +11,20 @@ await page.addInitScript(() => {
   if (!localStorage.getItem('ssam:engine')) localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true }));
 });
 const prompts = [], imgs = [];
-let reply = null;
+let reply = null, gate = null; // reply: 답(또는 프롬프트 → 답), gate: 이 약속이 풀릴 때까지 답하지 않음(정리하는 중 시험)
 await mockClaude(page, async ({ prompt, images }) => {
   prompts.push(prompt); imgs.push(images);
-  if (prompt.startsWith('[회의록 정리]')) return JSON.stringify(reply);
+  if (prompt.startsWith('[회의록 정리]')) { if (gate) await gate; return JSON.stringify(typeof reply === 'function' ? reply(prompt) : reply); }
   return '{}';
 });
 const P = 'section[data-menu="etc"]';
 const B = `${P} .mn-box`;
 const mins = () => prompts.filter(p => p.startsWith('[회의록 정리]'));
 const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:minutes:list') || '[]'));
+const until = async (fn, what, ms = 6000) => { const end = Date.now() + ms; while (!(await fn())) { if (Date.now() > end) throw new Error(what); await page.waitForTimeout(50); } };
+const waitBot = s => page.waitForFunction(s => [...document.querySelectorAll('#chatLog .chat-msg.bot .chat-bub')].some(b => b.textContent.includes(s)), s);
+const chatSend = async text => { if (await page.isHidden('#chatPanel')) await page.click('#inboxFab'); await page.waitForSelector('#chatPanel:not([hidden])'); await page.fill('#chatText', text); await page.click('#chatSend'); };
+const chatClose = async () => { if (await page.isVisible('#chatPanel')) await page.click('#chatPanel [data-chat="close"]'); };
 const toastHas = s => page.waitForFunction(s => (document.querySelector('#toast') || {}).textContent && document.querySelector('#toast').textContent.includes(s), s);
 const MEMO = ['3학년 학년 협의회 11월 12일 15시 3학년 연구실', '참석: 김하늘 이바다 한가람 박솔 최하은',
   '1. 현장체험학습 장소 — 과학관과 박물관 이야기함. 과학관으로 정함', '- 버스 예약은 이바다 선생님이 11월 20일까지 (문의 010-1234-5678)',
@@ -202,6 +206,75 @@ await run('minutes', [
       assert(!r.length, `${w}px: ${r.slice(0, 5).join(' / ')}`);
     }
     await page.setViewportSize({ width: 1280, height: 860 });
+  }],
+  ['채팅 「회의록 정리해 줘」+메모: 가리기 전 글을 넘겨(가린 ○○○가 아님) 이름을 되돌려 넣음, AI에는 가려 보냄, 채팅 기록은 가린 글 그대로·메모는 저장하지 않음', async () => {
+    const n0 = mins().length;
+    const CM = ['5학년 학년 협의회', '- 5-2 김하늘 결석 3일, 한가람 선생님이 보호자 상담', '- 체험학습 버스 예약 11월 20일까지'];
+    // AI가 메모 줄을 그대로 옮겨 쓴 답(자리 표시 그대로)
+    reply = p => ({ title: '5학년 학년 협의회', date: '11-12', agenda: [{ title: '학생 상담', discussion: p.split('\n[메모]\n')[1].split('\n\n[출력]')[0].split('\n').slice(1), decisions: [] }], todos: [] });
+    await chatSend(['회의록 정리해 줘', ...CM].join('\n'));
+    await waitBot('회의록에 넣고');
+    await page.waitForFunction(b => (document.querySelector(`${b} [data-mnf="title"]`) || {}).value === '5학년 학년 협의회', B);
+    assert(mins().length === n0 + 1, 'AI 요청 ' + (mins().length - n0));
+    const p = mins()[mins().length - 1];
+    assert(!/김하늘|한가람|○○○/.test(p) && p.includes('결석 3일'), p.slice(p.indexOf('[메모]')));
+    const l0 = await page.inputValue(`${B} [data-mnl="0"][data-mnk="discussion"][data-mnj="0"]`);
+    assert(l0 === '5-2 김하늘 결석 3일, 한가람 선생님이 보호자 상담', '이름 되돌림: ' + l0);
+    assert(JSON.stringify((await stored()).find(x => x.title === '5학년 학년 협의회')).includes('김하늘'), '회의록에 이름');
+    const me = (await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:chat') || '[]'))).filter(m => m.who === 'me').pop();
+    assert(me && me.text.includes('○○○ 결석 3일') && !/김하늘|한가람/.test(me.text), '채팅 기록은 가린 글: ' + (me && me.text));
+    const leak = await page.evaluate(() => Object.keys(localStorage).filter(k => k !== 'ssam:minutes:list' && /김하늘|한가람/.test(localStorage.getItem(k))));
+    assert(!leak.length, '메모가 남은 곳: ' + leak.join(','));
+    await chatClose();
+  }],
+  ['채팅의 짧은 회의록 말(「3학년 협의회 회의록 보여 줘」「회의 내용 정리해 줘」)은 회의록 탭만 엶 — AI를 부르지 않고 새 회의록을 만들지 않음', async () => {
+    const n0 = mins().length, s0 = (await stored()).length;
+    for (const s of ['3학년 협의회 회의록 보여 줘', '회의 내용 정리해 줘']) {
+      const before = await page.locator('#chatLog .chat-msg.bot').count().catch(() => 0);
+      await chatSend(s);
+      await page.waitForFunction(n => document.querySelectorAll('#chatLog .chat-msg.bot').length > n, before);
+      await waitBot('문서·소통 › 회의록으로 왔어요');
+    }
+    await page.waitForTimeout(200);
+    assert(mins().length === n0 && (await stored()).length === s0, `AI ${mins().length - n0}번, 회의록 ${(await stored()).length - s0}개 더`);
+    assert(await page.isVisible(B), '회의록 탭');
+    await chatClose();
+  }],
+  ['정리하는 동안: 채팅·새 회의록에서는 새로 정리하지 않음(「다른 회의록을 정리하는 중」), 정리 중인 회의록을 다시 열면 「정리하는 중」 → 결과, 그 뒤 고쳐도 결과가 남음', async () => {
+    let release;
+    gate = new Promise(r => { release = r; });
+    reply = { title: '5학년 학년 협의회', date: '11-12', place: '5학년 연구실', agenda: [{ title: '다시 정리한 안건', discussion: ['과학관으로 정함'], decisions: [] }], todos: [] };
+    const n0 = mins().length, s0 = (await stored()).length;
+    const RD = `${B} [data-mn="read"]`;
+    await page.fill(`${B} #mnPaste`, '5학년 학년 협의회\n- 체험학습 장소 과학관으로 정함');
+    await page.click(RD);
+    await until(async () => mins().length === n0 + 1, 'AI를 부르지 않음');
+    assert(await page.isDisabled(RD) && (await page.textContent(RD)).includes('정리하는 중'), '정리하는 중');
+    // 채팅으로 또 부탁해도 새 회의록을 만들지 않음 — 채팅의 「다른 회의록을 정리하는 중」
+    await chatSend('회의록 정리해 줘\n교과 협의회\n- 수업 나눔 3회 운영');
+    await waitBot('다른 회의록을 정리하는 중');
+    await chatClose();
+    assert(mins().length === n0 + 1, '또 정리함 ' + (mins().length - n0));
+    assert(await page.inputValue(`${B} [data-mnf="title"]`) === '5학년 학년 협의회' && await page.isDisabled(RD), '보던 회의록 그대로(정리하는 중)');
+    // 새 회의록의 [정리하기]도 기다림
+    await page.click(`${B} [data-mn="new"]`);
+    await page.waitForFunction(b => document.querySelector(`${b} [data-mnf="title"]`).value === '', B);
+    await page.fill(`${B} #mnPaste`, '교무부 부서 협의회\n- 연수 일정 정함');
+    await page.click(RD);
+    await toastHas('다른 회의록을 정리하는 중');
+    assert(mins().length === n0 + 1, '새 회의록도 정리함 ' + (mins().length - n0));
+    // 정리 중인 회의록을 다시 열면 저장된 옛 사본이 아니라 「정리하는 중」, 다 되면 결과
+    await page.click(`${B} #mnRecent li:has-text("5학년 학년 협의회") [data-mn-open]`);
+    await page.waitForFunction(b => document.querySelector(`${b} [data-mnf="title"]`).value === '5학년 학년 협의회', B);
+    assert(await page.isDisabled(RD) && (await page.textContent(RD)).includes('정리하는 중'), '다시 열어도 정리하는 중');
+    release(); gate = null;
+    await page.waitForFunction(b => document.querySelector(`${b} [data-mnf="place"]`).value === '5학년 연구실', B);
+    assert(await page.inputValue(`${B} [data-mna="0"]`) === '다시 정리한 안건' && !(await page.isDisabled(RD)), '결과');
+    await page.fill(`${B} [data-mnf="time"]`, '15:00');
+    await page.waitForTimeout(150);
+    const a = (await stored()).find(x => x.title === '5학년 학년 협의회');
+    assert(a && a.place === '5학년 연구실' && a.time === '15:00' && a.agenda[0].title === '다시 정리한 안건', JSON.stringify(a).slice(0, 300));
+    assert((await stored()).length === s0, '회의록 수 ' + (await stored()).length);
   }],
   ['페이지 오류 없음', async () => { assert(!errors.length, errors.join('\n')); }]
 ]);

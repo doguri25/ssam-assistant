@@ -58,7 +58,9 @@ const RULES = [
   // 「학부모님께 … 안내문 보내야 해」「안내문 써 줘」: 안내문은 가정통신문(선생님들께 보내는 안내는 쪽지)
   ['letter', /(?:학부모|보호자|부모)\s*님?(?:께|에게|한테)?.{0,30}(?:안내문|알림장|통신문)/, 3.5], ['letter', /안내문|알림장/, 2.5],
   ['gongmun', /공문/, 2.5], ['gongmun', /공문\s*(?:처리|정리|기한|목록)/, 3.5],
-  ['minutes', /회의록|협의록|협의회\s*(?:록|내용|결과)|회의\s*(?:내용|결과)\s*(?:정리|써|만들)/, 4],
+  // 회의록: 「회의록·협의록」은 분명함. 「협의회 내용·결과」「회의 결과 정리」는 다른 글의 글감일 때가 많아 약하게(「협의회 결과 보고서」「… 안내 쪽지·가정통신문」은 그 일),
+  // 글이 그 말로 끝나면(「회의 내용 정리해 줘」) 회의록(MINUTES_END). 여러 줄 글은 첫 줄에서만 셈(HEAD_IDS)
+  ['minutes', /회의록|협의록|협의회\s*록/, 4], ['minutes', /협의회\s*(?:내용|결과)|회의\s*(?:내용|결과)\s*(?:정리|써|만들)/, 2],
   ['docedit', /(?:문서|한글\s*(?:파일|문서)|hwpx?)(?:[^\n]{0,14})(?:다듬|고쳐|손봐|교정|맞춤법)|문서\s*다듬기|공문체로\s*(?:바꿔|고쳐|다듬)/i, 4],
   ['report', /결과\s*보고|보고서/, 3], ['report', /결과\s*보고(?:서)?\s*로/, 3.5],
   ['year', /연간\s*(?:업무\s*)?(?:운영\s*)?계획|업무\s*계획/, 3],
@@ -90,6 +92,27 @@ const RULES = [
   ['tour', /^(?:(?:앱|쌤비서|쌤)\s*)?체험(?:\s*(?:하기|해\s*볼래요?|해\s*보기|해\s*볼게요?|해\s*보자|모드|시작(?:하기)?|해\s*(?:줘|주세요)|할래요?))?\s*[.!~]*$/, 4.5]
 ];
 const SURE = 2.5, GAP = 1; // 이만큼 이상이고 둘째보다 GAP 이상 앞서면 분명함
+// 여러 줄 글에서 첫 줄(명령)에서만 세는 할 일: 「쪽지 써 줘\n… 회의록 열람 안내」「가정통신문 써 줘\n… 한글 파일을 고쳐서 …」는 그 일
+const HEAD_IDS = ['minutes', 'docedit'];
+// 「회의 내용 정리해 줘」「협의회 결과 써 줘」: 명령 꼬리를 뺀 글이 회의·협의회 내용·결과로 끝나면 회의록(「협의회 결과 보고서 써 줘」는 아님)
+const MINUTES_END = /(?:협의회|회의)\s*(?:내용|결과)(?:\s*(?:을|를))?(?:\s*정리(?:하기)?)?$/;
+/* 한 줄로 이은 글 → { 할 일: 무게 }. 한 할 일에서 맞은 무게 중 큰 것만 */
+function scoreOf(t) {
+  const scores = {};
+  for (const [id, re, w] of RULES) if (re.test(t)) scores[id] = Math.max(scores[id] || 0, w);
+  if (MINUTES_END.test(trimTail(t))) scores.minutes = Math.max(scores.minutes || 0, 3);
+  // 번역: 언어 낱말 + 번역을 바라는 말(「번역」「베트남어로」「영문으로」「러시아어 가정통신문」)이면 번역(가정통신문보다 앞섬)
+  const lang = langOf(t);
+  if (lang && (/번역/.test(t) || LANG_CUE.test(t))) scores.translate = 5;
+  // 다면평가 낱말은 글감일 때가 많음: 쪽지·가정통신문·단원평가·평어·결과 보고서 같은 글 넣는 일이 분명하면 그 일(「다면평가 위원회 안내 쪽지」)
+  if (scores.multi && ['message', 'letter', 'unit', 'pyeongeo', 'report', 'gr', 'gongmun', 'purchase'].some(id => (scores[id] || 0) >= 3)) scores.multi = 1;
+  return scores;
+}
+/* 분명히 앞선 할 일(SURE 이상, 둘째보다 GAP 이상) 또는 null */
+const sureTop = scores => {
+  const r = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  return r.length && r[0][1] >= SURE && r[0][1] - (r[1] ? r[1][1] : 0) >= GAP ? r[0][0] : null;
+};
 
 /* 명령 꼬리(「써 줘」「만들어 주세요」「해 줘」…)와 맨 끝 마침표 */
 // 부탁 꼴(「써 줄 수 있어요?」「만들어 주실래요?」「써 주시겠어요?」「해 줄래?」)도 꼬리(검토 M1)
@@ -100,8 +123,11 @@ const trimTail = t => { let s = String(t || '').trim(), p; do { p = s; s = s.rep
 /* 할 일 낱말을 뺀 남은 글 (내용이 있는지 보려고) */
 const KW = {
   purchase: /품의\s*(?:서|초안)?(?:\s*초안)?/g, message: /(?:안내\s*)?쪽지(?:로|를|\s*초안)?/g, letter: /가정\s*통신문(?:으로|을|\s*초안)?|안내장(?:으로|을)?/g,
-  gongmun: /공문(?:\s*처리)?(?:을|으로)?/g, report: /결과\s*보고(?:서)?(?:를)?/g, minutes: /(?:회의록|협의록)(?:으로|을|를)?/g
+  gongmun: /공문(?:\s*처리)?(?:을|으로)?/g, report: /결과\s*보고(?:서)?(?:를)?/g,
+  // 회의록: 「3학년 협의회 회의록 보여 줘」「지난주 회의 내용 다시 정리」의 낱말(남은 글이 짧으면 메모가 아님 — MEMO_MIN)
+  minutes: /(?:회의록|협의록)(?:으로|을|를)?|협의회|회의|내용|결과|정리|열어|보여|다시|지난\s*주|이번\s*주|어제|오늘/g
 };
+const MEMO_MIN = 15; // 한 줄 글은 회의록 낱말을 빼고 이만큼 넘게 남아야 메모(줄을 바꿔 쓴 글은 내용이 있으면 메모)
 // 글 앞의 「가정통신문 써 줘」「쪽지:」「공문 처리」+줄바꿈 (뒤에 내용이 이어질 때)
 const LEAD_W = '(?:가정\\s*통신문|안내장|(?:안내\\s*)?쪽지|공문(?:[ \\t]*처리)?|결과\\s*보고(?:서)?|회의록|협의록)';
 const LEAD_V = '[ \\t]*(?:좀[ \\t]*)?(?:써|만들어|작성해|처리해|정리해|부탁해)[ \\t]*';
@@ -116,6 +142,8 @@ export function payloadFor(intent, text) {
   if (intent === 'purchase') { const s = trimTail(tidy(t.replace(KW.purchase, ' '))); return { text: meat(s).length >= 2 ? s : '' }; }
   if (['message', 'letter', 'gongmun', 'report', 'minutes'].includes(intent)) {
     const s = trimTail(t).replace(LEAD, ''), rest = meat(s.replace(KW[intent], ''));
+    // 회의록: 짧은 말(「3학년 협의회 회의록 보여 줘」「회의 내용 정리해 줘」)은 회의록 탭만 엶 — 메모로 넣어 AI를 부르지 않게
+    if (intent === 'minutes') return { text: rest.length >= (/\n/.test(t) ? 2 : MEMO_MIN) ? s : '' };
     return { text: rest.length >= 4 ? s : '' };
   }
   if (intent === 'translate') return { lang: langOf(t) };
@@ -168,13 +196,14 @@ export function routeText(text) {
   const none = { intent: null, payload: {}, confidence: 0, candidates: [], question: false };
   if (!t) return none;
   let ask = isQuestion(raw);
-  const scores = {};
-  for (const [id, re, w] of RULES) if (re.test(t)) scores[id] = Math.max(scores[id] || 0, w);
-  // 번역: 언어 낱말 + 번역을 바라는 말(「번역」「베트남어로」「영문으로」「러시아어 가정통신문」)이면 번역(가정통신문보다 앞섬)
-  const lang = langOf(t);
-  if (lang && (/번역/.test(t) || LANG_CUE.test(t))) scores.translate = 5;
-  // 다면평가 낱말은 글감일 때가 많음: 쪽지·가정통신문·단원평가·평어·결과 보고서 같은 글 넣는 일이 분명하면 그 일(「다면평가 위원회 안내 쪽지」)
-  if (scores.multi && ['message', 'letter', 'unit', 'pyeongeo', 'report', 'gr', 'gongmun', 'purchase'].some(id => (scores[id] || 0) >= 3)) scores.multi = 1;
+  let scores = scoreOf(t);
+  const lines = raw.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  if (lines.length > 1) {
+    const head = scoreOf(lines[0]);
+    // 첫 줄이 회의록·문서 다듬기 명령이면(「회의록 정리해 줘」) 다음 줄은 넣을 글 — 메모 속 「행사 계획」「가정통신문」「쪽지로」는 세지 않음
+    if (HEAD_IDS.includes(sureTop(head))) scores = head;
+    else for (const id of HEAD_IDS) { if (head[id]) scores[id] = head[id]; else delete scores[id]; }
+  }
   // 관찰 메모: 글 앞이 「n번」
   const memo = parseMemo(t);
   if (memo && !NOT_MEMO.test(memo.body)) {

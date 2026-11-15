@@ -2,7 +2,7 @@
    개조식(~함·~임), 메모에 없는 결정·숫자는 지어내지 않음, 연도 없는 날은 학년도 규칙(쪽지·공문 처리와 같게).
    복사 글·쌤비서 기본 회의록 문서, 끝내지 않은 할 일(7일 안·지남 → 「오늘」). 화면 없이 돌아감(시험) */
 import { makeRedactor } from '../../core/redact.js';
-import { schoolDate, fmtDay } from './message-ai.js';
+import { schoolDate, normDate, fmtDay } from './message-ai.js';
 
 export const KINDS = [['grade', '학년 협의회'], ['subject', '교과 협의회'], ['dept', '부서 협의회'], ['council', '학교운영위원회'], ['etc', '기타']];
 const KIND_IDS = KINDS.map(k => k[0]);
@@ -25,16 +25,21 @@ export function guessKind(title) {
   return 'etc';
 }
 
-/* AI로 보낼 메모·칸을 한 가리개로 가림(같은 이름은 같은 자리 표시): 명단·주민번호 줄은 뺌(dropped).
-   보내는 칸은 회의 종류·이름·날짜·시간·장소 — 참석 칸은 보내지 않음(이름은 이 기기에만) */
+/* AI로 보낼 메모·칸을 한 가리개로 가림(같은 이름은 같은 자리 표시): 명단·주민번호·계좌 줄은 뺌(dropped).
+   메모는 줄을 한꺼번에(core/redact.js lines — 한 줄에 한 명씩인 번호 명단·「이름」 머리 칸 아래 표, 다른 줄(앞 줄도)에서 알아낸 이름),
+   칸(참석 칸도 — 보내지는 않음)의 이름도 먼저 배워 메모에서 가림. 보내는 칸은 회의 종류·이름·날짜·시간·장소(이름·시간·장소도 가림) */
 export function redactInput(memo, meta = {}) {
   const r = makeRedactor(), m = isObj(meta) ? meta : {};
-  let dropped = 0;
-  const text = String(memo == null ? '' : memo).split('\n').map(l => { const x = r.line(l); if (!x) { dropped++; return null; } return x.text; })
-    .filter(l => l !== null).join('\n');
-  const hide = v => { const s = one(v, 200); if (!s) return ''; const x = r.line(s); return x ? x.text : ''; };
-  const out = { kind: KIND_IDS.includes(m.kind) ? m.kind : '', title: hide(m.title), date: one(m.date, 20), time: one(m.time, 40), place: hide(m.place) };
-  return { text, meta: out, back: r.back, dropped, masked: r.names.length + r.secrets.length };
+  const cells = { title: one(m.title, 200), time: one(m.time, 40), place: one(m.place, 200) };
+  const memoLines = String(memo == null ? '' : memo).split('\n');
+  r.learn(memoLines); // 자리 표시 번호는 메모에 나온 차례(〔이름1〕이 메모의 첫 이름), 칸에서만 나온 이름은 그 뒤
+  const out = r.lines(memoLines, { learn: [cells.title, cells.time, cells.place, one(m.attendees, 200)].filter(Boolean) });
+  const text = out.filter(Boolean).map(x => x.text).join('\n');
+  const hide = s => { if (!s) return ''; const x = r.line(s); return x ? x.text : ''; };
+  const sent = { kind: KIND_IDS.includes(m.kind) ? m.kind : '', title: hide(cells.title), date: one(m.date, 20), time: hide(cells.time), place: hide(cells.place) };
+  // 가린 수: 보내는 글에 실제로 든 자리 표시(참석 칸에서만 배운 이름은 세지 않음)
+  const masked = new Set([text, sent.title, sent.time, sent.place].join('\n').match(/〔이름\d+〕|\{\{\d+\}\}/g) || []).size;
+  return { text, meta: sent, back: r.back, dropped: out.filter(x => !x).length, masked };
 }
 
 export function minutesPrompt({ text = '', meta = {}, today = '', year, nImages = 0 } = {}) {
@@ -72,11 +77,22 @@ function lines(v, n = 200, max = MAX_LINES) {
   const raw = Array.isArray(v) ? v : typeof v === 'string' ? v.split('\n') : [];
   return raw.map(x => (typeof x === 'string' || typeof x === 'number' ? lineOf(x, n) : isObj(x) ? lineOf(x.text || x.content || '', n) : '')).filter(Boolean).slice(0, max);
 }
+/* 연도 없이 온 회의 날: 학년도 규칙(1·2월은 다음 해)으로 붙인 날이 오늘보다 7일 넘게 뒤면 지난해(회의록은 지난 회의 — 3월 초에 적은 2월 말 협의회) */
+const AHEAD = 7;
+function meetingDate(v, year, today) {
+  const iso = schoolDate(v, year);
+  if (!iso || /^\d{4}/.test(String(v == null ? '' : v).trim()) || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return iso;
+  if ((Date.parse(iso) - Date.parse(today)) / 864e5 <= AHEAD) return iso;
+  return normDate(`${+iso.slice(0, 4) - 1}${iso.slice(4)}`) || iso;
+}
+/* 날의 학년도(1·2월은 지난해 학년도) */
+const yearOfDay = iso => (+iso.slice(5, 7) <= 2 ? +iso.slice(0, 4) - 1 : +iso.slice(0, 4));
 /* AI 답 → 회의록 칸. year: 연도 없는 날에 붙일 학년도(1·2월은 다음 해), today: 오늘.
-   회의 날은 지난 날이라 학년도 규칙만, 할 일 기한·다음 회의는 회의 날(없으면 오늘)을 기준으로 60일 규칙까지(공문 처리와 같게) */
+   회의 날은 지난 날이라 학년도 규칙에 7일 넘는 앞날은 지난해(meetingDate), 할 일 기한·다음 회의는 회의 날(없으면 오늘)의 학년도·그 날을 기준으로 60일 규칙까지(공문 처리와 같게) */
 export function normMinutes(v, { year, today = '' } = {}) {
   const o = isObj(v) ? v : {};
-  const title = one(o.title, 100), date = schoolDate(o.date, year), ref = date || today;
+  const title = one(o.title, 100), date = meetingDate(o.date, year, today), ref = date || today;
+  if (date && year) year = yearOfDay(date);
   const agenda = (Array.isArray(o.agenda) ? o.agenda : []).map(a => (typeof a === 'string' ? { title: a } : isObj(a) ? a : null)).filter(Boolean)
     .map(a => ({ title: lineOf(a.title || a.name || '', 120), discussion: lines(a.discussion || a.discussions), decisions: lines(a.decisions || a.decision) }))
     .filter(a => a.title || a.discussion.length || a.decisions.length).slice(0, MAX_AGENDA);
