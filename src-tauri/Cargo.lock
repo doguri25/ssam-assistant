@@ -3502,7 +3502,7 @@ dependencies = [
 
 [[package]]
 name = "ssam"
-version = "0.31.2"
+version = "0.32.0"
 dependencies = [
  "arboard",
  "reqwest",
