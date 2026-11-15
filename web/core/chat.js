@@ -6,6 +6,7 @@
    열면 맨 위 「오늘 할 일」(briefing.js·brief-data.js, AI 없이 — 「오늘」 화면과 같은 줄, 맨 위 [오늘 화면 열기]). 「3번 …」은 평가 › 행동특성 그 번호 메모 끝에 한 줄([되돌리기]).
    파일은 버튼·창에 끌어 놓거나 📎로 — 받는 곳(inbox.js) 흐름 그대로. 기록은 최근 30개(ssam:chat, 학년도와 상관없음, 이름·전화번호는 가려서, 파일 이름은 남기지 않음).
    메뉴에 넘기는 글은 줄바꿈을 살리고 전화번호·전자 우편·사람 이름만 그 자리에서 가림(handoffText, 그 메뉴가 개인정보 규칙으로 다시 거름).
+   회의록만 가리기 전 글(회의록 탭이 가려 보내고 돌아온 글에 이름을 되돌림 — 기록에는 가린 글).
    메뉴가 돌려준 상태('started'·'no-ai'·'busy'·'empty' …)대로 말함 — 시작하지 않았으면 「쓰고 있어요」라고 하지 않음.
    저장·결재·상신은 언제나 선생님이 직접 */
 import { get, set, remove } from './store.js';
@@ -32,7 +33,7 @@ const newId = () => 'c' + Date.now().toString(36) + Math.random().toString(36).s
 
 let deps = { receive: () => {}, pickFiles: () => {} };
 let panel = null, logEl = null, ta = null, brief = null; // brief: 오늘 할 일 줄(처음 세기 전에는 null)
-const mem = new Map(); // 메시지 id → { text(메뉴에 넘길 글, 전화번호·이름만 가림), shown(이 창에만 보일 글), undo(관찰 메모 되돌리기) } — 이 창에만(저장하지 않음)
+const mem = new Map(); // 메시지 id → { text(메뉴에 넘길 글, 전화번호·이름만 가림), raw(가리기 전 글 — 회의록에만 넘김), shown(이 창에만 보일 글), undo(관찰 메모 되돌리기) } — 이 창에만(저장하지 않음)
 let temp = []; // 저장하지 않는 메시지(기다리는 중·메모 보기)
 let pending = null; // 도우미 답을 기다리는 중 { ctl(AbortController), user(멈추기를 누름) }
 
@@ -170,7 +171,8 @@ async function onClick(e) {
     const m = findMsg(b.dataset.msg), c = m && (m.chips || [])[+b.dataset.chip];
     if (!c) return;
     const src = (mem.get(m.src) || {}).text || ((findMsg(m.src) || {}).text) || '';
-    const p = c.nav ? {} : payloadFor(c.intent, src); // 「잘 모르겠어요」 후보는 그 메뉴로만
+    // 「잘 모르겠어요」 후보는 그 메뉴로만. 회의록은 가리기 전 글만(이 창에 남은 것 — 가린 ○○○를 회의록에 넣지 않게, 없으면 그 탭만 엶)
+    const p = c.nav ? {} : c.intent === 'minutes' ? payloadFor('minutes', (mem.get(m.src) || {}).raw || '') : payloadFor(c.intent, src);
     if (c.lang) p.lang = c.lang;
     push({ who: 'me', text: c.label });
     await run(c.intent, p);
@@ -217,7 +219,7 @@ export async function send(text) {
   // 기록에는 이름을 가린 글: 「3번 …」(학생 이야기)은 관찰 메모에 저장하는 모양, 그 밖은 AI로 보내는 글과 같게(명단 줄 빼기·전화번호·이름 가리기). 너무 긴 글은 줄여서
   const shown = (pm ? `${nosText(pm.nos)} ${maskMemo(pm.body).text}` : safeText(raw)) || '(이름·전화번호만 있는 글)';
   const me = push({ who: 'me', text: shown.length > 1000 ? shown.slice(0, 1000) + '…' : shown });
-  mem.set(me.id, { text: said });
+  mem.set(me.id, { text: said, raw });
   // 「이 화면에서 뭐 해?」: 채팅 창 뒤 화면(메뉴 › 탭·단계·화면 설명·다음 할 일)으로 AI 없이(스펙 2026-11-14 §3)
   if (screenQuestion(said)) { say(screenAnswer(readScreen({ nav: get('nav', null), menus: MENUS })), { md: true, src: me.id }); return; }
   // 앱 자료로 답할 수 있는 묻는 글(단원평가 평균·학생 점수·도달·진도·시간표·출석률·공문 기한)은 AI 없이 바로(스펙 2026-11-14 §1)
@@ -226,7 +228,7 @@ export async function send(text) {
   if (isSure(r)) {
     // 관찰 메모는 이름을 가리기 전 글로 넘김(메모에 넣을 때 가리고 가린 수를 알림 — 전화번호만 먼저 가림)
     const memo = r.intent === 'memo' && parseMemo(maskContacts(raw));
-    await run(r.intent, memo ? { nos: memo.nos, body: memo.body } : r.payload);
+    await run(r.intent, memo ? { nos: memo.nos, body: memo.body } : r.intent === 'minutes' ? payloadFor('minutes', raw) : r.payload);
     return;
   }
   await assist({ raw, said, r, me });
@@ -387,6 +389,7 @@ async function run(intent, p = {}) {
       empty: '문서·소통 › 공문 처리로 왔어요. 명단·전화번호 줄을 빼니 넣을 공문 글이 없어요. 공문 파일을 끌어 놓거나 글을 붙여 넣어 주세요.' });
     afterGo(); return;
   }
+  // 회의록: 가리기 전 글을 넘김(회의록 탭이 AI로 보내기 전에 가리고 돌아온 글에 이름을 되돌림 — 가린 ○○○를 넘기면 이름이 영영 ○○○, 메모는 저장하지 않음)
   if (intent === 'minutes') {
     if (!p.text) { go('etc', 'minutes'); say('문서·소통 › 회의록으로 왔어요. 회의 메모를 붙여 넣거나 파일을 넣어 주세요.'); afterGo(); return; }
     const st = await (await import('../menus/etc/minutes.js')).putMinutesText(p.text).catch(() => 'error');

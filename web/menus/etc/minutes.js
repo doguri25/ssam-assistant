@@ -27,13 +27,18 @@ const today = () => { const t = new Date(); return `${t.getFullYear()}-${String(
 const okDate = v => !v || (/^\d{4}-\d{2}-\d{2}$/.test(v) && +v.slice(0, 4) >= 2000 && +v.slice(0, 4) <= 2100 && normDate(v) === v);
 const NOTE = '메모 글과 칸(회의 종류·이름·날짜·시간·장소)을 보내요. 교직원·학생 이름과 전화번호·이메일은 가려 보내고, 돌아온 글에 원래 이름을 되돌려 넣어요. 명단·주민번호가 적힌 줄은 보내지 않아요. 참석 칸은 보내지 않아요. 판서·메모 사진은 가릴 수 없어 그림 그대로 가요. 메모·원본 파일은 저장하지 않아요.';
 
-/* 화면 상태(저장 안 함): paste(넣기 칸 글), images(넣은 사진·스캔 — 이 화면에만), busy, msg */
+/* 화면 상태(저장 안 함): paste(넣기 칸 글), images(넣은 사진·스캔 — 이 화면에만), busy(보고 있는 회의록을 정리하는 중), msg */
 export const M = { paste: '', images: [], busy: false, msg: '' };
 let box = null, d = null;
 const gone = new Set(); // [삭제]한 회의록 id(읽던 AI가 끝나도 다시 넣지 않게)
 const cur = () => (d || (d = getMinutes(currentId()) || blankMinutes()));
-let readTok = 0, reading = null, readingTok = 0;
-function switchTo(x) { d = x; setCurrent(x.id); readTok++; M.busy = false; M.msg = ''; }
+// 정리하는 중인 일 { x(그 회의록) }: 한 번에 하나 — 다른 회의록으로 옮겨도 그대로(switchTo가 지우지 않음). 그동안 [정리하기]·채팅은 'busy'
+let job = null;
+/* 보는 회의록 바꾸기: 정리하는 중인 회의록을 다시 열면 저장된 옛 사본이 아니라 그 회의록 그대로(「정리하는 중」 → 결과 — 옛 사본을 고쳐 결과를 덮어쓰지 않게) */
+function switchTo(x) {
+  if (job && job.x.id === x.id) x = job.x;
+  d = x; setCurrent(x.id); M.busy = !!job && job.x === x; M.msg = M.busy ? '정리하는 중…' : '';
+}
 function persist(x = cur()) { if (hasContent(x) && !gone.has(x.id)) putMinutes(x); }
 const touch = (x, k) => { x.touched = [...new Set([...(x.touched || []), k])]; };
 
@@ -160,20 +165,19 @@ export async function addFiles(files) {
 /* [정리하기]: 넣기 칸 글(가린 것)·사진 → AI 한 번 → 칸. 바로 상태를 돌려주고 정리는 이어서
    → 'started' | 'busy' | 'empty'(넣은 것이 없거나 명단·주민번호 줄을 빼니 남은 글이 없음) | 'no-ai' */
 export function readMinutes() {
-  if (M.busy) return 'busy';
+  if (job) { if (job.x !== cur()) toast('다른 회의록을 정리하는 중이에요. 다 되면 [정리하기]를 다시 눌러 주세요.', 5000); return 'busy'; }
   const x = cur(), images = M.images.slice();
   if (!M.paste.trim() && !images.length) { toast('회의 메모를 붙여 넣거나 파일을 넣어 주세요.', 5000); return 'empty'; }
   if (!ai.ready()) { toast('설정 › AI에서 키를 넣어 주세요. 안건·할 일은 [안건 더하기]·[할 일 더하기]로 직접 써도 돼요.', 6000); return 'no-ai'; }
   const r = redactInput(M.paste, x);
   if (!r.text.trim() && !images.length) { toast('명단·주민번호가 적힌 줄을 빼니 남은 글이 없어요. 회의 메모를 붙여 넣어 주세요.', 6000); return 'empty'; }
-  const tok = ++readTok;
+  job = { x };
   M.busy = true; M.msg = '정리하는 중…'; setBusy();
-  readJob(x, tok, r, images);
+  readJob(x, r, images);
   return 'started';
 }
-async function readJob(x, tok, r, files) {
-  const here = () => tok === readTok && cur() === x; // 정리하는 동안 다른 회의록으로 옮기지 않았나
-  reading = x; readingTok = tok;
+async function readJob(x, r, files) {
+  const here = () => cur() === x; // 지금 이 회의록을 보고 있나(옮겼다 다시 열어도 같은 회의록 — switchTo)
   try {
     const images = [];
     for (const f of files) {
@@ -197,24 +201,23 @@ async function readJob(x, tok, r, files) {
     if (!here()) return;
     M.busy = false; M.msg = '';
     toast(e && e.code === 'empty' ? '글을 읽지 못했어요. 메모를 붙여 넣어 주세요.' : e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 눌러 주세요.' : ai.errorMessage(e && e.code, e), 6000);
-  } finally { if (reading === x) reading = null; }
+  } finally { job = null; }
   renderKeep();
 }
 
-/* 최근 회의록·「오늘」 카드·채팅 「오늘 할 일」: 그 회의록을 열고 문서·소통 › 회의록으로. 정리하는 중인 회의록이면 「정리하는 중」 그대로 */
+/* 최근 회의록·「오늘」 카드·채팅 「오늘 할 일」: 그 회의록을 열고 문서·소통 › 회의록으로. 정리하는 중인 회의록이면 「정리하는 중」 그대로(switchTo) */
 export function openMinutes(id) {
-  const r = id ? getMinutes(id) : null;
-  if (r && cur().id !== r.id) {
-    if (reading && reading.id === r.id) { d = reading; setCurrent(r.id); readTok = readingTok; M.busy = true; M.msg = '정리하는 중…'; }
-    else switchTo(r);
-    M.paste = ''; M.images = [];
-  }
+  const r = id ? (job && job.x.id === id ? job.x : getMinutes(id)) : null;
+  if (r && cur().id !== r.id) { switchTo(r); M.paste = ''; M.images = []; }
   go('etc', 'minutes');
   render();
 }
-/* 「쌤」 채팅 등(리드가 이음): 새 회의록에 글(·파일)을 넣고 바로 정리 → readMinutes 상태 */
+/* 「쌤」 채팅 등(리드가 이음): 새 회의록에 글(·파일)을 넣고 바로 정리 → readMinutes 상태.
+   text는 가리기 전 글(이름이 든 채 넣기 칸에만 — 저장하지 않음, AI로는 readMinutes가 가려 보냄).
+   다른 회의록을 정리하는 중이면 새 회의록을 만들지 않고(보던 회의록·넣기 칸 그대로) 'busy' */
 export async function putMinutesText(text, { files = [] } = {}) {
   go('etc', 'minutes');
+  if (job) { render(); return 'busy'; }
   switchTo(blankMinutes()); M.paste = String(text || ''); M.images = [];
   if (files.length) await addFiles(files); else render();
   return readMinutes();
