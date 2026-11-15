@@ -3,7 +3,7 @@
    학년·문항 수·수준·유형. 진도표·학급 정보는 학급 메뉴 자료를 읽기만 함(class-model) — 학급 화면은 고치지 않음.
    직접 쓴 범위는 교직원 이름·전화번호·이메일을 가려 보내고(core/redact.js, 명단·주민번호 줄은 뺌) 돌아온 문항에서 되돌림(scope.back → make-scope unmaskItem) */
 import { listSubjects, makeCtx, progressOf, getInfo } from '../class/class-model.js';
-import { redactText } from '../../core/redact.js';
+import { makeRedactor } from '../../core/redact.js';
 import { unitsOf, defaultPick, scopeOf, freeScope, clampInt, LEVELS, lessonNo } from './make-scope.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -118,13 +118,15 @@ export function pickValue(S) {
   const r = S.countRange, count = clampInt(S.count, r.min, r.max, r.d);
   const base = { grade: S.grade == null ? null : clampInt(S.grade, 1, 6, null), count, level: S.level, kinds: S.chosen.slice() };
   let scope = null, error = '';
+  /* 범위 하나에 가리개 하나: 직접 쓴 범위·[이 문항 다시 만들기]로 보내는 물음(mask)을 같은 번호로 가리고, 돌아온 글은 back으로 되돌림 */
+  const rd = makeRedactor(), mask = t => String(t == null ? '' : t).split('\n').map(l => { const x = rd.line(l); return x ? x.text : ''; }).join('\n');
   const sub = S.mode === 'plan' ? curSub(S) : null;
-  if (sub) { if (S.picked.length) scope = { ...scopeOf(sub, S.picked), titles: S.picked.map(i => sub.lessons[i] && sub.lessons[i].title).filter(Boolean) }; else error = '차시를 하나 넘게 골라 주세요.'; }
+  if (sub) { if (S.picked.length) scope = { ...scopeOf(sub, S.picked), titles: S.picked.map(i => sub.lessons[i] && sub.lessons[i].title).filter(Boolean), mask, back: rd.back }; else error = '차시를 하나 넘게 골라 주세요.'; }
   else if (!S.free.trim()) error = '단원·성취기준·범위를 써 주세요.';
   else {
-    const r = redactText(S.free);
-    if (!r.text.trim()) error = '범위에 명단·주민번호 줄만 있어 보낼 글이 없어요. 단원·성취기준·범위만 써 주세요.';
-    else scope = { ...freeScope(S.subject, r.text), titles: [], back: r.back };
+    const text = String(S.free).split('\n').map(l => rd.line(l)).filter(Boolean).map(x => x.text).join('\n');
+    if (!text.trim()) error = '범위에 명단·주민번호 줄만 있어 보낼 글이 없어요. 단원·성취기준·범위만 써 주세요.';
+    else scope = { ...freeScope(S.subject, text), titles: [], mask, back: rd.back };
   }
   if (!error && !base.kinds.length) error = '유형을 하나 넘게 골라 주세요.';
   return { ...base, scope, error };

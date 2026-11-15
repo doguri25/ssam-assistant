@@ -100,7 +100,7 @@ const lines = s => (String(s || '').trim() ? String(s).trim().split('\n').length
 function step1HTML(a) {
   const crit = A.critFor === a.id ? A.critPages.length : 0, pend = A.pending && A.pending.id === a.id ? A.pending.pages.length : 0;
   const have = [a.sheet.student && `학생용 글 ${lines(a.sheet.student)}줄`, a.sheet.teacher && `교사용·예시·정답 글 ${lines(a.sheet.teacher)}줄`, crit && `활동지 그림 ${crit}장`, pend && `학생 쪽 ${pend}장(3단계로)`].filter(Boolean);
-  return `<div class="yp-card"><h3>활동지</h3>
+  return `${views.make && views.make.paperRow ? views.make.paperRow(a) : ''}<div class="yp-card"><h3>활동지</h3>
       ${bundleBoxHTML('act', '활동지 한글·PDF·사진, 교사용·(예시)·[정답]이 붙은 파일, 학생 스캔까지 한꺼번에 넣으면 알아서 나눠요')}
       <p class="muted" id="actHave">${have.length ? esc(have.join(' · ')) : '아직 넣은 것이 없어요.'}</p>
       ${a.sheet.student || a.sheet.teacher ? `<details class="act-text"><summary>읽은 글 보기</summary><pre>${esc(a.sheet.student)}${a.sheet.teacher ? `\n\n— 교사용·예시·정답 —\n${esc(a.sheet.teacher)}` : ''}</pre></details>` : ''}

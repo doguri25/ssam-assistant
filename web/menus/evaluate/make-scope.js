@@ -91,6 +91,12 @@ export function unmaskItem(back, it) {
   return Object.fromEntries(Object.entries(it).map(([k, v]) => [k, one(v)]));
 }
 
+/* AI로 다시 보내는 문항 글(keys 칸)을 범위의 가리개(scope.mask — make-pick pickValue)로 가림: 처음 만들 때 되돌려 받은 이름·선생님이 써 넣은 이름도 가려 보냄 */
+export function maskList(scope, list, keys) {
+  if (!scope || typeof scope.mask !== 'function' || !Array.isArray(list)) return list;
+  return list.map(x => (x && typeof x === 'object' ? { ...x, ...Object.fromEntries(keys.filter(k => typeof x[k] === 'string').map(k => [k, scope.mask(x[k])])) } : x));
+}
+
 /* count를 고른 것(keys)에 비율(weights)대로 나눔: 남는 수는 큰 나머지부터(같으면 앞 것), 문항 수가 되면 고른 것마다 적어도 하나 */
 export function spread(count, keys, weights = {}) {
   const ks = [...new Set(keys)].filter(Boolean);

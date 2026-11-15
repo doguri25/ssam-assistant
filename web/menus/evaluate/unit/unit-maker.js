@@ -7,8 +7,8 @@ import { aiRowHTML } from '../../../core/ai-roles.js';
 import { introHTML, aiNoteHTML } from '../../../core/ui-parts.js';
 import { exportButton, exportDoc, downloadsButton } from '../../../core/doc-export.js';
 import { newPick, syncSubjects, pickHTML, pickEvent, pickValue } from '../make-pick.js';
-import { unmaskItem } from '../make-scope.js';
-import { MAKE_TYPES, CIRCLED, makePrompt, redoPrompt, normMade, normOne, choiceAnswer, fixPoints, warnOf, problems, paperDoc, answerDoc, paperTitle, testFrom } from './unit-make.js';
+import { unmaskItem, maskList } from '../make-scope.js';
+import { MAKE_TYPES, CIRCLED, makePrompt, redoPrompt, normMade, normOne, choiceAnswer, fixPoints, warnOf, problems, paperDoc, answerDoc, paperTitle, testFrom, madeItems } from './unit-make.js';
 import { keyTotal } from './unit-key.js';
 import { registerMaker, U, render, refresh, getBox, visible, saveOrWarn, openTest, cur, esc, SS, AI_KEY } from './unit.js';
 
@@ -115,7 +115,7 @@ async function redoOne(no) {
   if (!v.scope) { M.msg = v.error || '범위를 골라 주세요.'; render(); return; }
   M.busy = `redo:${no}`; M.msg = ''; render();
   try {
-    const out = await ai.generateJSON(redoPrompt({ scope: v.scope, grade: v.grade, level: v.level, items: M.items, no }), { task: 'plan', valid: x => !!normOne(x) });
+    const out = await ai.generateJSON(redoPrompt({ scope: v.scope, grade: v.grade, level: v.level, items: maskList(v.scope, M.items, ['question']), no }), { task: 'plan', valid: x => !!normOne(x) });
     const it = unmaskItem(v.scope.back, normOne(out)), i = M.items.findIndex(x => x.no === no);
     if (it && i >= 0) { M.items[i] = { ...it, no, points: M.items[i].points }; resplit(); if (!M.scope) { M.scope = v.scope; M.opts = { grade: v.grade, level: v.level }; } }
   } catch (e) { M.msg = e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 눌러 주세요.' : ai.errorMessage(e && e.code, e); }
@@ -142,7 +142,6 @@ async function download(kind, items = M.items, meta = metaNow()) {
   try { toast(await exportDoc(kind === 'paper' ? paperDoc(meta, items) : answerDoc(meta, items), name), 6000); } catch (e) { toast('파일을 저장하지 못했어요'); }
 }
 /* 만든 평가의 1단계: 문제지·정답지를 다시 내려받는 줄(만든 물음·보기는 t.made에 둠) */
-const madeItems = t => (t.made && Array.isArray(t.made.items) ? t.made.items.map((m, i) => { const k = t.key.items.find(x => x.no === m.no) || t.key.items[i] || {}; return { ...m, answer: k.answer || '', points: k.points ?? m.points, content: k.content || '', criteria: k.criteria || '', type: k.type || m.type }; }) : []);
 function paperRow(t) {
   if (!t || !t.made || !madeItems(t).length) return '';
   return `<div class="yp-card mk-made"><p class="muted" style="margin:0">[문항 만들기]로 만든 평가예요. 정답표가 채워져 있어요.</p>

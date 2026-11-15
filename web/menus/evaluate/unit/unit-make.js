@@ -66,8 +66,8 @@ export function redoPrompt({ scope, grade = null, level = 'normal', items = [], 
 }
 
 /* ---------- AI 답 다듬기 ---------- */
-// 보기 앞 번호 표시(①·1.·(1)·가.)는 뺌
-const unmark = s => str(s, 120).replace(/^(?:[①-⑩]|\(\s*\d{1,2}\s*\)|\d{1,2}\s*[.)]|[가-하]\s*[.)])\s*/, '').trim();
+// 보기 앞 번호 표시(①·1.·(1)·가.)는 뺌 — 「1.5」「4.19 혁명」처럼 점 뒤가 숫자면 번호가 아님
+const unmark = s => str(s, 120).replace(/^(?:[①-⑩]|\(\s*\d{1,2}\s*\)|\d{1,2}\s*[.)](?!\d)|[가-하]\s*[.)])\s*/, '').trim();
 const bare = s => String(s || '').replace(/\s+/g, '');
 /* 객관식 정답 → 「③」(여럿이면 「②, ④」). 보기 번호 밖이거나 빈 보기를 가리키면 '' */
 export function choiceAnswer(answer, choices) {
@@ -75,7 +75,11 @@ export function choiceAnswer(answer, choices) {
   if (!s) return '';
   const okNo = n => Number.isInteger(n) && n >= 1 && n <= Math.min(ch.length, CIRCLED.length) && !!String(ch[n - 1] || '').trim();
   let nos = [...s].filter(c => CIRCLED.includes(c) || '⑥⑦⑧⑨⑩'.includes(c)).map(c => '①②③④⑤⑥⑦⑧⑨⑩'.indexOf(c) + 1);
-  if (!nos.length && /^[\s(]*\d{1,2}[\s)]*(번)?([\s,·]+\(?\d{1,2}\)?\s*번?)*$/.test(s)) nos = (s.match(/\d{1,2}/g) || []).map(Number);
+  if (!nos.length && /^[\s(]*\d{1,2}[\s)]*(번)?([\s,·]+\(?\d{1,2}\)?\s*번?)*$/.test(s)) {
+    nos = (s.match(/\d{1,2}/g) || []).map(Number);
+    // 보기가 숫자이고 그 숫자가 다른 자리의 보기 글이면(보기 3·4·5·6에 「4」) 번호인지 값인지 알 수 없음 → 비워 선생님이 고름
+    if (!/번/.test(s) && nos.some(n => { const at = ch.findIndex(c => bare(unmark(c)) === String(n)); return at >= 0 && at !== n - 1; })) return '';
+  }
   if (!nos.length) { const i = ch.findIndex(c => bare(unmark(c)) && bare(unmark(c)) === bare(unmark(s))); if (i >= 0) nos = [i + 1]; }
   nos = [...new Set(nos)].sort((a, b) => a - b);
   return nos.length && nos.every(okNo) ? nos.map(n => CIRCLED[n - 1]).join(', ') : '';
@@ -148,7 +152,7 @@ export const problems = items => items.map(it => ({ no: it.no, text: warnOf(it) 
 const exampled = a => (!a || /^\(\s*예\s*\)/.test(a) ? a : `(예) ${a}`);
 /* 단원평가 정답표 문항(unit-key.js parseKey와 같은 칸·차례) */
 export const keyItems = items => items.map((it, i) => ({
-  no: i + 1, content: str(it.content, 60) || str(it.question, 30), domain: str(it.domain, 30), type: it.type,
+  no: Number(it.no) || i + 1, content: str(it.content, 60) || str(it.question, 30), domain: str(it.domain, 30), type: it.type,
   answer: it.type === 'choice' ? choiceAnswer(it.answer, it.choices) : it.type === 'essay' ? exampled(str(it.answer, 300)) : str(it.answer, 300),
   points: Math.max(0, Number(it.points) || 0), criteria: it.type === 'essay' ? str(it.criteria, 300) : '', pages: str(it.pages, 40)
 }));
@@ -167,7 +171,7 @@ export function paperText(meta, items) {
 export const NAME_BOX = { type: 'table', rows: [['학년', '', '반', '', '번호', '', '이름', '']], widths: [1, 1, 1, 1, 1.2, 1, 1, 3] };
 export function paperDoc(meta, items) {
   const blocks = [NAME_BOX, { type: 'c', text: paperTitle(meta), bold: true }];
-  const info = [meta && meta.subject, meta && meta.lesson && meta.lesson !== '단원 전체' ? `${meta.lesson}차시` : '', `${items.length}문항 · 100점`].filter(Boolean).join(' · ');
+  const info = [meta && meta.subject, meta && meta.lesson && meta.lesson !== '단원 전체' ? `${meta.lesson}차시` : '', `${items.length}문항 · ${items.reduce((a, it) => a + (Number(it.points) || 0), 0)}점`].filter(Boolean).join(' · ');
   blocks.push({ type: 'p', text: info });
   for (const it of items) {
     blocks.push({ type: 'p', text: ask(it), bold: true });
@@ -184,6 +188,15 @@ export function answerDoc(meta, items) {
     { type: 'table', head: true, widths: [1, 1.4, 3, 1, 3, 3], rows: [['번호', '유형', '정답', '배점', '평가 내용', '채점 기준'],
       ...key.map(k => [String(k.no), TYPE_NAME[k.type] || '', k.answer, String(k.points), k.content, k.criteria])] }
   ] };
+}
+
+/* 만든 평가의 1단계에서 다시 내려받을 문항: 만든 물음·보기(t.made) + 지금 정답표(정답·배점·기준). 1단계에서 정답표에서 뺀 문항은 빼고,
+   번호는 정답표 번호 그대로(채점 번호와 같게) */
+export function madeItems(t) {
+  if (!t || !t.made || !Array.isArray(t.made.items)) return [];
+  const key = (t.key && Array.isArray(t.key.items)) ? t.key.items : [];
+  return t.made.items.map(m => [m, key.find(k => k.no === m.no)]).filter(([, k]) => k)
+    .map(([m, k]) => ({ ...m, answer: k.answer || '', points: k.points ?? m.points, content: k.content || '', criteria: k.criteria || '', type: TYPE_IDS.includes(k.type) ? k.type : m.type }));
 }
 
 /* 새 단원평가: 평가 정보(교과·학년·단원·차시), 정답표, 문제지 글. made: 만든 물음·보기(문제지를 다시 내려받을 때) */

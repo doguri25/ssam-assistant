@@ -8,11 +8,11 @@ import { introHTML, aiNoteHTML } from '../../../core/ui-parts.js';
 import { exportButton, exportDoc, downloadsButton } from '../../../core/doc-export.js';
 import { getSchool } from '../../../core/settings.js';
 import { newPick, syncSubjects, pickHTML, pickEvent, pickValue } from '../make-pick.js';
-import { unmaskItem } from '../make-scope.js';
-import { KINDS, actPrompt, redoTaskPrompt, normTasks, normTask, taskWarn, taskProblems, sheetDoc, activityFrom } from './activity-make.js';
+import { unmaskItem, maskList } from '../make-scope.js';
+import { KINDS, actPrompt, redoTaskPrompt, normTasks, normTask, taskWarn, taskProblems, sheetDoc, activityFrom, madeTasks } from './activity-make.js';
 import { saveActivity } from './activity-model.js';
 import { termOf } from './activity-read.js';
-import { registerView, A, render, refresh, getBox, visible, openActivity, esc, SS } from './activity.js';
+import { registerView, A, render, refresh, getBox, visible, openActivity, curAct, esc, SS } from './activity.js';
 
 const M = { pick: null, tasks: [], scope: null, opts: null, title: '', busy: '', msg: '', note: '' };
 const AI_KEY = '설정 › AI에서 키를 넣어 주세요';
@@ -105,7 +105,7 @@ async function redoOne(no) {
   if (!v.scope) { M.msg = v.error || '범위를 골라 주세요.'; render(); return; }
   M.busy = `redo:${no}`; M.msg = ''; render();
   try {
-    const out = await ai.generateJSON(redoTaskPrompt({ scope: v.scope, grade: v.grade, level: v.level, tasks: M.tasks, no }), { task: 'plan', valid: x => !!normTask(x) });
+    const out = await ai.generateJSON(redoTaskPrompt({ scope: v.scope, grade: v.grade, level: v.level, tasks: maskList(v.scope, M.tasks, ['ask']), no }), { task: 'plan', valid: x => !!normTask(x) });
     const t = unmaskItem(v.scope.back, normTask(out)), i = M.tasks.findIndex(x => x.no === no);
     if (t && i >= 0) { M.tasks[i] = { ...t, no }; if (!M.scope) { M.scope = v.scope; M.opts = { grade: v.grade, level: v.level }; } }
   } catch (e) { M.msg = failMsg(e); }
@@ -123,12 +123,24 @@ function create() {
   Object.assign(M, { tasks: [], scope: null, opts: null, title: '', busy: '', msg: '', note: '' });
   openActivity(a.id);
   getBox().scrollIntoView({ block: 'start' });
-  toast('활동지를 만들었어요. 기준이 정해져 있어요 — 학생 활동지 스캔을 넣으면 채점해요.', 6000);
+  toast('활동지를 만들었어요. 기준이 정해져 있어요 — 학생 활동지 스캔을 넣으면 채점해요(학생 활동지는 1단계에서 다시 내려받아요).', 6000);
 }
 async function download() {
   if (!M.tasks.length) return;
   const meta = metaNow();
   try { toast(await exportDoc(sheetDoc(meta, M.tasks), `${meta.title} 학생 활동지`), 6000); } catch (e) { toast('파일을 저장하지 못했어요'); }
+}
+
+/* 만든 활동지의 1단계: 학생 활동지를 다시 내려받는 줄(만든 뒤에 인쇄해도 되게 — 지금 문항 그대로) */
+function paperRow(a) {
+  if (!madeTasks(a).length) return '';
+  return `<div class="yp-card mk-made"><p class="muted" style="margin:0">[활동지 만들기]로 만든 활동지예요. 기준이 정해져 있어요.</p>
+    <div class="row">${exportButton('data-mk="madeSheet"', { prefix: '학생 활동지 · ' })}</div></div>`;
+}
+async function downloadMade(a) {
+  const ts = madeTasks(a);
+  if (!ts.length) return;
+  try { toast(await exportDoc(sheetDoc(a.meta, ts), `${a.meta.title || '활동지'} 학생 활동지`), 6000); } catch (e) { toast('파일을 저장하지 못했어요'); }
 }
 
 /* ---------- 고치기 ---------- */
@@ -151,10 +163,12 @@ const open = () => { M.msg = ''; if (M.pick && !M.tasks.length) M.pick = null; }
 
 document.addEventListener('click', async e => {
   const box = getBox();
-  if (!box || !box.contains(e.target) || !inMaker()) return;
+  if (!box || !box.contains(e.target)) return;
   const b = e.target.closest('[data-mk]');
   if (!b) return;
   const a = b.dataset.mk;
+  if (a === 'madeSheet') { const act = visible() && A.view === 'act' ? curAct() : null; if (act) downloadMade(act); return; }
+  if (!inMaker()) return;
   if (a === 'make') { if (M.tasks.length && !(await askRedoAll())) return; makeAll(); }
   else if (a === 'redo') redoOne(Number(b.dataset.no));
   else if (a === 'del') { M.tasks = M.tasks.filter(x => x.no !== Number(b.dataset.no)); renumber(); render(); }
@@ -173,4 +187,4 @@ const onField = type => e => {
 document.addEventListener('input', onField('input'));
 document.addEventListener('change', onField('change'));
 
-registerView('make', { html, open });
+registerView('make', { html, open, paperRow });

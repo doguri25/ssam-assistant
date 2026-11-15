@@ -113,5 +113,12 @@ export function activityFrom({ meta = {}, tasks = [] } = {}) {
   a.items = tasks.map((t, i) => ({ no: i + 1, type: TYPE_OF[t.kind] || t.type || 'write', ask: str(t.ask, 200), answer: str(t.answer, 300), ok: str(t.ok, 300), part: str(t.part, 300), src: 'ai' }));
   a.confirmed = a.items.length > 0;
   a.sheet = { student: sheetText({ ...meta, title: titleOf(meta) }, tasks).slice(0, 12000), teacher: '' };
+  a.made = { tasks: tasks.map((t, i) => ({ no: i + 1, kind: KIND_IDS.includes(t.kind) ? t.kind : 'write' })) };
   return a;
+}
+/* 만든 활동지를 다시 내려받을 문항: 지금 문항(2단계에서 고친 물음·더한 문항 그대로) + 만들 때의 종류(그리기는 큰 칸). 만들지 않은 활동지는 [] */
+export function madeTasks(a) {
+  if (!a || !a.made || !Array.isArray(a.items)) return [];
+  const kinds = new Map(((a.made && a.made.tasks) || []).map(t => [t.no, t.kind]));
+  return a.items.filter(it => str(it.ask)).map(it => ({ no: it.no, ask: str(it.ask, 200), kind: it.type === 'draw' ? 'draw' : kinds.get(it.no) === 'think' ? 'think' : 'write' }));
 }
