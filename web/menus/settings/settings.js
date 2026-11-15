@@ -2,7 +2,7 @@
 import { onEnter, go as goMenu } from '../../core/shell.js';
 import { introHTML } from '../../core/ui-parts.js';
 import { THEMES, getTheme, setTheme } from '../../core/theme.js';
-import { FONTS, getFont, setFont, previewFonts } from '../../core/font.js';
+import { FONTS, getFont, setFont, previewFonts, themeFamily } from '../../core/font.js';
 import { getSchool, setSchool, defaultYear, getPurchaseLimit, setPurchaseLimit, getMeetCap, setMeetCap, getPurchaseFlow, setPurchaseFlow } from '../../core/settings.js';
 import * as ai from '../../core/ai.js';
 import { readTable } from '../../core/sheet.js';
@@ -31,14 +31,22 @@ function testKeyNote() {
 const sharedNote = () => (sharedHost() ? `<p class="banner warn" style="margin:0 0 8px">웹판은 ${esc(sharedHost())} 주소를 같은 계정의 다른 웹페이지와 함께 써요. AI 키를 기억하게 하면 그 페이지들도 이 키를 읽을 수 있어요. 함께 쓰는 PC에서는 Windows 앱을 쓰거나 [AI 바꾸기]에서 「키 기억하기」를 꺼 주세요.</p>` : '');
 const won = n => Number(n).toLocaleString('ko-KR');
 
-/* 글꼴 고르기(core/font.js): 이름·보기 글은 그 글꼴로 보임(「테마 글꼴」은 지금 테마 글꼴) */
+/* 글꼴 고르기(core/font.js): 이름·보기 글은 그 글꼴로 보임(「테마 글꼴」은 지금 테마 글꼴 — 테마를 바꾸면 themeFont로 맞춤) */
+const famStyle = fam => (fam ? ` style="font-family:${esc(fam)},'Malgun Gothic',sans-serif"` : '');
 function fontCard() {
-  const cur = getFont();
+  const cur = getFont(), th = document.documentElement.dataset.theme;
+  const famOf = f => (f.id === 'theme' ? themeFamily(th) : f.family);
   return card('글꼴', `<div class="font-grid" role="radiogroup" aria-label="글꼴">${FONTS.map(f => `<label class="font-card" data-font-pick="${f.id}">
-      <span class="tn"><input type="radio" name="font" value="${f.id}" ${f.id === cur ? 'checked' : ''}><span class="fn"${f.family ? ` style="font-family:${esc(f.family)},'Malgun Gothic',sans-serif"` : ''}>${esc(f.label)}</span>${f.id === 'pretendard' ? '<span class="muted">· 기본</span>' : ''}</span>
-      <span class="fs"${f.family ? ` style="font-family:${esc(f.family)},'Malgun Gothic',sans-serif"` : ''}>단원평가 결과를 한눈에 봐요 123</span>
+      <span class="tn"><input type="radio" name="font" value="${f.id}" ${f.id === cur ? 'checked' : ''}><span class="fn"${famStyle(famOf(f))}>${esc(f.label)}</span>${f.id === 'pretendard' ? '<span class="muted">· 기본</span>' : ''}</span>
+      <span class="fs"${famStyle(famOf(f))}>단원평가 결과를 한눈에 봐요 123</span>
       <span class="muted">${esc(f.desc)}</span></label>`).join('')}</div>
     <p class="muted" style="margin:0">프리텐다드·SUIT는 앱에 들어 있어 인터넷이 없어도 보여요. 본고딕·나눔고딕·고운돋움·고운바탕은 인터넷에서 받아요(안 되면 맑은 고딕으로 보여요). 종이 문서 테마의 명조 제목은 그대로예요.</p>`);
+}
+/* 테마를 바꾸면 「테마 글꼴」 칸을 새 테마 글꼴로(그 글꼴도 부름) */
+function themeFont(id) {
+  previewFonts(id);
+  const fam = `${themeFamily(id)},'Malgun Gothic',sans-serif`;
+  box.querySelectorAll('[data-font-pick="theme"] .fn, [data-font-pick="theme"] .fs').forEach(el => { el.style.fontFamily = fam; });
 }
 // 테마 미리보기 색 (core/theme.css와 같은 값): 틀, 바탕, 카드, 포인트
 const PREVIEW = {
@@ -161,7 +169,7 @@ const VIEWS = {
         ${aiMsg ? `<p class="set-msg ${aiMsg.busy ? '' : aiMsg.ok ? 'ok' : 'err'}" role="status">${aiMsg.busy ? '확인하는 중…' : esc(aiMsg.text)}</p>` : ''}`) + rolesCards() + logCard());
   },
   screen: () => {
-    previewFonts();
+    previewFonts(document.documentElement.dataset.theme);
     const cur = getTheme();
     return page('화면', '고른 테마·글꼴은 이 컴퓨터에 저장되고 바로 바뀌어요.',
       card('테마', `<div class="theme-grid" role="radiogroup" aria-label="테마">${THEMES.map(t => {
@@ -465,8 +473,9 @@ document.addEventListener('click', e => {
   }
   const pick = e.target.closest('[data-theme-pick]');
   if (pick) {
-    setTheme(pick.dataset.themePick);
+    const id = setTheme(pick.dataset.themePick);
     box.querySelectorAll('[data-theme-pick] input').forEach(i => { i.checked = i.value === pick.dataset.themePick; });
+    themeFont(id);
   }
 });
 

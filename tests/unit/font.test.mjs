@@ -73,3 +73,16 @@ test('글꼴(ssam:font)은 학년도 자료가 아님 — 학년도를 옮겨도
   assert.equal(m.get('ssam:theme'), JSON.stringify('paper'));
   assert.equal(m.has('ssam:hk'), false, '학년도 자료는 비움');
 });
+
+/* 설정의 「테마 글꼴」 칸 미리 보기: themeFamily가 theme.css의 테마마다 본문 글꼴(--f-body 첫 글꼴)과 같음 */
+test('「테마 글꼴」 미리 보기 글꼴 = 테마마다 본문 글꼴(theme.css)', async () => {
+  const { themeFamily } = await import('../../web/core/font.js');
+  const css = readFileSync(new URL('../../web/core/theme.css', import.meta.url), 'utf8');
+  for (const { id } of THEMES) {
+    const block = new RegExp(`html\\[data-theme="${id}"\\]\\{([^}]*)\\}`).exec(css);
+    assert.ok(block, id);
+    const body = /--f-body:\s*([^,;]+)/.exec(block[1]);
+    assert.equal(themeFamily(id), body[1].trim(), id);
+  }
+  assert.equal(themeFamily('nope'), themeFamily('dark-nav'));
+});

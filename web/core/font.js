@@ -19,6 +19,9 @@ const THEME_GOOGLE = {
   paper: 'Noto+Serif+KR:wght@600;700&family=Noto+Sans+KR:wght@400;500;700', rail: 'Noto+Sans+KR:wght@400;500;700'
 };
 const PAPER_TITLE = 'Noto+Serif+KR:wght@600;700';
+/* 테마마다 본문 글꼴(core/theme.css의 --f-body 첫 글꼴과 같음 — 설정의 「테마 글꼴」 칸을 지금 테마 글꼴로 미리 보임, tests/unit/font.test.mjs가 봄) */
+const THEME_FAMILY = { 'dark-nav': "'Gothic A1'", mono: "'IBM Plex Sans KR'", soft: "'Noto Sans KR'", paper: "'Noto Sans KR'", rail: "'Noto Sans KR'" };
+export const themeFamily = themeId => THEME_FAMILY[themeId] || THEME_FAMILY['dark-nav'];
 const KEY = 'ssam:font';
 
 export const knownFont = id => FONTS.some(f => f.id === id);
@@ -55,5 +58,6 @@ export function setFont(id) {
   try { localStorage.setItem(KEY, JSON.stringify(id)); } catch (e) {}
   return id;
 }
-/* 설정 화면에서 글꼴 이름을 그 글꼴로 미리 보이게 모든 후보를 부름 */
-export const previewFonts = () => loadFontLinks(FONTS.flatMap(f => [...(f.css ? [f.css] : []), ...(f.google ? [`https://fonts.googleapis.com/css2?family=${f.google}&display=swap`] : [])]));
+/* 설정 화면에서 글꼴 이름을 그 글꼴로 미리 보이게 모든 후보를 부름(themeId를 주면 「테마 글꼴」 칸에 쓸 그 테마 글꼴도) */
+export const previewFonts = themeId => loadFontLinks([...FONTS.flatMap(f => [...(f.css ? [f.css] : []), ...(f.google ? [`https://fonts.googleapis.com/css2?family=${f.google}&display=swap`] : [])]),
+  ...(THEME_GOOGLE[themeId] ? fontLinks(themeId, 'theme') : [])]);
