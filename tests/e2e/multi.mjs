@@ -77,7 +77,7 @@ await run('multi', [
   ['기타에 「다면평가」 탭(인수인계서 다음), 처음엔 정량 쪽·예시 기준', async () => {
     await tab();
     const tabs = await page.locator('#menuTabs button').allInnerTexts();
-    assert(tabs.join('|') === '쪽지 작성|가정통신문|공문 처리|인수인계서|다면평가', tabs.join('|'));
+    assert(tabs.join('|') === '쪽지 작성|가정통신문|공문 처리|회의록|문서 다듬기|인수인계서|다면평가', tabs.join('|'));
     assert(await page.getAttribute(`${P} [data-mv-view="quant"]`, 'aria-pressed') === 'true', '정량 쪽');
     assert((await page.textContent(P)).includes('예시 기준이에요. 학교 기준 양식을 넣어 주세요'), '예시 안내');
     assert((await page.$$(`${P} .mv-item`)).length === 11, '항목 11개');
