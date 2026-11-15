@@ -5,7 +5,7 @@ import { emptyItem, findPersonal, toNumber, plainItemName, plainOfficial, PER_UN
 import { readQuote } from './quote.js';
 import { findItems } from '../../core/sheet.js';
 import { readText } from '../../core/files.js';
-import { nameCell, MASK, maskContacts } from '../../core/privacy.js';
+import { nameCell, staffName, MASK, maskContacts } from '../../core/privacy.js';
 
 // 세는 말: 없는 말(「체육복 30벌」「간식 420인분」)은 수량 1로 읽혀 합계가 크게 줄었음. 「회·일·단」은 날짜·차례(「제3회」「12일」)와 헷갈려 넣지 않음
 const UNITS = '박스|상자|개|권|자루|세트|장|통|묶음|팩|병|봉|봉지|EA|ea|Ea|명|인분|시간|차시|식|건|매|롤|켤레|벌|쌍|대|부|kg|g|L|ml|m|판|타|다스|캔|포|입|갑|곽|송이|다발|그루|마리|포기|줄|잔';
@@ -245,10 +245,14 @@ const ROLE_AFTER = /(^|[^가-힣])([가-힣]{3,4})(\s*)(강사님|강사|선생�
 const ROLE_BEFORE = /(강사님?|선생님|교수님?|교사)(\s*[:：]\s*|\s+)([가-힣]{3,4})(?![가-힣])/g;
 /* 학생·보호자 이름도: 「김하늘 학생」「한가람 학생의」「이바다 어머니」「학생 이바다」 → ○○○ (학생 이름은 AI로 보내지 않음).
    「성실한·신청한 학생」 같은 꾸미는 말, 「학생 인솔비」 같은 「~비·~회·~생」 낱말은 이름이 아님(core/privacy.js의 홀로 쓴 이름 규칙과 같게) */
-const KIN_AFTER = /(^|[^가-힣○])([가-힣]{3,4})(\s*)(학생|학부모|어머니|어머님|아버지|아버님|부모님|보호자)(?=$|[^가-힣]|[은는이가을를과와의에도께랑만한님])/g;
+const KIN_AFTER = /(^|[^가-힣○])([가-힣]{2,4})(\s*)(학생|학부모|어머니|어머님|아버지|아버님|부모님|보호자)(?=$|[^가-힣]|[은는이가을를과와의에도께랑만한님])/g;
 const KIN_BEFORE = /((?:학생|학부모|보호자)(?:\s*[:：]\s*|\s+))([가-힣]{3,4})(?![가-힣])/g;
 const NOT_NAME_END = /[도감력화회권별제법실부생들표단방작비장품물집책판함증점식터반란이가는을를의에만와과로한할된던운간친른막움님기상왕년자]$/;
-const kinName = n => nameCell(n) && !NOT_NAME_END.test(n);
+// 성씨 글자로 시작하지만 이름이 아닌 낱말(「유치원 학부모」「학생 한마당」「이번주 학생」 — 「~원」은 김지원 같은 이름이 있어 끝 글자로 거르지 않음)
+const KIN_WORD = new Set(['유치원', '한마당', '인원수', '문화원', '이번주', '이번달', '지난주', '지난달', '정원외', '장학금', '마스크', '안전모', '전학년', '한학기', '기숙사', '도서관']);
+// 두 글자는 「김솔 학생」처럼 이름 뒤에서만, 흔한 낱말(전체·우수·장애·전학 학생 …)은 빼고
+const KIN_TWO = new Set(['장애', '전학', '임원', '도움', '소수', '육상', '진급', '우수', '신입', '모범', '유학', '지각', '조퇴', '정원', '구매', '해당', '대상', '참가', '희망', '일반', '수상', '입상', '선수', '부진', '결석', '탈북', '귀국', '다문', '저소', '위기', '관심', '상담', '교내', '교외', '기숙', '통학', '도보', '급식', '방학', '학년', '학급', '체험', '참여', '모집', '선착', '신청', '지역', '마을', '인근', '근처', '소속', '재학', '졸업', '입학', '예비', '성인', '학부', '한반']);
+const kinName = n => !KIN_WORD.has(n) && (n.length === 2 ? staffName(n) && !KIN_TWO.has(n) : nameCell(n) && !NOT_NAME_END.test(n));
 export const maskNames = t => String(t || '')
   .replace(ROLE_AFTER, (m, pre, n, sp, role) => (nameCell(n) ? `${pre}${MASK}${sp || ' '}${role}` : m))
   .replace(ROLE_BEFORE, (m, role, sp, n) => (nameCell(n) ? `${role}${sp}${MASK}` : m))

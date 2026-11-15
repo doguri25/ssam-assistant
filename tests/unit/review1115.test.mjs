@@ -48,3 +48,13 @@ test('[year-outline-fallthrough] 앞 칸을 이미 쓴 제목은 다음으로 �
   assert.deepEqual(keys('Ⅰ. 목적\nⅡ. 추진 목표 및 방침\nⅢ. 세부 추진 계획\nⅣ. 평가'), ['purpose', 'policy', 'details', 'evaluation']);
   assert.deepEqual(keys('Ⅰ. 목적\nⅡ. 운영 목표\nⅢ. 세부 추진 계획\nⅣ. 평가'), ['purpose', 'x1', 'details', 'evaluation']);
 });
+
+test('[pur-kin-words] 품의 이름 가리기: 「유치원 학부모」「학생 한마당」「학생 인원수」 같은 보통 낱말은 그대로, 두 글자 이름(「김솔 학생」)은 가림', async () => {
+  const { maskNames } = await import('../../web/menus/purchase/intake.js');
+  for (const s of ['유치원 학부모 간담회 다과', '학생 한마당 상품', '학생 인원수 30명', '학생 문화원 견학', '이번주 학생 간식', '정원외 학생 교재', '장학금 학생 선물', '지난주 학생 체험', '전체 학생 간식', '장애 학생 보조 기구', '학생 명찰 30개', '학생 공책 20권'])
+    assert.equal(maskNames(s), s, s);
+  assert.equal(maskNames('김솔 학생 체험학습비'), '○○○ 학생 체험학습비');
+  assert.equal(maskNames('박솔 학부모 상담 다과'), '○○○ 학부모 상담 다과');
+  assert.equal(maskNames('김하늘 학생 체험학습비'), '○○○ 학생 체험학습비');
+  assert.equal(maskNames('학생 이바다 준비물'), '학생 ○○○ 준비물');
+});
