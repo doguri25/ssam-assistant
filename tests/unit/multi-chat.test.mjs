@@ -25,6 +25,6 @@ test('안내: 다면평가를 찾고, 문서·소통 메뉴 설명에 탭 이름
   const a = offlineAnswer('다면평가는 어떻게 써?');
   assert.ok(a && a.go.includes('multi'), JSON.stringify(a));
   const all = guideText();
-  assert.ok(all.includes('문서·소통(쪽지 작성·가정통신문·공문 처리·인수인계서·다면평가'), '메뉴 설명');
+  assert.ok(all.includes('문서·소통(쪽지 작성·가정통신문·공문 처리·회의록·문서 다듬기·인수인계서·다면평가'), '메뉴 설명');
   assert.ok(all.includes('입력 필요') && all.includes('근거자료'), '안내 글');
 });
