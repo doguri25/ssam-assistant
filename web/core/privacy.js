@@ -74,6 +74,7 @@ function maskList(line) {
 const CUE = new RegExp(`^(\\d{1,2}|남|여|남자|여자|${ROLE})$`), HEAD = /^(이름|성명|성 명|학생명|학생 이름)$/;
 const NUMBERED = /^(\s*\d{1,2}[.)]?\s+)([가-힣]{3})(?=\s|$)/;
 const numName = l => { const m = NUMBERED.exec(l); return !!m && cellName(m[2]); };
+const NUM_SEX = /^\s*\d{1,2}[.)]?\s+[가-힣]{3}\s+(?:남|여|남자|여자)(?=\s|$)/;
 export const MASK = '○○○';
 
 /* ---------- 줄 안의 전화번호·전자 우편·주민등록번호 (줄은 남기고 그 자리만) ---------- */
@@ -176,11 +177,11 @@ export function stripNames(text, { keep = null } = {}) {
     rows.forEach((r, k) => { ls[a + k] = r.join('|'); });
     a = b;
   }
-  // 번호 명단 (PDF처럼 칸 구분 없이 「1 김가람 남」이 세 줄 이상 이어짐)
+  // 번호 명단 (PDF처럼 칸 구분 없이 「1 김가람 남」이 세 줄 이상 이어짐 — 이름 뒤에 성별이 붙으면 두 줄도)
   for (let a = 0; a < ls.length;) {
     let b = a;
     while (b < ls.length && numName(ls[b])) b++;
-    if (b - a >= 3) for (let k = a; k < b; k++) { ls[k] = ls[k].replace(NUMBERED, (m, pre) => pre + MASK); masked++; }
+    if (b - a >= 3 || (b - a === 2 && ls.slice(a, b).every(l => NUM_SEX.test(l)))) for (let k = a; k < b; k++) { ls[k] = ls[k].replace(NUMBERED, (m, pre) => pre + MASK); masked++; }
     a = Math.max(b, a + 1);
   }
   return { text: ls.join('\n'), dropped, masked };

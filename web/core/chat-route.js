@@ -1,7 +1,7 @@
 /* 「쌤」 채팅의 글 → 할 일 (스펙 2026-11-06 D·F). 화면 없이 돌아감(시험).
    먼저 앱 규칙(낱말)으로 고르고(routeText), 분명하지 않거나 묻는 글(isQuestion)이면 쌤비서 도우미(chat-assist.js)가 AI로 답하고 할 일을 고름.
    「3번 …」은 행동특성 관찰 메모(parseMemo·maskMemo·memoLine) */
-import { stripNames, maskContacts } from './privacy.js';
+import { stripNames, maskContacts, maskStaff } from './privacy.js';
 import { stripPersonal } from './survey.js';
 import { maskPersons, rosterLine } from './chat-names.js';
 
@@ -270,7 +270,7 @@ export const maskMemo = text => maskLine(text, true);
 /* 채팅 기록·AI로 보내는 글: 전화번호·전자 우편은 그 자리만 가리고(줄을 통째로 빼면 같은 줄 내용까지 없어짐),
    명단·개인정보 열·명단 줄은 빼고(stripPersonal — 이름이 많아 보여도 명단이 아닌 줄은 남김), 줄마다 이름처럼 보이는 말은 가림 */
 export function safeText(text) {
-  const s = stripPersonal(maskContacts(text), { keep: KEEP }).text;
+  const s = stripPersonal(maskStaff(maskContacts(text)).text, { keep: KEEP }).text; // 직함 앞뒤 교직원 이름(「이바다 선생님이」)도
   return s.split('\n').map(l => maskLine(l, false).text).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 /* 메뉴에 넘기는 글: 줄·띄어쓰기는 그대로 두고 전화번호·전자 우편과 사람 이름만 그 자리에서 ○○○로(「박지훈 결석계 가정통신문」 → 「○○○ 결석계 가정통신문」).

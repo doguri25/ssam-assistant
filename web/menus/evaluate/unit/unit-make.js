@@ -131,7 +131,13 @@ export function fixPoints(items) {
 }
 
 /* ---------- 확인할 것 ---------- */
+/* 고칠 것 한 줄: 물음·보기·정답 먼저, 그다음 배점(배점을 정한 문항이 0점이면 — 빈 문항을 더한 뒤 직접 배점을 정했을 때) */
 export function warnOf(it) {
+  const w = contentWarn(it);
+  if (w || !it) return w;
+  return it.points != null && !(Number(it.points) > 0) ? '배점을 정해 주세요(0점이에요).' : '';
+}
+function contentWarn(it) {
   if (!it) return '';
   if (!str(it.question)) return '물음을 써 주세요.';
   if (it.type === 'choice') {
