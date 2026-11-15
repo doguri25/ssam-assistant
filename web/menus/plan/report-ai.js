@@ -106,8 +106,10 @@ export function reportDoc(r, photos = [], captions = []) {
     .filter(([, v]) => String(v || '').trim());
   const blocks = [{ type: 'h', text: '1. 개요' }, { type: 'table', head: true, rows: [['구분', '내용'], ...rows] }];
   let n = 2;
+  // 소제목에 붙어 온 번호(「1. 목적」「Ⅱ. 추진 내용」「가. 성과」)는 떼고 앱이 차례대로 매김(「2. 1. 목적」이 되지 않게)
+  const bare = h => String(h || '').replace(/^\s*(?:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]|\d{1,2}|[가-하])[.)]\s*/, '').trim() || String(h || '');
   for (const s of x.sections || []) {
-    blocks.push({ type: 'h', text: `${n++}. ${s.h}` }, { type: 'p', text: s.lines.map(l => (/^\s*([-·•○※]|\d+[.)]|[가-하][.)])\s*/.test(l) ? l.replace(/^\s*[·•]\s*/, '- ') : `- ${l}`)).join('\n') });
+    blocks.push({ type: 'h', text: `${n++}. ${bare(s.h)}` }, { type: 'p', text: s.lines.map(l => (/^\s*([-·•○※]|\d+[.)]|[가-하][.)])\s*/.test(l) ? l.replace(/^\s*[·•]\s*/, '- ') : `- ${l}`)).join('\n') });
   }
   const items = (photos || []).filter(p => p && p.bytes && p.bytes.length).map((p, i) => ({ ...p, caption: String(captions[i] || '').trim() || String((x.photos || [])[i] || '').trim() }));
   if (items.length) blocks.push({ type: 'h', text: `${n}. 사진 자료` }, { type: 'photos', items });

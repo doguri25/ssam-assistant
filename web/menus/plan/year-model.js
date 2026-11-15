@@ -17,7 +17,7 @@ const SRC = ['lastPlan', 'lastResult', 'guide'];
    작년 계획서의 큰 제목(Ⅰ.·1.)을 차례대로: 목적·방침·세부 추진·일정·예산·평가에 맞는 제목은 그 칸, 맞지 않는 제목(추진 근거·현황 등)은 덧붙임 칸(x1, x2 …).
    큰 제목이 셋보다 적으면 앱의 기본 차례(SECTIONS). 일정·예산 칸은 표로 */
 const SECTION_KEYS = SECTIONS.map(x => x[0]);
-const ROLE = [['purpose', /목적|필요성|배경|취지/], ['policy', /방침|방향/], ['schedule', /일정|월별|시기/], ['budget', /예산|경비|재원|사업비|소요\s*액/],
+const ROLE = [['purpose', /목적|목표|필요성|배경|취지/], ['policy', /방침|방향/], ['schedule', /일정|월별|시기/], ['budget', /예산|경비|재원|사업비|소요\s*액/],
   ['evaluation', /평가|환류|기대\s*효과|성과/], ['details', /세부|추진|운영|실천|내용|활동|방법|계획/]];
 const NOT_ROLE = /근거|관련|현황|개요|실태|분석/;
 export const isExtra = k => /^x\d{1,2}$/.test(String(k || ''));
@@ -26,16 +26,25 @@ export function yearOutline(src) {
   if (top.length < 3) return { items: [], roman: false };
   const used = new Set();
   let n = 0;
+  // 제목마다 가장 맞는 칸 하나(앞 칸이 먼저). 그 칸을 이미 앞 제목이 썼으면 덧붙임 칸(「운영 목표」가 「운영」 때문에 세부 칸을 차지하지 않게)
   const items = top.map(x => {
-    const r = !NOT_ROLE.test(x.title) && ROLE.find(([k, re]) => !used.has(k) && re.test(x.title));
-    if (r) { used.add(r[0]); return { key: r[0], title: x.title }; }
+    const r = !NOT_ROLE.test(x.title) && ROLE.find(([, re]) => re.test(x.title));
+    if (r && !used.has(r[0])) { used.add(r[0]); return { key: r[0], title: x.title }; }
     return { key: 'x' + (++n), title: x.title };
   });
   return { items, roman: /^\s*[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]\.\s*\S/m.test(String(src || '')) };
 }
 const ROMAN = 'ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ';
-/* 초안의 글 칸: 기본 넷 + 목차의 덧붙임 칸 */
-export const textKeys = d => [...TEXT_SECTIONS, ...((d && d.outline) || []).map(o => o.key).filter(isExtra)];
+/* 초안의 글 칸: 기본 넷 + 목차의 덧붙임 칸. 작년(기존) 계획서 목차로 쓴 초안은 목차에 있는 칸만(화면·한글 파일에 나오는 칸 — 없는 칸 글로 지침 「반영됨」을 세거나 검토하지 않게) */
+export const textKeys = d => {
+  const o = ((d && d.outline) || []).map(x => x.key);
+  return o.length ? [...TEXT_SECTIONS.filter(k => o.includes(k)), ...o.filter(isExtra)] : [...TEXT_SECTIONS];
+};
+/* 지침 문장을 넣을 칸: 그 칸이 초안에 있으면 그 칸, 없으면 세부 추진 계획, 그것도 없으면 목차의 첫 글 칸 */
+export function insertKey(draft, section) {
+  const keys = textKeys(draft);
+  return keys.includes(section) ? section : keys.includes('details') ? 'details' : keys[0] || 'details';
+}
 
 const str = v => (typeof v === 'string' ? v : v == null ? '' : typeof v === 'number' ? String(v) : '');
 // AI가 섹션을 목록(배열)으로 주면 줄로 이음
@@ -226,7 +235,7 @@ export function guideStatus(items, draft) {
 
 export function insertSentence(draft, section, sentence) {
   const d = { ...(draft || normDraft({})) };
-  const k = TEXT_SECTIONS.includes(section) ? section : 'details';
+  const k = insertKey(d, section);
   const prev = String(d[k] || '').trimEnd();
   d[k] = (prev ? prev + '\n' : '') + String(sentence || '').trim();
   return d;

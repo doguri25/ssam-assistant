@@ -28,7 +28,10 @@ export function formSlotHTML(key, fallbackHTML) {
 }
 function paint() {
   if (typeof document === 'undefined') return;
+  // 「양식」 고르기를 키보드(화살표)로 바꾸는 중이면 다시 그린 뒤에도 그 칸에 초점(이어서 고를 수 있게)
+  const a = document.activeElement, k = a && a.matches && a.matches('select[data-sf-pick]') ? a.dataset.sfPick : null;
   document.querySelectorAll('.sf-slot').forEach(el => { el.innerHTML = inner(el.dataset.sf, el.dataset.sfFb || ''); });
+  if (k) { const s = [...document.querySelectorAll('select[data-sf-pick]')].find(x => x.dataset.sfPick === k); if (s) s.focus(); }
 }
 async function load() {
   if (C.loading) return;

@@ -16,7 +16,7 @@ import { stepsHTML } from '../../core/steps.js';
 import { keepFiles } from '../../core/keep-files.js';
 import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import { rvBoxHTML, runPlanReview, onRvClick, markDone, dropOpen, hasOpen, clearState } from './plan-review.js';
-import { SECTIONS, TEXT_SECTIONS, yearOutline, textKeys, isExtra, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent, normReview, normGuide, normDraft, overlap, guideStatus, insertSentence, planDoc, planText, textForAI, ownerForAI, fitSchedule } from './year-model.js';
+import { SECTIONS, TEXT_SECTIONS, yearOutline, textKeys, insertKey, isExtra, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent, normReview, normGuide, normDraft, overlap, guideStatus, insertSentence, planDoc, planText, textForAI, ownerForAI, fitSchedule } from './year-model.js';
 
 const STEPS = ['자료 넣기', '작년 평가', '지침 점검', '초안', '일정'];
 const SRC = [
@@ -25,6 +25,8 @@ const SRC = [
   ['guide', '올해 지침·공문', '교육청 지침·공문을 넣거나 붙여넣어 주세요. (선택)']
 ];
 const won = n => Number(n || 0).toLocaleString('ko-KR');
+// AI로 보내는 자료 글: 명단·전화번호 줄과 이름을 거른 뒤, 직함 앞뒤 교직원 이름(「이바다 선생님」「한가람 주무관」)도 ○○○로
+const srcAI = t => textForAI(stripPersonal(t).text);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 let box = null, curTab = 'year';
@@ -186,13 +188,12 @@ function step3() {
   if (busy[plan.id] === 'guide') return `<div class="yp-card"><p class="muted"><span class="spin"></span> 지침에서 꼭 들어가야 할 항목을 찾고 있어요…</p></div>`;
   if (!plan.guide) return `<div class="yp-card"><p class="muted">지침을 아직 살펴보지 않았어요.</p><div class="row"><button class="btn primary" type="button" data-y="guide">지침 항목 뽑기</button></div></div>`;
   const st = guideStatus(plan.guide, plan.draft);
-  const label = Object.fromEntries(SECTIONS);
   return `<div class="yp-card">
       <h3>지침 점검표</h3>
       ${plan.draft ? `<p class="muted">빠진 항목은 [넣기]로 초안에 더할 수 있어요.</p>` : '<p class="banner info"><span class="grow">초안을 만든 뒤 반영 여부를 보여 줘요. 이 항목들은 초안을 쓸 때 함께 넣어요.</span></p>'}
       <ul class="yp-guide" id="ypGuide">${st.map((g, i) => `<li data-g="${i}" class="${!plan.draft ? '' : g.included ? 'in' : 'out'}">
         <div class="yp-guide-h"><b>${esc(g.item)}</b>${plan.draft ? `<span class="yp-tag ${g.included ? 'ok' : 'no'}">${g.included ? '반영됨' : '빠짐'}</span>` : ''}</div>
-        ${plan.draft && !g.included && g.sentence ? `<div class="yp-guide-s"><span class="muted">${esc(label[g.section])}에 넣을 문장: </span>${esc(g.sentence)}
+        ${plan.draft && !g.included && g.sentence ? `<div class="yp-guide-s"><span class="muted">${esc(labelOf(plan.draft, insertKey(plan.draft, g.section)))}에 넣을 문장: </span>${esc(g.sentence)}
           <button class="btn tonal" type="button" data-insert="${i}">넣기</button></div>` : ''}</li>`).join('')}</ul>
       <div class="row"><button class="btn text" type="button" data-y="guide">다시 뽑기</button></div>
     </div>`;
@@ -329,7 +330,7 @@ async function downloadHwpx() {
 /* ---------- AI: 작년 평가 ---------- */
 function reviewPrompt(p) {
   return `[작년 평가]\n학교 업무 연간계획을 돕는 도우미예요. 아래 작년 운영 결과(설문·실적·반성)를 보고 평가해 주세요.\n`
-    + `업무: ${p.name}\n올해 목표: ${textForAI(p.goal)}\n\n작년 결과:\n"""\n${stripPersonal(p.sources.lastResult).text.slice(0, 20000)}\n"""\n\n`
+    + `업무: ${p.name}\n올해 목표: ${textForAI(p.goal)}\n\n작년 결과:\n"""\n${srcAI(p.sources.lastResult).slice(0, 20000)}\n"""\n\n`
     + '규칙:\n- good: 잘된 점 2~4개(짧은 문장)\n- bad: 아쉬운 점 1~4개, 각각 ideas에 올해 개선 방향 2~3개(실행할 수 있는 짧은 문장)\n'
     + '- numbers: 결과에 나온 수치 변화(없으면 빈 배열). 결과에 없는 숫자는 지어내지 않음\n\n'
     + '답은 JSON 하나만: {"good":["…"],"bad":[{"text":"…","ideas":["…","…"]}],"numbers":["…"]}';
@@ -353,7 +354,7 @@ async function runReview() {
 /* ---------- AI: 지침 점검 ---------- */
 function guidePrompt(p) {
   return `[지침 점검]\n학교 업무 연간계획을 돕는 도우미예요. 아래 올해 지침·공문에서 「${p.name}」 계획서에 꼭 들어가야 할 항목을 3~8개 뽑아 주세요.\n\n`
-    + `지침:\n"""\n${stripPersonal(p.sources.guide).text.slice(0, 15000)}\n"""\n\n`
+    + `지침:\n"""\n${srcAI(p.sources.guide).slice(0, 15000)}\n"""\n\n`
     + '규칙:\n- item: 항목 이름(짧게)\n- keywords: 계획서에 그대로 나올 만한 핵심어 2~3개\n- sentence: 계획서에 넣을 한 문장\n'
     + '- section: purpose(목적)·policy(방침)·details(세부 추진 계획)·evaluation(평가 계획) 중 그 문장이 들어갈 곳\n'
     + '- 지침에 없는 항목은 지어내지 않음\n\n답은 JSON 배열 하나만: [{"item":"…","keywords":["…","…"],"sentence":"…","section":"details"}]';
@@ -389,16 +390,18 @@ function draftPrompt(p) {
     p.guide && p.guide.length && `지침에서 꼭 넣을 항목:\n${p.guide.map(g => `- ${g.item}: ${g.sentence}`).join('\n')}`
   ].filter(Boolean).join('\n');
   const O = yearOutline(p.sources.lastPlan);
+  // 작년(기존) 계획서 목차로 쓰면 그 목차에 있는 글 칸만 씀(없는 칸 글은 화면·한글 파일에 나오지 않음)
+  const keys = O.items.length ? textKeys({ outline: O.items }) : TEXT_SECTIONS;
+  const KO = { purpose: '목적', policy: '방침', details: '세부 추진 계획', evaluation: '평가 계획' };
   return `[연간계획 초안]\n학교 업무 연간계획서 초안을 써 주세요.\n\n${lines}\n\n`
-    + (p.sources.lastPlan.trim() ? `작년(기존) 계획서${O.items.length ? ' — 이 계획서의 목차·짜임·문체를 그대로 따름' : '(참고만)'}:\n"""\n${stripPersonal(p.sources.lastPlan).text.slice(0, 12000)}\n"""\n\n` : '')
+    + (p.sources.lastPlan.trim() ? `작년(기존) 계획서${O.items.length ? ' — 이 계획서의 목차·짜임·문체를 그대로 따름' : '(참고만)'}:\n"""\n${srcAI(p.sources.lastPlan).slice(0, 12000)}\n"""\n\n` : '')
     + (O.items.length ? `작년(기존) 계획서 목차(이 차례·제목 그대로 씀. 제목은 앱이 붙이니 칸에는 그 제목 아래 내용만):\n${O.items.map((o, i) => `${i + 1}. ${o.title} → ${o.key}`).join('\n')}\n\n` : '')
-    + '규칙:\n- purpose(목적)·policy(방침)·details(세부 추진 계획)·evaluation(평가 계획)'
-    + O.items.filter(o => isExtra(o.key)).map(o => `·${o.key}(${o.title})`).join('')
+    + '규칙:\n- ' + keys.map(k => `${k}(${KO[k] || (O.items.find(o => o.key === k) || {}).title || k})`).join('·')
     + (O.items.length ? '은 작년(기존) 계획서의 그 제목 아래 글과 같은 짜임(「가.」「1)」 목록 차례·줄 수)과 문체(「~한다」)로 씀\n' : '은 학교 계획서 문체(「~한다」, 「가.」「1)」 목록)로 씀\n')
     + '- 작년 계획서 문장을 그대로 옮기지 말고 올해 목표·지침 표현으로 새로 씀. 단, 법령·근거 문장(「~법 제○조」 등)은 그대로 둠\n'
     + `- schedule: 6~12개, 각 일정의 date는 ${p.year}-03-01 ~ ${p.year + 1}-02-28 사이 평일 'YYYY-MM-DD'\n`
     + '- budget: 항목·금액(원, 숫자)·비고. 예산이 주어지면 합계를 그 안으로\n- 메모에 없는 숫자·사실은 지어내지 않음\n\n'
-    + `답은 JSON 하나만: {"purpose":"…","policy":"…","details":"…","schedule":[{"title":"…","date":"YYYY-MM-DD"}],"budget":[{"name":"…","amount":0,"note":"…"}],"evaluation":"…"${O.items.filter(o => isExtra(o.key)).map(o => `,"${o.key}":"…"`).join('')}}`;
+    + `답은 JSON 하나만: {${keys.filter(k => k !== 'evaluation' && !isExtra(k)).map(k => `"${k}":"…",`).join('')}"schedule":[{"title":"…","date":"YYYY-MM-DD"}],"budget":[{"name":"…","amount":0,"note":"…"}]${keys.filter(k => k === 'evaluation' || isExtra(k)).map(k => `,"${k}":"…"`).join('')}}`;
 }
 async function runDraft() {
   const id = plan.id;
@@ -577,7 +580,7 @@ document.addEventListener('click', e => {
   if (ins && plan.guide && plan.draft) {
     const g = plan.guide[+ins.dataset.insert];
     // 넣은 칸의 아직 고르지 않은 검토 의견은 지움(손으로 고친 것과 같음 — [검토 안 쓰기]가 넣은 문장을 덮지 않게)
-    if (g) { plan.draft = insertSentence(plan.draft, g.section, g.sentence); plan.rv = dropOpen(plan.rv, g.section); unconfirm(); persist(); renderMain(); toast('초안에 넣었어요'); }
+    if (g) { const k = insertKey(plan.draft, g.section); plan.draft = insertSentence(plan.draft, k, g.sentence); plan.rv = dropOpen(plan.rv, k); unconfirm(); persist(); renderMain(); toast('초안에 넣었어요'); }
     return;
   }
   const cp = e.target.closest('[data-copy]');
