@@ -7,6 +7,8 @@ section[data-menu="evaluate"].ev-new > :not(.unit-box):not(.act-box):not(.chk-bo
 .un-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
 .un-card{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;cursor:pointer}
 .un-card .un-c-t{flex:1 1 100%;font-size:15.5px}
+.un-card .un-c-open{all:unset;cursor:pointer}
+.un-card .un-c-open:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:4px}
 .un-card .grow{flex:1}
 .un-card .un-c-acc{flex:1 1 100%;font-size:13px}
 .un-year{margin:10px 0 0;font-weight:600;color:var(--ink2,inherit)}

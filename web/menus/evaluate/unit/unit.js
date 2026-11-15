@@ -119,8 +119,9 @@ export const viewSeg = () => `<div class="seg un-seg" role="group" aria-label="�
 const accOf = s => accuracyText(s.acc || null, { finished: s.done, graded: s.n > 0 });
 function listHTML() {
   const list = listTests(), year = yearText(yearAccuracy(list));
+  // 카드 어디를 눌러도 열림, 키보드는 제목 단추로(Tab으로 닿고 Enter로 엶)
   const cards = list.map(s => `<li class="yp-card un-card" data-un-open="${esc(s.id)}">
-    <b class="un-c-t">${esc(s.title)}</b>
+    <b class="un-c-t"><button type="button" class="un-c-open">${esc(s.title)}</button></b>
     <span class="muted">${esc(s.date)} · 학생 ${s.n}명${s.avg != null ? ` · 반 평균 ${s.avg}점` : ''}</span>${accOf(s) ? `<span class="muted un-c-acc">${esc(accOf(s))}</span>` : ''}
     <span class="chip${s.done ? ' ok' : ''}">${s.done ? '마침' : '채점 중'}</span>
     <span class="grow"></span><button class="btn text" type="button" data-un="del" data-id="${esc(s.id)}">지우기</button></li>`).join('');
@@ -452,7 +453,7 @@ function fillSample() {
 document.addEventListener('click', e => {
   if (!visible() || !box.contains(e.target)) return;
   const v = e.target.closest('[data-unv]');
-  if (v) { U.view = v.dataset.unv; render(); return; }
+  if (v) { U.view = v.dataset.unv; render(); const f = box.querySelector(`[data-unv="${U.view}"]`); if (f) f.focus({ preventScroll: true }); return; } // 키보드로 바꿔도 초점이 고른 칸에
   if (e.target.closest('#unNew')) { openNew(); return; }
   const st = e.target.closest('[data-step]');
   if (st && U.view === 'test') { goStep(Number(st.dataset.step)); return; }

@@ -130,12 +130,15 @@ function render() {
   box.innerHTML = `<div class="m-page eb-page">${head}${band}<div class="eb-scroll"><div class="eb-cols">${cols}</div></div>${fold}</div>`;
 }
 
-/* 가로 메뉴 끝 「선생님 차례 n」 */
+/* 가로 메뉴 끝 「선생님 차례 n」: 평가 메뉴를 볼 때만(평가에서 누른 단추로 다른 메뉴에 간 뒤 그 메뉴 가로 메뉴에 붙지 않게) */
+const evalSection = () => document.querySelector('section[data-menu="evaluate"]');
 function drawPill() {
   const tabs = document.getElementById('menuTabs');
   if (!tabs) return;
   const old = tabs.querySelector('.ev-turn-pill');
   if (old) old.remove();
+  const sec = evalSection();
+  if (!sec || sec.hidden) return;
   let n = 0;
   try { n = pendingTotal(); } catch (e) { n = 0; }
   if (!n) return;
@@ -150,10 +153,12 @@ function drawSwitch(section, tab) {
     sw = document.createElement('div'); sw.className = 'rec-switch';
     section.prepend(sw);
   }
+  const had = !!(document.activeElement && sw.contains(document.activeElement)); // 칸 안 전환을 눌러(키보드 Enter 등) 바꿨으면 초점을 고른 칸에
   sw.hidden = !REC.includes(tab);
   if (sw.hidden) return;
   sw.innerHTML = `<div class="rs-seg" role="group" aria-label="생활기록부 글">${REC.map(id => `<button type="button" data-rec-go="${id}" aria-pressed="${id === tab}">${REC_LABEL[id]}</button>`).join('')}</div>
     <span class="ev-sub">${REC_SUB[tab]}</span>`;
+  if (had) { const b = sw.querySelector('[aria-pressed="true"]'); if (b) b.focus({ preventScroll: true }); }
 }
 
 function enter(tab, section) {
@@ -170,11 +175,11 @@ if (typeof document !== 'undefined') {
     const sec = document.querySelector('section[data-menu="evaluate"]');
     if (sec && e.detail) enter(e.detail.tab, sec);
   });
-  // 확인 화면·채점 표에서 칸을 정하면 「선생님 차례 n」을 다시 셈(평가 칸에서 누른 뒤 잠깐 뒤에 한 번)
+  // 확인 화면·채점 표에서 칸을 정하면 「선생님 차례 n」을 다시 셈(평가 칸이나 그 위에 뜬 창 — 칸 확인 창 등 — 에서 누른 뒤 잠깐 뒤에 한 번)
   let pillTimer = 0;
   document.addEventListener('click', e => {
-    const sec = e.target && e.target.closest && e.target.closest('section[data-menu="evaluate"]');
-    if (!sec) return;
+    const t = e.target, sec = evalSection();
+    if (!sec || sec.hidden || !t || !t.closest || !(sec.contains(t) || t.closest('#sheetRoot'))) return;
     clearTimeout(pillTimer);
     pillTimer = setTimeout(drawPill, 600);
   }, true);

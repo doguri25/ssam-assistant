@@ -152,6 +152,31 @@ await run('unit-confirm', [
     assert(cell[0] >= 44 && cell[1] >= 44, '칸 ' + cell);
     await page.setViewportSize({ width: 1280, height: 860 });
   }],
+  ['교과를 적지 않은 평가만 마쳤으면 [평어 초안 미리 보기]에서 교과를 적으라고 알림(「마친 단원평가가 없어요」가 아님)', async () => {
+    await page.evaluate(async () => {
+      const M = await import('./menus/evaluate/unit/unit-model.js'), u = await import('./menus/evaluate/unit/unit.js');
+      const x = M.getTest('m2'); x.id = 'nosub'; x.done = true; x.meta = { ...x.meta, subject: '' }; M.saveTest(x);
+      u.openTest('nosub', 3);
+    });
+    await page.click(`${V} [data-go-record]`);
+    await page.waitForSelector(`${V} .un-pyview`);
+    const txt = await page.textContent(`${V} .un-pyview`);
+    assert(!txt.includes('마친 단원평가가 없어요') && txt.includes('교과를 적'), txt.replace(/\s+/g, ' ').slice(0, 200));
+    await page.click(`${V} [data-rv="table"]`);
+    await page.waitForSelector(`${V} .un-one`);
+  }],
+  ['키보드: 평가 목록에서 Tab으로 평가 카드에 가서 Enter로 그 평가를 엶', async () => {
+    await page.click(`${V} [data-unv="list"]`);
+    await page.waitForSelector(`${V} .un-list`);
+    await page.focus(`${V} [data-un="sample"]`);
+    await page.keyboard.press('Tab');
+    const at = await page.evaluate(() => { const a = document.activeElement, c = a && a.closest('[data-un-open]'); return c ? `${c.dataset.unOpen}:${a.dataset.un || 'open'}` : a.outerHTML.slice(0, 80); });
+    assert(/^(m2|nosub):open$/.test(at), '[예시로 채우기] 다음 초점: ' + at);
+    await page.keyboard.press('Enter');
+    await page.waitForSelector(`${V} #unFlow`);
+    assert(await page.textContent(`${V} .un-title`) === '3학년 수학 2단원 나눗셈 (1회)' || at.startsWith('nosub'), await page.textContent(`${V} .un-title`));
+    await page.click(`${V} [data-un="back"]`);
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();

@@ -130,10 +130,11 @@ function pyState(all) {
   });
   return { subs, mine, saved, ids, chosen, students };
 }
-// 근거(ev: { list, sentences })는 글이 있을 때만 평어 옆에 둠 — 칸을 비우면 근거도 지움
-const pyOut = list => Object.fromEntries(list.map(s => [s.no, { level: s.level, text: s.text, manual: s.manual, ...(s.ev && s.text ? { ev: s.ev } : {}) }]));
+// 근거(ev: { list, sentences })는 글이 있을 때만 평어 옆에 둠 — 칸을 비우면 근거도 지움.
+// 지금 목록에 없는 학생(그 학생이 본 평가를 뺐음·결석 등)의 저장한 평어는 그대로 둠(saved — 평가를 다시 넣으면 돌아옴)
+const pyOut = (list, saved = {}) => ({ ...saved, ...Object.fromEntries(list.map(s => [s.no, { level: s.level, text: s.text, manual: s.manual, ...(s.ev && s.text ? { ev: s.ev } : {}) }])) });
 function savePy(st, patch = {}) {
-  const v = { off: st.mine.map(t => t.id).filter(id => !st.ids.includes(id)), cuts: st.saved.cuts, students: pyOut(st.students), ...patch };
+  const v = { off: st.mine.map(t => t.id).filter(id => !st.ids.includes(id)), cuts: st.saved.cuts, students: pyOut(st.students, st.saved.students), ...patch };
   savePyeongeo(R.pySubject, v);
 }
 /* 고치는 칸 아래 근거 표시(근거가 없는 옛 평어는 그대로 아무것도 없음) */
@@ -198,7 +199,7 @@ async function writePyeongeo() {
         s.text = res[s.no].text;
         s.ev = res[s.no].sentences ? { list: lists[s.no], sentences: res[s.no].sentences } : null; // 예전 모양 답이면 근거 없이
       }
-      savePyeongeo(subject, { off: now.mine.map(t => t.id).filter(id => !now.ids.includes(id)), cuts: cur.cuts, students: pyOut(now.students) });
+      savePyeongeo(subject, { off: now.mine.map(t => t.id).filter(id => !now.ids.includes(id)), cuts: cur.cuts, students: pyOut(now.students, cur.students) });
     }
   } catch (e) {
     toast(e && e.code === 'bad_json' ? 'AI 답을 읽지 못했어요. 다시 해 보세요.' : ai.errorMessage(e && e.code, e), 6000);
@@ -229,11 +230,13 @@ function headHTML(all, tests) {
     <div class="m-head un-rintro">${introLine()}</div><div class="row un-rbar">${viewSeg()}${filtersHTML(all)}</div>`;
 }
 const EMPTY = '<div class="yp-card"><p class="muted" style="margin:0">마친 단원평가가 없어요. 평가 목록에서 채점을 마치면 여기에 모여요. 바로 보려면 [예시로 채우기].</p></div>';
+/* 마친 평가는 있는데 교과를 적은 평가가 없음(교과 평어는 교과마다 씀) */
+const NO_SUBJECT = '<div class="yp-card"><p class="muted" style="margin:0">교과를 적은 단원평가가 없어요. 평가를 열어 1단계 「평가 정보」에 교과를 적으면 교과 평어를 쓸 수 있어요.</p></div>';
 function html() {
   const all = doneTests(), list = filterTests(all, { subject: R.subject, term: R.term }), tests = loaded(list);
   if (R.rv === 'pyeongeo') {
     const body = all.length ? pyHTML(loaded(all)) : '';
-    return `<div class="un-results un-pyview"><div class="un-top"><button class="btn text" type="button" data-rv="table">‹ 결과</button></div><div class="m-head"><h2 tabindex="-1">교과 평어로 넘기기</h2><p class="ev-sub">채점을 마친 단원평가로 학생마다 수준과 평어를 써요.</p></div>${body || EMPTY}</div>`;
+    return `<div class="un-results un-pyview"><div class="un-top"><button class="btn text" type="button" data-rv="table">‹ 결과</button></div><div class="m-head"><h2 tabindex="-1">교과 평어로 넘기기</h2><p class="ev-sub">채점을 마친 단원평가로 학생마다 수준과 평어를 써요.</p></div>${body || (all.length ? NO_SUBJECT : EMPTY)}</div>`;
   }
   if (R.stuNo != null && !summaryTable(tests).rows.some(r => r.no === R.stuNo)) R.stuNo = null;
   const main = tests.length ? `<div class="un-rgrid">${tableHTML(tests)}<aside class="un-rside" aria-label="반 전체">${domainHTML(tests)}${gapHTML(tests, { subject: R.subject })}${pyCardHTML(tests)}</aside></div>` : EMPTY;
@@ -277,20 +280,23 @@ document.addEventListener('click', e => {
   else if (a === 'pyCopy') { const s = pyState(loaded(doneTests())).students.find(x => x.no === Number(b.dataset.no)); if (s) copy(s.text); }
   else if (a === 'pyCopyAll') copy(pyState(loaded(doneTests())).students.filter(s => s.text).map(s => `${s.no}번\t${s.text}`).join('\n'));
 });
+/* 고르기 칸·체크 칸을 바꿔 다시 그리면 같은 칸에 초점을 돌려 둠(키보드 화살표·스페이스로 이어서 고치게) */
+const refocus = sel => { const f = getBox() && getBox().querySelector(sel); if (f) f.focus({ preventScroll: true }); };
 document.addEventListener('change', e => {
   const box = getBox();
   if (!box || !box.contains(e.target) || !inView()) return;
   const el = e.target;
-  if (el.id === 'unFSubject') { R.subject = el.value; render(); }
-  else if (el.id === 'unFTerm') { R.term = Number(el.value); render(); }
+  if (el.id === 'unFSubject') { R.subject = el.value; render(); refocus('#unFSubject'); }
+  else if (el.id === 'unFTerm') { R.term = Number(el.value); render(); refocus('#unFTerm'); }
   else if (el.id === 'unStuNo') { R.stuNo = Number(el.value); render(); const f = getBox().querySelector('#unStuNo'); if (f) f.focus(); }
-  else if (el.id === 'unPySubject') { R.pySubject = el.value; render(); }
+  else if (el.id === 'unPySubject') { R.pySubject = el.value; render(); refocus('#unPySubject'); }
   else {
     const st = pyState(loaded(doneTests()));
     if (!R.pySubject) return;
     if (el.dataset.pytest) {
       const ids = new Set(st.ids); if (el.checked) ids.add(el.dataset.pytest); else ids.delete(el.dataset.pytest);
       savePy({ ...st, ids: st.mine.map(t => t.id).filter(id => ids.has(id)) }); render();
+      refocus(`input[data-pytest="${CSS.escape(el.dataset.pytest)}"]`);
     } else if (['unCutTop', 'unCutHigh', 'unCutMid'].includes(el.id)) {
       const k = { unCutTop: 'top', unCutHigh: 'high', unCutMid: 'mid' }[el.id];
       const cuts = { ...st.saved.cuts, [k]: Math.max(0, Math.min(100, Number(el.value) || 0)) };

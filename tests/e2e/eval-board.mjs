@@ -100,6 +100,55 @@ await run('eval-board', [
     const band = (await page.textContent(`${B} .ev-band b`)).match(/\d+/)[0], pill = (await page.textContent('#menuTabs .ev-turn-pill')).match(/\d+/)[0];
     assert(band === pill, `띠 ${band} · 가로 메뉴 ${pill}`);
   }],
+  ['단원평가 칸 확인 창에서 칸을 정하면 가로 메뉴 「선생님 차례 n」을 다시 셈', async () => {
+    await page.evaluate(async () => {
+      const M = await import('./menus/evaluate/unit/unit-model.js');
+      const items = [1, 2].map(no => ({ no, content: no === 1 ? '덧셈하기' : '뺄셈하기', domain: '계산', type: 'short', answer: no === 1 ? '5' : '3', points: 50, criteria: '', pages: '' }));
+      const x = M.newTest({ meta: { subject: '수학', grade: 3, unitNo: 1, unitName: '덧셈과 뺄셈', round: 1, date: '2026-11-10' }, key: { domains: ['계산'], items } });
+      x.id = 'flag-1';
+      const cell = (read, pts, flag) => ({ read, pts, ai: pts, flag, why: '', ok: !flag, manual: false });
+      x.students = [{ no: 1, skip: false, status: 'done', good: '', cheer: '', items: { 1: cell('5?', 0, 'low'), 2: cell('3', 50, '') } },
+        { no: 2, skip: false, status: 'done', good: '', cheer: '', items: { 1: cell('5', 50, ''), 2: cell('삼', 0, 'similar') } }];
+      M.saveTest(x);
+    });
+    await page.click('#menuTabs [data-tab="board"]');
+    const pill = () => page.evaluate(() => { const p = document.querySelector('#menuTabs .ev-turn-pill'); return p ? p.textContent.trim() : ''; });
+    await page.waitForFunction(() => /선생님 차례 3/.test((document.querySelector('#menuTabs .ev-turn-pill') || {}).textContent || ''));
+    await page.click(`${B} .eb-card[data-eb-id="flag-1"] [data-eb-open]`);
+    await page.waitForSelector('.unit-box:not([hidden]) [data-cell="1-1"]');
+    await page.click('.unit-box [data-cell="1-1"]');
+    await page.waitForSelector('#sheetRoot #unCellOk');
+    await page.waitForTimeout(800); // 칸을 누른 뒤 잠깐 뒤의 셈이 지나간 뒤에 [확인]
+    await page.click('#sheetRoot #unCellOk');
+    await page.waitForTimeout(900);
+    assert(await pill() === '선생님 차례 2', '칸을 정한 뒤 가로 메뉴: ' + await pill());
+  }],
+  ['평가 화면에서 다른 메뉴로 가면(AI로 보낸 글 보기) 그 메뉴 가로 메뉴에 「선생님 차례」가 붙지 않음', async () => {
+    await page.waitForSelector('.unit-box .un-gmore .ai-note summary');
+    await page.click('.unit-box .un-gmore .ai-note summary');
+    await page.click('.unit-box .un-gmore [data-go-ailog]');
+    await page.waitForFunction(() => document.querySelector('#menuTitle').textContent === '설정');
+    await page.waitForTimeout(900);
+    assert(await page.locator('#menuTabs .ev-turn-pill').count() === 0, '설정 가로 메뉴: ' + await tabs());
+    await page.click('nav.app-side [data-menu-go="evaluate"]');
+    await page.waitForFunction(() => /선생님 차례 2/.test((document.querySelector('#menuTabs .ev-turn-pill') || {}).textContent || ''));
+  }],
+  ['키보드: 가로 메뉴·생활기록부 칸 안 전환을 Enter로 바꿔도 초점이 바꾼 칸에 남음', async () => {
+    const act = () => page.evaluate(() => { const a = document.activeElement; return !a || a === document.body ? 'BODY' : `${a.closest('#menuTabs') ? 'tabs' : a.closest('.rec-switch') ? 'rec' : 'other'}:${a.textContent.trim()}`; });
+    await page.click('#menuTabs [data-tab="board"]');
+    await page.focus('#menuTabs [data-tab="unit"]');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('.unit-box:not([hidden])');
+    assert(await act() === 'tabs:단원평가', '가로 메뉴 Enter 뒤 초점: ' + await act());
+    await page.keyboard.press('Tab');
+    assert(await act() === 'tabs:활동지', 'Tab으로 다음 칸: ' + await act());
+    await page.click('#menuTabs [data-fold="rec"]');
+    await page.waitForSelector('.rec-switch:not([hidden])');
+    await page.focus('.rec-switch [data-rec-go="cc"]');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('.rec-switch [aria-pressed="true"]').textContent === '창의적 체험활동');
+    assert(await act() === 'rec:창의적 체험활동', '칸 안 전환 Enter 뒤 초점: ' + await act());
+  }],
   ['1280: 행동특성 글 쓰기·평가지 채점 확인 화면을 「쌤」 버튼이 가리지 않음(처음 화면·내려도)', async () => {
     const S = 'section[data-menu="evaluate"] :is(button, input, select, textarea, li, p)';
     const check = async (scroller, where) => {

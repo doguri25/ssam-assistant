@@ -163,6 +163,60 @@ await run('unit-results', [
     assert(await page.isChecked(`${V} input[data-pytest="later"]`), '새 평가가 빠짐');
     assert(!(await page.isChecked(`${V} input[data-pytest="sample-2"]`)), '뺀 평가가 돌아옴');
   }],
+  ['평가를 빼서 목록에서 사라진 학생의 평어는 다른 칸을 고쳐도 지워지지 않음(다시 넣으면 그대로)', async () => {
+    // 7번은 이 평가만 봄(결석 등)
+    await page.evaluate(async () => {
+      const m = await import('./menus/evaluate/unit/unit-model.js');
+      const x = m.getTest('sample-1'); x.id = 'only7'; x.meta = { ...x.meta, round: 4, date: '2026-10-29', sample: false };
+      x.students = [{ ...x.students[0], no: 7 }]; m.saveTest(x);
+    });
+    await page.reload(); await page.waitForTimeout(500); await go();
+    await page.click(`${V} [data-unv="results"]`); await page.click(`${V} [data-rv="pyeongeo"]`);
+    await page.fill(`${V} textarea[data-py="7"]`, '7번 평어임.'); await page.dispatchEvent(`${V} textarea[data-py="7"]`, 'change');
+    await page.uncheck(`${V} input[data-pytest="only7"]`);
+    await page.waitForFunction(v => !document.querySelector(`${v} textarea[data-py="7"]`), V);
+    // 다른 학생 칸을 고치면(그 교과 평어를 다시 저장) 7번 글이 남아 있어야 함
+    await page.fill(`${V} textarea[data-py="1"]`, '1번 다시 고친 평어임.'); await page.dispatchEvent(`${V} textarea[data-py="1"]`, 'change');
+    await pick('select[data-pylv="3"]', 'mid');
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:unit:pyeongeo:국어')).students);
+    assert(saved[7] && saved[7].text === '7번 평어임.', '7번 평어가 지워짐: ' + JSON.stringify(saved[7]));
+    assert(saved[1].text === '1번 다시 고친 평어임.' && saved[3].level === 'mid', '고친 칸: ' + JSON.stringify([saved[1], saved[3]]));
+    await page.check(`${V} input[data-pytest="only7"]`);
+    await page.waitForSelector(`${V} textarea[data-py="7"]`);
+    assert(await page.inputValue(`${V} textarea[data-py="7"]`) === '7번 평어임.', '다시 넣으면 7번 평어가 없음');
+  }],
+  ['키보드: 평가 고르기·교과·학기 거르기·결과/평가 목록을 바꿔도 초점이 그 칸에 남음', async () => {
+    const act = () => page.evaluate(() => { const a = document.activeElement; return !a || a === document.body ? 'BODY' : a.id || (a.dataset && (a.dataset.unv || a.dataset.pytest)) || a.tagName; });
+    await page.focus(`${V} input[data-pytest="only7"]`);
+    await page.keyboard.press('Space');
+    assert(!(await page.isChecked(`${V} input[data-pytest="only7"]`)) && await act() === 'only7', '평가 고르기 뒤 초점: ' + await act());
+    await page.keyboard.press('Space');
+    assert(await page.isChecked(`${V} input[data-pytest="only7"]`), '다시 고름');
+    await page.focus(`${V} #unPySubject`);
+    await page.keyboard.press('ArrowDown');
+    assert(await page.inputValue(`${V} #unPySubject`) === '수학' && await act() === 'unPySubject', '평어 교과 뒤 초점: ' + await act());
+    await page.keyboard.press('ArrowUp');
+    assert(await page.inputValue(`${V} #unPySubject`) === '국어', '국어로');
+    await page.click(`${V} [data-rv="table"]`);
+    await page.focus(`${V} #unFTerm`);
+    await page.keyboard.press('ArrowDown');
+    assert(await page.inputValue(`${V} #unFTerm`) === '1' && await act() === 'unFTerm', '학기 거르기 뒤 초점: ' + await act());
+    await page.keyboard.press('ArrowUp');
+    assert(await page.inputValue(`${V} #unFTerm`) === '0', '학기 전체로');
+    await page.focus(`${V} #unFSubject`);
+    await page.keyboard.press('ArrowDown');
+    assert(await page.inputValue(`${V} #unFSubject`) === '국어' && await act() === 'unFSubject', '교과 거르기 뒤 초점: ' + await act());
+    await page.keyboard.press('ArrowUp');
+    await page.focus(`${V} [data-unv="list"]`);
+    await page.keyboard.press('Enter');
+    await page.waitForSelector(`${V} .un-list`);
+    assert(await act() === 'list', '평가 목록 뒤 초점: ' + await act());
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector(`${V} .un-one`);
+    assert(await act() === 'results', '결과 뒤 초점: ' + await act());
+    await page.click(`${V} [data-rv="pyeongeo"]`); // 다음 시험이 평어 보기에서 시작
+  }],
   ['좁은 화면(360px) 가로 스크롤 없음', async () => {
     await page.click(`${V} [data-rv="table"]`);
     await page.setViewportSize({ width: 360, height: 800 });

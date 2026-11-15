@@ -137,6 +137,8 @@ function drawTabs(m) {
   const el = $('#menuTabs');
   el.setAttribute('aria-label', `${m.label} 메뉴`);
   el.hidden = !m.tabs.length; // 오늘은 탭 없음
+  // 가로 메뉴 칸을 눌러(키보드 Enter 등) 바꾸면 다시 그린 뒤에도 초점이 지금 칸에 남게
+  const had = !!(document.activeElement && el.contains(document.activeElement));
   // 접는 탭(평가 생활기록부): 같은 묶음은 첫 자리에 한 칸만 — 지금 그 묶음이면 지금 탭, 아니면 마지막으로 연 탭으로 감
   const seen = new Set();
   el.innerHTML = m.tabs.map(t => {
@@ -149,6 +151,7 @@ function drawTabs(m) {
   // 휴대폰의 가로 스크롤 칩: 지금 탭이 보이게 (넘칠 때만 — 페이지는 움직이지 않음)
   const b = el.querySelector('[aria-current="page"]');
   if (b && el.scrollWidth > el.clientWidth) el.scrollLeft = Math.max(0, b.offsetLeft - (el.clientWidth - b.offsetWidth) / 2);
+  if (had && b && !el.hidden) b.focus({ preventScroll: true });
 }
 
 function drawSide() {
