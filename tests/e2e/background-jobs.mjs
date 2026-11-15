@@ -407,6 +407,20 @@ await run('background-jobs', [
     await until(async () => (await dots()) === '', 5000, '점이 사라짐');
     delay = 0;
   }],
+  ['평가 메뉴의 AI 부르기를 업무 없이 logAs로 불러도(평가지 채점 검토) 점은 그 업무 메뉴(평가)에', async () => {
+    delay = 1500;
+    await goTo('purchase');
+    await page.evaluate(() => {
+      const model = window.SSAM.ai.providers().find(p => p.id === 'claude').models[0][0]; // 모델 이름은 앱 목록에서
+      window.__rv2 = window.SSAM.ai.generate('[검토 시험]', { use: { engine: 'claude', model }, role: 'review', logAs: 'grade' });
+    });
+    await until(() => waiting > 0, 5000, '검토 요청');
+    await goTo('plan');
+    assert(await dots() === 'evaluate', '점: ' + await dots());
+    await page.evaluate(() => window.__rv2);
+    await until(async () => (await dots()) === '', 5000, '점이 사라짐');
+    delay = 0;
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();
