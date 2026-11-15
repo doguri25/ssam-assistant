@@ -257,6 +257,15 @@ await run('eval-check', [
     await page.waitForFunction(() => document.activeElement && document.activeElement.matches('textarea[data-py="1"]'));
     assert(await tabNow() === 'unit', await tabNow());
   }],
+  ['단원평가 평어만 볼 때 [나이스 차례로 복사하러 가기]는 교과 평어 학생별 화면(그 [나이스 차례로 복사])으로 — 창체가 아님', async () => {
+    await goCheck();
+    await page.selectOption(`${B} #chkSrc`, 'unit');
+    await page.click(`${B} [data-chk-neis]`);
+    await page.waitForFunction(() => document.querySelector('section[data-menu="evaluate"] [data-py="neis"]')?.checkVisibility(), null, { timeout: 8000 });
+    assert(await page.evaluate(() => !!document.querySelector('section[data-menu="evaluate"] [data-py="neis"]')), '학생별 화면이 아님: ' + await tabNow());
+    await goCheck();
+    await page.selectOption(`${B} #chkSrc`, '');
+  }],
   ['AI 키가 없으면 [AI로 고치기]는 짧은 안내', async () => {
     await page.evaluate(() => localStorage.setItem('ssam:engine', JSON.stringify({ engine: '', keys: {}, remember: true })));
     await page.reload(); await page.waitForTimeout(500);

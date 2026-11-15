@@ -6910,7 +6910,7 @@ window.SSAM = {
     select(no) { const s = HK.students.find(x => x.no === no); if (s) { HK.sel = s.id; renderHK(); } }
   },
   // 생기부 기재 점검(check/check.js): 글 모으기·고친 글 쓰기·그 글로 가기 (위 「생기부 기재 점검 다리」)
-  evalCheck: { items: checkItems, apply: checkApply, show: checkShow },
+  evalCheck: { items: checkItems, apply: checkApply, show: checkShow, pyStudents: () => { PYR.view = 'stu'; PYR.edit = false; PYR.recs = null; } },
   storeMode: () => Store.mode, // 둘러보기: 평가 자료가 계정 저장소(db)면 체험 학년도로 나뉘지 않음
   // 평가지 채점 한꺼번에 넣기(gr-bundle.js)
   gr: { putBundle: b => grPutBundle(b), refresh: () => { if (S.mode === 'gr') renderGRSetup(); }, mask: () => (GR.settings.maskOn ? GR.settings.mask : []),

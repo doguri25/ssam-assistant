@@ -29,8 +29,8 @@ const SS = () => window.SSAM || {};
 const SRC = [['py', '교과 평어'], ['cc', '창의적 체험활동'], ['hk', '행동특성'], ['gr', '평가지 채점'], ['unit', '단원평가 평어']];
 const SRC_SHORT = { py: '교과 평어', cc: '창체', hk: '행동특성', gr: '평가지 채점', unit: '단원평가 평어' };
 const TAB = { py: 'pyeongeo', cc: 'cc', hk: 'hk', gr: 'gr', unit: 'unit' };
-// [나이스 차례로 복사하러 가기]: 그 화면 글만 볼 때 나이스 차례 복사가 있는 화면(행동특성·평가지 채점), 그 밖은 창체
-const NEIS_TAB = { hk: 'hk', gr: 'gr' };
+// [나이스 차례로 복사하러 가기]: 그 화면 글만 볼 때 나이스 차례 복사가 있는 화면(행동특성·평가지 채점, 단원평가 평어는 교과 평어 학생별), 그 밖은 창체
+const NEIS_TAB = { hk: 'hk', gr: 'gr', unit: 'pyeongeo' };
 const SPARK = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.9z"/></svg>';
 const CHECK = '<svg class="chk-ok-ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
 const PY = 'unit:pyeongeo:';
@@ -346,7 +346,10 @@ document.addEventListener('click', e => {
   else if (b.dataset.chkMore) { C.more.add(b.dataset.chkMore); draw(); }
   else if (b.hasAttribute('data-chk-unkeep')) { clearKeep(new Set(C.view.shown.map(x => x.ref))); C.keep = readKeep(); draw(); toast('그대로 둔 곳을 다시 보여요'); }
   else if (b.hasAttribute('data-chk-reload')) load();
-  else if (b.hasAttribute('data-chk-neis')) go('evaluate', NEIS_TAB[C.src] || 'cc');
+  else if (b.hasAttribute('data-chk-neis')) {
+    if (C.src === 'unit' && SS().evalCheck && SS().evalCheck.pyStudents) SS().evalCheck.pyStudents(); // 교과 평어는 학생별 화면에 [나이스 차례로 복사]
+    go('evaluate', NEIS_TAB[C.src] || 'cc');
+  }
   else if (b.hasAttribute('data-chk-set')) go('settings', 'ai');
 });
 document.addEventListener('change', e => {
