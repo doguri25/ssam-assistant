@@ -52,7 +52,8 @@ function keepTab(menu, tab) {
 /* 다른 메뉴에서 AI가 일하는 중이면 그 메뉴 버튼에 작은 점(지금 보는 메뉴는 화면에 진행이 보여서 뺌). 일은 메뉴를 옮겨도 뒤에서 이어짐.
    AI 부르기(평가 메뉴의 generate — 새 메뉴의 core/ai.js도 그것을 부름)가 부를 때마다 window.SSAM_WORK(업무)로 알리고, 끝나면 돌려받은 함수를 부름.
    업무로 메뉴를 앎(채점·평어는 평가 등). 모르는 업무는 부를 때 보던 메뉴, 문서·소통 › 인수인계서에서 부른 계획 AI는 문서·소통,
-   학급 › 기초학력 캠프에서 부른 계획·평어 AI(일정·보고서·양식 읽기·관찰 글)는 학급, 문서·소통 › 다면평가에서 부른 계획·평어 AI(기준 양식·근거자료 읽기·줄글 나누기)는 문서·소통.
+   학급 › 기초학력 캠프에서 부른 계획·평어 AI(일정·보고서·양식 읽기·관찰 글)는 학급, 문서·소통 › 다면평가에서 부른 계획·평어 AI(기준 양식·근거자료 읽기·줄글 나누기)는 문서·소통,
+   평가 › 단원평가·활동지에서 부른 계획 AI(문항·활동지 만들기)는 평가.
    work 'none'(쌤 채팅 도우미 — 메뉴 일이 아니어서 보던 메뉴에 점이 잘못 뜨지 않게)은 점을 띄우지 않음 */
 const TASK_MENU = { grade: 'evaluate', writing: 'evaluate', letter: 'etc', message: 'etc', reply: 'etc', gongmun: 'etc', doc: 'etc', purchase: 'purchase', plan: 'plan', report: 'plan' };
 const working = {};
@@ -76,7 +77,8 @@ if (typeof window !== 'undefined') window.SSAM_WORK = (task, work) => {
   const here = cur ? cur.menu : 'evaluate';
   const m = task === 'plan' && here === 'etc' && cur.tab === 'handover' ? 'etc'
     : (task === 'plan' || task === 'writing') && here === 'etc' && cur.tab === 'multi' ? 'etc'
-    : (task === 'plan' || task === 'writing') && here === 'class' && cur.tab === 'camp' ? 'class' : TASK_MENU[task] || here;
+    : (task === 'plan' || task === 'writing') && here === 'class' && cur.tab === 'camp' ? 'class'
+    : task === 'plan' && here === 'evaluate' && (cur.tab === 'unit' || cur.tab === 'activity') ? 'evaluate' : TASK_MENU[task] || here;
   working[m] = (working[m] || 0) + 1; drawWork();
   let done = false;
   return () => { if (done) return; done = true; if (!--working[m]) delete working[m]; drawWork(); };
