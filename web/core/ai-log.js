@@ -8,7 +8,7 @@ const THUMBS = 3, THUMB_W = 320;
 /* 업무 이름(설정 › AI의 업무별 AI와 같은 업무, 줄에 맞게 짧게) */
 const TASK_NAMES = {
   grade: '채점', writing: '평어·행특·창체', plan: '계획 초안', notes: '피드백·알림', purchase: '품의', message: '쪽지',
-  report: '결과 보고', letter: '가정통신문', gongmun: '공문 처리', reply: '회신서 읽기', test: '연결 확인'
+  report: '결과 보고', letter: '가정통신문', gongmun: '공문 처리', reply: '회신서 읽기', doc: '문서 다듬기·회의록', test: '연결 확인'
 };
 export function taskName(task, role) {
   const n = Object.prototype.hasOwnProperty.call(TASK_NAMES, task) ? TASK_NAMES[task] : '';

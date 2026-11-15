@@ -19,7 +19,7 @@ export const MENUS = [
   { id: 'plan', label: '계획', tabs: [['year', '연간계획'], ['event', '행사계획'], ['class', '학급운영계획'], ['report', '결과 보고']] },
   { id: 'class', label: '학급', tabs: [['today', '오늘 수업'], ['progress', '진도표·시수'], ['weekly', '주간학습안내'], ['camp', '기초학력']] },
   { id: 'purchase', label: '품의', tabs: [['new', '새 품의'], ['templates', '저장한 템플릿'], ['recent', '최근 작성']] },
-  { id: 'etc', label: '문서·소통', tabs: [['message', '쪽지 작성'], ['letter', '가정통신문'], ['gongmun', '공문 처리'], ['handover', '인수인계서'], ['multi', '다면평가']] },
+  { id: 'etc', label: '문서·소통', tabs: [['message', '쪽지 작성'], ['letter', '가정통신문'], ['gongmun', '공문 처리'], ['minutes', '회의록'], ['docedit', '문서 다듬기'], ['handover', '인수인계서'], ['multi', '다면평가']] },
   { id: 'settings', label: '설정', tabs: [['roster', '학급 명단'], ['ai', 'AI'], ['screen', '화면'], ['school', '학교 정보'], ['years', '학년도'], ['purchase', '품의 기준']] }
 ].map(m => ({ ...m, icon: m.id, tabs: m.tabs.map(([id, label, fold]) => (fold ? { id, label, fold } : { id, label })) }));
 
@@ -54,7 +54,7 @@ function keepTab(menu, tab) {
    업무로 메뉴를 앎(채점·평어는 평가 등). 모르는 업무는 부를 때 보던 메뉴, 문서·소통 › 인수인계서에서 부른 계획 AI는 문서·소통,
    학급 › 기초학력 캠프에서 부른 계획·평어 AI(일정·보고서·양식 읽기·관찰 글)는 학급, 문서·소통 › 다면평가에서 부른 계획·평어 AI(기준 양식·근거자료 읽기·줄글 나누기)는 문서·소통.
    work 'none'(쌤 채팅 도우미 — 메뉴 일이 아니어서 보던 메뉴에 점이 잘못 뜨지 않게)은 점을 띄우지 않음 */
-const TASK_MENU = { grade: 'evaluate', writing: 'evaluate', letter: 'etc', message: 'etc', reply: 'etc', gongmun: 'etc', purchase: 'purchase', plan: 'plan', report: 'plan' };
+const TASK_MENU = { grade: 'evaluate', writing: 'evaluate', letter: 'etc', message: 'etc', reply: 'etc', gongmun: 'etc', doc: 'etc', purchase: 'purchase', plan: 'plan', report: 'plan' };
 const working = {};
 function drawWork() {
   const busy = id => !!working[id] && !(cur && cur.menu === id);
