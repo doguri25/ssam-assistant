@@ -145,6 +145,11 @@ await run('year-plan', [
     assert(await page.locator(`${row}.yp-bad`).count() === 1 && (await page.textContent(`${row} .yp-why`)).includes('여름방학'), '방학 겹침이 안 보임');
   }],
   ['한글 파일로 내려받기, 섹션 복사', async () => {
+    // 1단계에서 넣은 작년 계획서(.hwpx)의 서식이 학교 양식으로 저장돼 골라져 있음(스펙 2026-11-15 1B) — 쌤비서 기본 문서로 바꿔 내려받음
+    await page.waitForSelector(`${Y} select[data-sf-pick="year"]`);
+    assert(await page.$eval(`${Y} select[data-sf-pick="year"]`, s => s.options[s.selectedIndex].textContent) === '작년 계획서 서식 · 작년 계획', '작년 계획서 서식을 골라 둠');
+    await page.selectOption(`${Y} select[data-sf-pick="year"]`, '');
+    await page.waitForSelector(`${Y} [data-y="hwpx"]`);
     const [dl] = await Promise.all([page.waitForEvent('download'), page.click(`${Y} [data-y="hwpx"]`)]);
     assert(dl.suggestedFilename() === '2027학년도 독서교육 운영 계획.hwpx', '이름: ' + dl.suggestedFilename());
     await page.click(`${Y} ol.steps [data-step="4"]`);
