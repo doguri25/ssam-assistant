@@ -1,4 +1,4 @@
-// 문서·소통 › 인수인계서(2026-11-10, 설정 › 학년도의 창에서 옮김): 탭(공문 처리 다음) → 지금 학년도 자료 고르기(처음엔 모두, 작년 것은 빼고) → 미리 보기 1~6(월별 3월~2월),
+// 문서·소통 › 인수인계서(2026-11-10, 설정 › 학년도의 창에서 옮김): 탭(공문 처리·회의록·문서 다듬기 다음) → 지금 학년도 자료 고르기(처음엔 모두, 작년 것은 빼고) → 미리 보기 1~6(월별 3월~2월),
 // 이름·전화번호 없음, 고르기를 빼면 문서에서도 빠짐, [AI로 정리](1~5만 보냄) → 고쳐 쓰기, 「몇 쪽으로」(알림·줄인 미리 보기·AI 줄 수·학년도 자료에 저장),
 // 인수인계서 양식(.hwpx) 넣기(가정통신문 양식과 따로 저장, .hwp는 안내) → [한글로 내려받기]는 그 양식에(결재란·서명 줄 그대로), 워드는 기본 양식,
 // 다시 들어오면·새로 고치면 남음, 양식 지우기, openHandover()·설정 › 학년도 단추·AI 키 없음
@@ -57,10 +57,10 @@ await page.evaluate(async () => {
 const TOTAL = (36000 + 18 * 10000).toLocaleString('ko-KR');
 
 await run('handover', [
-  ['기타에 「인수인계서」 탭(공문 처리 다음) → 업무 인수인계서 화면, 다른 기타 화면은 숨음', async () => {
+  ['기타에 「인수인계서」 탭(공문 처리·회의록·문서 다듬기 다음) → 업무 인수인계서 화면, 다른 기타 화면은 숨음', async () => {
     await page.click('nav.app-side [data-menu-go="etc"]');
     const tabs = await page.$$eval('#menuTabs [data-tab]', l => l.map(x => x.textContent));
-    assert(JSON.stringify(tabs) === JSON.stringify(['쪽지 작성', '가정통신문', '공문 처리', '인수인계서', '다면평가']), JSON.stringify(tabs));
+    assert(JSON.stringify(tabs) === JSON.stringify(['쪽지 작성', '가정통신문', '공문 처리', '회의록', '문서 다듬기', '인수인계서', '다면평가']), JSON.stringify(tabs));
     await page.click('#menuTabs [data-tab="handover"]');
     await page.waitForSelector(`${P} #hoPrev table`);
     assert((await page.textContent(`${P} h2`)).includes('업무 인수인계서'), '제목');
