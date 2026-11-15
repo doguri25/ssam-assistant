@@ -71,12 +71,12 @@ const dropHTML = () => `<div class="hm-drop" id="hmDrop" data-hm-drop>
     <button class="btn primary" type="button" data-hm="pick">파일 고르기</button>
   </div>`;
 
-/* 공문 기한 + 회의 할 일(회의록, 같은 모양 — 누르면 그 회의록): 가까운 차례 */
+/* 공문 기한 + 회의 할 일(회의록, 같은 모양 — 누르면 그 회의록): 오늘·D-n 먼저 가까운 차례, 지난 것은 그 뒤(H.dueOrder) */
 const badgeHTML = x => `<span class="hm-badge t-${x.tone}" title="${esc(x.note)}">${x.sym ? `<span aria-hidden="true">${x.sym}</span>` : ''}${esc(x.badge)}<span class="sr-only"> (${esc(x.note)})</span></span>`;
 function gmHTML(d) {
   const lines = [...d.gm.map(x => ({ n: x.n, html: `<button type="button" class="hm-line" data-hm-go="gongmun">${badgeHTML(x)}<span class="hm-line-t">${esc(x.title)}</span></button>` })),
     ...d.mn.map(x => ({ n: x.n, html: `<button type="button" class="hm-line" data-hm-mn="${esc(x.id)}" title="${esc(x.meeting)}">${badgeHTML(x)}<span class="hm-line-t"><span class="hm-line-k">회의 할 일</span>${esc(x.title)}</span></button>` }))]
-    .sort((a, b) => a.n - b.n);
+    .sort(H.dueOrder);
   const rows = lines.map(l => `<li>${l.html}</li>`).join('');
   return `<section class="hm-card hm-gm" aria-labelledby="hmGmH"><div class="hm-card-h"><h3 id="hmGmH">${d.mn.length ? '공문·회의 기한' : '공문 기한'}</h3></div>
     ${rows ? `<ul class="hm-list">${rows}</ul>` : '<p class="muted hm-none">가까운 기한이 없어요</p>'}

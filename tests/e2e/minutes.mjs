@@ -175,6 +175,29 @@ await run('minutes', [
     await page.waitForFunction(b => { const x = document.querySelector(b); return x && x.checkVisibility() && x.querySelector('[data-mnf="title"]').value === '3학년 협의회(11월)'; }, B);
     assert((await page.textContent('#menuTitle')) === '문서·소통', await page.textContent('#menuTitle'));
   }],
+  ['「오늘」 기한 카드 차례: 오늘·D-n 먼저(공문·회의 할 일 섞어 가까운 차례), 지난 것은 그 뒤 — 56일 지난 할 일이 오늘·D-2를 가리지 않음', async () => {
+    const H = 'section[data-menu="home"]';
+    const keep = await page.evaluate(() => ['ssam:minutes:list', 'ssam:gongmun:list'].map(k => localStorage.getItem(k)));
+    await page.evaluate(() => {
+      const l = JSON.parse(localStorage.getItem('ssam:minutes:list'));
+      l.push({ id: 'mnSep', at: 1, kind: 'grade', title: '9월 학년 협의회', todos: [{ task: '체험학습 결과 보고서 내기', due: '2026-09-20', done: false }, { task: '학년 소식지 원고 내기', due: '2026-11-15', done: false }] });
+      localStorage.setItem('ssam:minutes:list', JSON.stringify(l));
+      localStorage.setItem('ssam:gongmun:list', JSON.stringify([{ id: 'gmA', title: '과학의 날 참가 신청', due: '2026-11-17', done: false, tasks: [], at: 1 }, { id: 'gmB', title: '안전 점검 결과 보고', due: '2026-11-13', done: false, tasks: [], at: 2 }]));
+    });
+    try {
+      await page.click('nav.app-side [data-menu-go="home"]');
+      await page.waitForSelector(`${H} .hm-gm [data-hm-mn="mnSep"]`);
+      const rows = await page.locator(`${H} .hm-gm .hm-line`).allInnerTexts();
+      // 소식지(오늘)·공문(D-2)·안전 교육 자료(D-3)·버스 예약(D-5), 지난 공문(2일)은 그 뒤 — 56일 지난 체험학습 보고서는 회의 할 일 3개 밖
+      const want = [['학년 소식지 원고 내기', '오늘'], ['과학의 날 참가 신청', 'D-2'], ['안전 교육 자료 만들기', 'D-3'], ['버스 예약', 'D-5'], ['안전 점검 결과 보고', '지남']];
+      assert(rows.length === want.length && want.every(([s, b], i) => rows[i].includes(s) && rows[i].includes(b)) && !rows.join('').includes('체험학습 결과 보고서'), JSON.stringify(rows));
+      assert((await page.textContent(`${H} .hm-head h2`)) === '오늘 챙길 일 5가지', await page.textContent(`${H} .hm-head h2`));
+    } finally { // 다음 시험을 위해 되돌림
+      await page.evaluate(keep => ['ssam:minutes:list', 'ssam:gongmun:list'].forEach((k, i) => (keep[i] == null ? localStorage.removeItem(k) : localStorage.setItem(k, keep[i]))), keep);
+      await enter(page, 'etc', 'minutes');
+      await page.waitForFunction(b => { const x = document.querySelector(b); return x && x.checkVisibility(); }, B);
+    }
+  }],
   ['채팅 「오늘 할 일」: 「회의 할 일 「…」」(D-n), 누르면 그 회의록', async () => {
     await page.click(`${B} [data-mn="new"]`); // 다른 회의록을 보다가
     await page.click('#inboxFab');

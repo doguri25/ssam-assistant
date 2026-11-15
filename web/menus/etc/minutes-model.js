@@ -40,6 +40,8 @@ export function listMinutes() {
   return (Array.isArray(v) ? v : []).map(norm).filter(Boolean).sort((a, b) => b.at - a.at).slice(0, MAX_MINUTES);
 }
 export const getMinutes = id => listMinutes().find(x => x.id === id) || null;
+/* 새 학년도에 가져갈 회의록(core/years.js carryOver): 끝내지 않은 할 일이 있는 것만, 이 모델이 받는 칸만(저장한 차례 그대로) — 2월 회의의 3월 할 일 */
+export const carryMinutes = list => (Array.isArray(list) ? list : []).map(norm).filter(x => x && x.todos.some(t => !t.done));
 /* 고칠 때마다 맨 앞으로(늦게 고친 것 먼저), 20개를 넘으면 오래된 것부터 뺌 */
 export function putMinutes(x) {
   const n = norm({ ...x, at: Date.now() });

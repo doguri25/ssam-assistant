@@ -63,14 +63,19 @@ const dueBadge = n => ({
   tone: n <= 0 ? 'err' : n <= 2 ? 'warn' : 'info',
   sym: n <= 0 ? '!' : ''
 });
-/* 공문 기한 카드: 지남·오늘·D-n(7일 안, 다 한 것 빼고) 3개까지 */
+/* 기한 카드 차례: 오늘·남은 것(D-0~D-7) 먼저 가까운 차례, 지난 것은 그 뒤에 덜 지난 것 먼저
+   (오래전에 잊은 할 일이 3개 자리를 차지해 오늘·D-2를 가리지 않게). 공문 카드·회의 할 일·둘을 섞은 카드(home.js)가 같이 씀 */
+const late = x => (x.n < 0 ? 1 : 0);
+export const dueOrder = (a, b) => late(a) - late(b) || (a.n < 0 ? b.n - a.n : a.n - b.n);
+/* 공문 기한 카드: 지남·오늘·D-n(7일 안, 다 한 것 빼고) 가운데 dueOrder 차례로 3개까지 */
 export function gongmunCard(docs, today) {
-  return dueSoon(Array.isArray(docs) ? docs : [], today).map(d => ({ id: d.id, title: d.title || d.name || '공문', n: d.n, ...dueBadge(d.n) }));
+  return dueSoon(Array.isArray(docs) ? docs : [], today, { max: Infinity }).sort(dueOrder).slice(0, 3)
+    .map(d => ({ id: d.id, title: d.title || d.name || '공문', n: d.n, ...dueBadge(d.n) }));
 }
-/* 같은 카드의 「회의 할 일」(스펙 2026-11-15 2장): 회의록에서 끝내지 않은 할 일 가운데 기한이 7일 안(지남 포함) 3개까지, 공문 기한과 같은 배지.
+/* 같은 카드의 「회의 할 일」(스펙 2026-11-15 2장): 회의록에서 끝내지 않은 할 일 가운데 기한이 7일 안(지남 포함), dueOrder 차례로 3개까지, 공문 기한과 같은 배지.
    id: 그 회의록(누르면 그 회의록), meeting: 회의 이름 */
 export function minutesCard(meetings, today) {
-  return dueTodos(meetings, today, { max: 3 }).map(t => ({ id: t.id, i: t.i, title: t.task, meeting: t.title, n: t.n, ...dueBadge(t.n) }));
+  return dueTodos(meetings, today).sort(dueOrder).slice(0, 3).map(t => ({ id: t.id, i: t.i, title: t.task, meeting: t.title, n: t.n, ...dueBadge(t.n) }));
 }
 
 /* ---------- 교과캠프 출석 ---------- */
