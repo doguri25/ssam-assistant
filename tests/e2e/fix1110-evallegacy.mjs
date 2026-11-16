@@ -123,6 +123,27 @@ await run('fix1110-evallegacy', [
     assert(JSON.stringify(texts) === JSON.stringify(['1번 평어로 곱셈을 바르게 함.', '3번 평어로 곱셈 과정을 설명함.', '4번 평어로 곱셈을 도움받아 함.']), JSON.stringify(texts));
     assert(steps.includes('1번부터 4번까지 3명'), steps);
   }],
+  ['[gr-hist-typing] 지난 채점 기록을 연 바로 뒤 예외 번호를 치는 중이면, 뒤늦은 다시 그리기가 친 글을 지우지 않고 그 칸을 떠나면 저장', async () => {
+    await seedGR('h3', [stu(1, 'high', '1번 평어'), stu(2, 'mid', '2번 평어'), stu(3, 'mid', '3번 평어')], { count: 3, except: [] });
+    // 기록을 다시 누르고 그 기록이 열려 설정 칸이 새로 그려지자마자(사람이 바로 치는 것처럼) 예외 번호 칸에 「2」를 침 — 같은 페이지 안에서 ms 단위로
+    const got = await page.evaluate(async () => {
+      const before = document.querySelector('#grExcept');
+      document.querySelector('[data-grhist="h3"]').click();
+      const t0 = performance.now();
+      while (document.querySelector('#grExcept') === before && performance.now() - t0 < 3000) await new Promise(r => setTimeout(r, 5));
+      const el = document.querySelector('#grExcept'), fold = el.closest('details');
+      if (fold) fold.open = true; // 접힌 「스캔·번호」 칸을 펼치고 바로 침
+      el.focus(); el.value = '2'; el.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 400));
+      const now = document.querySelector('#grExcept');
+      return { val: now.value, same: now === el, focused: document.activeElement === now };
+    });
+    assert(got.val === '2', '친 글이 지워짐 ' + JSON.stringify(got));
+    await page.dispatchEvent('#grExcept', 'change');
+    await page.waitForTimeout(300);
+    const cls = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:class')));
+    assert(JSON.stringify(cls.except) === '[2]', JSON.stringify(cls));
+  }],
   // ---------- gr-dedup-used ----------
   ['[gr-dedup-used] 한 학생 평어를 다시 썼는데 이미 복사해 쓴(사용함) 다른 학생 평어와 앞부분이 겹치면, 사용함 글은 그대로 두고 방금 쓴 학생만 다시 씀', async () => {
     await seedGR('h2', [stu(1, 'high', '1번 평어로 곱셈을 바르게 함.'), stu(2, 'high', DUP2, 1), stu(3, 'mid', '3번 평어로 곱셈 과정을 설명함.')], { count: 3, except: [] });

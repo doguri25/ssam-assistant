@@ -4757,15 +4757,30 @@ async function grWriteChunk(lv, chunk, avoid, signal) {
 }
 
 /* ---------- 그리기 ---------- */
-let grT = null;
+let grT = null, grSetupStale = false;
+/* 잠깐 뒤 한 번 그리기(채점 진행 등). 그사이 바로 그렸으면 할 것이 없음 — 설정 칸에서 치는 중이면 결과만 그리고 설정 칸은 그 칸을 떠날 때
+   (예외 번호처럼 칸을 떠날 때 저장하는 칸에 친 글이 뒤늦은 다시 그리기로 지워지지 않게 — 지난 채점 기록을 연 바로 뒤 등) */
 function renderGRSoon() {
   if (grT) return;
-  grT = setTimeout(() => { grT = null; renderGR(); }, 120);
+  grT = setTimeout(() => {
+    grT = null;
+    if (S.mode !== 'gr') return;
+    if (grTyping()) { grSetupStale = true; renderGRResults(); return; }
+    renderGR();
+  }, 120);
 }
 function renderGR() {
   if (S.mode !== 'gr') return;
+  if (grT) { clearTimeout(grT); grT = null; } // 지금 다 그리니 잠깐 뒤 그리기는 필요 없음
   renderGRSetup(); renderGRResults();
 }
+// 치는 동안 미룬 설정 칸 그리기: 칸을 떠나면(그 칸의 change가 먼저 저장하고 다시 그렸으면 할 것 없음)
+document.addEventListener('focusout', e => {
+  if (!grSetupStale) return;
+  const box = $('#grSetup');
+  if (!box || !box.contains(e.target)) return;
+  setTimeout(() => { if (grSetupStale && S.mode === 'gr' && !grTyping()) renderGRSetup(); }, 0);
+});
 function renderGRBusy() {
   const el = $('#grBusy'); if (!el) return;
   el.hidden = !GR.loading;
@@ -4780,6 +4795,7 @@ const grTyping = () => { const box = $('#grSetup'), a = document.activeElement; 
 const grHistHTML = () => (GR.history.length ? `<div class="gr-step"><div class="gr-h"><b>지난 채점</b></div><ul class="gr-hist">${GR.history.slice(0, 10).map(h => `<li><button type="button" data-grhist="${esc(h.id)}" ${h.id === GR.id ? 'aria-current="true"' : ''}><span>${esc(h.title || '(제목 없음)')}</span><small class="num">${h.createdAt ? new Date(h.createdAt).toLocaleDateString('ko-KR') : ''} · ${h.n}명</small></button><button class="icon-btn tiny" type="button" data-grhistdel="${esc(h.id)}" aria-label="지우기" title="지우기">${ICON.x}</button></li>`).join('')}</ul></div>` : '');
 function renderGRSetup() {
   const box = $('#grSetup'); if (!box) return;
+  grSetupStale = false;
   const ae = document.activeElement, keep = ae && box.contains(ae) ? ae.id : null;
   let sel = null; // 다시 그려도 커서 자리는 그대로
   try { if (keep && ae.setSelectionRange && ae.type !== 'number') sel = [ae.selectionStart, ae.selectionEnd]; } catch (e) {}
