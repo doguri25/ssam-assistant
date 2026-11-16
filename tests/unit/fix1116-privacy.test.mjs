@@ -164,3 +164,21 @@ test('[fix1116-privacy-C6] 「이름: 이름을 정자로」의 「이름」을 
   }
   for (const l of ['성명: 성함을 적어 주세요', '이름: 이름만 적어 주세요']) assert.equal(makeRedactor().line(l).text, l);
 });
+
+test('[fix1116-privacy-C7] AI가 자리 표시 괄호를 바꾼 글(【이름1】·［이름1］·(이름1)·{1})은 깨진 것으로 버림', () => {
+  const p = payloadOf(startItems([L('담당: 교무부장 이바다 선생님(041-123-4567)')]), '공문체로');
+  assert.equal(p.sent[0].text, '담당: 교무부장 〔이름1〕 선생님({{1}})');
+  const norm = text => normChanges({ changes: [{ id: 1, op: 'replace', text }] }, { ids: new Set([1]), back: p.back, bad: p.bad });
+  for (const t of ['담당: 교무부장 【이름1】 선생님({{1}})', '담당: 교무부장 ［이름1］ 선생님({{1}})', '담당: 교무부장 (이름1) 선생님({{1}})', '담당: 교무부장 （이름 1） 선생님({{1}})',
+    '담당: 교무부장 〔이름1〕 선생님({1})', '담당: 교무부장 〔이름1〕 선생님(｛1｝)', '담당: 교무부장 [이름1] 선생님({{1}})']) {
+    const r = norm(t);
+    assert.equal(r.broken, 1, t);
+    assert.deepEqual(r.changes, [], t);
+  }
+  assert.deepEqual(norm('담당: 교무부장 〔이름 1〕 선생님({{ 1 }})').changes.map(c => c.text), ['담당: 교무부장 이바다 선생님(041-123-4567)']);
+});
+
+test('[fix1116-privacy-C7-neg] 자리 표시와 비슷하지만 보통 글(「이름 2자 이내」「(이름) 칸」「[1]」「(1)」)은 깨진 것이 아님', () => {
+  const { bad } = makeRedactor();
+  for (const t of ['이름 2자 이내로 씁니다', '(이름) 칸에 적기', '이름(한글)', '1) 이름 쓰기', '[1] 목적', '(1) 일시', '「이름」 칸', '학년 반 번호 이름 칸', '[붙임 1] 계획서']) assert.equal(bad(t), false, t);
+});

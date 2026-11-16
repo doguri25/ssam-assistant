@@ -4,7 +4,7 @@
    조사가 붙은 이름 maskJosaNames, 표 칸·번호 명단·「학생 김하늘」 같은 이름 stripNames) + core/chat-names.js maskPersons(반 번호 옆·쉼표로 이은 맨 이름).
    lines()는 여러 줄을 한꺼번에 봄(한 줄에 한 명씩인 번호 명단·「이름」 머리 칸 아래 표), 한 번 알아낸 이름은 다른 줄·다음 줄에서도 글자 그대로 가림.
    보내지 않는 명단 줄(「참석: 김하늘, 이바다, 한가람」)과 learnList로 받은 칸(회의록 참석 칸)의 이름도 배움(privacy.js listNames).
-   자리 표시가 사라진 값은 끝에 붙이지 않음. bad(t): 없는 번호·깨진 자리 표시가 남았는지(되돌린 글에 섞이지 않게 — 부르는 쪽이 그 줄을 버림).
+   자리 표시가 사라진 값은 끝에 붙이지 않음. bad(t): 없는 번호·깨진 자리 표시(괄호를 바꾼 【이름1】·{1}도)가 남았는지(되돌린 글에 섞이지 않게 — 부르는 쪽이 그 줄을 버림).
    가정통신문 번역(letter-translate guard)은 따로 그대로 둠 */
 import { MASK, maskStaff, maskJosaNames, maskList, listNames, stripNames, RRN_RE, INTL_RE } from './privacy.js';
 import { maskPersons } from './chat-names.js';
@@ -20,6 +20,8 @@ const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // 아는 이름 뒤에 붙어도 되는 것(조사·호칭) — 낱말 안의 같은 글자(「바다이바다」)는 건드리지 않음
 const AFTER_NAME = '(?=$|[^가-힣]|(?:으로|에게|한테|부터|처럼|께서|이랑|이가|이는|이를|이의|이와|이도|이에|이한테|이처럼|님|씨|군|양|[이가은는을를의에께와과도로랑만]))';
 const TOKEN = /〔\s*이름\s*(\d+)\s*〕/g, SLOT = /\{\{\s*(\d+)\s*\}\}/g;
+// AI가 괄호를 바꾼 자리 표시(【이름1】·［이름1］·(이름1)·「이름1」, {1}·｛1｝)
+const ODD_TOKEN = /[[【［(（<〈《「『{｛]\s*이름\s*\d+\s*[\]】］)）>〉》」』}｝]/, ODD_SLOT = /[{｛]\s*\d+\s*[}｝]/;
 
 /* 한 문서·한 글을 가리는 동안 같은 이름에 같은 번호를 주는 가리개
    → { line(text) → { text } | null, lines(texts, { learn }) → [{ text } | null], learn(texts), learnList(text), back(t), bad(t), names, secrets } */
@@ -85,7 +87,8 @@ export function makeRedactor() {
   const bad = t => {
     const s = String(t == null ? '' : t);
     if ([...s.matchAll(TOKEN)].some(m => !names[+m[1] - 1]) || [...s.matchAll(SLOT)].some(m => !secrets[+m[1] - 1])) return true;
-    return /〔\s*이름|\[\s*이름\s*\d|\{\{|\}\}/.test(s.replace(TOKEN, '').replace(SLOT, ''));
+    const rest = s.replace(TOKEN, '').replace(SLOT, '');
+    return /〔\s*이름|\[\s*이름\s*\d|\{\{|\}\}/.test(rest) || ODD_TOKEN.test(rest) || ODD_SLOT.test(rest);
   };
   return { line, lines, learn, learnList, back, bad, names, secrets };
 }
