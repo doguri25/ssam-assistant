@@ -125,15 +125,22 @@ const sureTop = scores => {
 };
 // 명령 꼴 줄: 부탁 꼬리(「써 줘」「정리해 주세요」「고쳐 줘」)가 있거나 할 일 낱말만 있는 줄(「가정통신문」「공문 처리:」)
 const asks = l => TAIL.test(l) || REQUEST.test(l) || LEAD.test(`${l}\n`);
+// 메모 뒤 끝 줄 명령은 더 좁게(안내·쪽지 글의 끝인사 줄 「첨부한 회의록 확인 부탁드려요」「회의록 작성은 ○○○ 선생님께 부탁드려요」「한글 파일 맞춤법 확인 부탁드려요」는 넣을 글):
+// 회의록은 그 줄이 「(위 내용·이 메모·3학년 협의회) 회의록(으로) 써·정리해·만들어·작성해 (줘)」나 「회의록」뿐일 때,
+// 문서 다듬기는 고치는 말 + 부탁 꼬리(FIX_END)로 끝나고 부르는 사람(「○○ 선생님」「여러분」)이 없을 때
+const TAIL_CMD = {
+  minutes: new RegExp(`^(?:(?:위|윗|앞|이|이번|오늘|방금|이거|이것|그거|내용|메모|글|것|거|\\d{1,2}\\s*학년|학년|교과|부서|협의회|회의)\\s*(?:의|을|를|으로|로)?\\s*){0,4}(?:회의록|협의록)\\s*(?:으로|로|을|를)?(?:\\s*(?:좀\\s*)?(?:써|정리해|만들어|작성해)\\s*(?:${PLEASE})?)?\\s*[.!?~]*$`),
+  docedit: new RegExp(`^(?!.*(?:님|께|에게|한테|여러분)).*(?:다듬(?:어|기)?|고쳐|손봐|교정(?:해)?|바꿔|봐|검사(?:해)?|점검(?:해)?|공문체로?)${FIX_END}`, 'i')
+};
 /* 여러 줄 글(줄 목록)의 회의록·문서 다듬기 명령 줄 → { tail(끝 줄인가), scores(그 줄의 무게) } 또는 null.
-   첫 줄이 그 명령이면(「회의록 정리해 줘\n…」) 첫 줄. 메모를 먼저 쓰고 끝 줄에 그 명령을 써도(「…\n회의록 써 줘」「…\n위 내용 회의록으로 정리해 줘」) 그 줄 —
+   첫 줄이 그 명령이면(「회의록 정리해 줘\n…」) 첫 줄. 메모를 먼저 쓰고 끝 줄에 그 명령만 써도(「…\n회의록 써 줘」「…\n위 내용 회의록으로 정리해 줘」 — TAIL_CMD) 그 줄 —
    첫 줄이 다른 일 명령이면(「쪽지 써 줘\n…\n회의록 정리해서 보내 주세요」「가정통신문\n…」) 끝 줄은 넣을 글 */
 function cmdLine(lines) {
   if (lines.length < 2) return null;
   const head = scoreOf(lines[0]);
   if (HEAD_IDS.includes(sureTop(head))) return { tail: false, scores: head };
-  const last = lines[lines.length - 1], tail = scoreOf(last);
-  if (HEAD_IDS.includes(sureTop(tail)) && asks(last) && !(sureTop(head) && asks(lines[0]))) return { tail: true, scores: tail };
+  const last = lines[lines.length - 1], tail = scoreOf(last), top = sureTop(tail);
+  if (HEAD_IDS.includes(top) && TAIL_CMD[top].test(last) && !(sureTop(head) && asks(lines[0]))) return { tail: true, scores: tail };
   return null;
 }
 
