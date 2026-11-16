@@ -233,3 +233,28 @@ test('[rb-doc] 내려받기 문서: 제목·표 머리·칸 글·과제 줄·파
   assert.ok(!R.rubricDoc(rb, {}).blocks.some(b => /^과제:/.test(b.text || '')));
   assert.equal(R.docName(rb), '수준별 기준표-수학-곱셈 원리 설명하기');
 });
+
+test('[rb-levelpts] 배점 하나의 수준 점수(배점을 고치면 고치지 않은 수준 점수가 따라감)', () => {
+  assert.deepEqual(R.levelPts(66, L3), { high: 66, mid: 46, low: 26 });
+  assert.deepEqual(R.levelPts(25, L4), { top: 25, high: 20, mid: 15, low: 10 });
+  assert.deepEqual(R.levelPts(34, L3), R.defaultPoints(3, L3)[0].pts);
+  assert.deepEqual(R.levelPts('x', L3), { high: 0, mid: 0, low: 0 });
+});
+
+test('[rb-addrow] 요소 더하기: 새 기준표, 빈 칸·n+1개 기본 배점·겹치지 않는 id, 5개면 그대로', () => {
+  const rb = sample();
+  rb.rows.splice(1, 1); // r1, r3만 남음
+  const out = R.addRow(rb);
+  assert.notEqual(out, rb);
+  assert.equal(rb.rows.length, 2);
+  assert.equal(out.rows.length, 3);
+  const n = out.rows[2];
+  assert.equal(n.name, ''); assert.equal(n.points, R.defaultPoints(3, L3)[2].points);
+  assert.deepEqual(n.cells, { high: { text: '', pts: 33 }, mid: { text: '', pts: 23 }, low: { text: '', pts: 13 } });
+  assert.equal(new Set(out.rows.map(r => r.id)).size, 3);
+  assert.equal(out.rows[0].name, '곱셈 원리 이해');
+  let five = sample(); while (five.rows.length < 5) five = R.addRow(five);
+  assert.equal(five.rows.length, 5);
+  assert.equal(R.addRow(five).rows.length, 5);
+  assert.deepEqual(Object.keys(R.addRow(R.setLevels(sample(), L4)).rows[3].cells), L4);
+});

@@ -1,0 +1,52 @@
+/* 수준별 기준표 시트(rubric.js) — 요소 카드는 세로로 쌓음(넓은 화면도 같은 꼴). 휴대폰(390·360px)에서도 가로로 넘치지 않게 칸은 줄을 바꿈 */
+.sheet.rb-wide{width:min(820px,100%)}
+.rb-sheet{display:flex;flex-direction:column;gap:14px;min-width:0}
+.rb-sheet .field{box-sizing:border-box;min-width:0}
+.rb-sheet textarea.field{min-height:56px;font-size:14px;width:100%}
+.rb-sheet .row{min-width:0}
+.rb-setup{display:flex;flex-direction:column;gap:10px;min-width:0}
+.rb-f{display:flex;flex-direction:column;gap:4px;min-width:0}
+.rb-file{margin-top:-4px}
+.rb-file .muted{min-width:0;overflow-wrap:anywhere}
+.rb-opts{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 16px;min-width:0}
+.rb-n,.rb-lv{display:flex;flex-direction:column;gap:4px}
+.rb-n .field{flex:none;width:auto;min-width:96px}
+.rb-make{margin-left:auto}
+.rb-busy{margin:0;display:flex;align-items:center;gap:8px}
+.rb-ro{margin:0}
+.rb-set{border:0;margin:0;padding:0;min-width:0;min-inline-size:0}
+.rb-set>legend{padding:0;margin-bottom:6px}
+.rb-rows{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.rb-row{border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface);padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.rb-rhead{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;min-width:0}
+.rb-no{flex:none;font:700 15px/1.2 var(--f-display)}
+.rb-name{flex:1 1 200px;font-weight:600}
+.rb-pts{display:inline-flex;align-items:center;gap:4px;flex:none;font-size:13px;color:var(--ink2)}
+.rb-pts .field{flex:none;width:64px;padding:7px 8px}
+.rb-lvrow{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:6px 8px;align-items:start}
+.rb-lvrow .lvtag{padding:7px 0;margin-top:4px}
+.rb-lvrow textarea.field{min-height:52px}
+.rb-lvrow .rb-pts{margin-top:4px}
+.rb-sheet .field.rb-empty{border-color:var(--err);background:var(--err-soft)}
+.rb-sum{margin:0;font-size:13px;font-weight:600;color:var(--ink2)}
+.rb-sum.warn{color:var(--warn)}
+.rb-state{margin:0;font-size:13px;color:var(--warn)}
+.rb-ask p{margin:2px 0 8px}
+.rb-ask .row{gap:6px}
+.rb-ask .btn{white-space:normal}
+.rb-acts{gap:8px}
+.rb-acts .grow{flex:1}
+.rb-acts .exp-split{max-width:100%}
+.rb-acts .exp-split>[data-exp-main]{min-width:0;white-space:normal}
+.rb-acts .btn.rb-del{color:var(--err)}
+/* 화면 줄(교과 평어 평가요소 화면·평가지 채점 1단계) */
+.rb-line{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-size:13px;min-width:0}
+.rb-line-t{font-weight:600;color:var(--ink2);min-width:0}
+@media (max-width:560px){
+  .rb-lvrow{grid-template-columns:44px minmax(0,1fr);grid-template-areas:"tag pts" "txt txt"}
+  .rb-lvrow .lvtag{grid-area:tag;margin-top:0}
+  .rb-lvrow textarea.field{grid-area:txt}
+  .rb-lvrow .rb-pts{grid-area:pts;justify-self:end;margin-top:0}
+  .rb-make{margin-left:0}
+  .rb-acts .grow{flex-basis:100%;height:0}
+}

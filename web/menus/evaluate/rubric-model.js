@@ -45,6 +45,10 @@ function ptsFor(points, levels) {
   levels.forEach((lv, i) => { pts[lv] = Math.round(points * (ratio[i] == null ? ratio[ratio.length - 1] : ratio[i])); });
   return pts;
 }
+/* 배점 하나의 기본 수준 점수 { [lv]: n } (시트에서 배점을 고치면 고치지 않은 수준 점수가 따라감) */
+export function levelPts(points, levels) {
+  return ptsFor(Number(points) || 0, Array.isArray(levels) && levels.length ? levels : L3);
+}
 
 /* 칸 하나 만들기(빈 글) */
 const emptyCells = pts => { const c = {}; for (const lv of Object.keys(pts)) c[lv] = { text: '', pts: pts[lv] }; return c; };
@@ -59,6 +63,15 @@ export function blankRubric(u, { rows = ROWS_DEF, levels } = {}) {
     levels: [...lvs], rows: def.map((d, i) => ({ id: `r${i + 1}`, name: '', points: d.points, cells: emptyCells(d.pts) })),
     task: '', at: 0
   };
+}
+
+/* 요소 더하기 → 새 기준표(빈 이름·빈 칸, 요소 n+1개일 때의 기본 배점). 5개면 그대로(복사본) */
+export function addRow(rb) {
+  const out = JSON.parse(JSON.stringify(rb)), lvs = out.levels && out.levels.length ? out.levels : L3;
+  if (out.rows.length >= ROWS_MAX) return out;
+  const d = defaultPoints(out.rows.length + 1, lvs)[out.rows.length];
+  out.rows.push({ id: nextId(out.rows), name: '', points: d.points, cells: emptyCells(d.pts) });
+  return out;
 }
 
 /* 3단계 ↔ 4단계 바꾸기 → 새 기준표. 있던 칸의 글·고친 점수는 그대로, 없어진 수준 칸은 빼고, 새 수준 칸은 빈 글·기본 점수 */
