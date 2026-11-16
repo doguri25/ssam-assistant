@@ -217,19 +217,22 @@ export function normRb(list, rb) {
   return out;
 }
 
-/* 기준 점수 = 고른 수준 점수 합 ÷ 배점 합 × 100 (반올림). 배점 합이 0이거나 남은 요소가 없으면 null */
+/* 기준 점수 = 고른 수준 점수 합 ÷ 배점 합 × 100 (반올림). 목록에 없는 요소는 버림(분자·분모 모두), 「안 함」은 0점으로 배점은 분모에 남김.
+   남은 요소가 없거나 그 배점 합이 0이면 null */
 export function baseScore(rbList, rb) {
-  const total = sumPoints(rb);
-  if (!Array.isArray(rbList) || !rbList.length || !rb || !(total > 0)) return null;
-  const rows = rb.rows || [];
-  let got = 0;
+  if (!Array.isArray(rbList) || !rbList.length || !rb) return null;
+  const rows = rb.rows || [], seen = new Set();
+  let got = 0, total = 0;
   for (const it of rbList) {
-    if (!it || it.level === 'none') continue;
+    if (!it) continue;
     const i = rows.findIndex((r, j) => bare(rowName(r, j)) === bare(it.name));
-    const c = i < 0 ? null : rows[i].cells && rows[i].cells[it.level];
+    if (i < 0 || seen.has(i)) continue;
+    seen.add(i);
+    total += Number(rows[i].points) || 0;
+    const c = it.level === 'none' ? null : rows[i].cells && rows[i].cells[it.level];
     got += c ? Number(c.pts) || 0 : 0;
   }
-  return Math.round(got / total * 100);
+  return total > 0 ? Math.round(got / total * 100) : null;
 }
 
 /* 최종 점수를 기준 점수 −4~+4(0~100)로 자름. 기준 점수가 없으면 그대로 */

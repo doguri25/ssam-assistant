@@ -179,6 +179,10 @@ test('[rb-base] 기준 점수 셈과 ±4 자르기', () => {
   const rb = sample();
   const lst = [{ name: '곱셈 원리 이해', level: 'high' }, { name: '풀이 과정', level: 'mid' }, { name: '설명하기', level: 'none' }];
   assert.equal(R.baseScore(lst, rb), Math.round((34 + 23 + 0) / 100 * 100));
+  // 빠진 요소는 버림(분자·분모 모두): 3번째 요소가 없으면 57/67, 안 함이면 57/100
+  assert.equal(R.baseScore([lst[0], lst[1]], rb), Math.round(57 / 67 * 100));
+  assert.equal(R.baseScore(lst, rb), 57);
+  assert.equal(R.baseScore([{ name: '없는 요소', level: 'high' }], rb), null);
   // 배점 합 90 → 100점으로 환산
   const r90 = sample(); r90.rows.forEach(r => { r.points = 30; L3.forEach((lv, i) => { r.cells[lv].pts = [30, 21, 12][i]; }); });
   assert.equal(R.baseScore(R.normRb(r90.rows.map(r => ({ name: r.name, level: 'high' })), r90), r90), 100);
