@@ -6,6 +6,7 @@ import { maskJosaNames, maskStaff, stripNames } from '../../web/core/privacy.js'
 import { maskPersons } from '../../web/core/chat-names.js';
 import { makeRedactor } from '../../web/core/redact.js';
 import { startItems, payloadOf } from '../../web/menus/etc/docedit-model.js';
+import { redactInput } from '../../web/menus/etc/minutes-ai.js';
 
 const L = (text, inBox = false) => ({ text, inBox });
 const NAMES = ['김하늘', '이바다', '한가람', '박솔빛', '김민준'];
@@ -100,4 +101,27 @@ test('[fix1116-privacy-C3-neg] 가린 이름이 없는 목록·이름 뒤 낱말
   }
   const r = makeRedactor(), out = r.line('담당: 김하늘 선생님, 연구부, 행정실').text;
   assert.equal(out, '담당: 〔이름1〕 선생님, 연구부, 행정실');
+});
+
+test('[fix1116-privacy-C10] 회의록: 참석 칸·메모의 「참석: …」 명단 줄 이름을 배워, 다른 줄의 맨 이름(「이바다: 과학관 추천」)도 가림', () => {
+  for (const att of ['김하늘, 이바다, 한가람', '김하늘 이바다 한가람', '교장 김하늘, 교감 이바다', '이바다', '김하늘, 이바다']) {
+    const r = redactInput('버스 예약은 이바다 담당\n- 김하늘 안내장 작성', { attendees: att });
+    assert.deepEqual(leaks(r.text), [], `${att} → ${r.text}`);
+    assert.equal(r.back(r.text), '버스 예약은 이바다 담당\n- 김하늘 안내장 작성');
+  }
+  const memo = '참석: 김하늘, 이바다, 한가람, 박솔빛\n1. 체험학습 장소\n- 이바다: 과학관 추천\n- 박솔빛 버스 예약 11/20까지\n- 한가람 안전교육 자료';
+  for (const meta of [{ title: '5학년 협의회', attendees: '김하늘, 이바다, 한가람, 박솔빛' }, {}]) {
+    const r = redactInput(memo, meta);
+    assert.deepEqual(leaks(r.text), [], r.text);
+    assert.equal(r.dropped, 1, '명단 줄은 그대로 보내지 않음');
+    assert.equal(r.back(r.text), memo.split('\n').slice(1).join('\n'));
+  }
+});
+
+test('[fix1116-privacy-C10-neg] 참석 칸의 직함·인원 말(담임·외·명·전원·조리원·주무관)은 이름으로 배우지 않음', () => {
+  const memo = '3학년 담임 협의\n조리원 배치는 행정실 주무관이 정함\n전원 찬성\n연구부 의견 모음';
+  for (const att of ['3학년 담임 5명', '교무부장 외 3명', '전원 참석', '조리원 2명, 행정실 주무관', '교장, 교감, 연구부', '영양사, 조리사, 지도원']) {
+    const r = redactInput(memo, { attendees: att });
+    assert.equal(r.text, memo, `${att} → ${r.text}`);
+  }
 });

@@ -3,9 +3,10 @@
    주민·외국인등록번호가 든 줄·계좌 줄·이름이 늘어선 명단 줄은 보내지 않음(null). 이름 찾기는 core/privacy.js 규칙(직함 앞뒤 교직원 이름 maskStaff,
    조사가 붙은 이름 maskJosaNames, 표 칸·번호 명단·「학생 김하늘」 같은 이름 stripNames) + core/chat-names.js maskPersons(반 번호 옆·쉼표로 이은 맨 이름).
    lines()는 여러 줄을 한꺼번에 봄(한 줄에 한 명씩인 번호 명단·「이름」 머리 칸 아래 표), 한 번 알아낸 이름은 다른 줄·다음 줄에서도 글자 그대로 가림.
+   보내지 않는 명단 줄(「참석: 김하늘, 이바다, 한가람」)과 learnList로 받은 칸(회의록 참석 칸)의 이름도 배움(privacy.js listNames).
    자리 표시가 사라진 값은 끝에 붙이지 않음. bad(t): 없는 번호·깨진 자리 표시가 남았는지(되돌린 글에 섞이지 않게 — 부르는 쪽이 그 줄을 버림).
    가정통신문 번역(letter-translate guard)은 따로 그대로 둠 */
-import { MASK, maskStaff, maskJosaNames, maskList, stripNames, RRN_RE, INTL_RE } from './privacy.js';
+import { MASK, maskStaff, maskJosaNames, maskList, listNames, stripNames, RRN_RE, INTL_RE } from './privacy.js';
 import { maskPersons } from './chat-names.js';
 
 const PHONE = /(?<!\d)\(?0\d{1,2}\)?[-.\s)]{0,2}\d{3,4}[-.\s]?\d{4}(?!\d)/;
@@ -21,7 +22,7 @@ const AFTER_NAME = '(?=$|[^가-힣]|(?:으로|에게|한테|부터|처럼|께서
 const TOKEN = /〔\s*이름\s*(\d+)\s*〕/g, SLOT = /\{\{\s*(\d+)\s*\}\}/g;
 
 /* 한 문서·한 글을 가리는 동안 같은 이름에 같은 번호를 주는 가리개
-   → { line(text) → { text } | null, lines(texts, { learn }) → [{ text } | null], learn(texts), back(t), bad(t), names, secrets } */
+   → { line(text) → { text } | null, lines(texts, { learn }) → [{ text } | null], learn(texts), learnList(text), back(t), bad(t), names, secrets } */
 export function makeRedactor() {
   const names = [], secrets = [];
   const nameNo = n => { let i = names.indexOf(n); if (i < 0) { names.push(n); i = names.length - 1; } return i + 1; };
@@ -57,12 +58,13 @@ export function makeRedactor() {
   function run(texts) {
     const flat = [];
     texts.forEach((t, i) => String(t == null ? '' : t).split('\n').forEach(l => flat.push({ i, p: prep(l) })));
-    // 명단처럼 이름이 늘어선 줄은 stripNames가 줄 하나만 보고 뺌 — 미리 빼서 이어 붙인 글과 줄이 맞게
-    flat.forEach(f => { if (f.p && !f.p.blank && stripNames(f.p.s).dropped) f.p = null; });
+    // 명단처럼 이름이 늘어선 줄은 stripNames가 줄 하나만 보고 뺌 — 미리 빼서 이어 붙인 글과 줄이 맞게(그 줄의 이름은 배움 — 다른 줄의 맨 이름도 가리게)
+    flat.forEach(f => { if (f.p && !f.p.blank && stripNames(f.p.s).dropped) { f.list = listNames(f.p.s); f.p = null; } });
     const keep = flat.filter(f => f.p && !f.p.blank);
     const st = stripNames(keep.map(f => f.p.s).join('\n'));
     const stLines = st.text.split('\n');
     keep.forEach((f, k) => { const one = stLines.length === keep.length ? stLines[k] : stripNames(f.p.s).text; f.out = mask(f.p.s, one); if (f.out == null) f.p = null; });
+    flat.forEach(f => (f.list || []).forEach(nameNo)); // 번호는 보내는 줄의 이름 다음
     return { flat, n: texts.length };
   }
   function emit({ flat, n }) {
@@ -73,6 +75,8 @@ export function makeRedactor() {
   }
   /* 이름만 배움(보내지 않는 글 — 다듬기 전 원래 글 같은 것) */
   const learn = texts => { run((Array.isArray(texts) ? texts : [texts]).map(t => String(t == null ? '' : t))); };
+  /* 이름만 늘어놓는 칸(회의록 참석 칸 — 보내지 않음)의 이름을 배움(「이바다」 하나여도) */
+  const learnList = text => { listNames(text).forEach(nameNo); };
   const lines = (texts, { learn: prev = [] } = {}) => { if (prev && prev.length) learn(prev); return emit(run(texts)); };
   const line = text => lines([String(text == null ? '' : text)])[0];
   const back = t => String(t == null ? '' : t)
@@ -83,7 +87,7 @@ export function makeRedactor() {
     if ([...s.matchAll(TOKEN)].some(m => !names[+m[1] - 1]) || [...s.matchAll(SLOT)].some(m => !secrets[+m[1] - 1])) return true;
     return /〔\s*이름|\[\s*이름\s*\d|\{\{|\}\}/.test(s.replace(TOKEN, '').replace(SLOT, ''));
   };
-  return { line, lines, learn, back, bad, names, secrets };
+  return { line, lines, learn, learnList, back, bad, names, secrets };
 }
 
 /* 여러 줄 글 → { text(보낼 글 — 보내지 않는 줄은 뺌), back, dropped(뺀 줄 수) } */
