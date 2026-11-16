@@ -94,8 +94,12 @@ export function maskList(line) {
 const CUE = new RegExp(`^(\\d{1,2}|남|여|남자|여자|${ROLE})$`), HEAD = /^(이름|성명|성 명|학생명|학생 이름)$/;
 /* 표의 「이름·성명」 머리 칸인지 */
 export const nameHead = c => HEAD.test(String(c || '').trim());
-/* 「이름」 머리 칸 아래 칸이 이름인지: 두~네 글자 한글, 흔한 성으로 시작(이솔·박준·김가을처럼 두 글자·조사 끝 글자도). 흔한 낱말(전체·합계·모두)은 아님 */
-export const nameUnderHead = c => { const t = String(c || '').trim(); return /^[가-힣]{2,4}$/.test(t) && SURNAME.has(t[0]) && !COMMON.has(t) && !TWO_WORD.has(t) && !STAFF_WORD.has(t) && !HEAD.test(t); };
+/* 「이름」 머리 칸 아래 칸이 이름인지: 세 글자 이름·두 글자 성 이름, 또는 흔한 성으로 시작하는 두~네 글자(이솔·박준·김가을처럼 두 글자·조사 끝 글자도).
+   흔한 낱말(전체·합계·모두)·부서 이름은 아님 */
+export const nameUnderHead = c => {
+  const t = String(c || '').trim();
+  return !HEAD.test(t) && (cellName(t) || (/^[가-힣]{2,4}$/.test(t) && SURNAME.has(t[0]) && !COMMON.has(t) && !TWO_WORD.has(t) && !STAFF_WORD.has(t)));
+};
 const NUMBERED = /^(\s*\d{1,2}[.)]?\s+)([가-힣]{3})(?=\s|$)/;
 const numName = l => { const m = NUMBERED.exec(l); return !!m && cellName(m[2]); };
 const NUM_SEX = /^\s*\d{1,2}[.)]?\s+[가-힣]{3}\s+(?:남|여|남자|여자)(?=\s|$)/;

@@ -57,7 +57,8 @@ test('[fix1116-privacy-C1-neg] 「로·으로」가 붙은 흔한 낱말(곳·�
 
 test('[fix1116-privacy-C2] 「이름」 머리 칸 아래 두 글자·조사 끝 글자 이름(이솔·박준·김가을)도 가림 — 글 표(|)와 한글(.hwpx) 표 모두', async () => {
   const rows = [['번호', '이름', '역할'], ['1', '김가을', '모둠장'], ['2', '이솔', '기록'], ['3', '박준', '발표']];
-  const st = stripNames(rows.map(r => r.join(' | ')).join('\n')).text;
+  const st = stripNames([...rows, ['4', '독고하늘', '정리']].map(r => r.join(' | ')).join('\n')).text;
+  assert.ok(!st.includes('독고하늘'), '두 글자 성 이름도 그대로 가림');
   for (const n of ['김가을', '이솔', '박준']) assert.ok(!st.includes(n), `${n} → ${st}`);
   for (const w of ['모둠장', '기록', '발표', '이름', '역할']) assert.ok(st.includes(w), `${w}는 그대로`);
   // 글만 읽은 문서(.hwp·글)의 「칸 | 칸」 줄
