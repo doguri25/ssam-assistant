@@ -134,10 +134,24 @@ const sureTop = scores => {
 const asks = l => TAIL.test(l) || REQUEST.test(l) || LEAD.test(`${l}\n`);
 // 메모 뒤 끝 줄 명령은 더 좁게(안내·쪽지 글의 끝인사 줄 「첨부한 회의록 확인 부탁드려요」「회의록 작성은 ○○○ 선생님께 부탁드려요」「한글 파일 맞춤법 확인 부탁드려요」는 넣을 글):
 // 회의록은 그 줄이 「(위 내용·이 메모·3학년 협의회) 회의록(으로) 써·정리해·만들어·작성해 (줘)」나 「회의록」뿐일 때,
-// 문서 다듬기는 고치는 말 + 부탁 꼬리(FIX_END)로 끝나고 부르는 사람(「○○ 선생님」「여러분」)이 없을 때
+// 문서 다듬기는 그 줄이 「(이·위·첨부한) 한글 파일·한글 문서·hwp·문서 (맞춤법)(공문체로) 다듬어·고쳐·바꿔·봐·점검해 (줘·주세요)」나 「문서 다듬기」뿐일 때 —
+// 「제출 전 한글 파일 양식에 맞게 고쳐 주세요」「hwp 파일 맞춤법 꼭 봐 주세요」처럼 다른 말이 든 줄, 「… 교정 부탁드립니다」 같은 끝인사는 읽는 사람에게 하는 말.
+// 붙여 넣은 글 뒤 「공문체로 바꿔 줘」「이 통신문 다듬어 줘」는 그 글을 고쳐 달라는 말이라 문서 다듬기(한글 파일만 받음)가 아님 — 파일을 함께 넣었으면(docFile) 이거·공문 …도
+const docTail = obj => new RegExp(`^(?:(?:이|위|그|첨부한?|올린|넣은)\\s*)?(?:${obj})\\s*(?:을|를|의)?\\s*(?:(?:맞춤법|띄어\\s*쓰기)(?:\\s*(?:과|와|이랑|하고|및|·|,)?\\s*(?:맞춤법|띄어\\s*쓰기))?\\s*(?:을|를|좀|만|도)?\\s*)?(?:공문체로\\s*)?(?:좀\\s*)?(?:다듬(?:어|기)?|고쳐|손봐|교정(?:해)?|바꿔|봐|검사(?:해)?|점검(?:해)?)?\\s*(?:${PLEASE}|요|부탁해)?\\s*[.!?~]*$`, 'i');
+const DOC_WORDS = '문서|한글\\s*(?:파일|문서)|hwpx?(?:\\s*파일)?';
 const TAIL_CMD = {
   minutes: new RegExp(`^(?:(?:위|윗|앞|이|이번|오늘|방금|이거|이것|그거|내용|메모|글|것|거|\\d{1,2}\\s*학년|학년|교과|부서|협의회|회의)\\s*(?:의|을|를|으로|로)?\\s*){0,4}(?:회의록|협의록)\\s*(?:으로|로|을|를)?(?:\\s*(?:좀\\s*)?(?:써|정리해|만들어|작성해)\\s*(?:${PLEASE})?)?\\s*[.!?~]*$`),
-  docedit: new RegExp(`^(?!.*(?:님|께|에게|한테|여러분)).*(?:다듬(?:어|기)?|고쳐|손봐|교정(?:해)?|바꿔|봐|검사(?:해)?|점검(?:해)?|공문체로?)${FIX_END}`, 'i')
+  docedit: docTail(DOC_WORDS),
+  doceditFile: docTail(`${DOC_WORDS}|파일|이거|이것|공문|가정\\s*통신문|통신문|안내장|보고서`)
+};
+// 읽는 사람에게 쓴 안내·쪽지 글: 부르는 말(「선생님들께」「○○ 선생님」「여러분」「선생님들께서는」「안녕하세요」)이 있거나 첫 줄이 안내 제목(「… 제출 안내」「… 알림」) —
+// 그 끝 줄 「한글 파일 맞춤법 점검해 주세요」는 읽는 선생님들께 하는 말(문서 다듬기로 보내면 안내 글이 사라짐)
+const READERS = /님들?\s*(?:께|에게|한테|[,!~]*$)|께서|선생님들|여러분|안녕하(?:세요|십니까)/;
+const NOTICE_HEAD = /(?:안내|알림|공지|협조|요청|모집)(?:\s*(?:드립니다|합니다|입니다|드려요))?\s*[.!:]*$/;
+const tailCmd = (id, lines, o) => {
+  const last = lines[lines.length - 1];
+  if (id === 'minutes') return TAIL_CMD.minutes.test(last);
+  return (o.docFile ? TAIL_CMD.doceditFile : TAIL_CMD.docedit).test(last) && !lines.some(l => READERS.test(l)) && !NOTICE_HEAD.test(lines[0]);
 };
 /* 여러 줄 글(줄 목록)의 회의록·문서 다듬기 명령 줄 → { tail(끝 줄인가), scores(그 줄의 무게) } 또는 null.
    첫 줄이 그 명령이면(「회의록 정리해 줘\n…」) 첫 줄. 메모를 먼저 쓰고 끝 줄에 그 명령만 써도(「…\n회의록 써 줘」「…\n위 내용 회의록으로 정리해 줘」 — TAIL_CMD) 그 줄 —
@@ -147,7 +161,7 @@ function cmdLine(lines, o = {}) {
   const p = { ...o, paste: true }, head = scoreOf(lines[0], p);
   if (HEAD_IDS.includes(sureTop(head))) return { tail: false, scores: head };
   const last = lines[lines.length - 1], tail = scoreOf(last, p), top = sureTop(tail);
-  if (HEAD_IDS.includes(top) && TAIL_CMD[top].test(last) && !(sureTop(head) && asks(lines[0]))) return { tail: true, scores: tail };
+  if (HEAD_IDS.includes(top) && tailCmd(top, lines, o) && !(sureTop(head) && asks(lines[0]))) return { tail: true, scores: tail };
   return null;
 }
 
