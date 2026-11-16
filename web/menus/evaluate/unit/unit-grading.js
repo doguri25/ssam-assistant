@@ -17,6 +17,7 @@ import { heatTone, confirmList, foundGroups, rateText } from './unit-view.js';
 import { registerInbox } from '../../../core/inbox.js';
 import { go } from '../../../core/shell.js';
 import { gradeParts, normGrade, validGrade } from './unit-ai.js';
+import { madeHide } from '../make-scope.js';
 import { locatePrompt, validLocate, normBoxes, cropRect, boxesOf, nextRef } from './unit-locate.js';
 import { unitAccuracy, accuracyText } from '../grade-accuracy.js';
 import { unitPending, acceptUnit } from '../eval-stage.js';
@@ -278,9 +279,9 @@ async function gradeOne(id, i, meter) {
     const images = await imagesFor(id, i);
     // 스캔이 없으면 AI를 부르지 않음 (이미지 없이 채점하면 0점이 그대로 저장됨)
     if (!images.length) throw { code: 'no_scan' };
-    // 공통(지시·정답표·평가지 글)을 앞에 두어 학생마다 캐시 → 학생 그림 → 학생 줄
+    // 공통(지시·정답표·평가지 글)을 앞에 두어 학생마다 캐시 → 학생 그림 → 학생 줄. 만든 평가의 가린 이름 자리 표시는 AI 답에서 되돌림
     const parts = gradeParts(t0, no);
-    const v = await ai.generateJSON(parts.own, { shared: { text: parts.shared }, images, signal: ctrl.signal, valid: validGrade, task: 'grade', meter });
+    const v = madeHide(t0).back(await ai.generateJSON(parts.own, { shared: { text: parts.shared }, images, signal: ctrl.signal, valid: validGrade, task: 'grade', meter }));
     const res = normGrade(v, t0.key.items);
     const t = getTest(id), st = t && t.students[i];
     if (!st || st.no !== no) return;
@@ -315,7 +316,7 @@ async function reviewOne(id, i, no, images, signal, meter) {
   // 이 차례에 검토 AI가 막혔으면 부르지 않되, 검토할 칸이 있던 학생은 말없이 넘기지 않고 표시
   if (run && run.noReview) { st.rvErr = REVIEW_FAIL; saveOrWarn(t); return; }
   const parts = gradeReviewParts(t, no, nos);
-  const v = await reviewJSON('grade', parts.own, { shared: { text: parts.shared }, images, signal, valid: validGrade, meter });
+  const v = madeHide(t).back(await reviewJSON('grade', parts.own, { shared: { text: parts.shared }, images, signal, valid: validGrade, meter }));
   if (v == null || signal.aborted) return;
   const t2 = getTest(id), s2 = t2 && t2.students[i];
   if (!s2 || s2.no !== no) return;
@@ -544,7 +545,7 @@ async function locate(id, say = false) {
   L.busy.add(id); L.failed.delete(id); refresh(id); redrawView(id);
   try {
     const images = await imagesFor(id, i);
-    const v = await ai.generateJSON(locatePrompt(t.key.items, images.length), { images, valid: validLocate, task: 'grade' });
+    const v = await ai.generateJSON(madeHide(t).hide(locatePrompt(t.key.items, images.length)), { images, valid: validLocate, task: 'grade' });
     const t2 = getTest(id);
     // 찾는 동안 스캔이나 쪽 모양이 바뀌었으면 버림(다음에 칸을 열 때 다시 찾음)
     if (!t2 || G.pages !== pages0 || G.lay !== lay) return;

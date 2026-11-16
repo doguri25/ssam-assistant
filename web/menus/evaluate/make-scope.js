@@ -1,6 +1,7 @@
 /* 문항·활동지 만들기의 범위 (스펙 2026-11-15-docedit-minutes-quiz §3, 화면 없음 — Node 시험에서도 씀).
    진도표 교과(class-model listSubjects 모양 — 읽기만)의 단원 묶기, 기본 차시(진도표의 다음 차시), AI에 보낼 범위 줄, 평가 정보(단원 번호·이름·차시·쪽),
    진도표가 없을 때 선생님이 쓴 「단원·성취기준·범위」, 유형·종류 나누기, 수준 글. 학생 자료는 다루지 않음 */
+import { knownRedactor } from '../../core/redact.js';
 
 export const LEVELS = [['basic', '기본'], ['normal', '보통'], ['hard', '도전']];
 const LEVEL_TEXT = {
@@ -96,6 +97,16 @@ export function maskList(scope, list, keys) {
   if (!scope || typeof scope.mask !== 'function' || !Array.isArray(list)) return list;
   return list.map(x => (x && typeof x === 'object' ? { ...x, ...Object.fromEntries(keys.filter(k => typeof x[k] === 'string').map(k => [k, scope.mask(x[k])])) } : x));
 }
+
+/* 만들 때 가린 값(make-pick scope.hidden — 범위·다시 만들기에서 가린 교직원 이름·전화번호·이메일) → 만든 평가·활동지의 made.hide에 남길 값, 없으면 null */
+export function keepHide(h) {
+  const list = a => (Array.isArray(a) ? a.map(x => String(x == null ? '' : x)) : []);
+  const names = list(h && h.names), secrets = list(h && h.secrets);
+  return names.some(Boolean) || secrets.some(Boolean) ? { names, secrets } : null;
+}
+/* 만든 평가·활동지(x.made.hide)를 AI로 다시 보낼 때: 원래 이름을 되돌려 넣은 평가 이름·문항·기준도 같은 자리 표시로 가려 보내고(hide),
+   AI 답은 되돌림(back). 남긴 값이 없으면(진도표로 만든 것·직접 넣은 것·이 칸이 생기기 전에 만든 것) 둘 다 그대로 */
+export const madeHide = x => knownRedactor(x && x.made && x.made.hide);
 
 /* count를 고른 것(keys)에 비율(weights)대로 나눔: 남는 수는 큰 나머지부터(같으면 앞 것), 문항 수가 되면 고른 것마다 적어도 하나 */
 export function spread(count, keys, weights = {}) {

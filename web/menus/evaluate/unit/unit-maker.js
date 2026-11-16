@@ -18,9 +18,10 @@ const pick = () => M.pick || (M.pick = newPick({ kinds: MAKE_TYPES, count: { min
 const inMaker = () => visible() && U.view === 'make';
 const later = () => setTimeout(() => { if (inMaker()) refresh(); }, 0);
 
-/* 평가 정보: 문항을 만든 범위(없으면 지금 고른 것) */
-function metaNow() {
-  const v = M.scope ? { scope: M.scope, grade: M.opts && M.opts.grade } : pickValue(pick());
+/* 문항을 만든 범위(없으면 지금 고른 것) */
+const valueNow = () => (M.scope ? { scope: M.scope, grade: M.opts && M.opts.grade } : pickValue(pick()));
+/* 평가 정보: 그 범위의 교과·학년·단원·차시 */
+function metaNow(v = valueNow()) {
   const s = v.scope || { subject: pick().subject };
   return { subject: s.subject || '', grade: v.grade || null, unitNo: s.unitNo ?? null, unitName: s.unitName || '', lesson: s.lesson || '' };
 }
@@ -128,7 +129,9 @@ function create() {
   const probs = problems(M.items);
   if (!M.items.length) return;
   if (probs.length) { M.msg = `고칠 것이 있어요: ${probs.map(p => `${p.no}번 ${p.text}`).join(' · ')}`; render(); const b = getBox().querySelector('#mkMsg'); if (b) b.scrollIntoView({ block: 'center' }); return; }
-  const t = testFrom({ meta: metaNow(), items: M.items });
+  // 만들 때 가린 값도 남김: 평가 이름·문항은 원래 이름이고, 채점·피드백 AI로 보낼 때 다시 가림(make-scope madeHide)
+  const v = valueNow();
+  const t = testFrom({ meta: metaNow(v), items: M.items, hide: v.scope && v.scope.hidden ? v.scope.hidden() : null });
   if (!saveOrWarn(t)) return;
   Object.assign(M, { items: [], scope: null, opts: null, busy: '', msg: '', note: '', ptsManual: false });
   U.view = 'list'; U.from = 'list';

@@ -1,9 +1,11 @@
-/* 단원평가 AI 프롬프트와 답 읽기 (스펙 3.2~3.4). 학생은 번호로만, 이름은 보내지 않음 */
+/* 단원평가 AI 프롬프트와 답 읽기 (스펙 3.2~3.4). 학생은 번호로만, 이름은 보내지 않음.
+   [문항 만들기]로 만든 평가는 만들 때 가린 교직원 이름·전화번호를 요청 글에서도 같은 자리 표시로 가림(make-scope madeHide — 평가 이름·문항은 원래 이름으로 저장됨) */
 import { itemType } from './unit-key.js';
 import { ITEM_TYPES, studentTotal } from './unit-grade.js';
 import { makeTitle, LEVEL_NAME, itemName } from './unit-model.js';
 import { redoKind } from './unit-redo.js';
 import { evidenceList, evidencePrompt, EVIDENCE_RULE, normSentences, joinSentences } from '../../../core/evidence.js';
+import { madeHide } from '../make-scope.js';
 
 const TYPE_NAME = Object.fromEntries(ITEM_TYPES);
 const TYPES = ITEM_TYPES.map(t => t[0]);
@@ -31,7 +33,7 @@ export function gradeParts(test, no) {
     '', '[출력] 모든 문항을 담은 JSON 하나만 출력합니다.',
     '{"items":[{"no":1,"read":"학생이 쓴 답","points":0,"sure":true,"why":"판단 까닭"}]}'
   ].join('\n');
-  return { shared, own: `[학생] ${no}번 — 바로 위 그림이 이 학생의 평가지예요.` };
+  return { shared: madeHide(test).hide(shared), own: `[학생] ${no}번 — 바로 위 그림이 이 학생의 평가지예요.` };
 }
 export function gradePrompt(test, no) { const p = gradeParts(test, no); return `${p.shared}\n\n${p.own}`; }
 
@@ -88,7 +90,7 @@ export function feedbackPrompt(test, students) {
     }
     return `- ${st.no}번 | 점수 ${t.score}/${t.total} | 맞힌 것: ${[...new Set(good)].join(', ') || '없음'} | 다시 볼 것: ${[...new Set(weak)].join(', ') || '없음'}`;
   });
-  return [
+  return madeHide(test).hide([
     '[단원평가 피드백]',
     `${test.meta.grade ? test.meta.grade + '학년' : '초등학교'} 학생들에게 ${makeTitle(test.meta)} 결과와 함께 줄 말을 씁니다.`,
     '', '[학생]', ...lines,
@@ -98,7 +100,7 @@ export function feedbackPrompt(test, students) {
     '- 학생 이름과 점수 숫자는 쓰지 않습니다. 학생마다 다른 문장으로 씁니다.',
     '', '[출력] JSON 하나만 출력합니다.',
     '{"students":[{"no":1,"good":"잘한 점","cheer":"격려 한마디"}]}'
-  ].join('\n');
+  ].join('\n'));
 }
 
 export function normFeedback(v) {
@@ -166,7 +168,7 @@ export function normPyeongeo(v, lists = {}) {
 const KIND_NAME = { choice: '고르기(보기 4개)', short: '단답', essay: '서술형' };
 export function redoPrompt(test, items) {
   const m = test.meta || {};
-  return [
+  return madeHide(test).hide([
     '[단원평가 복습 문제]',
     `${m.grade ? m.grade + '학년' : '초등학교'} ${makeTitle({ ...m, sample: false })} 단원평가에서 틀린 학생이 있는 문항입니다. 문항마다 같은 개념을 묻는 비슷한 복습 문제를 1개씩 만듭니다.`,
     '', '[문항] 번호 | 평가 내용 | 영역 | 유형 | 정답 | 교과서 쪽 | 만들 꼴',
@@ -180,7 +182,7 @@ export function redoPrompt(test, items) {
     '- 그림·표를 봐야 풀 수 있는 문제는 만들지 않습니다.',
     '', '[출력] JSON 하나만 출력합니다.',
     '{"items":[{"no":1,"q":"물음","choices":["보기1","보기2","보기3","보기4"],"answer":"②","explain":"짧은 풀이"}]}'
-  ].join('\n');
+  ].join('\n'));
 }
 const clip = (v, n) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n);
 const CIRC4 = '①②③④';
@@ -214,7 +216,7 @@ export function missPrompt(test, req) {
     ...(it.groups.length ? ['앱이 묶은 것(임시 번호: 묶음, 사람 수):', ...it.groups.map(g => `- ${g.id}: ${g.why} (${g.n}명)`)] : []),
     ...(it.answers.length ? ['틀린 답(임시 번호: 학생이 쓴 답):', ...it.answers.map(a => `- ${a.id}${a.part ? ' (부분 점수)' : ''}: ${a.text}`)] : [])
   ]);
-  return [
+  return madeHide(test).hide([
     '[단원평가 틀린 까닭]',
     `${m.grade ? m.grade + '학년' : '초등학교'} ${makeTitle({ ...m, sample: false })} 단원평가에서 만점을 받지 못한 답을 문항마다 살펴봅니다. 틀린 까닭이 같은 답끼리 묶고, 묶음마다 다음 시간에 5분 안에 할 보충 활동을 씁니다.`,
     '학생은 a1·a2 같은 임시 번호로만 나옵니다. 묶음은 g1·g2 같은 임시 번호입니다.',
@@ -226,5 +228,5 @@ export function missPrompt(test, req) {
     '- why·act에 임시 번호·학생 이름·점수를 쓰지 않습니다.',
     '', '[출력] JSON 하나만 출력합니다. 문항마다 groups에 앱 묶음(g)과 새로 묶은 것(ids)을 함께 담습니다.',
     '{"items":[{"no":1,"groups":[{"g":"g1","why":"그 답을 고른 까닭 짐작","act":"5분 활동"},{"ids":["a1","a2"],"why":"틀린 까닭","act":"5분 활동"}]}]}'
-  ].join('\n');
+  ].join('\n'));
 }

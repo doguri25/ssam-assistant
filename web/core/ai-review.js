@@ -4,6 +4,7 @@ import * as ai from './ai.js';
 import { pick } from './ai-roles.js';
 import { ITEM_TYPES, gradeCell } from '../menus/evaluate/unit/unit-grade.js';
 import { makeTitle } from '../menus/evaluate/unit/unit-model.js';
+import { madeHide } from '../menus/evaluate/make-scope.js';
 
 export const REVIEW_FAIL = '검토하지 못했어요';
 const TYPE_NAME = Object.fromEntries(ITEM_TYPES);
@@ -33,7 +34,8 @@ export function gradeTargets(test, st) {
   return out;
 }
 
-/* 공통(shared): 검토 지시·정답표 전체·평가지 글 — 학생마다 같아 캐시. 학생 글(own): 번호·다시 볼 문항 */
+/* 공통(shared): 검토 지시·정답표 전체·평가지 글 — 학생마다 같아 캐시. 학생 글(own): 번호·다시 볼 문항.
+   만든 평가는 만들 때 가린 이름을 다시 가림(unit-ai gradeParts와 같음) */
 export function gradeReviewParts(test, no, nos) {
   const key = test.key.items.map(i => `${i.no} | ${TYPE_NAME[i.type] || '단답'} | ${i.answer} | ${i.points} | ${i.criteria || ''}`);
   const paper = String((test.paper && test.paper.text) || '').slice(0, 12000);
@@ -52,7 +54,7 @@ export function gradeReviewParts(test, no, nos) {
     '', '[출력] JSON 하나만 출력합니다.',
     '{"items":[{"no":1,"read":"학생이 쓴 답","points":0,"why":"판단 까닭"}]}'
   ].join('\n');
-  return { shared, own: `[학생] ${no}번 — 바로 위 그림이 이 학생의 평가지예요.\n다시 볼 문항: ${nos.join(', ')}` };
+  return { shared: madeHide(test).hide(shared), own: `[학생] ${no}번 — 바로 위 그림이 이 학생의 평가지예요.\n다시 볼 문항: ${nos.join(', ')}` };
 }
 export function gradeReviewPrompt(test, no, nos) { const p = gradeReviewParts(test, no, nos); return `${p.shared}\n\n${p.own}`; }
 

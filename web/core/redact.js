@@ -19,6 +19,8 @@ const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // 아는 이름 뒤에 붙어도 되는 것(조사·호칭) — 낱말 안의 같은 글자(「바다이바다」)는 건드리지 않음
 const AFTER_NAME = '(?=$|[^가-힣]|(?:으로|에게|한테|부터|처럼|께서|이랑|이가|이는|이를|이의|이와|이도|이에|이한테|이처럼|님|씨|군|양|[이가은는을를의에께와과도로랑만]))';
 const TOKEN = /〔\s*이름\s*(\d+)\s*〕/g, SLOT = /\{\{\s*(\d+)\s*\}\}/g;
+const NAME = /^[가-힣]{2,4}$/;
+const nameRe = n => new RegExp(`(?<![가-힣])${reEsc(n)}${AFTER_NAME}`, 'g');
 
 /* 한 문서·한 글을 가리는 동안 같은 이름에 같은 번호를 주는 가리개
    → { line(text) → { text } | null, lines(texts, { learn }) → [{ text } | null], learn(texts), back(t), bad(t), names, secrets } */
@@ -39,8 +41,8 @@ export function makeRedactor() {
   /* 아는 이름을 글자 그대로 자리 표시로(긴 이름부터) */
   function known(t) {
     let out = t;
-    names.map((n, i) => [n, i + 1]).filter(([n]) => /^[가-힣]{2,4}$/.test(n)).sort((a, b) => b[0].length - a[0].length)
-      .forEach(([n, k]) => { out = out.replace(new RegExp(`(?<![가-힣])${reEsc(n)}${AFTER_NAME}`, 'g'), `〔이름${k}〕`); });
+    names.map((n, i) => [n, i + 1]).filter(([n]) => NAME.test(n)).sort((a, b) => b[0].length - a[0].length)
+      .forEach(([n, k]) => { out = out.replace(nameRe(n), `〔이름${k}〕`); });
     return out;
   }
   /* 가린 글(stLine — 여러 줄 규칙을 거친 줄)과 원래 글(s)을 맞대어 이름마다 번호 → 보낼 글(아는 이름 가리기 전), 못 맞추면 null */
@@ -83,6 +85,28 @@ export function makeRedactor() {
     return /〔\s*이름|\[\s*이름\s*\d|\{\{|\}\}/.test(s.replace(TOKEN, '').replace(SLOT, ''));
   };
   return { line, lines, learn, back, bad, names, secrets };
+}
+
+/* 가리개가 이미 알아낸 값(names·secrets — 만든 평가·활동지에 남겨 둔 것)만 글자 그대로 같은 번호의 자리 표시로 다시 가리고 되돌리는 짝.
+   AI가 돌려준 글에 원래 이름을 되돌려 넣은 평가 이름·문항을 나중에 채점·피드백 AI로 다시 보낼 때 씀(선생님이 보는 글은 원래 이름 그대로).
+   → { hide(t): 보낼 글, back(v): AI 답(글, 글 목록·객체 안 글까지) }. 값이 없으면 둘 다 그대로, 모르는 자리 표시는 지우지 않음 */
+export function knownRedactor(known) {
+  const { names = [], secrets = [] } = known || {};
+  const list = a => (Array.isArray(a) ? a.map(x => String(x == null ? '' : x)) : []);
+  const ns = list(names), ss = list(secrets);
+  if (!ns.some(Boolean) && !ss.some(Boolean)) return { hide: t => t, back: v => v };
+  const longFirst = (a, tag) => a.map((v, i) => [v, tag(i + 1)]).filter(([v]) => v.length >= 2).sort((x, y) => y[0].length - x[0].length);
+  const secretTo = longFirst(ss, k => `{{${k}}}`), nameTo = longFirst(ns, k => `〔이름${k}〕`);
+  const hide = t => {
+    let out = String(t == null ? '' : t);
+    secretTo.forEach(([v, to]) => { out = out.split(v).join(to); });
+    nameTo.forEach(([n, to]) => { out = NAME.test(n) ? out.replace(nameRe(n), to) : out.split(n).join(to); });
+    return out;
+  };
+  const one = t => t.replace(TOKEN, (x, n) => ns[+n - 1] || x).replace(SLOT, (x, n) => ss[+n - 1] || x);
+  const back = v => (typeof v === 'string' ? one(v) : Array.isArray(v) ? v.map(back)
+    : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, back(x)])) : v);
+  return { hide, back };
 }
 
 /* 여러 줄 글 → { text(보낼 글 — 보내지 않는 줄은 뺌), back, dropped(뺀 줄 수) } */
