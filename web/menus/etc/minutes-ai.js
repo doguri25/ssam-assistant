@@ -115,14 +115,41 @@ const same = s => String(s || '').replace(/\s+/g, '');
 const filledVal = v => (typeof v === 'string' ? !!v.trim() : Array.isArray(v) ? v.some(filledVal) : isObj(v) ? Object.values(v).some(filledVal) : false);
 /* 다시 정리해도 그대로 둘 칸: 고친 칸 가운데 글이 있는 것 */
 export const keptKeys = (prev, touched = []) => FIELD_KEYS.filter(k => (Array.isArray(touched) ? touched : []).includes(k) && filledVal((prev || {})[k]));
+/* 끝낸 할 일 → 다시 정리한 할 일: AI가 문장을 조금 바꿔 써도(「계획서 작성」 → 「계획서를 작성함」) 같은 할 일이면 체크를 이어 감.
+   글자 두 개씩 묶음이 많이 겹치고(0.6 이상) 글 속 숫자가 같을 때만 — 다른 할 일을 끝냄으로 잘못 넘기지 않게.
+   같은 글은 먼저, 끝낸 할 일 하나는 한 곳에만 */
+const bare = s => same(s).replace(/[^\p{L}\p{N}]/gu, '');
+const pairsOf = s => { const out = new Map(); for (let i = 0; i + 1 < s.length; i++) { const g = s.slice(i, i + 2); out.set(g, (out.get(g) || 0) + 1); } return out; };
+function overlap(a, b) {
+  const A = pairsOf(a), B = pairsOf(b);
+  let na = 0, nb = 0, both = 0;
+  A.forEach(v => { na += v; }); B.forEach(v => { nb += v; });
+  A.forEach((v, g) => { both += Math.min(v, B.get(g) || 0); });
+  return na + nb ? (2 * both) / (na + nb) : 0;
+}
+const numsOf = s => (String(s || '').match(/\d+/g) || []).join(',');
+function carryDone(prevTodos, nextTodos) {
+  const done = (Array.isArray(prevTodos) ? prevTodos : []).filter(x => x && x.done && bare(x.task));
+  const out = nextTodos.map(x => ({ ...x, done: !!x.done }));
+  const pairs = [];
+  done.forEach((d, i) => out.forEach((x, j) => {
+    if (x.done || !bare(x.task) || numsOf(d.task) !== numsOf(x.task)) return;
+    const exact = bare(d.task) === bare(x.task);
+    const score = exact ? 2 : overlap(bare(d.task), bare(x.task));
+    if (score >= 0.6) pairs.push({ i, j, score });
+  }));
+  const usedD = new Set(), usedX = new Set();
+  pairs.sort((a, b) => b.score - a.score).forEach(({ i, j }) => {
+    if (usedD.has(i) || usedX.has(j)) return;
+    usedD.add(i); usedX.add(j); out[j].done = true;
+  });
+  return out;
+}
 export function keepFields(next, prev, touched = []) {
   const n = copy(next) || {}, p = prev || {}, t = Array.isArray(touched) ? touched : [];
   for (const k of keptKeys(p, t)) n[k] = copy(p[k]);
   for (const k of SCALAR) if (!t.includes(k) && !String(n[k] || '').trim() && p[k]) n[k] = p[k];
-  if (!t.includes('todos')) {
-    const done = new Set((Array.isArray(p.todos) ? p.todos : []).filter(x => x && x.done).map(x => same(x.task)));
-    n.todos = (n.todos || []).map(x => ({ ...x, done: !!x.done || done.has(same(x.task)) }));
-  }
+  if (!t.includes('todos')) n.todos = carryDone(p.todos, Array.isArray(n.todos) ? n.todos : []);
   return n;
 }
 
