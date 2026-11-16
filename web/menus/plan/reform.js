@@ -20,7 +20,7 @@ const NO_ROLES = ' 제목·본문 자리는 문서·소통 › 가정통신문 �
    read() → { olds, apply(맞춤, heads) }(그때의 초안으로), snapshot(), restore(snap), rerender(), done(바꾼 뒤 알림 끝말) } */
 const ADAPT = new Map();
 export const registerReform = (key, a) => { ADAPT.set(key, a); };
-const undo = new Map(); // '이름:계획 id' → { snap, form(바꾸기 전에 고른 양식) } — 한 단계
+const undo = new Map(); // '이름:계획 id' → { snap, form(바꾸기 전에 고른 양식), picked(이 바꾸기가 고른 양식) } — 한 단계
 
 /* 내려받기 줄의 단추: [새 서식으로 바꾸기] (바꾼 뒤에는 [되돌리기]도) */
 export function reformHTML(key) {
@@ -139,12 +139,13 @@ async function confirm(st) {
   if (st.busy) return;
   if (!a || a.id() !== st.id) { S().closeSheet && S().closeSheet(); toast('다른 계획을 보고 있어 바꾸지 않았어요.', 5000); return; }
   st.busy = true;
-  const snap = a.snapshot(), prev = pickedForm(st.key);
+  const snap = a.snapshot(), prev = pickedForm(st.key), u = { snap, form: prev, picked: '' };
   st.r.apply(st.final, st.H);
-  undo.set(`${st.key}:${st.id}`, { snap, form: prev });
+  undo.set(`${st.key}:${st.id}`, u);
   let msg = '새 서식 차례로 바꿨어요.';
   try {
     const { rec, ok } = await saveForm(st.key, st.u8, st.name, { pick: true, replace: true, from: 'reform:' + st.key });
+    u.picked = rec.id;
     msg += ` 「${rec.name}」 양식으로 내려받아요.` + (ok ? '' : NO_ROLES);
   } catch (e) { msg += ` 서식을 학교 양식으로 저장하지 못했어요: ${formError(e && e.code)}`; }
   if (S().closeSheet) S().closeSheet();
@@ -156,7 +157,8 @@ function undoReform(key) {
   if (!u) return;
   undo.delete(`${key}:${id}`);
   a.restore(u.snap);
-  pickForm(key, u.form);
+  // 고른 양식은 계획 종류마다 하나: 이 바꾸기가 고른 양식이 아직 골라져 있을 때만 그 전 양식으로(그 뒤 다른 계획을 바꾸거나 선생님이 고른 양식은 그대로)
+  if (u.picked && pickedForm(key) === u.picked) pickForm(key, u.form);
   a.rerender();
   toast('새 서식으로 바꾸기 전 초안으로 되돌렸어요.', 5000);
 }

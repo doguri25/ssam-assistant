@@ -235,8 +235,26 @@ await run('plan-reform', [
     await page.click(`${P} [data-doc="plan"]`);
     await page.waitForSelector(`${P} [data-sf-export="event"]`);
     assert(await page.$eval(`${P} select[data-sf-pick="event"]`, s => s.options[s.selectedIndex].textContent) === '운동회 새 서식', '계획서 탭은 새 서식');
+    // 같은 종류 다른 계획(행사 B)을 다른 서식으로 바꿈 → 고른 양식은 계획 종류마다 하나라 B의 서식이 골라짐
+    const EV2 = await page.evaluate(async () => {
+      const m = await import('./menus/plan/event-model.js');
+      const plan = '2027 봄 운동회 운영 계획\nⅠ. 개요\n가. 일시: 2027. 4. 20.\nⅡ. 운영 방침\n가. 안전한 운동회\nⅢ. 세부 운영\n1. 경기 종목';
+      return m.saveEvent({ ...m.newEvent(), name: '봄 운동회', date: '2027-04-20', step: 3, maxStep: 3, docs: { plan, safety: '- 안전', letter: '날짜 준비물 복장 문의', rain: '', done: false } }).id;
+    });
+    await goTab('year'); await goTab('event');
+    await page.click(`${P} [data-ev="${EV2}"]`);
+    await page.waitForSelector(`${P} [data-rf="event"]`);
+    await upload(`${P} [data-rf="event"]`, file('봄 운동회 서식.hwpx', NEW_EVENT));
+    await page.waitForSelector('#rfSheet #rfMap');
+    await page.click('#rfSheet [data-rf-ok]');
+    await toastHas('봄 운동회 서식');
+    const bForm = await formId('봄 운동회 서식');
+    assert(bForm && (await picked('event')) === bForm, '행사 B 서식을 골라 둠');
+    await page.click(`${P} [data-ev="${EV}"]`);
+    await page.waitForSelector(`${P} [data-rf-undo="event"]`);
     await page.click(`${P} [data-rf-undo="event"]`);
     await toastHas('되돌렸어요');
+    assert((await picked('event')) === bForm, '행사 A를 되돌려도 행사 B를 위해 고른 양식은 그대로');
     assert((await page.inputValue(`${P} textarea[data-docf="plan"]`)).includes('Ⅱ. 운영 방침'), '되돌림');
     // 되돌리기는 계획서 글·계획서 의견만: 손으로 고친 가정통신문과 지워진 그 의견은 그대로(옛 수정안으로 덮을 의견이 되살아나지 않음)
     const ue = await page.evaluate(async id => (await import('./menus/plan/event-model.js')).getEvent(id), EV);
