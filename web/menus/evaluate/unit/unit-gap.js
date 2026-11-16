@@ -5,6 +5,7 @@
    areaPct: 한 평가에서 한 학생의 영역 점수율 — 기초학력 사후 점수(camp-growth.js)가 씀 */
 import { graded, makeTitle } from './unit-model.js';
 import { studentTotal } from './unit-grade.js';
+import { aiMeta } from '../make-scope.js';
 
 export const GAP_CUT = 60;
 /* 기준 칸: 40~90(정수), 숫자가 아니면 60 */
@@ -21,13 +22,15 @@ const okTest = t => t && t.key && Array.isArray(t.key.items) && Array.isArray(t.
 const hasDomains = t => t.key.items.some(it => doms(it).length > 0);
 /* 영역이 없는 평가의 영역 이름: 평가 이름에서 회차·(예시)를 뺌 */
 export const areaTitle = meta => makeTitle({ ...(meta || {}), round: null, sample: false });
+/* 평가 t의 영역 이름 — [문항 만들기]로 만든 평가면 만들 때 가린 글(이 이름이 기초학력 사전·사후 점수로 결과 보고서 AI까지 감, make-scope aiMeta) */
+const titleArea = t => areaTitle(aiMeta(t));
 
 /* 한 평가에서 한 학생(채점한 학생 s)의 영역마다 { subject, name, got, full } */
 function areasOf(t, s) {
   const subject = String(t.meta.subject || '').trim();
   if (!hasDomains(t)) {
     const tot = studentTotal(t, s);
-    return tot.total ? [{ subject, name: areaTitle(t.meta), got: tot.score, full: tot.total, byTitle: true }] : [];
+    return tot.total ? [{ subject, name: titleArea(t), got: tot.score, full: tot.total, byTitle: true }] : [];
   }
   const m = new Map();
   for (const it of t.key.items) {
@@ -79,7 +82,7 @@ export function areaPct(t, no, area) {
   const s = graded(t).find(x => x.no === no);
   if (!s) return null;
   if (!hasDomains(t)) {
-    if (flat(areaTitle(t.meta)) !== flat(want)) return null;
+    if (flat(titleArea(t)) !== flat(want) && flat(areaTitle(t.meta)) !== flat(want)) return null;
     const tot = studentTotal(t, s);
     return tot.total ? pctOf(tot.score, tot.total) : null;
   }

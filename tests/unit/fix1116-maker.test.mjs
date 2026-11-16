@@ -193,3 +193,15 @@ test('[C23] 가운데 문항을 빼도 다른 문항의 물음·정답은 그대
   assert.equal(plain.made, undefined);
   assert.deepEqual(Object.keys(plain.students[0].items), ['1']);
 });
+
+test('[C22 기초학력] 영역 없는 만든 평가: 학습 결손 영역 이름(기초학력 사전·사후 점수 → 결과 보고서 AI)은 만들 때 가린 글, 사후 점수 맞추기도 같은 이름으로', async () => {
+  const { gapStudents, areaPct } = await import('../../web/menus/evaluate/unit/unit-gap.js');
+  const s = freePick('과학', `${STAFF}\n습도와 이슬`).scope;
+  const t = madeTest(s, DEW.map(it => ({ ...it, domain: '' })));
+  t.students = [{ no: 1, status: 'done', items: { 1: { pts: 0, read: '②' }, 2: { pts: 0, read: '모르겠어요' } } }];
+  const gap = gapStudents([t], { cut: 60 });
+  assert.equal(gap.length, 1);
+  const names = gap[0].areas.map(a => a.name);
+  assert.ok(names.length && names.every(n => !leaks(n) && n.includes(SENT)), JSON.stringify(names));
+  assert.equal(areaPct(t, 1, names[0]), 0, '같은 이름으로 사후 점수를 찾음');
+});
