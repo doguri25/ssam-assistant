@@ -155,10 +155,15 @@ await run('plan-reform', [
     await clickStep(5);
     await page.waitForSelector(`${P} [data-rf-undo="year"]`);
   }],
-  ['[되돌리기]: 바꾸기 전 초안(옛 차례)과 그 전에 고른 양식으로, 되돌리기는 한 단계', async () => {
+  ['[되돌리기]: 바꾸기 전 초안(옛 차례)과 그 전에 고른 양식으로, 되돌리기는 한 단계 — 바꾼 뒤 고친 일정 날짜는 그대로', async () => {
+    // 바꾼 뒤 같은 화면 일정 표에서 날짜를 고침(바꾸기와 상관없는 표)
+    await page.fill(`${P} #ypDays input[data-date="0"]`, '2027-03-17');
+    await page.dispatchEvent(`${P} #ypDays input[data-date="0"]`, 'change');
     await page.click(`${P} [data-rf-undo="year"]`);
     await toastHas('되돌렸어요');
     const p = await page.evaluate(async id => (await import('./menus/plan/year-model.js')).getPlan(id), YP);
+    assert(p.draft.schedule[0].date === '2027-03-17', '고친 일정 날짜가 바꾸기 전으로 돌아감: ' + JSON.stringify(p.draft.schedule));
+    assert(await page.inputValue(`${P} #ypDays input[data-date="0"]`) === '2027-03-17', '화면 일정 날짜');
     assert(p.draft.outline.map(o => o.title).join('|') === '추진 근거|목적|운영 방침|세부 추진 내용|추진 일정|소요 예산|기대 효과', p.draft.outline.map(o => o.title).join('|'));
     assert(!p.draft.fromForm && p.draft.x1.includes('기본계획'), JSON.stringify(p.draft).slice(0, 200));
     assert((await picked('year')) === lastYearId, '그 전에 고른 양식');

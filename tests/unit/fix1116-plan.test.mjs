@@ -46,3 +46,25 @@ test('[C15] 행사계획 [되돌리기]: 계획서 글·서식 제목 줄·계�
   // 스냅숏은 바꾸기 뒤에 바뀌지 않음
   assert.deepEqual(snap.rv, [rvPlan]);
 });
+
+test('[C17] 연간계획 [되돌리기]: 바꾸기 전 목차·글로 — 바꾸기 뒤에 고친 일정·예산 표는 지금 그대로', () => {
+  const LAST = 'Ⅰ. 추진 근거\nⅡ. 목적\nⅢ. 운영 방침\nⅣ. 세부 추진 내용\nⅤ. 추진 일정\nⅥ. 소요 예산\nⅦ. 기대 효과';
+  const o = Y.yearOutline(LAST);
+  const d = Y.normDraft({ x1: '1. 2027 독서교육 기본계획', purpose: '책을 즐겨 읽는 습관을 기른다.', policy: '가. 전교생이 참여한다.', details: '1. 아침 독서', evaluation: '독서량이 는다.',
+    schedule: [{ title: '계획 수립', date: '2027-03-10' }], budget: [{ name: '도서 구입', amount: 500000, note: '' }], outline: o.items, roman: o.roman });
+  const snap = JSON.parse(JSON.stringify(d));
+  const now = reformYear(d, 'Ⅰ. 목적\nⅡ. 추진 방침\nⅢ. 세부 추진 계획\nⅣ. 월별 추진 일정\nⅤ. 소요 예산\nⅥ. 평가');
+  assert.equal(now.fromForm, true);
+  // 5단계 일정 날짜를 고치고, 4단계 예산 줄을 더함
+  now.schedule[0] = { ...now.schedule[0], date: '2027-03-17', month: 3 };
+  now.budget.push({ name: '간식', amount: 30000, note: '' });
+  now.details += '\n2. 독서 행사';
+  const back = R.yearRestore(now, snap);
+  assert.deepEqual(back.outline, snap.outline, '바꾸기 전 목차');
+  assert.equal(back.fromForm, false);
+  for (const k of ['x1', 'purpose', 'policy', 'details', 'evaluation']) assert.equal(back[k], snap[k], k);
+  assert.deepEqual(back.schedule, [{ title: '계획 수립', date: '2027-03-17', month: 3 }], '바꾸기 뒤에 고친 일정 날짜');
+  assert.deepEqual(back.budget.map(b => b.name), ['도서 구입', '간식'], '바꾸기 뒤에 더한 예산');
+  // 지금 초안이 없으면 스냅숏 그대로
+  assert.deepEqual(R.yearRestore(null, snap), snap);
+});

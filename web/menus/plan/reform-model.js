@@ -207,6 +207,8 @@ export function applyYear(d, f, H, olds) {
   });
   return normDraft(v);
 }
+/* [되돌리기]: 바꾸기 전 목차·글 칸으로. 일정·예산 표는 바꾸기가 건드리지 않으므로 지금 그대로(바꾼 뒤 5단계에서 고친 날짜·4단계 예산이 남게) */
+export const yearRestore = (now, snap) => (now ? { ...snap, schedule: now.schedule, budget: now.budget } : snap);
 
 /* ---------- 제목 줄에 함께 적힌 글 ---------- */
 /* 큰 제목 → { title(맞출 제목), lead(제목 줄에 함께 적힌 글 — 새 제목으로 바뀌어도 그 칸 글 첫 줄로 남김), cut(쌍점·제목 낱말 뒤에서 자름) }.

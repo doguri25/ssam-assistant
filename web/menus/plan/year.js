@@ -17,7 +17,7 @@ import { keepFiles } from '../../core/keep-files.js';
 import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import { rvBoxHTML, runPlanReview, onRvClick, markDone, dropOpen, hasOpen, clearState } from './plan-review.js';
 import { reformHTML, registerReform, keepLastForm } from './reform.js';
-import { yearOlds, yearHeads, yearAccepts, applyYear } from './reform-model.js';
+import { yearOlds, yearHeads, yearAccepts, applyYear, yearRestore } from './reform-model.js';
 import { SECTIONS, TEXT_SECTIONS, yearOutline, draftOutline, textKeys, insertKey, isExtra, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent, normReview, normGuide, normDraft, overlap, guideStatus, insertSentence, planDoc, planText, textForAI, ownerForAI, fitSchedule } from './year-model.js';
 
 const STEPS = ['자료 넣기', '작년 평가', '지침 점검', '초안', '일정'];
@@ -392,7 +392,8 @@ registerReform('year', {
     return { olds, apply: (f, H) => apply(id, p => { p.draft = applyYear(d, f, H, olds); p.rv = []; unconfirm(p); }) };
   },
   snapshot: () => ({ draft: JSON.parse(JSON.stringify(plan.draft)), rv: plan.rv }),
-  restore: s => apply(plan.id, p => { p.draft = s.draft; p.rv = s.rv; unconfirm(p); }),
+  // 일정·예산 표는 바꾸기와 상관없으므로 지금 그대로(바꾼 뒤 고친 날짜·예산이 남게)
+  restore: s => apply(plan.id, p => { p.draft = yearRestore(p.draft, s.draft); p.rv = s.rv; unconfirm(p); }),
   rerender: () => { if (visible()) renderMain(); },
   done: '4단계 「초안」에서 칸 글을 확인해 주세요.'
 });
