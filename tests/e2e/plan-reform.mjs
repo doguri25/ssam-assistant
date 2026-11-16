@@ -260,6 +260,34 @@ await run('plan-reform', [
     const ue = await page.evaluate(async id => (await import('./menus/plan/event-model.js')).getEvent(id), EV);
     assert(ue.docs.letter === '날짜 준비물 복장 문의 — 김하늘 선생님이 고침', ue.docs.letter);
     assert(ue.rv.map(x => x.section).join('|') === 'plan', '의견: ' + JSON.stringify(ue.rv));
+    // 행사 C를 행사 B와 같은 서식 파일로 바꿈 → 같은 이름·같은 곳이라 같은 양식(id)이 골라짐
+    const first = await formId('작년 계획서 서식 · 2026 작년 운동회 계획서');
+    const EV3 = await page.evaluate(async () => {
+      const m = await import('./menus/plan/event-model.js');
+      const plan = '2027 여름 물놀이 운영 계획\nⅠ. 개요\n가. 일시: 2027. 7. 9.\nⅡ. 운영 방침\n가. 안전한 물놀이\nⅢ. 세부 운영\n1. 물총 놀이';
+      return m.saveEvent({ ...m.newEvent(), name: '여름 물놀이', date: '2027-07-09', step: 3, maxStep: 3, docs: { plan, safety: '- 안전', letter: '날짜 준비물 복장 문의', rain: '', done: false } }).id;
+    });
+    await goTab('year'); await goTab('event');
+    await page.click(`${P} [data-ev="${EV3}"]`);
+    await page.waitForSelector(`${P} [data-rf="event"]`);
+    await upload(`${P} [data-rf="event"]`, file('봄 운동회 서식.hwpx', NEW_EVENT));
+    await page.waitForSelector('#rfSheet #rfMap');
+    await page.click('#rfSheet [data-rf-ok]');
+    await toastHas('새 서식 차례로 바꿨어요');
+    assert((await formsList()).filter(f => f.name === '봄 운동회 서식').length === 1 && (await picked('event')) === bForm, '같은 서식 파일은 같은 양식');
+    // 행사 B를 되돌려도 같은 양식으로 바꾼 행사 C의 양식은 그대로
+    await page.click(`${P} [data-ev="${EV2}"]`);
+    await page.waitForSelector(`${P} [data-rf-undo="event"]`);
+    await page.click(`${P} [data-rf-undo="event"]`);
+    await toastHas('되돌렸어요');
+    assert((await picked('event')) === bForm, '행사 B를 되돌리자 행사 C를 위해 고른 양식이 바뀜: ' + (await picked('event')));
+    assert((await page.inputValue(`${P} textarea[data-docf="plan"]`)).includes('Ⅱ. 운영 방침'), '행사 B 되돌림');
+    // 행사 C까지 되돌리면 모든 바꾸기 전에 고른 양식으로
+    await page.click(`${P} [data-ev="${EV3}"]`);
+    await page.waitForSelector(`${P} [data-rf-undo="event"]`);
+    await page.click(`${P} [data-rf-undo="event"]`);
+    await page.waitForFunction(() => document.querySelector('section[data-menu="plan"] textarea[data-docf="plan"]')?.value.includes('Ⅱ. 운영 방침'));
+    assert(first && (await picked('event')) === first, '모두 되돌리면 바꾸기 전 양식: ' + (await picked('event')));
   }],
   ['학급운영계획 1단계: 작년 계획서 .hwpx → 서식 저장·골라 둠', async () => {
     CP = await page.evaluate(async () => {

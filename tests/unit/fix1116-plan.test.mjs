@@ -219,3 +219,27 @@ test('[C20 검토] 새 서식 큰 제목의 밑줄 빈칸·단위 낱말이 붙�
   const keep = ['예산: 500,000원', '인원: 25명', '대상: 6학년 2반', '대상: 전 학년', '시간: 매일', '운영: 주 1회', '예산: 금 500,000원', '목적: 금연 교육', '시간: 2시간'];
   assert.deepEqual(R.formHeads(keep.map((t, i) => `${i + 1}. ${t}`).join('\n')).heads.map(h => h.title), keep);
 });
+
+test('[C21 검토] [되돌리기]와 고른 학교 양식: 같은 서식 파일(같은 양식 id)로 바꾼 같은 종류 다른 계획이 있으면 그 양식은 그대로', () => {
+  // 행사 A: 기본 문서('') → 서식 X, 행사 B: 같은 파일이라 같은 양식 X(바꾸기 전 X) → A 되돌림: B가 쓰는 X 그대로
+  const A = { form: '', picked: 'X', seq: 1 }, B = { form: 'X', picked: 'X', seq: 2 };
+  assert.equal(R.undoPick(A, [B], 'X'), null, 'B를 위해 고른 양식이 기본 문서로 바뀜');
+  // 그 뒤 B까지 되돌리면 둘 다 하기 전 양식으로
+  assert.equal(R.undoPick(B, [], 'X'), '');
+  // 차례를 바꿔 B 먼저 되돌려도 A가 쓰는 X 그대로, 그다음 A를 되돌리면 그 전으로
+  const A2 = { form: '', picked: 'X', seq: 1 }, B2 = { form: 'X', picked: 'X', seq: 2 };
+  assert.equal(R.undoPick(B2, [A2], 'X'), null);
+  assert.equal(R.undoPick(A2, [], 'X'), '');
+  // 다른 파일: A '' → X, B X → Y — A를 되돌려도 Y 그대로, 그다음 B를 되돌리면 둘 다 하기 전('')으로(되돌린 A의 X가 아님)
+  const A3 = { form: '', picked: 'X', seq: 1 }, B3 = { form: 'X', picked: 'Y', seq: 2 };
+  assert.equal(R.undoPick(A3, [B3], 'Y'), null);
+  assert.equal(R.undoPick(B3, [], 'Y'), '');
+  // 혼자: 이 바꾸기가 고른 양식이 골라져 있으면 그 전 양식으로, 선생님이 그 뒤 다른 양식을 골랐거나 서식을 저장하지 못했으면 그대로
+  assert.equal(R.undoPick({ form: 'L', picked: 'X', seq: 1 }, [], 'X'), 'L');
+  assert.equal(R.undoPick({ form: 'L', picked: 'X', seq: 1 }, [], 'T'), null);
+  assert.equal(R.undoPick({ form: 'L', picked: '', seq: 1 }, [], 'L'), null);
+  // 선생님이 사이에 고른 양식(T) 위에서 바꾼 B는 A의 전 양식을 이어받지 않음
+  const A4 = { form: '', picked: 'X', seq: 1 }, B4 = { form: 'T', picked: 'X', seq: 2 };
+  assert.equal(R.undoPick(A4, [B4], 'X'), null);
+  assert.equal(R.undoPick(B4, [], 'X'), 'T');
+});

@@ -182,6 +182,20 @@ export function attachOrphan(f, id, i) {
   return { ...f, to, attached };
 }
 
+/* ---------- [되돌리기]와 고른 학교 양식 ---------- */
+/* 고른 양식은 계획 종류마다 하나이고, 바꾸기마다 그 서식을 저장해 골라 둠(같은 서식 파일이면 같은 양식 id).
+   u: 되돌리는 바꾸기 { form(그 전에 고른 양식), picked(이 바꾸기가 고른 양식 — 저장하지 못했으면 ''), seq(바꾼 차례) },
+   others: 같은 종류 다른 계획의 남은 되돌리기, cur: 지금 고른 양식 → 고를 양식(그대로 두면 null).
+   다른 계획이 바꾸며 지금 양식을 골라 두었으면(같은 서식 파일로 바꾼 계획 포함) 그 계획이 쓰므로 그대로,
+   아니면 이 바꾸기가 고른 양식이 아직 골라져 있을 때만 그 전 양식으로(그 뒤 선생님이 고른 양식은 그대로).
+   이 바꾸기가 고른 양식 위에서 바꾼 바로 다음 바꾸기는 이 바꾸기 전 양식을 이어받음(그것까지 되돌리면 둘 다 하기 전 양식으로) — others의 form을 고침 */
+export function undoPick(u, others, cur) {
+  if (!u || !u.picked) return null;
+  const next = others.filter(x => x.seq > u.seq && x.form === u.picked).sort((a, b) => a.seq - b.seq)[0];
+  if (next) next.form = u.form;
+  return cur === u.picked && !others.some(x => x.picked === cur) ? u.form : null;
+}
+
 /* ---------- 연간계획: 목차 key·글 ---------- */
 const won = n => Number(n || 0).toLocaleString('ko-KR');
 const dayText = s => (s.date ? `${+s.date.slice(5, 7)}월 ${+s.date.slice(8, 10)}일` : s.month ? `${s.month}월` : '');
