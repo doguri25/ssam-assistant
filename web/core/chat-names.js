@@ -2,7 +2,7 @@
    흔한 성 + 흔한 이름(두 글자) 목록으로 봄: 「김민수가」「박지훈 결석계」「이서연이」「김민수네」, 성 없이 「민준이가」(받침 있는 이름 + 이 + 조사).
    이름 목록에 없어도 앞뒤에 「학생·어머니·선생님·님·결석·상담」이나 「담임·회장·이름:」이 붙으면 이름 글자로만 된 낱말은 가림.
    「구구단을」「모둠원과」「마무리를」「한국사를」「고무줄을」「조각품을」처럼 흔한 성 글자로 시작하는 낱말은 그대로 */
-import { SURNAME, MASK, nameCell } from './privacy.js';
+import { SURNAME, MASK, nameCell, roName, roSpot } from './privacy.js';
 
 /* 흔한 이름(성을 뺀 두 글자): 요즘 학생 이름과 선생님·보호자 나이대 이름. 흔한 낱말과 겹치는 것(정한·해진·어진·하진·대한·성원·정원·연수·진주·나라)은 뺌 */
 const NAMES = (
@@ -40,14 +40,16 @@ const EXCEPT = new Set(('현미경 정지선 고시원 진지한 편하진 심�
   + '김유신 정약용 강감찬 윤봉길 안창호 방정환 주시경 김정호 최무선 문익점 허난설 신사임 이육사 한용운 김소월 윤동주 홍길동 심청이 이몽룡 성춘향 '
   + '이민자 이번주 지난주 다음주 이번달 이로운 남은지 소인수 정해진 주어진 길어진 강해진 편해진 심해진 '
   // 흔한 성 글자 + 이름에 쓰는 두 글자인 낱말(「도우미가」「마무리를」「유리창이」「민주주의」)
-  + '도우미 마무리 최우수 옥수수 은하수 원주민 이주민 민주주 유리창 우주선 손수건 조리원 지도원 모둠원 정원사 조리사').split(' '));
+  + '도우미 마무리 최우수 옥수수 은하수 원주민 이주민 민주주 유리창 우주선 손수건 조리원 지도원 모둠원 정원사 조리사 '
+  // 흔한 성 글자 + 이름 목록의 두 글자인 낱말 + 로(「임시안으로」「예시안으로」「정동진으로」)
+  + '임시안 예시안 백지안 정동진').split(' '));
 // 두 글자(성 + 외자)인데 흔한 낱말
 const EXCEPT2 = new Set('이민 고민 주민 국민 도민 정진 전진 공현 차진 안진 오진 강진 노현 지진 추진 홍진 남산 한산 기한 우산 유산 원산 진산 반찬 기혁 신혁 구현 표현 모현 노한 공한 방한 반한 원한 유한 기호 신호 구호 보호 선호 주호 장호 전호'.split(' '));
 const DOUBLE = /^(?:남궁|황보|제갈|선우|독고)/;
 
-/* 이름 뒤에 바로 붙는 말: 호칭·가족(김민수네·김민수님) + 조사·이다 */
+/* 이름 뒤에 바로 붙는 말: 호칭·가족(김민수네·김민수님) + 조사(「김민준으로」도)·이다 */
 const GLUE = '(?:님|씨|군|양|네|학생|학부모|어머니|어머님|아버지|아버님|부모님|엄마|아빠|선생님|쌤)';
-const JOSA = '(?:이가|이는|이를|이랑|이와|이하고|이도|이의|이만|이한테|이에게|이처럼|이네|에게서|한테서|에게|께서|한테|하고|이랑|까지|부터|처럼|보다|마저|조차|밖에|이나|이며|이고|이야|이요|이에요|예요|이다|이었|였|입니다|이라고|라고|이라는|라는|이든|든|아|야|[은는이가을를과와의에도만께랑])';
+const JOSA = '(?:이가|이는|이를|이랑|이와|이하고|이도|이의|이만|이한테|이에게|이처럼|이네|에게서|한테서|에게|께서|한테|하고|이랑|까지|부터|처럼|보다|마저|조차|밖에|이나|이며|이고|이야|이요|이에요|예요|이다|이었|였|입니다|이라고|라고|이라는|라는|이든|든|아|야|으로부터|로부터|으로|[은는이가을를과와의에도만께랑로])';
 const SUFFIX = new RegExp(`^(?:${GLUE}${JOSA}?|${JOSA})?$`);
 const GLUED = new RegExp(`^${GLUE}`);
 // 성 없는 이름 + 이 + 조사(「민준이가」「서연이는」 — 「지원이 필요」처럼 조사가 없으면 아님)
@@ -78,26 +80,31 @@ const GIVEN_NEXT = /^(?:학생|군|양|결석|지각|조퇴|병결|상담)/;
 // 「~같」: 「한결같이·한결같은」(한결 + 같다)은 이름이 아님
 const OLD_END = /[이가는을를의에도만와과로한할된던운간친른막움님기상왕년자함임음됨옴짐줌봄둠씀큼냄킴림침힘히게서말글길날일들적력감개심같]$/;
 
-/* 낱말 하나(tok)를 보고 가릴 길이(앞에서부터)를 돌려줌(없으면 0). prev·next: 앞뒤 한글 낱말.
+/* 낱말 하나(tok)를 보고 가릴 길이(앞에서부터)를 돌려줌(없으면 0). prev·next: 앞뒤 한글 낱말, before·after: 낱말 앞·뒤 글(「로」 자리 보기).
    memo: 행특 메모(잘못 가려도 덜 아까움 — 을·를·과도, 홀로 쓴 이름도), first: 줄의 첫 낱말 */
-function hit(tok, prev, next, { memo = false, first = false } = {}) {
+function hit(tok, prev, next, { memo = false, first = false, before = '', after = '' } = {}) {
   const cue = NEXT_CUE.test(next || '') || PREV_CUE.test(prev || '');
+  // 「로·으로(부터)」(s)는 이름 자리일 때만(privacy.js roSpot — 「바꿔·정함·뽑」 앞, 「로부터」는 「연락·받」 앞). 「예정대로」「노란색으로」는 낱말 끝 글자로도 거름(roName).
+  // 목록의 이름(g)은 「로 해 줘·로 함」 앞에서도(「담당자를 김민준으로 해 줘」)
+  const ro = (s, g = '') => !/^으?로/.test(s) || roSpot(s, before, after, GIVEN.has(g));
   // 두 글자 성(남궁·황보·제갈·선우·독고) + 두 글자 이름
   if (DOUBLE.test(tok) && tok.length >= 4) {
     const g = tok.slice(2, 4), s = tok.slice(4);
-    if (SUFFIX.test(s) && (GIVEN.has(g) || ((cue || GLUED.test(s)) && SYL.has(g[0]) && SYL.has(g[1])))) return 4;
+    if (SUFFIX.test(s) && ro(s, g) && (GIVEN.has(g) || ((cue || GLUED.test(s)) && SYL.has(g[0]) && SYL.has(g[1])))) return 4;
   }
   // 성 + 두 글자 이름: 목록의 이름이면 조사가 붙든 홀로 쓰든. 목록 밖이면 두 글자 모두 이름 글자이고, 낱말 끝이 아니고,
   // 앞뒤에 사람을 가리키는 말이 있거나 사람 조사가 붙거나 홀로 쓰고 뒤에 메모 말이 올 때(행특 메모는 조사가 무엇이든·홀로 써도)
   if (tok.length >= 3 && SURNAME.has(tok[0])) {
     const n = tok.slice(0, 3), g = n.slice(1), s = tok.slice(3);
-    if (!EXCEPT.has(n) && SUFFIX.test(s)) {
+    // 「로·으로」: 목록의 이름(「김민준으로」 — 끝 글자가 지안·은지·민호여도)은 이름 자리일 때, 목록 밖은 낱말 끝 글자도 봄(「공문체로」「노란색으로」는 아님)
+    const roOk = !/^으?로/.test(s) || roName(n, s, before, after);
+    if (!EXCEPT.has(n) && SUFFIX.test(s) && ro(s, g)) {
       // 「설정은」「인정은」「여성은」처럼 받침 있는 두 글자 낱말 + 은은 이름(정은·성은·영은·경은)과 같아 보여서, 홀로 쓰면 앞뒤를 봄
       const topic = g[1] === '은' && batchim(g[0]) && !s;
       // 「지도하는」「이동하는」「공유하는」「구별하는」: 이름(도하·동하·유하·별하) + 는과 같아 보이는 동사로 봄(「지도하는 교사」처럼 뒤에 사람 말이 와도)
       const verb = s === '는' && g[1] === '하';
       if (GIVEN.has(g) && (!topic || cue) && !verb) return 3;
-      if (!LOOSE_END.test(n) && !(s === '는' && VERB_NEUN.test(n))) {
+      if (roOk && !LOOSE_END.test(n) && !(s === '는' && VERB_NEUN.test(n))) {
         const syl = SYL.has(g[0]) && SYL.has(g[1]);
         if (syl && (cue || GLUED.test(s) || PERSON.test(s) || (!s && MEMO_NEXT.test(next || '')) || memo)) return 3;
         // 행특 메모: 한 글자가 이름 글자가 아니어도 사람 조사가 붙으면(「박찬울이」) — 흔한 낱말(nameCell)·낱말 끝(「지우개가」)은 빼고
@@ -120,12 +127,12 @@ function hit(tok, prev, next, { memo = false, first = false } = {}) {
     if (!batchim(g2[1]) && GIVEN_V.test(s) && !(s === '는' && VERB_NAME.has(g2))) return 2;
     if (batchim(g2[1]) && s === '이') return 2;
     if (!s && GIVEN_NEXT.test(next || '')) return 2;
-    if (memo && (s ? SUFFIX.test(s) && !GLUED.test(s) && !(s === '는' && VERB_NAME.has(g2)) : first)) return 2;
+    if (memo && (s ? SUFFIX.test(s) && ro(s) && !GLUED.test(s) && !(s === '는' && VERB_NAME.has(g2)) : first)) return 2;
   }
   // 외자 이름(성 + 한 글자): 「김솔 학생」「김솔님」「이름: 박준」「강사 김솔」
   if (tok.length >= 2 && SURNAME.has(tok[0]) && ONE.has(tok[1]) && !EXCEPT2.has(tok.slice(0, 2))) {
     const s = tok.slice(2);
-    if (SUFFIX.test(s) && (HONOR.test(next || '') || PREV_CUE.test(prev || '') || /^(?:님|씨|학생)/.test(s))) return 2;
+    if (SUFFIX.test(s) && ro(s) && (HONOR.test(next || '') || PREV_CUE.test(prev || '') || /^(?:님|씨|학생)/.test(s))) return 2;
   }
   return 0;
 }
@@ -152,7 +159,7 @@ function personCuts(s, memo) {
     const gapP = k > 0 ? s.slice(toks[k - 1].i + toks[k - 1].w.length, t.i) : '', gapN = k + 1 < toks.length ? s.slice(t.i + t.w.length, toks[k + 1].i) : '';
     const prev = k > 0 && /^[\s:：(（]*$/.test(gapP) ? toks[k - 1].w : '';
     const next = k + 1 < toks.length && /^[\s)）]*$/.test(gapN) ? toks[k + 1].w : '';
-    const len = hit(w, prev, next, { memo, first: k === 0 });
+    const len = hit(w, prev, next, { memo, first: k === 0, before: s.slice(0, at), after: s.slice(t.i + t.w.length) });
     if (len) cuts.push([at, len]);
   });
   return cuts;

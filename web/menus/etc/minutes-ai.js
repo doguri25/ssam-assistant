@@ -27,12 +27,13 @@ export function guessKind(title) {
 
 /* AI로 보낼 메모·칸을 한 가리개로 가림(같은 이름은 같은 자리 표시): 명단·주민번호·계좌 줄은 뺌(dropped).
    메모는 줄을 한꺼번에(core/redact.js lines — 한 줄에 한 명씩인 번호 명단·「이름」 머리 칸 아래 표, 다른 줄(앞 줄도)에서 알아낸 이름),
-   칸(참석 칸도 — 보내지는 않음)의 이름도 먼저 배워 메모에서 가림. 보내는 칸은 회의 종류·이름·날짜·시간·장소(이름·시간·장소도 가림) */
+   칸(참석 칸도 — 보내지는 않음)의 이름도 먼저 배워 메모에서 가림(참석 칸은 이름이 하나여도, 메모의 「참석: …」 명단 줄도). 보내는 칸은 회의 종류·이름·날짜·시간·장소(이름·시간·장소도 가림) */
 export function redactInput(memo, meta = {}) {
   const r = makeRedactor(), m = isObj(meta) ? meta : {};
   const cells = { title: one(m.title, 200), time: one(m.time, 40), place: one(m.place, 200) };
   const memoLines = String(memo == null ? '' : memo).split('\n');
   r.learn(memoLines); // 자리 표시 번호는 메모에 나온 차례(〔이름1〕이 메모의 첫 이름), 칸에서만 나온 이름은 그 뒤
+  r.learnList(one(m.attendees, 200));
   const out = r.lines(memoLines, { learn: [cells.title, cells.time, cells.place, one(m.attendees, 200)].filter(Boolean) });
   const text = out.filter(Boolean).map(x => x.text).join('\n');
   const hide = s => { if (!s) return ''; const x = r.line(s); return x ? x.text : ''; };

@@ -75,7 +75,7 @@ function linesOf(xml, container, sec, out, inBox, top = null) {
       for (const tb of tables) for (const tr of kidsNamed(tb, 'tr')) for (const tc of kidsNamed(tr, 'tc')) for (const sl of kidsNamed(tc, 'subList')) linesOf(xml, sl, sec, out, true, tp);
       continue;
     }
-    out.push({ sec, node: p, box: container, top: tp, inBox, text: paraText(xml, p), obj: has(p, ['pic', 'rect', 'ellipse', 'line', 'container', 'ole', 'equation']) });
+    out.push({ sec, xml, node: p, box: container, top: tp, inBox, text: paraText(xml, p), obj: has(p, ['pic', 'rect', 'ellipse', 'line', 'container', 'ole', 'equation']) });
   }
 }
 

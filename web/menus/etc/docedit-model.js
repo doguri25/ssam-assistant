@@ -1,9 +1,10 @@
 /* 문서·소통 › 문서 다듬기 (스펙 2026-11-15 1A): 넣은 문서의 줄(문단·표 칸) 목록과 고친 단계, AI 요청·답 정리. 화면 없이 돌아감(시험).
-   줄(item) = { id(AI에 보내는 번호), src(원래 줄 차례, 더한 줄은 null), tpl(본 문단 줄 차례), box(표 칸), orig(원래 글), text(지금 글), del(지움) }.
+   줄(item) = { id(AI에 보내는 번호), src(원래 줄 차례, 더한 줄은 null), tpl(본 문단 줄 차례), box(표 칸), orig(원래 글), text(지금 글), del(지움),
+   cell(한글 표 칸 줄만 — [표 차례, 줄 차례, 칸 차례]) }.
    함수는 목록을 바꾸지 않고 새 목록을 돌려줌(한 단계 되돌리기가 앞 목록을 그대로 씀).
    보낼 글: 이름·전화번호·이메일은 core/redact.js로 가리고(돌아온 글에 되돌림), 명단·주민번호 줄과 이름만 든 칸은 보내지 않음(그대로 둠) */
 import { makeRedactor } from '../../core/redact.js';
-import { nameCell } from '../../core/privacy.js';
+import { nameCell, nameHead, nameUnderHead, peopleNames, stripNames, maskContacts } from '../../core/privacy.js';
 import { levelOf } from '../../core/hwpx-form.js';
 import { finalLines } from '../../core/hwpx-edit.js';
 
@@ -19,12 +20,30 @@ export const CHIPS = [
 export const HIST_MAX = 10;
 export const BATCH_CHARS = 12000, BATCH_LINES = 250;
 
+const tag = n => (n && n.name ? n.name.replace(/^.*:/, '') : '');
+/* 칸 주소(<hp:cellAddr colAddr rowAddr>, core/hwpx-table.js와 같게) 속성 값, 없으면 -1 */
+const addrOf = (l, tc, a) => {
+  const n = typeof l.xml === 'string' && tc.kids.find(k => tag(k) === 'cellAddr');
+  const m = n && new RegExp(`\\s${a}="(\\d+)"`).exec(l.xml.slice(n.s, n.oe));
+  return m ? +m[1] : -1;
+};
+/* 한글 표 칸 줄(readForm 줄의 box = 칸의 subList)의 자리 → [표 차례, 줄 차례, 칸 차례], 아니면 null.
+   줄·칸 차례는 칸 주소로(세로로 합친 칸 — 「1모둠」이 세 줄을 덮으면 아래 줄은 칸이 하나 적어 형제 차례로는 왼쪽으로 밀림), 주소가 없으면 형제 차례 */
+function cellAt(l, tables) {
+  const tc = l && l.inBox && l.box && l.box.up, tr = tc && tc.up, tb = tr && tr.up;
+  if (tag(tc) !== 'tc' || tag(tr) !== 'tr' || tag(tb) !== 'tbl') return null;
+  if (!tables.has(tb)) tables.set(tb, tables.size);
+  const row = addrOf(l, tc, 'rowAddr'), col = addrOf(l, tc, 'colAddr');
+  return [tables.get(tb), row >= 0 ? row : tb.kids.filter(k => tag(k) === 'tr').indexOf(tr), col >= 0 ? col : tr.kids.filter(k => tag(k) === 'tc').indexOf(tc)];
+}
 /* 원래 줄(readForm lines 또는 { text, inBox }) → 고칠 줄 목록(빈 줄·그림만 있는 줄은 뺌) */
 export function startItems(lines) {
-  const out = [];
+  const out = [], tables = new Map();
   (lines || []).forEach((l, i) => {
     const t = String((l && l.text) || '');
-    if (t.trim()) out.push({ id: out.length + 1, src: i, tpl: i, box: !!(l && l.inBox), orig: t, text: t, del: false });
+    if (!t.trim()) return;
+    const cell = cellAt(l, tables);
+    out.push({ id: out.length + 1, src: i, tpl: i, box: !!(l && l.inBox), orig: t, text: t, del: false, ...(cell ? { cell } : {}) });
   });
   return out;
 }
@@ -33,10 +52,15 @@ export function startItems(lines) {
 /* 문단 안 줄바꿈(한글 <hp:lineBreak/>)은 AI에 이 표시로 보내고 돌아온 글에서 다시 줄바꿈으로(글의 줄바꿈은 「뒤에 더하기」라서) */
 export const BR = '⏎';
 const BR_BACK = new RegExp(`[ \\t]*${BR}`, 'g'); // 돌아온 ⏎(앞에 AI가 더한 빈칸까지) → 줄바꿈
-/* 보내지 않는 줄(명단·주민번호·계좌 줄, 이름만 든 칸)의 이름 모양 낱말 — 다른 줄에서도 가리게 */
+/* 보내지 않는 줄(명단·주민번호·계좌 줄, 이름만 든 칸)의 이름 모양 낱말 — 다른 줄에서도 가리게.
+   이름이 늘어선 명단 줄은 core/privacy.js peopleNames(머리 말이 사람이 아닌 것의 목록 — 「준비물: 도시락, 우비, 안내문, 신분증」이면 배우지 않음) */
 function heldNames(texts) {
   const out = makeRedactor().lines(texts);
-  return texts.filter((t, k) => !out[k] || nameCell(t.trim())).flatMap(t => t.match(/[가-힣]+/g) || []).filter(nameCell);
+  return texts.flatMap((t, k) => {
+    if (nameCell(t.trim())) return [t.trim()];
+    if (out[k]) return [];
+    return stripNames(maskContacts(t)).dropped ? peopleNames(t) : (t.match(/[가-힣]+/g) || []).filter(nameCell);
+  });
 }
 /* 줄 목록 + 선생님이 적은 요청 → { sent: [{ id, text, box }], held(보내지 않은 줄 수), ask(가린 요청 — 명단·주민번호 같은 요청이면 null),
    back(돌아온 글의 자리 표시 → 원래 이름·연락처), bad(돌아온 글에 없는 번호·깨진 자리 표시가 있는지) }.
@@ -46,10 +70,14 @@ function heldNames(texts) {
 export function payloadOf(items, ask = '') {
   const r = makeRedactor(), all = items || [], sent = [];
   const live = all.filter(x => !x.del && x.text.trim());
-  const cells = live.filter(x => nameCell(x.text.trim())), send = live.filter(x => !nameCell(x.text.trim())); // 이름만 든 칸·줄(명단 표의 이름 칸 등)은 보내지 않음
+  // 한글 표의 「이름·성명」 머리 칸 아래 칸(이솔·박준·김가을처럼 두 글자·조사 끝 글자 이름도)
+  const heads = live.filter(x => x.cell && nameHead(x.text));
+  const underHead = x => !!x.cell && nameUnderHead(x.text) && heads.some(h => h.cell[0] === x.cell[0] && h.cell[2] === x.cell[2] && h.cell[1] < x.cell[1]);
+  const isHeld = x => nameCell(x.text.trim()) || underHead(x);
+  const cells = live.filter(isHeld), send = live.filter(x => !isHeld(x)); // 이름만 든 칸·줄(명단 표의 이름 칸 등)은 보내지 않음
   const asks = String(ask || '').split(/\r?\n/), origs = all.map(x => x.orig).filter(t => t && t.trim());
   r.learn([...origs, ...asks]);
-  for (const n of heldNames([...live.map(x => x.text), ...origs])) if (!r.names.includes(n)) r.names.push(n);
+  for (const n of [...heldNames([...live.map(x => x.text), ...origs]), ...cells.filter(underHead).map(x => x.text.trim())]) if (!r.names.includes(n)) r.names.push(n);
   const outs = r.lines(send.map(x => x.text.replace(/\r/g, '')));
   let held = cells.length;
   send.forEach((x, k) => { if (outs[k]) sent.push({ id: x.id, text: outs[k].text.replace(/\n/g, BR), box: x.box }); else held++; });
@@ -230,7 +258,19 @@ export function editsOf(items) {
   }
   return ed;
 }
-/* 글만 읽은 파일(.hwp·워드·PDF·글) → 쌤비서 기본 문서 { title, blocks }: 첫 줄은 제목, 탭으로 나뉜 줄이 이어지면 표, 빈 줄은 하나로 */
+// 표 줄: .hwp 글(평가 메뉴 blocksToText)은 칸을 「 | 」로 이음(빈 끝 칸은 「|」로 끝남), 워드 표는 칸마다 탭
+const PIPE_ROW = /\s\|(?:\s|$)|^\|\s/;
+// 워드 문단 안 탭(「1.⇥목적」「붙임⇥계획서 1부.」): 칸 둘이고 앞 칸이 번호·기호·붙임이면 표 줄이 아님
+const ITEM_HEAD = /^(?:\d{1,2}[.)]|[가-하][.)]|\(\d{1,2}\)|\([가-하]\)|[①-⑳]|[□■○●◦·•▪※\-–]|붙임(?:\s*\d+\.?)?)$/;
+function rowOf(t) {
+  const s = t.trim();
+  if (PIPE_ROW.test(s)) return { k: '|', cells: s.split(/\s*\|\s*/).map(c => c.trim()) };
+  if (!t.includes('\t')) return null;
+  const cells = t.split('\t').map(c => c.trim());
+  return cells.length === 2 && ITEM_HEAD.test(cells[0]) ? null : { k: '\t', cells };
+}
+/* 글만 읽은 파일(.hwp·워드·PDF·글) → 쌤비서 기본 문서 { title, blocks }: 첫 줄은 제목, 「칸 | 칸」 줄(.hwp 표)이나 탭으로 나뉜 줄(워드 표)이 이어지면 표,
+   빈 줄은 하나로. 탭 줄은 두 줄 넘게 이어지거나 칸이 셋 넘을 때만 표(문단 안 탭 한 줄은 문단 그대로) */
 export function plainDoc(lines, items) {
   const all = finalLines(lines, editsOf(items));
   const first = all.findIndex(t => t.trim());
@@ -238,13 +278,20 @@ export function plainDoc(lines, items) {
   const rest = all.slice(first + 1);
   while (rest.length && !rest[rest.length - 1].trim()) rest.pop();
   const blocks = [];
-  for (const t of rest) {
-    const last = blocks[blocks.length - 1];
-    if (t.includes('\t')) {
-      const row = t.split('\t').map(c => c.trim());
-      if (last && last.type === 'table') last.rows.push(row); else blocks.push({ type: 'table', rows: [row] });
-    } else if (!t.trim()) { if (!(last && last.type === 'p' && !last.text)) blocks.push({ type: 'p', text: '' }); }
+  for (let i = 0; i < rest.length;) {
+    const t = rest[i], row = rowOf(t), last = blocks[blocks.length - 1];
+    if (row) {
+      let j = i + 1;
+      const rows = [row.cells];
+      for (let r; j < rest.length && (r = rowOf(rest[j])) && r.k === row.k; j++) rows.push(r.cells);
+      if (row.k === '|' || rows.length >= 2 || row.cells.length >= 3) blocks.push({ type: 'table', rows });
+      else blocks.push({ type: 'p', text: t });
+      i = j;
+      continue;
+    }
+    if (!t.trim()) { if (!(last && last.type === 'p' && !last.text)) blocks.push({ type: 'p', text: '' }); }
     else blocks.push({ type: 'p', text: t });
+    i++;
   }
   return { title, blocks };
 }
