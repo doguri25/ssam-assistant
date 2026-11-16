@@ -24,15 +24,25 @@ const cellName = c => (/^[가-힣]{3}$/.test(c) && SURNAME.has(c[0]) && !COMMON.
 export const nameCell = c => cellName(String(c || ''));
 const ROLE = '부?담임|부?회장|부?반장|서기|총무|학생|교사|전담|대표|교감|교장';
 const ROLE_NAME = new RegExp(`((?:${ROLE})(?:\\s*[:：|]\\s*|\\s+))([가-힣]{3,6})(?![가-힣])`, 'g');
-/* 이름 뒤 조사(「김민준과」「이서연이」「김민수에게」「이영희님께」) — 이름만 가리고 조사는 남김 */
-const JOSA = /^(?:님|씨)?(?:에게|께서|한테|하고|이랑|까지|부터|처럼|보다|[은는이가을를과와의에도만께랑])?$/;
+/* 이름 뒤 조사(「김민준과」「이서연이」「김민수에게」「이영희님께」「김하늘로」「김민준으로부터」) — 이름만 가리고 조사는 남김 */
+const JOSA = /^(?:님|씨)?(?:에게|께서|한테|하고|이랑|까지|부터|처럼|보다|(?:으로|로)(?:부터)?|[은는이가을를과와의에도만께랑])?$/;
+const batchimOf = ch => { const c = ch.charCodeAt(0) - 0xac00; return c >= 0 && c < 11172 ? c % 28 : -1; };
+/* 이름(n) + 조사(j)가 맞는 꼴인지: 「로」는 받침 없거나 ㄹ 받침 뒤, 「으로」는 그 밖의 받침 뒤(「강당으로」를 「강당으」+「로」로 자르지 않게).
+   「로·으로」는 세 글자 넘는 이름만(「담당 주제로」「담당 지역으로」 같은 두 글자 낱말은 아님) */
+function josaOk(n, j) {
+  if (!JOSA.test(j)) return false;
+  const m = /^(님|씨)?(으?)로/.exec(j);
+  if (!m) return true;
+  const b = batchimOf((m[1] || n).slice(-1));
+  return n.length >= 3 && !/으$/.test(n) && (m[2] ? b > 0 && b !== 8 : b === 0 || b === 8);
+}
 // 조사가 붙었을 때 이름으로 보지 않는 끝 글자 (이해도를·연수회를·홍보단을·공부방을처럼 「~도·~회·~단·~방」 낱말)
 const NOUN_END = /[도감력화회권별제법실부생들표단방작비장품물집책판함증점식터반란]$/;
 /* 낱말 → [이름, 조사] (긴 이름부터 — 이름 끝 글자가 조사로 남지 않게), 아니면 null. ok(이름, 조사) */
 function nameJosa(w, ok) {
   for (let k = Math.min(4, w.length); k >= 2; k--) {
     const n = w.slice(0, k), j = w.slice(k);
-    if (JOSA.test(j) && ok(n, j)) return [n, j];
+    if (josaOk(n, j) && ok(n, j)) return [n, j];
   }
   return null;
 }
@@ -104,7 +114,7 @@ const TWO_WORD = new Set(('전담 연구 정보 안전 인성 진로 진학 도�
 /* 직함 옆 낱말 하나가 교직원 이름 모양인지: 세 글자(흔한 성, 부서 이름 아님) 또는 두 글자(흔한 성 + 흔한 낱말 아님) */
 export const staffName = n => (n.length === 3 ? cellName(n) && !STAFF_WORD.has(n) : n.length === 2 && SURNAME.has(n[0]) && !TWO_WORD.has(n));
 /* 「김솔께」「이나래에게」 → [이름, 조사] (세 글자 이름부터) */
-const staffJosa = w => { for (const k of [3, 2]) { if (w.length < k) continue; const n = w.slice(0, k), j = w.slice(k); if (JOSA.test(j) && staffName(n)) return [n, j]; } return null; };
+const staffJosa = w => { for (const k of [3, 2]) { if (w.length < k) continue; const n = w.slice(0, k), j = w.slice(k); if (josaOk(n, j) && staffName(n)) return [n, j]; } return null; };
 /* 직함 앞뒤의 교직원 이름만 ○○○로(그 밖의 글은 그대로 — 가린 자리를 되돌릴 수 있게 바꾸기만 함) → { text, masked } */
 export function maskStaff(text) {
   let masked = 0;
@@ -123,9 +133,9 @@ const josaName = n => plainOk(n) && !THING_END.test(n) && (!/[서지구형하리
 /* 흔한 성으로 시작하는 세 글자 낱말 + 조사(빈 조사는 아님)만 ○○○로 → { text, masked } */
 export function maskJosaNames(text) {
   let masked = 0;
-  const s = String(text == null ? '' : text).replace(/(^|[^가-힣○])([가-힣]{4,6})(?![가-힣])/g, (m, pre, w) => {
+  const s = String(text == null ? '' : text).replace(/(^|[^가-힣○])([가-힣]{4,8})(?![가-힣])/g, (m, pre, w) => {
     const n = w.slice(0, 3), j = w.slice(3);
-    if (!j || !JOSA.test(j) || !josaName(n)) return m;
+    if (!j || !josaOk(n, j) || !josaName(n)) return m;
     masked++;
     return pre + MASK + j;
   });
