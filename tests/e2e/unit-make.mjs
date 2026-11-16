@@ -150,7 +150,7 @@ await run('unit-make', [
     const s2 = dec((await unzip(new Uint8Array(readFileSync(await dl2.path())))).get('Contents/section0.xml'));
     assert(s2.includes('두더지 / 지렁이') && s2.includes('(예) 다리가 튼튼해서') && s2.includes('채점 기준'), '정답지');
   }],
-  ['[평가 만들기] → 새 단원평가 1단계: 제목·정답표 5문항(③·배점)·문제지 글이 채워짐, 채점 요청에 그 정답표', async () => {
+  ['[평가 만들기] → 새 단원평가 1단계: 제목·정답표 5문항(③·배점)·문제지 글이 채워짐, 채점 요청에 그 정답표, 5번을 빼고 다시 더해도 뺀 물음은 문제지에 없음', async () => {
     await page.click(`${MK} [data-mk="create"]`);
     await page.waitForSelector(`${V} .un-key`);
     assert((await page.textContent(`${V} .un-title`)).trim() === '3학년 과학 2단원 동물의 생활', await page.textContent(`${V} .un-title`));
@@ -166,6 +166,14 @@ await run('unit-make', [
     assert(g.includes('2 | 고르기 | ③ | 17') && g.includes('[평가지 글]') && g.includes('② 붕어'), g.slice(0, 500));
     const [dl] = await Promise.all([page.waitForEvent('download'), page.click(`${V} [data-mk="madePaper"]`)]);
     assert(dl.suggestedFilename().endsWith('문제지.hwpx'), dl.suggestedFilename());
+    assert(dec((await unzip(new Uint8Array(readFileSync(await dl.path())))).get('Contents/section0.xml')).includes('뱀이 움직이는 방법은?'), '5번 물음');
+    // 마지막 5번을 빼고 [문항 더하기](같은 5번) → 다시 내려받는 문제지에 뺀 물음이 되살아나지 않음
+    await page.click(`${V} [data-un="delItem"][data-no="5"]`);
+    await page.click(`${V} [data-un="addItem"]`);
+    await until(async () => await page.locator(`${V} .un-key tbody tr`).count() === 5);
+    const [dl3] = await Promise.all([page.waitForEvent('download'), page.click(`${V} [data-mk="madePaper"]`)]);
+    const s3 = dec((await unzip(new Uint8Array(readFileSync(await dl3.path())))).get('Contents/section0.xml'));
+    assert(!s3.includes('뱀이 움직이는 방법은?') && s3.includes('땅속에 굴을 파고 사는 동물은 무엇인가요?'), '뺀 문항의 물음이 문제지에');
     await page.click(`${V} [data-un="back"]`);
     await page.waitForSelector(`${V} .un-card`);
     assert((await page.textContent(`${V} .un-list`)).includes('3학년 과학 2단원 동물의 생활'), '목록');

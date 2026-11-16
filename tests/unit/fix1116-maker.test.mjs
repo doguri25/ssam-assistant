@@ -1,10 +1,12 @@
-// 2026-11-16 고침 — 문항·활동지 만들기: 직접 쓴 범위 첫 줄의 교직원 이름이 평가 정보(단원 이름)·문제지 제목에 〔이름n〕로 남던 것. 이름은 모두 지어낸 것
+// 2026-11-16 고침 — 문항·활동지 만들기: 직접 쓴 범위 첫 줄의 교직원 이름이 평가 정보(단원 이름)·문제지 제목에 〔이름n〕로 남던 것,
+// 1단계에서 마지막 문항을 빼고 [문항 더하기]를 하면 다시 내려받는 문제지에 뺀 문항의 물음이 되살아나던 것. 이름은 모두 지어낸 것
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as store from '../../web/core/store.js';
 import { newPick, pickEvent, pickValue } from '../../web/menus/evaluate/make-pick.js';
-import { makePrompt, paperTitle, testFrom } from '../../web/menus/evaluate/unit/unit-make.js';
+import { makePrompt, paperTitle, testFrom, madeItems, paperDoc } from '../../web/menus/evaluate/unit/unit-make.js';
 import { actPrompt, activityFrom, normTasks } from '../../web/menus/evaluate/activity/activity-make.js';
+import { dropItem } from '../../web/menus/evaluate/unit/unit-model.js';
 
 function mem() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k), key: i => [...m.keys()][i], get length() { return m.size; } }; }
 store.useStorage(mem());
@@ -47,4 +49,33 @@ test('[C22] 지나치게 고치지 않음: 이름 없는 범위·이름이 둘�
   const words = freePick('국어', '3. 한글의 짜임과 이슬 같은 말').scope;
   assert.equal(words.unitName, '한글의 짜임과 이슬 같은 말');
   assert.equal(words.lines[0], '3. 한글의 짜임과 이슬 같은 말');
+});
+
+const made5 = () => testFrom({ meta: { subject: '수학', grade: 3 }, items: [1, 2, 3, 4, 5].map(no => ({ type: 'choice', question: `${no}번 물음`, choices: ['가', '나', '다', '라'], answer: '①②③④①'[no - 1], points: 20 })) });
+
+test('[C23] 1단계에서 문항을 빼면 만든 물음(t.made)·학생 채점 칸도 그 번호를 지움 → 같은 번호로 다시 더해도 뺀 물음이 되살아나지 않음', () => {
+  const t = made5();
+  t.students = [{ no: 1, items: { 4: { points: 20 }, 5: { points: 20 } } }];
+  dropItem(t, 5);
+  assert.deepEqual(t.key.items.map(k => k.no), [1, 2, 3, 4]);
+  assert.deepEqual(t.made.items.map(m => m.no), [1, 2, 3, 4]);
+  assert.deepEqual(Object.keys(t.students[0].items), ['4']);
+  // [문항 더하기](unit.js addItem: 남은 번호 + 1)로 5번을 새로 더함 — 물음이 없는 문항이라 문제지에는 넣지 않음
+  t.key.items.push({ no: 5, content: '새로 넣은 문항', domain: '', type: 'short', answer: '12', points: 20, criteria: '', pages: '' });
+  const m = madeItems(t);
+  assert.deepEqual(m.map(x => x.no), [1, 2, 3, 4]);
+  const doc = JSON.stringify(paperDoc(t.meta, m).blocks);
+  assert.ok(!doc.includes('5번 물음'), doc.slice(-200));
+});
+
+test('[C23] 가운데 문항을 빼도 다른 문항의 물음·정답은 그대로, 만든 물음이 없는 평가(직접 넣은 정답표)도 그대로 빠짐', () => {
+  const t = made5();
+  dropItem(t, 3);
+  const m = madeItems(t);
+  assert.deepEqual(m.map(x => [x.no, x.question, x.answer]), [[1, '1번 물음', '①'], [2, '2번 물음', '②'], [4, '4번 물음', '④'], [5, '5번 물음', '①']]);
+  const plain = { key: { items: [{ no: 1, answer: '①' }, { no: 2, answer: '②' }] }, students: [{ no: 1, items: { 1: {}, 2: {} } }, { no: 2 }] };
+  dropItem(plain, 2);
+  assert.deepEqual(plain.key.items.map(k => k.no), [1]);
+  assert.equal(plain.made, undefined);
+  assert.deepEqual(Object.keys(plain.students[0].items), ['1']);
 });
