@@ -16,7 +16,7 @@ import { exportButton, exportDoc } from '../../core/doc-export.js';
 import { formSlotHTML, registerFormDoc } from '../../core/school-form.js';
 import { normDate, fmtDay } from './message-ai.js';
 import { KINDS, kindLabel, redactInput, minutesPrompt, validMinutes, backAll, normMinutes, keepFields, keptKeys, minutesText, minutesDoc, docName, MAX_AGENDA, MAX_LINES, MAX_TODOS } from './minutes-ai.js';
-import { blankMinutes, hasContent, listMinutes, getMinutes, putMinutes, removeMinutes, currentId, setCurrent, MAX_MINUTES } from './minutes-model.js';
+import { blankMinutes, hasContent, listMinutes, getMinutes, saveMinutes, removeMinutes, currentId, setCurrent, MAX_MINUTES } from './minutes-model.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SS = () => window.SSAM || {};
@@ -39,7 +39,8 @@ function switchTo(x) {
   if (job && job.x.id === x.id) x = job.x;
   d = x; setCurrent(x.id); M.busy = !!job && job.x === x; M.msg = M.busy ? '정리하는 중…' : '';
 }
-function persist(x = cur()) { if (hasContent(x) && !gone.has(x.id)) putMinutes(x); }
+// 저장: 내용이 없어지면(마지막 할 일을 [✕]로 뺌) 저장했던 것도 뺌(saveMinutes — 지운 할 일이 「오늘」에 남지 않게)
+function persist(x = cur()) { if (!gone.has(x.id)) saveMinutes(x); }
 const touch = (x, k) => { x.touched = [...new Set([...(x.touched || []), k])]; };
 
 /* ---------- 그리기 ---------- */

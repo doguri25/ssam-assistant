@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as store from '../../web/core/store.js';
 import { normMinutes, keepFields } from '../../web/menus/etc/minutes-ai.js';
-import { blankMinutes, listMinutes, putMinutes } from '../../web/menus/etc/minutes-model.js';
+import { blankMinutes, listMinutes, putMinutes, saveMinutes } from '../../web/menus/etc/minutes-model.js';
 import { routeText, payloadFor, handoffText } from '../../web/core/chat-route.js';
 
 function mem() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
@@ -89,6 +89,25 @@ test('[fix1116-min-docedit-not] 공문 처리·글 쓰기 말은 그대로, 「�
   // 맞춤법 뒤가 고치는 말이 아니면(확인 후 발송·확인 안내) 넣을 내용 — 문서 다듬기로 가지 않음
   assert.equal(route('학부모 안내장 맞춤법 확인 후 발송').intent, 'letter');
   assert.notEqual(route('공문 맞춤법 확인 안내 쪽지 써 줘').intent, 'docedit');
+});
+
+/* ---------- C13: 마지막 할 일을 빼면 저장소에서도 ---------- */
+test('[fix1116-min-save-empty] 저장한 회의록에서 마지막 할 일·글을 지우면 저장소에서도 빠짐(「오늘」에 남지 않음), 새 빈 회의록은 넣지 않음', () => {
+  const x = blankMinutes();
+  x.todos.push({ task: '버스 예약', who: '', due: '2026-11-18', done: false });
+  saveMinutes(x);
+  assert.deepEqual(listMinutes().map(r => r.todos.map(t => t.task)), [['버스 예약']]);
+  x.todos.splice(0, 1);
+  saveMinutes(x);
+  assert.equal(listMinutes().length, 0, JSON.stringify(listMinutes()));
+  // 빈 새 회의록은 목록에 넣지 않음, 다른 회의록은 그대로
+  const y = { ...blankMinutes(), title: '3학년 학년 협의회' };
+  putMinutes(y);
+  saveMinutes(blankMinutes());
+  assert.deepEqual(listMinutes().map(r => r.title), ['3학년 학년 협의회']);
+  // 글을 다시 쓰면 다시 들어감
+  x.title = '5학년 학년 협의회'; saveMinutes(x);
+  assert.deepEqual(listMinutes().map(r => r.title).sort(), ['3학년 학년 협의회', '5학년 학년 협의회']);
 });
 
 /* ---------- C14: 다시 정리할 때 종류 ---------- */
