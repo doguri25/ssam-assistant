@@ -299,6 +299,19 @@ await run('minutes', [
     assert(a && a.place === '5학년 연구실' && a.time === '15:00' && a.agenda[0].title === '다시 정리한 안건', JSON.stringify(a).slice(0, 300));
     assert((await stored()).length === s0, '회의록 수 ' + (await stored()).length);
   }],
+  ['채팅: 메모를 먼저 쓰고 끝 줄에 「회의록 써 줘」 → 회의록에 메모만 넣고 정리(메모 속 「가정통신문」으로 가정통신문을 쓰지 않음)', async () => {
+    const n0 = mins().length, all0 = prompts.length;
+    reply = { title: '4학년 학년 협의회', agenda: [{ title: '현장체험학습', discussion: ['과학관으로 정함'], decisions: [] }], todos: [] };
+    const memo = '- 체험학습 장소 과학관으로 정함\n- 가정통신문 11/18 발송';
+    await chatSend(`${memo}\n회의록 써 줘`);
+    await page.waitForFunction(b => (document.querySelector(`${b} [data-mnf="title"]`) || {}).value === '4학년 학년 협의회', B);
+    assert(mins().length === n0 + 1, 'AI 요청 ' + (mins().length - n0));
+    const sent = mins()[mins().length - 1].split('\n[메모]\n')[1].split('\n\n[출력]')[0];
+    assert(sent === memo, '메모만(명령 줄 뺌): ' + sent);
+    assert(await page.inputValue(`${B} #mnPaste`) === memo, await page.inputValue(`${B} #mnPaste`));
+    assert(!prompts.slice(all0).some(p => p.startsWith('[가정통신문]')), '가정통신문을 씀');
+    await chatClose();
+  }],
   ['페이지 오류 없음', async () => { assert(!errors.length, errors.join('\n')); }]
 ]);
 await t.close();

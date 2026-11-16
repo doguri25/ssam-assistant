@@ -95,7 +95,7 @@ const RULES = [
   ['tour', /^(?:(?:앱|쌤비서|쌤)\s*)?체험(?:\s*(?:하기|해\s*볼래요?|해\s*보기|해\s*볼게요?|해\s*보자|모드|시작(?:하기)?|해\s*(?:줘|주세요)|할래요?))?\s*[.!~]*$/, 4.5]
 ];
 const SURE = 2.5, GAP = 1; // 이만큼 이상이고 둘째보다 GAP 이상 앞서면 분명함
-// 여러 줄 글에서 첫 줄(명령)에서만 세는 할 일: 「쪽지 써 줘\n… 회의록 열람 안내」「가정통신문 써 줘\n… 한글 파일을 고쳐서 …」는 그 일
+// 여러 줄 글에서 명령 줄(첫 줄, 메모 뒤 끝 줄 — cmdLine)에서만 세는 할 일: 「쪽지 써 줘\n… 회의록 열람 안내」「가정통신문 써 줘\n… 한글 파일을 고쳐서 …」는 그 일
 const HEAD_IDS = ['minutes', 'docedit'];
 // 「회의 내용 정리해 줘」「협의회 결과 써 줘」: 명령 꼬리를 뺀 글이 회의·협의회 내용·결과로 끝나면 회의록(「협의회 결과 보고서 써 줘」는 아님)
 const MINUTES_END = /(?:협의회|회의)\s*(?:내용|결과)(?:\s*(?:을|를))?(?:\s*정리(?:하기)?)?$/;
@@ -116,6 +116,19 @@ const sureTop = scores => {
   const r = Object.entries(scores).sort((a, b) => b[1] - a[1]);
   return r.length && r[0][1] >= SURE && r[0][1] - (r[1] ? r[1][1] : 0) >= GAP ? r[0][0] : null;
 };
+// 명령 꼴 줄: 부탁 꼬리(「써 줘」「정리해 주세요」「고쳐 줘」)가 있거나 할 일 낱말만 있는 줄(「가정통신문」「공문 처리:」)
+const asks = l => TAIL.test(l) || REQUEST.test(l) || LEAD.test(`${l}\n`);
+/* 여러 줄 글(줄 목록)의 회의록·문서 다듬기 명령 줄 → { tail(끝 줄인가), scores(그 줄의 무게) } 또는 null.
+   첫 줄이 그 명령이면(「회의록 정리해 줘\n…」) 첫 줄. 메모를 먼저 쓰고 끝 줄에 그 명령을 써도(「…\n회의록 써 줘」「…\n위 내용 회의록으로 정리해 줘」) 그 줄 —
+   첫 줄이 다른 일 명령이면(「쪽지 써 줘\n…\n회의록 정리해서 보내 주세요」「가정통신문\n…」) 끝 줄은 넣을 글 */
+function cmdLine(lines) {
+  if (lines.length < 2) return null;
+  const head = scoreOf(lines[0]);
+  if (HEAD_IDS.includes(sureTop(head))) return { tail: false, scores: head };
+  const last = lines[lines.length - 1], tail = scoreOf(last);
+  if (HEAD_IDS.includes(sureTop(tail)) && asks(last) && !(sureTop(head) && asks(lines[0]))) return { tail: true, scores: tail };
+  return null;
+}
 
 /* 명령 꼬리(「써 줘」「만들어 주세요」「해 줘」…)와 맨 끝 마침표 */
 // 부탁 꼴(「써 줄 수 있어요?」「만들어 주실래요?」「써 주시겠어요?」「해 줄래?」)도 꼬리(검토 M1)
@@ -144,7 +157,9 @@ export function payloadFor(intent, text) {
   const t = tidy(text);
   if (intent === 'purchase') { const s = trimTail(tidy(t.replace(KW.purchase, ' '))); return { text: meat(s).length >= 2 ? s : '' }; }
   if (['message', 'letter', 'gongmun', 'report', 'minutes'].includes(intent)) {
-    const s = trimTail(t).replace(LEAD, ''), rest = meat(s.replace(KW[intent], ''));
+    // 회의록: 메모 뒤 끝 줄 명령(「…\n회의록 써 줘」)은 넘길 메모에서 뺌
+    const body = intent === 'minutes' && (cmdLine(t.split('\n').filter(Boolean)) || {}).tail ? t.slice(0, t.lastIndexOf('\n')).trim() : t;
+    const s = trimTail(body).replace(LEAD, ''), rest = meat(s.replace(KW[intent], ''));
     // 회의록: 짧은 말(「3학년 협의회 회의록 보여 줘」「회의 내용 정리해 줘」)은 회의록 탭만 엶 — 메모로 넣어 AI를 부르지 않게
     if (intent === 'minutes') return { text: rest.length >= (/\n/.test(t) ? 2 : MEMO_MIN) ? s : '' };
     return { text: rest.length >= 4 ? s : '' };
@@ -202,9 +217,9 @@ export function routeText(text) {
   let scores = scoreOf(t);
   const lines = raw.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
   if (lines.length > 1) {
-    const head = scoreOf(lines[0]);
-    // 첫 줄이 회의록·문서 다듬기 명령이면(「회의록 정리해 줘」) 다음 줄은 넣을 글 — 메모 속 「행사 계획」「가정통신문」「쪽지로」는 세지 않음
-    if (HEAD_IDS.includes(sureTop(head))) scores = head;
+    // 첫 줄(또는 메모 뒤 끝 줄)이 회의록·문서 다듬기 명령이면(「회의록 정리해 줘」) 다른 줄은 넣을 글 — 메모 속 「행사 계획」「가정통신문」「쪽지로」는 세지 않음
+    const cmd = cmdLine(lines), head = scoreOf(lines[0]);
+    if (cmd) scores = cmd.scores;
     else for (const id of HEAD_IDS) { if (head[id]) scores[id] = head[id]; else delete scores[id]; }
   }
   // 관찰 메모: 글 앞이 「n번」
