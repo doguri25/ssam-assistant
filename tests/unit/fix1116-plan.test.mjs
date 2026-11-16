@@ -200,3 +200,22 @@ test('[C16 검토] 연간계획: 쌍점 없는 두 낱말 큰 제목(「내용 �
   const ev = R.eventOlds({ docs: { plan: '1. 목적 협동심과 체력 증진\n본문\n2. 둘\n3. 셋', form: [] } }).olds[0];
   assert.deepEqual([ev.title, ev.lead, ev.cut], ['목적', '협동심과 체력 증진', true]);
 });
+
+test('[C20 검토] 새 서식 큰 제목의 밑줄 빈칸·단위 낱말이 붙은 빈칸(「소요 예산 :      원」「인원 : (   )명」「목적: ____」「일시: 20__. __. __.」)도 쌍점 앞만 새 제목으로', () => {
+  const FORM = ['1. 목적: ________', '2. 일시: 20__. __. __.', '3. 인원 : (   )명', '4. 대상 :   학년   반', '5. 소요 예산 :            원', '6. 운영 시간 :    시간', '7. 예산 : 금          원정', '8. 달성률 : (   )%', '9. 장소 : ＿＿＿＿'];
+  assert.deepEqual(R.formHeads(FORM.join('\n')).heads.map(h => h.title), ['목적', '일시', '인원', '대상', '소요 예산', '운영 시간', '예산', '달성률', '장소']);
+  // 바꾼 계획서 글·한글 파일 제목 줄(docs.form)에도 빈칸 자리가 남지 않음
+  const plan = '1. 목적: 협동심을 기른다.\n2. 세부 운영\n가. 개회식\n3. 소요 예산\n가. 학교운영비 500,000원';
+  const e = { docs: { plan, form: [] } };
+  const { pre, olds } = R.eventOlds(e);
+  const H0 = R.formHeads('1. 목적: ________\n2. 세부 운영 계획\n3. 소요 예산 :            원\n4. 인원 : (   )명'), hs = R.withPlanRoles(H0.heads);
+  const out = R.applyEvent(e, R.mergeReform(hs, olds, R.ruleMap(olds, hs), null), { ...H0, heads: hs }, pre, olds);
+  assert.deepEqual(out.form, ['1. 목적', '2. 세부 운영 계획', '3. 소요 예산', '4. 인원']);
+  assert.ok(out.plan.startsWith('1. 목적\n협동심을 기른다.\n2. 세부 운영 계획\n가. 개회식\n3. 소요 예산\n가. 학교운영비 500,000원\n4. 인원'), out.plan);
+  // 연간계획 새 서식도
+  assert.deepEqual(R.yearHeads('Ⅰ. 목적 : ________\nⅡ. 세부 추진 계획\nⅢ. 추진 일정\nⅣ. 소요 예산 :            원').heads.map(h => [h.title, h.key]),
+    [['목적', 'purpose'], ['세부 추진 계획', 'details'], ['추진 일정', 'schedule'], ['소요 예산', 'budget']]);
+  // 채워 쓴 제목은 그대로(숫자가 있는 값, 단위 낱말로 시작하지만 다른 말이 붙은 값)
+  const keep = ['예산: 500,000원', '인원: 25명', '대상: 6학년 2반', '대상: 전 학년', '시간: 매일', '운영: 주 1회', '예산: 금 500,000원', '목적: 금연 교육', '시간: 2시간'];
+  assert.deepEqual(R.formHeads(keep.map((t, i) => `${i + 1}. ${t}`).join('\n')).heads.map(h => h.title), keep);
+});
