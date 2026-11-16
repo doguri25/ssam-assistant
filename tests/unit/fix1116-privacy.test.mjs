@@ -125,3 +125,21 @@ test('[fix1116-privacy-C10-neg] 참석 칸의 직함·인원 말(담임·외·�
     assert.equal(r.text, memo, `${att} → ${r.text}`);
   }
 });
+
+test('[fix1116-privacy-C5] 「부장·담당·강사·문의 선생님」의 「선생」을 이름으로 배우지 않음 — 문서의 「선생님」이 〔이름n〕님으로 가지 않음', () => {
+  for (const l of ['결과는 부장 선생님께서 취합합니다.', '강사 선생님 섭외', '문의 선생님께 드립니다', '담당 선생님께 제출', '부장 선생님은 회의에 참석', '담당 주임님께 제출', '강사 박사님 모심']) {
+    assert.equal(maskStaff(l).text, l, l);
+    const r = makeRedactor();
+    assert.equal(r.line(l).text, l, l);
+    assert.deepEqual(r.names, [], l);
+  }
+  const it = startItems(['가. 과제는 담임 선생님께 제출합니다.', '나. 결과는 부장 선생님께서 취합합니다.', '다. 선생님들께서는 협조 바랍니다.'].map(t => L(t)));
+  assert.deepEqual(payloadOf(it, '공문체로').sent.map(x => x.text), ['가. 과제는 담임 선생님께 제출합니다.', '나. 결과는 부장 선생님께서 취합합니다.', '다. 선생님들께서는 협조 바랍니다.']);
+});
+
+test('[fix1116-privacy-C5-pos] 직함 옆 교직원 이름은 그대로 가림', () => {
+  for (const [l, n] of [['강사 김솔 선생님께', '김솔'], ['담당 이나래에게 제출', '이나래'], ['담당: 박하늘', '박하늘'], ['3학년 부장 김솔', '김솔'], ['문의: 교무부장 이바다 선생님', '이바다']]) {
+    const m = maskStaff(l).text;
+    assert.ok(!m.includes(n) && m.includes('○○○'), `${l} → ${m}`);
+  }
+});
