@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as store from '../../web/core/store.js';
-import { normMinutes, keepFields } from '../../web/menus/etc/minutes-ai.js';
+import { normMinutes, keepFields, minutesText } from '../../web/menus/etc/minutes-ai.js';
 import { blankMinutes, listMinutes, putMinutes, saveMinutes } from '../../web/menus/etc/minutes-model.js';
 import { routeText, payloadFor, handoffText } from '../../web/core/chat-route.js';
 
@@ -36,8 +36,21 @@ test('[fix1116-min-bullet-strip] 목록 번호·기호는 지금처럼 뺌(뒤�
     ['1. 2026. 3. 2. 입학식', '2026. 3. 2. 입학식'], ['3. 1.5배 증액함', '1.5배 증액함'], ['(1) 11. 20.(금)까지 받기로 함', '11. 20.(금)까지 받기로 함'],
     ['1) 11.25. 발송', '11.25. 발송']];
   for (const [s, want] of cases) assert.equal(lineOut(s), want, s);
-  // 번호 뒤에 날짜가 바로 오면(「1. 11. 20.(금)…」) 날짜를 살림(번호가 남는 편이 숫자가 사라지는 것보다 나음)
-  assert.ok(lineOut('1. 11. 20.(금)까지 받기로 함').includes('11. 20.(금)까지'), lineOut('1. 11. 20.(금)까지 받기로 함'));
+});
+
+test('[fix1116-min-bullet-date] 목록 번호 뒤에 날짜가 오면(「1. 12. 24.(목) …」) 번호만 빼고 날짜는 살림 — 복사 글에 「1. 1. 12. 24.(목)」이 생기지 않음', () => {
+  const cases = [
+    ['1. 12. 24.(목) 방학식 운영', '12. 24.(목) 방학식 운영'], ['2. 11. 20.(금)까지 신청서 받기', '11. 20.(금)까지 신청서 받기'],
+    ['1. 11. 20.(금)까지 받기로 함', '11. 20.(금)까지 받기로 함'], ['1. 3. 2.(월) 입학식', '3. 2.(월) 입학식'], ['1. 3. 2(월) 입학식', '3. 2(월) 입학식'],
+    ['1. 5. 18. 계기교육', '5. 18. 계기교육'], ['1. 10. 3. 개천절 행사', '10. 3. 개천절 행사'], ['(1) 12. 24.(목) 방학식', '12. 24.(목) 방학식']];
+  for (const [s, want] of cases) assert.equal(lineOut(s), want, s);
+  // 번호 없는 날짜는 그대로
+  for (const s of ['12. 24.(목) 방학식 운영', '3. 2.(월) 입학식', '3. 2(월) 입학식', '5. 18. 계기교육', '10. 3. 개천절 행사', '11. 20.(금)까지']) assert.equal(lineOut(s), s, s);
+  // 안건 제목: 앱이 붙이는 번호 하나만
+  const n = normMinutes({ title: '6학년 학년 협의회', agenda: [{ title: '1. 12. 24.(목) 방학식 운영' }, { title: '2. 11. 20.(금)까지 신청서 받기' }] }, { year: 2026, today: TODAY });
+  const text = minutesText(n);
+  assert.ok(text.includes('\n1. 12. 24.(목) 방학식 운영\n'), text);
+  assert.ok(text.includes('\n2. 11. 20.(금)까지 신청서 받기'), text);
 });
 
 /* ---------- C11: 메모 뒤 끝 줄 명령 ---------- */
