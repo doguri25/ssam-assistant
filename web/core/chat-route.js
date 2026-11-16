@@ -69,9 +69,8 @@ const RULES = [
   ['minutes', /회의록|협의록|협의회\s*록/, 4], ['minutes', /협의회\s*(?:내용|결과)|회의\s*(?:내용|결과)\s*(?:정리|써|만들)/, 2],
   // 문서 다듬기: 「문서·한글 파일 … 다듬·고쳐·맞춤법」「공문체로 바꿔」
   ['docedit', /(?:문서|한글\s*(?:파일|문서)|hwpx?)(?:[^\n]{0,14})(?:다듬|고쳐|손봐|교정|맞춤법)|문서\s*다듬기|공문체로\s*(?:바꿔|고쳐|다듬)/i, 4],
-  // 「한글 파일 공문체로」「이 공문·가정통신문·보고서 맞춤법 고쳐 줘」「공문 다듬어 줘」(가진 글을 고치는 말 — 공문 처리·가정통신문 쓰기가 아님)는 그 말로 글이 끝날 때만(FIX_END):
-  // 「가정통신문 교정 부탁 쪽지 써 줘」「공문 다듬기 연수 안내 쪽지 써 줘」「공문 맞춤법 확인 안내 쪽지」「안내장 맞춤법 확인 후 발송」은 넣을 내용
-  ['docedit', new RegExp(`(?:(?:문서|한글\\s*(?:파일|문서)|hwpx?)[^\\n]{0,14}공문체로?|(?:공문|가정\\s*통신문|통신문|안내장|보고서|파일|이거|이것)\\s*(?:을|를|의)?\\s*(?:(?:맞춤법|띄어\\s*쓰기)(?:\\s*(?:과|와|이랑|하고|및|·|,)?\\s*(?:맞춤법|띄어\\s*쓰기))?\\s*(?:을|를|좀|만|도)?\\s*(?:고쳐|봐|검사(?:해)?|점검(?:해)?|다듬(?:어|기)?|교정(?:해)?|손봐)|(?:좀\\s*)?(?:다듬(?:어|기)?|교정(?:해)?|손봐)))${FIX_END}`, 'i'), 4],
+  // 「한글 파일 공문체로」(가진 파일을 고치는 말)는 그 말로 글이 끝날 때만(FIX_END). 「이 공문 맞춤법 고쳐 줘」 같은 말은 DOC_FIX(scoreOf)
+  ['docedit', new RegExp(`(?:문서|한글\\s*(?:파일|문서)|hwpx?)[^\\n]{0,14}공문체로?${FIX_END}`, 'i'), 4],
   ['report', /결과\s*보고|보고서/, 3], ['report', /결과\s*보고(?:서)?\s*로/, 3.5],
   ['year', /연간\s*(?:업무\s*)?(?:운영\s*)?계획|업무\s*계획/, 3],
   ['event', /행사\s*계획|(?:운동회|학예회|체험\s*학습|수학여행|발표회|축제|행사)\s*(?:운영\s*)?계획/, 3.5], ['event', /운동회|학예회|체험\s*학습|수학여행|발표회/, 1.5], ['event', /행사/, 1],
@@ -106,10 +105,18 @@ const SURE = 2.5, GAP = 1; // 이만큼 이상이고 둘째보다 GAP 이상 앞
 const HEAD_IDS = ['minutes', 'docedit'];
 // 「회의 내용 정리해 줘」「협의회 결과 써 줘」: 명령 꼬리를 뺀 글이 회의·협의회 내용·결과로 끝나면 회의록(「협의회 결과 보고서 써 줘」는 아님)
 const MINUTES_END = /(?:협의회|회의)\s*(?:내용|결과)(?:\s*(?:을|를))?(?:\s*정리(?:하기)?)?$/;
-/* 한 줄로 이은 글 → { 할 일: 무게 }. 한 할 일에서 맞은 무게 중 큰 것만 */
-function scoreOf(t) {
+// 「이 공문·가정통신문·보고서 맞춤법 고쳐 줘」「공문 다듬어 줘」(가진 글을 고치는 말 — 공문 처리·가정통신문 쓰기가 아님)는 그 말로 글이 끝날 때만(FIX_END):
+// 「가정통신문 교정 부탁 쪽지 써 줘」「공문 다듬기 연수 안내 쪽지 써 줘」「공문 맞춤법 확인 안내 쪽지」「안내장 맞춤법 확인 후 발송」은 넣을 내용.
+// 문서 다듬기는 한글 파일만 받아서 글은 넘기지 않음 — 그래서 text(공문·통신문 …)는 한 줄 글일 때만(여러 줄 글이면 그 공문·통신문은 붙여 넣은 글: 가정통신문·공문 처리가 받음),
+// file(이거·이것·파일)은 한글 문서 파일을 함께 넣었을 때만(글만 쓴 「이거 좀 다듬어 줘」는 앞 대화를 아는 채팅 도우미가 받음)
+const fixOf = obj => new RegExp(`(?:${obj})\\s*(?:을|를|의)?\\s*(?:(?:맞춤법|띄어\\s*쓰기)(?:\\s*(?:과|와|이랑|하고|및|·|,)?\\s*(?:맞춤법|띄어\\s*쓰기))?\\s*(?:을|를|좀|만|도)?\\s*(?:고쳐|봐|검사(?:해)?|점검(?:해)?|다듬(?:어|기)?|교정(?:해)?|손봐)|(?:좀\\s*)?(?:다듬(?:어|기)?|교정(?:해)?|손봐))${FIX_END}`, 'i');
+const DOC_FIX = { text: fixOf('공문|가정\\s*통신문|통신문|안내장|보고서'), file: fixOf('파일|이거|이것') };
+/* 한 줄로 이은 글 → { 할 일: 무게 }. 한 할 일에서 맞은 무게 중 큰 것만.
+   o.paste: 여러 줄 글(붙여 넣은 글이 함께 있음), o.docFile: 한글 문서 파일을 함께 넣음 */
+function scoreOf(t, o = {}) {
   const scores = {};
   for (const [id, re, w] of RULES) if (re.test(t)) scores[id] = Math.max(scores[id] || 0, w);
+  if (((!o.paste || o.docFile) && DOC_FIX.text.test(t)) || (o.docFile && DOC_FIX.file.test(t))) scores.docedit = Math.max(scores.docedit || 0, 4);
   if (MINUTES_END.test(trimTail(t))) scores.minutes = Math.max(scores.minutes || 0, 3);
   // 번역: 언어 낱말 + 번역을 바라는 말(「번역」「베트남어로」「영문으로」「러시아어 가정통신문」)이면 번역(가정통신문보다 앞섬)
   const lang = langOf(t);
@@ -134,12 +141,12 @@ const TAIL_CMD = {
 };
 /* 여러 줄 글(줄 목록)의 회의록·문서 다듬기 명령 줄 → { tail(끝 줄인가), scores(그 줄의 무게) } 또는 null.
    첫 줄이 그 명령이면(「회의록 정리해 줘\n…」) 첫 줄. 메모를 먼저 쓰고 끝 줄에 그 명령만 써도(「…\n회의록 써 줘」「…\n위 내용 회의록으로 정리해 줘」 — TAIL_CMD) 그 줄 —
-   첫 줄이 다른 일 명령이면(「쪽지 써 줘\n…\n회의록 정리해서 보내 주세요」「가정통신문\n…」) 끝 줄은 넣을 글 */
-function cmdLine(lines) {
+   첫 줄이 다른 일 명령이면(「쪽지 써 줘\n…\n회의록 정리해서 보내 주세요」「가정통신문\n…」) 끝 줄은 넣을 글. o.docFile: 한글 문서 파일을 함께 넣음 */
+function cmdLine(lines, o = {}) {
   if (lines.length < 2) return null;
-  const head = scoreOf(lines[0]);
+  const p = { ...o, paste: true }, head = scoreOf(lines[0], p);
   if (HEAD_IDS.includes(sureTop(head))) return { tail: false, scores: head };
-  const last = lines[lines.length - 1], tail = scoreOf(last), top = sureTop(tail);
+  const last = lines[lines.length - 1], tail = scoreOf(last, p), top = sureTop(tail);
   if (HEAD_IDS.includes(top) && TAIL_CMD[top].test(last) && !(sureTop(head) && asks(lines[0]))) return { tail: true, scores: tail };
   return null;
 }
@@ -220,17 +227,19 @@ export function nosText(nos) {
 }
 
 /* 글 → { intent, payload, confidence(0~1), candidates([할 일 id], 애매할 때 2~3개) }. 모르면 intent null.
-   낱말은 한 줄로 이어 보고, 넘길 글(payload)은 받은 글 그대로(줄바꿈 살림) */
-export function routeText(text) {
+   낱말은 한 줄로 이어 보고, 넘길 글(payload)은 받은 글 그대로(줄바꿈 살림).
+   docFile: 한글 문서 파일을 이 글과 함께 넣었음(「이거 다듬어 줘」의 「이거」가 그 파일) — 채팅 글만 보내는 지금은 늘 아님 */
+export function routeText(text, { docFile = false } = {}) {
   const raw = String(text == null ? '' : text), t = raw.replace(/\s+/g, ' ').trim();
   const none = { intent: null, payload: {}, confidence: 0, candidates: [], question: false };
   if (!t) return none;
   let ask = isQuestion(raw);
-  let scores = scoreOf(t);
   const lines = raw.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const o = { docFile: !!docFile, paste: lines.length > 1 };
+  let scores = scoreOf(t, o);
   if (lines.length > 1) {
     // 첫 줄(또는 메모 뒤 끝 줄)이 회의록·문서 다듬기 명령이면(「회의록 정리해 줘」) 다른 줄은 넣을 글 — 메모 속 「행사 계획」「가정통신문」「쪽지로」는 세지 않음
-    const cmd = cmdLine(lines), head = scoreOf(lines[0]);
+    const cmd = cmdLine(lines, o), head = scoreOf(lines[0], o);
     if (cmd) scores = cmd.scores;
     else for (const id of HEAD_IDS) { if (head[id]) scores[id] = head[id]; else delete scores[id]; }
   }

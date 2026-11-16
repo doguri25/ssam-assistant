@@ -132,7 +132,7 @@ test('[fix1116-min-tail-cmd-closing] 안내·쪽지 글의 끝인사 줄(「첨�
 
 /* ---------- C12: 공문체·맞춤법 ---------- */
 test('[fix1116-min-docedit-words] 「이 공문 맞춤법 고쳐 줘」「한글 파일 공문체로」「가정통신문 맞춤법 봐 줘」 → 문서 다듬기(공문 처리·가정통신문 쓰기가 아님)', () => {
-  for (const s of ['이 공문 맞춤법 고쳐 줘', '한글 파일 공문체로', '이 문서 공문체로', '공문 다듬어 줘', '공문을 교정해 줘', '공문 맞춤법이랑 띄어쓰기 좀 봐 줘', '가정통신문 맞춤법 봐 줘', '안내장 띄어쓰기 고쳐 줘', '보고서 맞춤법 고쳐 줘', '이 파일 다듬어 줘']) {
+  for (const s of ['이 공문 맞춤법 고쳐 줘', '한글 파일 공문체로', '이 문서 공문체로', '공문 다듬어 줘', '공문을 교정해 줘', '공문 맞춤법이랑 띄어쓰기 좀 봐 줘', '가정통신문 맞춤법 봐 줘', '안내장 띄어쓰기 고쳐 줘', '보고서 맞춤법 고쳐 줘']) {
     const r = route(s);
     assert.equal(r.intent, 'docedit', `${s} → ${r.intent} ${r.candidates}`);
   }
@@ -157,10 +157,40 @@ test('[fix1116-min-docedit-topic] 교정·다듬기·맞춤법이 쪽지의 글�
     assert.ok(r.intent === 'message' || r.candidates.includes('message'), `${s} → ${r.intent} ${r.candidates}`);
   }
   // 고치는 말로 끝나면(부탁 꼬리만 뒤에) 문서 다듬기
-  for (const s of ['통신문 교정 부탁드려요', '파일 교정 부탁해', '공문 좀 다듬어 줘', '가정통신문 맞춤법 검사해 줘', '보고서 교정해 주세요', '공문 맞춤법 좀 봐 줄래?', '이거 손봐 줘']) {
+  for (const s of ['통신문 교정 부탁드려요', '공문 좀 다듬어 줘', '가정통신문 맞춤법 검사해 줘', '보고서 교정해 주세요', '공문 맞춤법 좀 봐 줄래?']) {
     const r = route(s);
     assert.equal(r.intent, 'docedit', `${s} → ${r.intent} ${r.candidates}`);
   }
+});
+
+const routeFile = s => routeText(handoffText(s), { docFile: true });
+test('[fix1116-min-docedit-pasted] 「이거·이것·파일」은 한글 문서 파일을 함께 넣었을 때만 고칠 것, 글을 붙여 넣은 여러 줄 글의 「이 공문·이 통신문 다듬어 줘」는 그 글 — 문서 다듬기로 가서 글이 사라지지 않게', () => {
+  // 검토에서 찾은 것: 글만 쓴 뒷말(채팅 AI가 쓴 초안에 「이거 좀 다듬어 줘」)은 고치기 전처럼 채팅 도우미가 받음(앞 대화를 앎)
+  for (const s of ['이거 좀 다듬어 줘', '이것 좀 손봐 줘', '엑셀 파일 좀 손봐 줘', '이 파일 다듬어 줘', '파일 교정 부탁해', '이거 손봐 줘', '이거 맞춤법 고쳐 줘']) {
+    const r = route(s);
+    assert.equal(r.intent, null, `${s} → ${r.intent} ${r.confidence}`);
+  }
+  // 한글 문서 파일을 함께 넣었으면(docFile) 「이거·이것·이 파일」이 그 파일 — 문서 다듬기
+  for (const s of ['이거 좀 다듬어 줘', '이것 좀 손봐 줘', '이 파일 다듬어 줘', '파일 교정 부탁해', '이거 손봐 줘', '이거 맞춤법 고쳐 줘', '이 공문 맞춤법 고쳐 줘']) {
+    const r = routeFile(s);
+    assert.equal(r.intent, 'docedit', `${s} → ${r.intent} ${r.candidates}`);
+  }
+  // 위에 붙여 넣은 글 + 끝 줄 「이거·이 통신문·이 공문 … 고쳐 줘」: 고치기 전처럼(가정통신문·공문 처리는 그 글을 받음)
+  assert.notEqual(route('방학 안내\n12월 24일 방학식입니다\n학부모님께서는 확인 부탁드립니다\n이거 맞춤법 고쳐 줘').intent, 'docedit');
+  const pasted = [['겨울방학 안내\n- 방학식 12/24\n- 개학 2/2\n이 통신문 맞춤법 좀 봐 줘', 'letter', '- 방학식 12/24'],
+    ['<공문> 2026 학교폭력 실태조사 안내\n기한 11/25\n이 공문 다듬어 줘', 'gongmun', '학교폭력 실태조사 안내\n기한 11/25'],
+    // 첫 줄 명령 + 아래에 붙여 넣은 글도
+    ['이 공문 다듬어 줘\n2026 학교폭력 실태조사 안내\n기한 11/25', 'gongmun', '학교폭력 실태조사 안내\n기한 11/25'],
+    ['가정통신문 다듬어 줘\n겨울방학 안내\n- 방학식 12/24\n- 개학 2/2', 'letter', '- 방학식 12/24\n- 개학 2/2'],
+    ['이 통신문 맞춤법 고쳐 줘\n겨울방학 안내\n- 방학식 12/24', 'letter', '- 방학식 12/24']];
+  for (const [s, want, body] of pasted) {
+    const r = route(s);
+    assert.equal(r.intent, want, `${JSON.stringify(s)} → ${r.intent} ${r.candidates}`);
+    assert.ok((r.payload.text || '').includes(body), `${JSON.stringify(s)} → ${JSON.stringify(r.payload)}`);
+  }
+  // 한글 파일·문서를 이름으로 말하면 여러 줄 글이어도 문서 다듬기(파일을 고치는 말)
+  assert.equal(route('한글 파일 맞춤법 고쳐 줘\n- 행사 일정 고침\n- 장소 강당으로').intent, 'docedit');
+  assert.equal(route('가정통신문 11월호 원고\n- 행사 일정 고침\n한글 파일 맞춤법 고쳐 줘').intent, 'docedit');
 });
 
 /* ---------- C13: 마지막 할 일을 빼면 저장소에서도 ---------- */
