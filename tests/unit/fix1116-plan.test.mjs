@@ -168,3 +168,35 @@ test('[C20] 새 서식 큰 제목의 빈칸 자리(「목적 :」「일시 : 202
   const keep = ['목적: 협동심 기르기', '일시: 2027. 10. 7.(목)', '일시: 2027. 10. 7.', '일시: 2027년 10월 7일', '시간: 09:00~12:00', '평가 (교사용: 3회)', '예산: 500,000원'];
   assert.deepEqual(R.formHeads(keep.map((t, i) => `${i + 1}. ${t}`).join('\n')).heads.map(h => h.title), keep);
 });
+
+// ---------- 검토 뒤 고침 ----------
+test('[C16 검토] 연간계획: 쌍점 없는 두 낱말 큰 제목(「내용 체계」「예산 확보」「평가 회의」「일정 표」)은 제목 그대로 — 바꾼 초안에 뜻 없는 줄(「내용: 체계」「예산: 확보」「회의」)이 생기지 않음', () => {
+  const NEW = 'Ⅰ. 목적\nⅡ. 추진 방침\nⅢ. 세부 추진 계획\nⅣ. 월별 추진 일정\nⅤ. 소요 예산\nⅥ. 평가';
+  const make = last => {
+    const o = Y.yearOutline(last);
+    return Y.normDraft({ purpose: '독서 습관을 기른다.', policy: '가. 전교생이 참여한다.', details: '1. 아침 독서', evaluation: '독서량이 는다.',
+      schedule: [{ title: '계획 수립', date: '2027-03-10' }], budget: [{ name: '도서 구입', amount: 500000, note: '' }], outline: o.items, roman: o.roman });
+  };
+  const d = make('Ⅰ. 목적\nⅡ. 운영 방침\nⅢ. 내용 체계\nⅣ. 추진 일정\nⅤ. 예산 확보\nⅥ. 평가');
+  const nd = reformYear(d, NEW);
+  assert.deepEqual([nd.purpose, nd.policy, nd.details, nd.evaluation], ['독서 습관을 기른다.', '가. 전교생이 참여한다.', '1. 아침 독서', '독서량이 는다.']);
+  const all = Y.planText({ year: 2027, name: '독서', draft: nd });
+  for (const s of ['체계', '확보']) assert.ok(!all.includes(s), `${s}:\n${all}`);
+  assert.deepEqual(nd.schedule, d.schedule);
+  assert.deepEqual(nd.budget, d.budget);
+  // 마지막 큰 제목이 「평가 회의」여도 평가 칸 첫 줄에 「회의」가 생기지 않음, 표 칸 「일정 표」의 「표」도 글 칸으로 옮기지 않음
+  const d2 = make('Ⅰ. 목적\nⅡ. 운영 방침\nⅢ. 세부 추진 내용\nⅣ. 일정 표\nⅤ. 예산 운용\nⅥ. 평가 회의');
+  const n2 = reformYear(d2, NEW);
+  assert.equal(n2.evaluation, '독서량이 는다.');
+  assert.equal(n2.details, '1. 아침 독서');
+  const t2 = Y.planText({ year: 2027, name: '독서', draft: n2 });
+  for (const s of ['회의', '일정: 표', '운용']) assert.ok(!t2.includes(s), `${s}:\n${t2}`);
+  // 연간계획 목차 제목(작년 계획서 큰 제목 줄)은 쌍점 뒤만 글로 — 제목 낱말 뒤 한 낱말은 자르지 않음
+  for (const t of ['예산 운용', '예산 확보', '예산 지원', '경비 지원', '내용 체계', '평가 회의', '평가 실시', '방법 개선', '방침 공유', '목표 수준', '일정 표', '방향 제시', '목적 달성']) {
+    const o = R.yearOlds(Y.normDraft({ purpose: '가', details: '나', outline: [{ key: 'purpose', title: '목적' }, { key: 'x1', title: t }, { key: 'details', title: '세부 추진 계획' }] }))[1];
+    assert.deepEqual([o.title, o.lead, o.cut], [t, '', false], t);
+  }
+  // 행사·학급운영계획은 전과 같이 제목 낱말 뒤 글을 자름(「목적 협동심과 체력 증진」)
+  const ev = R.eventOlds({ docs: { plan: '1. 목적 협동심과 체력 증진\n본문\n2. 둘\n3. 셋', form: [] } }).olds[0];
+  assert.deepEqual([ev.title, ev.lead, ev.cut], ['목적', '협동심과 체력 증진', true]);
+});
