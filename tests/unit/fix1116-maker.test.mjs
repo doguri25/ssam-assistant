@@ -1,5 +1,5 @@
 // 2026-11-16 고침 — 문항·활동지 만들기: 직접 쓴 범위 첫 줄의 교직원 이름이 평가 정보(단원 이름)·문제지 제목에 〔이름n〕로 남던 것,
-// 그렇게 되돌린 평가·활동 이름이 나중에 채점·검토·피드백 AI 요청 글로 그대로 가던 것(AI로 가는 이름은 만들 때 가린 글, 선생님이 보는 것만 원래 이름 —
+// 그렇게 되돌린 평가·활동 이름이 나중에 채점·검토·피드백·평어 AI 요청 글로 그대로 가던 것(AI로 가는 이름은 만들 때 가린 글, 선생님이 보는 것만 원래 이름 —
 // 정답표·문항·학생 답은 다시 가리지 않음: 김구 같은 배움 내용 이름),
 // 1단계에서 마지막 문항을 빼고 [문항 더하기]를 하면 다시 내려받는 문제지에 뺀 문항의 물음이 되살아나던 것. 이름·번호는 모두 지어낸 것
 import test from 'node:test';
@@ -8,7 +8,10 @@ import * as store from '../../web/core/store.js';
 import { newPick, pickEvent, pickValue } from '../../web/menus/evaluate/make-pick.js';
 import { makePrompt, paperTitle, testFrom, madeItems, paperDoc } from '../../web/menus/evaluate/unit/unit-make.js';
 import { actPrompt, activityFrom, normTasks } from '../../web/menus/evaluate/activity/activity-make.js';
-import { dropItem } from '../../web/menus/evaluate/unit/unit-model.js';
+import { dropItem, saveTest } from '../../web/menus/evaluate/unit/unit-model.js';
+import { saveActivity } from '../../web/menus/evaluate/activity/activity-model.js';
+import { lines as refLines, items as refItems } from '../../web/core/eval-refs.js';
+import { evidenceList, evidencePrompt } from '../../web/core/evidence.js';
 import { gradePrompt, feedbackPrompt, redoPrompt, missPrompt } from '../../web/menus/evaluate/unit/unit-ai.js';
 import { gradeReviewPrompt } from '../../web/core/ai-review.js';
 import { gradePrompt as actGradePrompt, reviewPrompt as actReviewPrompt, criteriaPrompt } from '../../web/menus/evaluate/activity/activity-ai.js';
@@ -126,6 +129,23 @@ test('[C22 채점] 직접 쓴 범위로 만든 활동지: 채점·검토·기준
   a.meta.title = '이슬 관찰';
   const g2 = actGradePrompt(a, 1);
   assert.ok(g2.includes('「이슬 관찰」') && !leaks(g2), g2.slice(0, 400));
+});
+
+test('[C22 채점] 평가지 채점 평어의 참고 줄(core/eval-refs): 직접 쓴 범위로 만든 단원평가·활동지 이름은 만들 때 가린 글로 AI에 감, 화면 근거 글은 원래 이름', () => {
+  const s = freePick('과학', `${STAFF}\n습도와 이슬`).scope;
+  const t = madeTest(s, [{ no: 1, type: 'short', question: '풀잎에 맺힌 물방울을 무엇이라 하나요?', answer: '이슬', content: '이슬', points: 100 }]);
+  t.students = [{ no: 1, status: 'done', items: { 1: { pts: 100 } }, good: '이슬을 잘 앎' }];
+  saveTest(t);
+  const a = madeActivity(s, '〔이름1〕 선생님과 이슬 관찰', normTasks({ items: [{ kind: 'write', ask: '이슬이 맺히는 까닭을 쓰세요.', ok: 'a', part: 'b' }] }));
+  a.students = [{ no: 1, status: 'done', level: 'good', good: '잘 씀', next: '-' }];
+  saveActivity(a);
+  const refs = [{ kind: 'unit', id: t.id }, { kind: 'activity', id: a.id }];
+  const l = refLines(refs, 1);
+  assert.ok(!leaks(l) && l.includes('단원평가 「4학년 과학 5단원 날씨와 우리 생활(〔이름1〕') && l.includes('활동지 「〔이름1〕 선생님과 이슬 관찰」'), l);
+  // 근거(스펙 §5-2): 화면 글은 원래 이름, AI로 보내는 글은 가린 글
+  const ev = evidenceList(refItems(refs, 1));
+  assert.ok(ev[0].label.includes('날씨와 우리 생활(한가람') && ev[1].label.includes('한가람 선생님과 이슬 관찰'), JSON.stringify(ev));
+  assert.ok(!leaks(evidencePrompt(ev)), evidencePrompt(ev));
 });
 
 test('[C22 채점] 지나치게 바꾸지 않음: 가린 이름이 없는 범위·직접 넣은 정답표·잘못 남은 값은 요청 글이 그대로', () => {

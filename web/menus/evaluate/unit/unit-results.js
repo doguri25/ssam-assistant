@@ -13,6 +13,7 @@ import {
 } from './unit-model.js';
 import { tableDoc, tableCsv } from './unit-docs.js';
 import { pyeongeoPrompt, normPyeongeo, pyeongeoEvidence, evTitle } from './unit-ai.js';
+import { aiMeta } from '../make-scope.js';
 import { evidenceHTML } from '../../../core/evidence.js';
 import { itemName } from './unit-model.js';
 import { U, esc, AI_KEY, registerResults, visible, render, refresh, later, editing, getBox, introLine, viewSeg } from './unit.js';
@@ -161,14 +162,15 @@ function pyHTML(all) {
   </div>`;
 }
 /* 잘한·보완할 평가 내용: 고른 평가의 문항을 평가 내용으로 묶어 정답률.
-   근거(스펙 §5-1)에 쓰게 문항 이름(name: 평가 내용 또는 「3번 문항」)과 그 평가 이름(titles: 「3학년 수학 3단원」)도 */
+   근거(스펙 §5-1)에 쓰게 문항 이름(name: 평가 내용 또는 「3번 문항」)과 그 평가 이름(titles: 「3학년 수학 3단원」)도.
+   content는 평어 AI로만 가므로 평가 내용이 빈 문항의 「평가 이름 n번」은 만든 평가면 만들 때 보낸 가린 이름으로(make-scope aiMeta) */
 function contentRates(tests, no) {
   const m = new Map();
   for (const t of tests) {
     const s = graded(t).find(x => x.no === no);
     if (!s) continue;
     for (const it of t.key.items) {
-      const k = contentKey(t, it), v = m.get(k) || { pts: 0, max: 0, name: itemName(it), titles: [] }; // 평가 내용이 없는 문항끼리 뭉치지 않게
+      const k = contentKey({ meta: aiMeta(t) }, it), v = m.get(k) || { pts: 0, max: 0, name: itemName(it), titles: [] }; // 평가 내용이 없는 문항끼리 뭉치지 않게
       v.pts += Number(s.items[it.no] && s.items[it.no].pts) || 0; v.max += Number(it.points) || 0;
       if (!v.titles.includes(evTitle(t.meta))) v.titles.push(evTitle(t.meta));
       m.set(k, v);
