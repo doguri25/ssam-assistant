@@ -82,3 +82,22 @@ test('[fix1116-privacy-C2-neg] 「이름」 칸 아래라도 흔한 낱말(합�
   assert.deepEqual(h.sent.map(x => x.text), ['일정', '구분', '내용', '기간', '3월', '장소', '강당']);
   assert.equal(h.held, 0);
 });
+
+test('[fix1116-privacy-C3] 쉼표로 이은 목록에서 가린 이름에 이어진 이름도 가림(참석자·위원 목록)', () => {
+  for (const l of ['참석자: 김하늘(교장), 이바다(교감), 한가람(교무부장)', '협의 위원: 김하늘, 이바다', '참석자: 이바다, 김하늘', '모둠: 한가람·이바다']) {
+    const r = makeRedactor(), out = r.line(l);
+    assert.ok(out, l);
+    assert.deepEqual(leaks(out.text), [], `${l} → ${out.text}`);
+    assert.equal(r.back(out.text), l);
+  }
+});
+
+test('[fix1116-privacy-C3-neg] 가린 이름이 없는 목록·이름 뒤 낱말 목록은 그대로', () => {
+  for (const l of ['준비물: 도시락, 물병, 돗자리', '장소: 강당, 과학실, 운동장', '대상: 전교생, 교직원, 학부모', '안건: 체험학습, 운동회, 학예회']) {
+    const r = makeRedactor();
+    assert.equal(r.line(l).text, l);
+    assert.deepEqual(r.names, []);
+  }
+  const r = makeRedactor(), out = r.line('담당: 김하늘 선생님, 연구부, 행정실').text;
+  assert.equal(out, '담당: 〔이름1〕 선생님, 연구부, 행정실');
+});

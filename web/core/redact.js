@@ -5,7 +5,7 @@
    lines()는 여러 줄을 한꺼번에 봄(한 줄에 한 명씩인 번호 명단·「이름」 머리 칸 아래 표), 한 번 알아낸 이름은 다른 줄·다음 줄에서도 글자 그대로 가림.
    자리 표시가 사라진 값은 끝에 붙이지 않음. bad(t): 없는 번호·깨진 자리 표시가 남았는지(되돌린 글에 섞이지 않게 — 부르는 쪽이 그 줄을 버림).
    가정통신문 번역(letter-translate guard)은 따로 그대로 둠 */
-import { MASK, maskStaff, maskJosaNames, stripNames, RRN_RE, INTL_RE } from './privacy.js';
+import { MASK, maskStaff, maskJosaNames, maskList, stripNames, RRN_RE, INTL_RE } from './privacy.js';
 import { maskPersons } from './chat-names.js';
 
 const PHONE = /(?<!\d)\(?0\d{1,2}\)?[-.\s)]{0,2}\d{3,4}[-.\s]?\d{4}(?!\d)/;
@@ -43,9 +43,10 @@ export function makeRedactor() {
       .forEach(([n, k]) => { out = out.replace(new RegExp(`(?<![가-힣])${reEsc(n)}${AFTER_NAME}`, 'g'), `〔이름${k}〕`); });
     return out;
   }
-  /* 가린 글(stLine — 여러 줄 규칙을 거친 줄)과 원래 글(s)을 맞대어 이름마다 번호 → 보낼 글(아는 이름 가리기 전), 못 맞추면 null */
+  /* 가린 글(stLine — 여러 줄 규칙을 거친 줄)과 원래 글(s)을 맞대어 이름마다 번호 → 보낼 글(아는 이름 가리기 전), 못 맞추면 null.
+     직함·조사·흔한 이름 규칙으로 가린 뒤 목록 규칙을 한 번 더(가린 이름에 쉼표로 이어진 이름 — 「협의 위원: 김하늘, 이바다」의 이바다) */
   function mask(s, stLine) {
-    const masked = maskPersons(maskJosaNames(maskStaff(stLine).text).text).text;
+    const masked = maskList(maskPersons(maskJosaNames(maskStaff(stLine).text).text).text)[0];
     if (!masked.includes(MASK)) return masked;
     const m = new RegExp(`^${masked.split(MASK).map(reEsc).join('(.+?)')}$`, 's').exec(s);
     if (!m) return null;
