@@ -1509,6 +1509,7 @@ function buildPrompt(u, lv, ask, mine, others) {
     ? ["작품 속 인물의 마음을 자신의 경험과 견주어 읽으며 인물에게 하고 싶은 말을 까닭과 함께 또박또박 발표한다.", "작품 속 인물의 마음을 자신의 경험과 견주어 읽는다. 인물에게 하고 싶은 말을 발표한다."]
     : ["작품 속 인물의 마음을 자신의 경험과 견주어 읽으며 인물에게 하고 싶은 말을 까닭과 함께 또박또박 발표함.", "작품 속 인물의 마음을 자신의 경험과 견주어 읽음. 인물에게 하고 싶은 말을 발표함."];
   const avoid = [...mine, ...others].slice(-70);
+  const rbLines = RB() ? RB().levelLines(RB().getFor(u), lv) : '';
   return [
     `당신은 초등학교 학교생활기록부 '교과학습발달상황' 평어를 쓰는 경력 많은 초등 담임교사입니다.`,
     `아래 평가 정보를 바탕으로 [${LVNAME[lv]}] 수준 학생에게 쓸 평어 문장을 정확히 ${ask}개 쓰세요.`,
@@ -1520,6 +1521,8 @@ function buildPrompt(u, lv, ask, mine, others) {
     u.std ? `[성취기준] ${u.std.slice(0, 700)}` : null,
     u.focus ? `[수업·평가 방법과 주안점] ${u.focus.slice(0, 700)}` : null,
     `[평가기준] 상: ${u.crit.high || '-'} / 중: ${u.crit.mid || '-'} / 하: ${u.crit.low || '-'}`,
+    rbLines || null,
+    rbLines ? `이 설명에 나온 행동을 골고루 담되 문장마다 다르게 씁니다.` : null,
     ``,
     `[이 수준의 학생] ${anchor}`,
     ``,
@@ -2049,6 +2052,11 @@ function renderTabs() {
     return `<button class="tab ${l.cls}" role="tab" type="button" data-lv="${l.k}" aria-selected="${l.k === S.lv}"><span class="sw"></span>${l.name}<span class="ct num">${s.status === 'running' ? '만드는 중 ' : ''}${used}/${s.items.length}</span></button>`;
   }).join('');
 }
+/* 수준별 기준표 한 줄(rubric.js): 없으면 아무것도 그리지 않음 */
+function rbLine(u) {
+  const rb = RB();
+  return rb ? rb.paneLineHTML(u, { same: allUnits().filter(x => rb.unitKey(x) === rb.unitKey(u)).length }) : '';
+}
 function renderPane() {
   const pane = $('#pane');
   const u = unitById(S.unitId);
@@ -2077,6 +2085,7 @@ function renderPane() {
         ${critRows ? `<div class="crit">${critRows}</div>` : ''}
       </div>
     </details>
+    ${rbLine(u)}
     <div class="tabs" id="lvTabs" role="tablist" aria-label="수준"></div>
     <div class="tools">
       <div class="left"><label class="switch"><input type="checkbox" id="remainOnly" ${S.remainOnly ? 'checked' : ''}>안 쓴 문장만 보기</label></div>
@@ -2422,6 +2431,8 @@ document.addEventListener('click', e => {
   const undo = t.closest('[data-undo]');
   if (undo) { const s = getSet(S.unitId, S.lv); const it = s.items[+undo.dataset.undo]; if (it) { it.d = 0; Store.saveSet(S.planId, setKey(S.unitId, S.lv), s); renderList(); renderTabs(); renderUnitsSoon(); toast('완료 표시를 지웠어요'); } return; }
   const li = t.closest('.pane .sent'); if (li) { pickSentence(li); return; }
+  const rbo = t.closest('#pane [data-rb="open"]');
+  if (rbo) { const u = unitById(S.unitId), rb = RB(); if (u && rb) rb.open(u, { grade: S.plan && S.plan.grade, onSave: () => renderPane() }); return; }
   const act = t.closest('[data-act]'); if (act) doAct(act.dataset.act, act);
 });
 document.addEventListener('keydown', e => {
@@ -3219,6 +3230,7 @@ function hkMemoRows(text) {
 const hkMemoOut = s => (MEMO_NAMES() ? MEMO_NAMES().forAI(s.memo) : String(s.memo || '').trim());
 
 /* ---------- 근거가 보이는 평어 (core/evidence.js가 window.SSAM.evidence로 줌, 스펙 2026-11-13 §5) ---------- */
+const RB = () => (window.SSAM && window.SSAM.rubric) || null;
 const EV = () => (window.SSAM && window.SSAM.evidence) || null;
 // 행특 근거: 이름 칸을 뺀 메모(hkMemoOut)를 줄·쉼표로 나눈 조각 m1, m2 …
 const hkEvList = s => (EV() ? EV().memoEvidence(hkMemoOut(s)) : []);

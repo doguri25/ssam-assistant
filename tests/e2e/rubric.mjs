@@ -16,6 +16,10 @@ await page.addInitScript(() => {
   localStorage.setItem('ssam:__seeded', '1');
   localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true }));
   localStorage.setItem('ssam:class:info', JSON.stringify({ grade: 3, room: 2 }));
+  localStorage.setItem('ssam:mig:pron', '1');
+  const mk = (id, subject) => ({ id, subject, period: '1학기', std: '[4수01-05] 곱셈의 원리를 이해한다.', unit: '곱셈', area: '수와 연산', elem: '곱셈 원리 설명하기', focus: '', crit: { high: '두 방법으로 설명함', mid: '한 방법으로 설명함', low: '식만 씀' } });
+  localStorage.setItem('ssam:plan:P1', JSON.stringify({ kind: 'plan', title: '1학기 평가계획', grade: 3, source: '', createdAt: 1, subjects: [{ name: '수학', units: [mk('m1', '수학'), mk('m2', '수학')] }, { name: '과학', units: [mk('s1', '과학')] }] }));
+  localStorage.setItem('ssam:plans', JSON.stringify(['P1'])); localStorage.setItem('ssam:prefs', JSON.stringify({ current: 'P1' }));
 });
 const U = { id: 'u1', subject: '수학', unit: '곱셈', area: '수와 연산', elem: '곱셈 원리 설명하기', std: '[4수01-05] 곱셈의 원리를 이해한다.', focus: '풀이를 말과 글로 설명', period: '1학기', crit: { high: '두 방법으로 설명함', mid: '한 방법으로 설명함', low: '식만 씀' } };
 const U2 = { ...U, id: 'u9', subject: '과학' }; // 평가요소 이름만 같은 다른 과목
@@ -25,9 +29,10 @@ const MADE = rows => ({ rows: [
   { name: '풀이 과정', points: 33, cells: { high: { text: '풀이 과정을 차례대로 씀', pts: 33 }, mid: { text: '풀이 과정 일부를 씀', pts: 23 }, low: { text: '답을 구함', pts: 13 } } },
   { name: '까닭 설명', points: 33, cells: { high: { text: `${rows ? '〔이름1〕 선생님 자료처럼 ' : ''}두 방법을 견주어 까닭을 씀`, pts: 33 }, mid: { text: '까닭을 한 가지 씀', pts: 23 }, low: { text: '까닭을 말로 함', pts: 13 } } }
 ] });
-const prompts = [];
+const prompts = [], pyPrompts = [];
 let gate = null;
 await mockClaude(page, async ({ prompt }) => {
+  if (prompt.includes('평어 문장을 정확히')) { pyPrompts.push(prompt); return Array.from({ length: 30 }, (_, i) => `곱셈의 원리를 풀이와 함께 설명하며 까닭을 말함 ${i + 1}.`).join('\n'); }
   if (!prompt.includes('수준별 채점 기준표를 만드')) return '{}';
   prompts.push(prompt);
   if (gate) await gate;
@@ -328,6 +333,42 @@ await run('rubric', [
     assert(await RB('getFor', U) === null && await stored() === null, '지움');
     assert((await saved()).at(-1) === null, JSON.stringify(await saved()));
     assert((await RB('paneLineHTML', U)).includes('수준별 기준표 만들기'), '줄 글');
+  }],
+  ['교과 평어: 기준표 만들기 → 줄 바뀜 → 상 수준 평어 요청에 기준표, 같은 이름 다른 과목은 안 붙음', async () => {
+    await enter(page, 'evaluate', 'pyeongeo');
+    await page.waitForSelector('[data-unit="m1"]');
+    await page.click('[data-unit="m1"]');
+    await page.waitForSelector('#infoBox');
+    assert((await page.textContent('#pane .rb-line')).includes('수준별 기준표 만들기'), '처음 줄');
+    assert(await page.evaluate(() => { const b = document.querySelector('#infoBox'), l = document.querySelector('#pane .rb-line'); return !!(b.compareDocumentPosition(l) & Node.DOCUMENT_POSITION_FOLLOWING); }), '정보 상자 아래');
+    await page.click('#pane [data-rb="open"]');
+    await page.waitForSelector(SH);
+    await page.click(act('make'));
+    await until(async () => await cards() === 3, '기준표 만들기');
+    await page.click(act('save'));
+    await gone();
+    await until(async () => (await page.textContent('#pane .rb-line')).includes('수준별 기준표 · 요소 3개 · 3단계'), '줄이 바뀜');
+    assert((await page.textContent('#pane .rb-line')).includes('같은 평가요소 2곳'), '같은 평가요소 2곳 안내');
+    pyPrompts.length = 0;
+    await page.click('#pane [data-act="genUnit"]');
+    await until(async () => pyPrompts.some(p => p.includes('[상] 수준')), '상 요청');
+    const hi = pyPrompts.find(p => p.includes('[상] 수준'));
+    assert(hi.includes('[수준별 기준표 — 상]') && hi.includes('곱셈 원리 이해: 두 방법 모두 원리를 바르게 설명함'), '상 요청에 기준표');
+    assert(hi.includes('이 설명에 나온 행동을 골고루 담되 문장마다 다르게 씁니다.'), '골고루 줄');
+    assert(hi.indexOf('[평가기준]') < hi.indexOf('[수준별 기준표 — 상]'), '평가 정보 줄 뒤');
+    await until(async () => pyPrompts.length >= 4, '수준별 요청 모두', 15000);
+    await page.waitForTimeout(500);
+    const lo = pyPrompts.find(p => p.includes('[하] 수준'));
+    assert(lo && lo.includes('[수준별 기준표 — 하]'), '하 요청');
+    await page.click('[data-subj="과학"]');
+    await page.click('[data-unit="s1"]');
+    await page.waitForFunction(() => /과학/.test((document.querySelector('#pane .pane-head') || {}).textContent || ''));
+    assert((await page.textContent('#pane .rb-line')).includes('수준별 기준표 만들기'), '과학은 만들기');
+    pyPrompts.length = 0;
+    await page.click('#pane [data-act="genUnit"]');
+    await until(async () => pyPrompts.length >= 1, '과학 요청');
+    await page.waitForTimeout(800);
+    assert(pyPrompts.every(p => !p.includes('수준별 기준표') && !p.includes('이 설명에 나온 행동')), '과학 요청에 기준표 없음');
   }],
   ['페이지 오류 없음', async () => { assert(!errors.length, errors.join(' | ')); }]
 ]);
