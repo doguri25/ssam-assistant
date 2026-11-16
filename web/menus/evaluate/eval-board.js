@@ -2,10 +2,13 @@
    - 한눈에: 단원평가·활동지·평가지 채점마다 단계 칸(준비·채점·결과 확인·보충·생활기록부)에 카드, 확인할 것이 있으면 주황.
    - 가로 메뉴 끝 「선생님 차례 n」(확인할 것의 합, 0이면 없음) — 누르면 한눈에.
    - 생활기록부 칸 안 전환(교과 평어·창체·행특): 평가 칸 맨 위, 그 셋 중 하나일 때만.
+   - 결과 확인 칸 카드의 [마치기]: 그 평가를 끝난 평가로 접고 선생님 차례에서 뺌(eval-close.js, 점수·글은 그대로), 끝난 평가 목록의 [다시 열기]로 되돌림.
    단계·확인 수 규칙은 eval-stage.js(순수). 학생 이름은 쓰지 않음(번호·수만) */
 import { onEnter, go, REC } from '../../core/shell.js';
 import { getSchool } from '../../core/settings.js';
-import { STAGES, boardStage, unitStage, unitPending, activityStage, activityPending, grStage, grPending } from './eval-stage.js';
+import { STAGES, closedView, unitStage, unitPending, activityStage, activityPending, grStage, grPending } from './eval-stage.js';
+import { isClosed, setClosed } from './eval-close.js';
+import { toast } from '../../core/ui.js';
 import { listTests, getTest, loadTests, getSet, getPyeongeo, graded } from './unit/unit-model.js';
 import { flowSteps } from './unit/unit-flow.js';
 import { normCut } from './unit/unit-gap.js';
@@ -19,7 +22,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 const SSAM = () => window.SSAM || {};
 const KIND = { unit: '단원평가', activity: '활동지', gr: '수행평가' };
 const live = l => (Array.isArray(l) ? l : []).filter(s => s && !s.skip);
-let box = null, sw = null, curTab = '';
+let box = null, sw = null, curTab = '', foldOpen = false;
 
 /* 평가지 채점 기록(기존 앱이 ssam:grs·ssam:gr:<id>에 둠). 계정 저장소(db)면 여기서 읽지 못해 빼고 보임 */
 function grRecords() {
@@ -39,12 +42,12 @@ function unitItems() {
     const steps = flowSteps(t, ctx), g = graded(t), m = live(t.students).length;
     const py = t.meta.subject ? getPyeongeo(t.meta.subject).students || {} : {};
     const pyDone = !!g.length && g.every(x => py[x.no] && py[x.no].text);
-    const pending = unitPending(t), stage = boardStage(unitStage(t, steps, { pyDone }), pending);
+    const closed = isClosed('unit', s.id), { stage, pending } = closedView(unitStage(t, steps, { pyDone }), unitPending(t), closed);
     const first = steps.find(n => !n.done && !(t.meta.sample && ['gap', 'camp', 'post'].includes(n.id)));
     const line = stage === 'prep' ? (m ? '채점을 시작할 차례' : '학생 답안을 넣을 차례')
       : stage === 'grade' ? (pending ? `판단을 미룬 칸 ${pending}개` : g.length === m && !t.done ? '[채점 마치기]를 누를 차례' : '')
       : stage === 'record' ? (pyDone ? `판단을 미룬 칸 ${pending}개` : '교과 평어를 쓸 차례') : first ? `${first.label} · ${first.status}` : '';
-    return { kind: 'unit', id: s.id, subject: '', title: s.title, stage, pending, line, n: g.length, m, at: s.at, sample: !!s.sample }; // 제목에 교과가 들어 있음
+    return { kind: 'unit', id: s.id, subject: '', title: s.title, stage, pending, line, n: g.length, m, at: s.at, sample: !!s.sample, closed }; // 제목에 교과가 들어 있음
   }).filter(Boolean);
 }
 function activityItems() {
@@ -52,19 +55,19 @@ function activityItems() {
     const a = getActivity(s.id);
     if (!a) return null;
     const m = live(a.students).length, n = live(a.students).filter(x => x.status === 'done').length;
-    const pending = activityPending(a), stage = boardStage(activityStage(a), pending);
+    const closed = isClosed('activity', s.id), { stage, pending } = closedView(activityStage(a), activityPending(a), closed);
     const line = stage === 'prep' ? '학생 활동지를 넣을 차례' : stage === 'grade' ? (pending ? `판단을 미룬 칸 ${pending}개` : '')
       : stage === 'result' ? '결과를 보고 교과 평어로 넘길 차례' : `${pending ? `판단을 미룬 칸 ${pending}개 · ` : ''}교과 평어로 넘겼어요`;
-    return { kind: 'activity', id: s.id, subject: s.subject, title: s.title || a.meta.title || '활동지', stage, pending, line, n, m, at: s.at };
+    return { kind: 'activity', id: s.id, subject: s.subject, title: s.title || a.meta.title || '활동지', stage, pending, line, n, m, at: s.at, closed };
   }).filter(Boolean);
 }
 function grItems() {
   return grRecords().map(b => {
     const st = live(b.students), m = st.length, n = st.filter(x => x.score != null).length, texts = st.filter(x => x.text).length;
-    const pending = grPending(b), stage = boardStage(grStage(b), pending);
+    const closed = isClosed('gr', b.id), { stage, pending } = closedView(grStage(b), grPending(b), closed);
     const line = stage === 'prep' ? '평가지를 넣을 차례' : stage === 'grade' ? (pending ? `확인할 학생 ${pending}명` : '') : stage === 'result' ? (pending ? `확인할 학생 ${pending}명` : '평어를 쓸 차례')
       : `${pending ? `확인할 학생 ${pending}명 · ` : ''}평어 ${texts}/${m}명`;
-    return { kind: 'gr', id: b.id, subject: '', title: b.title || '수행평가', stage, pending, line, n, m, at: b.createdAt || 0 };
+    return { kind: 'gr', id: b.id, subject: '', title: b.title || '수행평가', stage, pending, line, n, m, at: b.createdAt || 0, closed };
   });
 }
 /* 모든 평가 카드(최근 것 먼저) */
@@ -76,9 +79,9 @@ export const turnTotal = (items = boardItems()) => items.reduce((n, x) => n + (x
 /* 가로 메뉴 「선생님 차례 n」용 가벼운 셈(단계는 셈하지 않음 — 끝난 평가는 확인할 것이 없으므로 같음) */
 export function pendingTotal() {
   const sums = listTests(), real = sums.filter(s => !s.sample);
-  const units = (real.length ? real : sums).reduce((n, s) => n + unitPending(getTest(s.id)), 0);
-  const acts = listActivities().reduce((n, s) => n + activityPending(getActivity(s.id)), 0);
-  return units + acts + grRecords().reduce((n, b) => n + grPending(b), 0);
+  const units = (real.length ? real : sums).reduce((n, s) => n + (isClosed('unit', s.id) ? 0 : unitPending(getTest(s.id))), 0);
+  const acts = listActivities().reduce((n, s) => n + (isClosed('activity', s.id) ? 0 : activityPending(getActivity(s.id))), 0);
+  return units + acts + grRecords().reduce((n, b) => n + (isClosed('gr', b.id) ? 0 : grPending(b)), 0);
 }
 
 /* ---------- 열기 ---------- */
@@ -95,6 +98,19 @@ function openTurn(kind, id) {
   else openItem(kind, id);
 }
 
+/* 결과 확인 칸 [마치기](on) · 끝난 평가 [다시 열기]: 그 평가만 끝으로/되돌림(점수·글은 그대로) → 다시 그리고 초점은 끝난 평가 목록·되돌린 카드에 */
+function closeItem(kind, id, on) {
+  const x = boardItems().find(v => v.kind === kind && v.id === id);
+  if (!setClosed(kind, id, on)) { toast('저장하지 못했어요. 저장 공간을 확인해 주세요'); return; }
+  foldOpen = true; // 마친 평가가 어디로 갔는지 보이게(다시 열 때도 펼친 채)
+  render(); drawPill();
+  const name = x ? `${KIND[kind]} 「${x.title || '(제목 없음)'}」` : '평가';
+  toast(on ? `${name}을 마쳤어요. 아래 「끝난 평가」에서 다시 열 수 있어요` : `${name}을 다시 열었어요`, 5000);
+  const sel = on ? '.eb-done summary' : `.eb-card[data-eb-kind="${kind}"][data-eb-id="${CSS.escape(id)}"] [data-eb-open]`;
+  const el = box && box.querySelector(sel);
+  if (el) el.focus({ preventScroll: false });
+}
+
 /* ---------- 그리기 ---------- */
 const title = x => `${x.subject ? esc(x.subject) + ' ' : ''}「${esc(x.title || '(제목 없음)')}」`;
 function cardHTML(x) {
@@ -104,7 +120,7 @@ function cardHTML(x) {
     <span class="ev-chip eb-kind">${KIND[x.kind]}${x.sample ? ' · 예시' : ''}</span>
     <h4><button type="button" data-eb-open>${title(x)}</button></h4>
     ${x.line ? `<p class="eb-line">${esc(x.line)}</p>` : ''}${prog}
-    ${x.pending ? `<button type="button" class="ev-turn-btn" data-eb-turn aria-label="선생님 차례 ${x.pending}개 확인">선생님 차례 · ${x.pending}개</button>` : ''}
+    ${x.pending || x.stage === 'result' ? `<div class="eb-card-acts">${x.pending ? `<button type="button" class="ev-turn-btn" data-eb-turn aria-label="선생님 차례 ${x.pending}개 확인">선생님 차례 · ${x.pending}개</button>` : ''}${x.stage === 'result' ? `<button type="button" class="btn eb-close" data-eb-close aria-label="${esc(KIND[x.kind])} ${esc(x.title || '')} 마치기 — 끝난 평가로">마치기</button>` : ''}</div>` : ''}
   </article>`;
 }
 function emptyHTML() {
@@ -126,7 +142,8 @@ function render() {
     return `<section class="eb-col" aria-label="${label}"><h3 class="eb-col-h">${label}<span class="ev-num">${list.length}</span></h3>
       ${list.length ? list.map(cardHTML).join('') : '<p class="eb-empty">없어요</p>'}</section>`;
   }).join('');
-  const fold = done.length ? `<details class="eb-done"><summary>끝난 평가 ${done.length}개 보기</summary><ul>${done.map(x => `<li><button type="button" data-eb-kind="${x.kind}" data-eb-id="${esc(x.id)}" data-eb-open>${KIND[x.kind]} · ${title(x)}</button></li>`).join('')}</ul></details>` : '';
+  const fold = done.length ? `<details class="eb-done"${foldOpen ? ' open' : ''}><summary>끝난 평가 ${done.length}개 보기</summary><ul>${done.map(x => `<li data-eb-kind="${x.kind}" data-eb-id="${esc(x.id)}"><button type="button" data-eb-open>${KIND[x.kind]} · ${title(x)}</button>${x.closed ? `<span class="ev-chip">마침</span><button type="button" class="btn text eb-reopen" data-eb-reopen aria-label="${esc(KIND[x.kind])} ${esc(x.title || '')} 다시 열기">다시 열기</button>` : ''}</li>`).join('')}</ul></details>` : '';
+  foldOpen = false;
   box.innerHTML = `<div class="m-page eb-page">${head}${band}<div class="eb-scroll"><div class="eb-cols">${cols}</div></div>${fold}</div>`;
 }
 
@@ -192,6 +209,7 @@ if (typeof document !== 'undefined') {
     if (g) { go('evaluate', g.dataset.ebGo); return; }
     const host = t.closest('[data-eb-kind]');
     if (!host || !host.closest('.board-box')) return;
+    if (t.closest('[data-eb-close]') || t.closest('[data-eb-reopen]')) { closeItem(host.dataset.ebKind, host.dataset.ebId, !!t.closest('[data-eb-close]')); return; }
     if (t.closest('[data-eb-turn]')) openTurn(host.dataset.ebKind, host.dataset.ebId);
     else if (t.closest('[data-eb-open]')) openItem(host.dataset.ebKind, host.dataset.ebId);
   });

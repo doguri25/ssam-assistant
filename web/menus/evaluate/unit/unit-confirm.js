@@ -10,7 +10,7 @@ import { getTest, makeTitle, graded } from './unit-model.js';
 import { ITEM_TYPES, gradeCell } from './unit-grade.js';
 import { parsePaper } from './unit-key.js';
 import { needsConfirm, confirmList, pointChoices } from './unit-view.js';
-import { setCell, pickRv, openCellSheet, scanHere } from './unit-grading.js';
+import { setCell, pickRv, openCellSheet, scanHere, quickFinish } from './unit-grading.js';
 import { U, esc, registerReview, render, getBox, openTest, visible } from './unit.js';
 
 const TYPE = Object.fromEntries(ITEM_TYPES);
@@ -45,6 +45,7 @@ function listHTML(t) {
         return `<button type="button" class="ev-rv-item${d ? ' done' : ''}" data-rvw-go="${i}"${i === RV.at && !RV.fin ? ' aria-current="true"' : ''} aria-label="${no}번 · ${item}번 문항${d ? ' · 정했어요' : ' · 확인할 칸'}"><span><b>${no}번</b> · ${item}번 문항</span></button>`; }).join('')}</div>
       <div class="ev-rv-lh un-rv-ai"><span class="ev-sub">쌤비서가 채점</span><span class="ev-num">${g}명</span></div>
       <button class="btn" type="button" data-rvw="map">표로 모두 보기</button>
+      ${RV.keys.some(k => isOpen(t, k)) ? '<button class="btn" type="button" data-rvw="quick" title="남은 칸은 쌤비서가 매긴 대로 두고 채점을 마쳐요">바로 마치기</button>' : ''}
     </aside>`;
 }
 function finHTML(t) {
@@ -159,6 +160,7 @@ document.addEventListener('click', e => {
   const a = e.target.closest('[data-rvw]'), act = a && a.dataset.rvw;
   if (!act) return;
   if (act === 'map') { openTest(t.id, 3); return; }
+  if (act === 'quick') { quickFinish(t.id); return; }
   if (!x || !x.c) return;
   if (act === 'accept') {
     const rv = x.c.rv && !x.c.rv.agree && !x.c.rv.done;

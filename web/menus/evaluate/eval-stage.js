@@ -10,6 +10,8 @@
 export const STAGES = [['prep', '준비'], ['grade', '채점'], ['result', '결과 확인'], ['help', '보충'], ['record', '생활기록부']];
 export const boardStage = (stage, pending) => (stage === 'done' && pending ? 'record' : stage);
 export const stageLabel = id => (STAGES.find(s => s[0] === id) || [id, '끝'])[1];
+/* 한눈에 [마치기]로 마친 평가(eval-close.js)는 끝(접음)·선생님 차례 0, 아니면 지금 규칙(boardStage) */
+export const closedView = (stage, pending, closed) => (closed ? { stage: 'done', pending: 0 } : { stage: boardStage(stage, pending), pending });
 
 const live = list => (Array.isArray(list) ? list : []).filter(s => s && !s.skip);
 const gradedOf = t => live(t && t.students).filter(s => s.status === 'done');
@@ -29,6 +31,20 @@ export function unitPending(t) {
   return gradedOf(t).reduce((n, s) => n + items.filter(it => unitNeeds(s.items && s.items[it.no])).length, 0);
 }
 
+/* [바로 마치기]: 판단을 미룬 칸·다시 보기 AI와 다른 칸을 쌤비서(메인 AI) 점수 그대로 정함(점수는 바꾸지 않음) → 정한 칸 수 */
+export function acceptUnit(t) {
+  if (!t || !t.key) return 0;
+  const items = Array.isArray(t.key.items) ? t.key.items : [];
+  let n = 0;
+  for (const s of gradedOf(t)) for (const it of items) {
+    const c = s.items && s.items[it.no];
+    if (!unitNeeds(c)) continue;
+    if (c.rv && !c.rv.agree && !c.rv.done) c.rv = { ...c.rv, done: 'main' };
+    c.ok = true; n++;
+  }
+  return n;
+}
+
 export function activityStage(a) {
   if (!a || !live(a.students).some(s => s.status === 'done')) return 'prep';
   if (!a.done) return 'grade';
@@ -37,6 +53,13 @@ export function activityStage(a) {
 export function activityPending(a) {
   if (!a) return 0;
   return live(a.students).reduce((n, s) => n + Object.values(s.marks || {}).filter(c => c && c.chk).length, 0);
+}
+
+/* [바로 마치기]: 노란 칸·다시 보기 AI 의견 칸(채점 확인 화면이 보이는 칸)을 쌤비서 표시 그대로 정함 → 정한 칸 수 */
+export function acceptActivity(a) {
+  let n = 0;
+  if (a) for (const s of live(a.students)) for (const c of Object.values(s.marks || {})) if (c && (c.chk || c.rv)) { c.chk = false; delete c.rv; n++; }
+  return n;
 }
 
 export function grStage(b) {

@@ -2,7 +2,7 @@
    왼쪽 확인할 칸 목록(번호 · 문항), 가운데 문항과 학생 답(읽은 글)·피드백, 오른쪽 기준과 쌤비서 생각 — 정하면 다음 칸.
    ← → 는 이 화면 안에 초점이 있을 때만 앞뒤로. 저장은 4단계 칸 고치기와 같은 함수(saveCell·saveNote). 스캔 그림은 저장하지 않아 없음. 학생은 번호만 */
 import { A, registerView, curAct, render, esc, getBox, visible, reach } from './activity.js';
-import { saveCell, saveNote } from './activity-grading.js';
+import { saveCell, saveNote, quickFinish } from './activity-grading.js';
 import { reviewQueue, needsLook, nextOpen } from './activity-board.js';
 import { TYPES, MARK } from './activity-ai.js';
 import { graded } from './activity-docs.js';
@@ -42,6 +42,7 @@ function listHTML(a, openNow) {
       <div class="ac-rv-items">${items}</div>
       <div class="ac-rv-sum"><span>쌤비서가 채점</span><span class="ev-num">${graded(a).length}</span></div>
       <button class="btn" type="button" data-ac="rvGrid">채점 표 훑어보기</button>
+      ${openNow.some(Boolean) ? '<button class="btn" type="button" data-ac="rvQuick" title="남은 칸은 쌤비서가 매긴 대로 두고 확정해요">바로 마치기</button>' : ''}
     </aside>`;
 }
 function optsHTML(it, c, ai, decided) {
@@ -155,6 +156,7 @@ document.addEventListener('click', e => {
   if (!b) return;
   if (b.dataset.ac === 'rvBack') toResults(0);
   else if (b.dataset.ac === 'rvGrid') toResults(4);
+  else if (b.dataset.ac === 'rvQuick') quickFinish();
 });
 document.addEventListener('input', e => {
   if (!mine(e) || !e.target.dataset.rvNote) return;

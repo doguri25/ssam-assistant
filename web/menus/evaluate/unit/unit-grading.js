@@ -19,6 +19,7 @@ import { go } from '../../../core/shell.js';
 import { gradeParts, normGrade, validGrade } from './unit-ai.js';
 import { locatePrompt, validLocate, normBoxes, cropRect, boxesOf, nextRef } from './unit-locate.js';
 import { unitAccuracy, accuracyText } from '../grade-accuracy.js';
+import { unitPending, acceptUnit } from '../eval-stage.js';
 import { arrangePages } from './unit-pages.js';
 import { readNos, openNoCheck, openNoWait, rosterAllowed, byNoOrder } from '../../../core/student-no.js';
 import { aiNoteHTML, foldHTML } from '../../../core/ui-parts.js';
@@ -485,7 +486,7 @@ function step3HTML(t) {
   // 위: 채점·확인 단추 한 줄(+ 스캔·검토 알림), 가운데: 지도와 쌤비서가 찾은 것, 아래: 사용량·정확도·안내·문항 자리·AI로 가는 것
   return `${aiRowHTML('grade')}<div class="yp-card un-gtool">
       <div class="row">${run ? `<span class="spin"></span><b>채점하는 중 · ${done}/${total}명</b>${G.run && G.run.id === id && G.run.wait ? '<b class="warn">AI 한도에 걸려 잠깐 쉬어요</b>' : ''}<button class="btn" type="button" data-un="stop">멈추기</button>` : `<button class="btn primary" type="button" data-un="grade">채점 시작</button><span class="muted">${done}/${total}명 채점함</span>`}
-        <span class="un-gsep" aria-hidden="true"></span><b id="unPending">확인할 칸 ${pending(t)}개</b><button class="btn text" type="button" data-un="nextChk">다음 확인할 칸</button>${rev ? `<button class="ev-turn-btn" type="button" data-un="review">확인할 것만 보기 · ${rev}개</button>` : ''}<span class="grow"></span><button class="btn primary" type="button" data-un="finish">채점 마치기</button></div>
+        <span class="un-gsep" aria-hidden="true"></span><b id="unPending">확인할 칸 ${pending(t)}개</b><button class="btn text" type="button" data-un="nextChk">다음 확인할 칸</button>${rev ? `<button class="ev-turn-btn" type="button" data-un="review">확인할 것만 보기 · ${rev}개</button>` : ''}<span class="grow"></span>${unitPending(t) && !run ? `<button class="btn" type="button" data-un="quickFinish" title="확인할 칸은 쌤비서가 매긴 대로 두고 채점을 마쳐요">바로 마치기</button>` : ''}<button class="btn primary" type="button" data-un="finish">채점 마치기</button></div>
       ${scanNote}${reviewBar(rvCount(t), 'data-un="nextRv"')}
     </div>
     <div class="un-map">${heatHTML(t, run)}${foundHTML(t)}</div>
@@ -715,6 +716,18 @@ function nextReview() {
   for (const s of t.students) if (!s.skip && s.status === 'done') for (const it of t.key.items) if (openRv(s.items[it.no])) { openCell(s.no, it.no); return; }
   toast('검토 의견이 없어요');
 }
+/* [바로 마치기]: 선생님이 확인하지 않은 칸은 쌤비서가 매긴 점수 그대로 정하고 채점을 마침(3단계·채점 확인 화면) → 마쳤으면 true */
+export function quickFinish(id) {
+  const t2 = getTest(id);
+  if (!t2) return false;
+  if (busy(id)) { toast('채점하는 중에는 마칠 수 없어요. 채점이 끝난 뒤에 눌러 주세요'); return false; }
+  const n = acceptUnit(t2);
+  t2.done = true;
+  if (!saveOrWarn(t2)) return false;
+  toast(n ? `확인할 칸 ${n}개는 쌤비서가 매긴 대로 두고 채점을 마쳤어요. 칸을 눌러 언제든 고칠 수 있어요` : '채점을 마쳤어요', 6000);
+  openTest(id, 4);
+  return true;
+}
 function askFinish() {
   const t = cur(), n = pending(t);
   SS().openSheet(`<h3>채점 마치기</h3><p class="muted" style="margin:0">${n ? `확인하지 않은 칸 ${n}개가 있어요. 그대로 마칠까요?` : '모두 확인했어요. 마치면 단원평가 결과에 모여요.'} 마친 뒤에도 고칠 수 있어요.</p>
@@ -768,6 +781,7 @@ document.addEventListener('click', e => {
   else if (a === 'review') openReview(t.id);
   else if (a === 'miss5') toMiss(Number(b.dataset.no), Number(b.dataset.i));
   else if (a === 'finish') askFinish();
+  else if (a === 'quickFinish') quickFinish(t.id);
   else if (a === 'relocate') locate(t.id, true);
 });
 document.addEventListener('change', e => {
