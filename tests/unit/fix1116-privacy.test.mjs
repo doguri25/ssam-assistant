@@ -347,3 +347,33 @@ test('[fix1116-privacy-C10-narrow] 회의록 참석 칸: 흔한 성으로 시작
     assert.equal(r.text, memo, `${att} → ${r.text}`);
   }
 });
+
+/* 한글(.hwpx) 표에서 세로로 합친 칸(rowSpan): 덮인 칸(∅)은 지우고 앞 칸에 rowSpan */
+async function mergedHwpx(rows, spans) {
+  const { makeHwpx } = await import('../../web/core/hwpx.js');
+  const { unzip, zipStore } = await import('../../web/core/zip.js');
+  const files = await unzip(makeHwpx({ title: '모둠 역할 안내', blocks: [{ type: 'table', head: true, rows }, { type: 'p', text: '한별은 기록을 맡음.' }] }));
+  const dec = new TextDecoder();
+  return zipStore([...files].map(([name, data]) => {
+    if (name !== 'Contents/section0.xml') return { name, data };
+    let x = dec.decode(data).replace(/<hp:tc [^>]*>(?:(?!<\/hp:tc>).)*?<hp:t>∅<\/hp:t>(?:(?!<\/hp:tc>).)*?<\/hp:tc>/g, '');
+    for (const [t, n] of spans) x = x.replace(new RegExp(`(<hp:t>${t}</hp:t>(?:(?!</hp:tc>).)*?rowSpan=")1"`), `$1${n}"`);
+    return { name, data: x };
+  }));
+}
+
+test('[fix1116-privacy-C2-span] 한글 표 「이름」 칸: 세로로 합친 칸(1모둠·2모둠)이 있어도 칸 주소(cellAddr)로 열을 찾아 두 글자 이름은 보내지 않고, 역할 낱말은 배우지 않음', async () => {
+  const { readForm } = await import('../../web/core/hwpx-form.js');
+  const rows = [['모둠', '이름', '역할'], ['1모둠', '김솔', '모둠장'], ['∅', '이산', '기록'], ['∅', '박준', '발표'], ['2모둠', '최윤', '모둠장'], ['∅', '한별', '기록']];
+  const form = await readForm(await mergedHwpx(rows, [['1모둠', 3], ['2모둠', 2]]));
+  assert.equal(form.lines.filter(l => l.inBox).length, 15, '덮인 칸은 없음');
+  const it = startItems(form.lines);
+  assert.deepEqual(it.filter(x => x.cell).map(x => [x.text, x.cell[2]]).filter(([t]) => /이산|기록|한별/.test(t)), [['이산', 1], ['기록', 2], ['한별', 1], ['기록', 2]]);
+  const p = payloadOf(it, '공문체로');
+  const s = p.sent.map(x => x.text);
+  for (const n of ['김솔', '이산', '박준', '최윤', '한별']) assert.ok(!s.some(t => t.includes(n)), `${n} → ${JSON.stringify(s)}`);
+  assert.equal(s.filter(t => t === '기록').length, 2, '역할 칸 「기록」은 보냄(이름으로 배우지 않음)');
+  assert.ok(s.includes('발표') && s.includes('1모둠') && s.includes('2모둠') && s.filter(t => t === '모둠장').length === 2, JSON.stringify(s));
+  assert.ok(s.some(t => /^〔이름\d+〕은 기록을 맡음\.$/.test(t)), JSON.stringify(s));
+  assert.equal(p.held, 5);
+});

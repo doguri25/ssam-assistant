@@ -21,12 +21,20 @@ export const HIST_MAX = 10;
 export const BATCH_CHARS = 12000, BATCH_LINES = 250;
 
 const tag = n => (n && n.name ? n.name.replace(/^.*:/, '') : '');
-/* 한글 표 칸 줄(readForm 줄의 box = 칸의 subList)의 자리 → [표 차례, 줄 차례, 칸 차례], 아니면 null */
+/* 칸 주소(<hp:cellAddr colAddr rowAddr>, core/hwpx-table.js와 같게) 속성 값, 없으면 -1 */
+const addrOf = (l, tc, a) => {
+  const n = typeof l.xml === 'string' && tc.kids.find(k => tag(k) === 'cellAddr');
+  const m = n && new RegExp(`\\s${a}="(\\d+)"`).exec(l.xml.slice(n.s, n.oe));
+  return m ? +m[1] : -1;
+};
+/* 한글 표 칸 줄(readForm 줄의 box = 칸의 subList)의 자리 → [표 차례, 줄 차례, 칸 차례], 아니면 null.
+   줄·칸 차례는 칸 주소로(세로로 합친 칸 — 「1모둠」이 세 줄을 덮으면 아래 줄은 칸이 하나 적어 형제 차례로는 왼쪽으로 밀림), 주소가 없으면 형제 차례 */
 function cellAt(l, tables) {
   const tc = l && l.inBox && l.box && l.box.up, tr = tc && tc.up, tb = tr && tr.up;
   if (tag(tc) !== 'tc' || tag(tr) !== 'tr' || tag(tb) !== 'tbl') return null;
   if (!tables.has(tb)) tables.set(tb, tables.size);
-  return [tables.get(tb), tb.kids.filter(k => tag(k) === 'tr').indexOf(tr), tr.kids.filter(k => tag(k) === 'tc').indexOf(tc)];
+  const row = addrOf(l, tc, 'rowAddr'), col = addrOf(l, tc, 'colAddr');
+  return [tables.get(tb), row >= 0 ? row : tb.kids.filter(k => tag(k) === 'tr').indexOf(tr), col >= 0 ? col : tr.kids.filter(k => tag(k) === 'tc').indexOf(tc)];
 }
 /* 원래 줄(readForm lines 또는 { text, inBox }) → 고칠 줄 목록(빈 줄·그림만 있는 줄은 뺌) */
 export function startItems(lines) {
