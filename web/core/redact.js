@@ -3,8 +3,8 @@
    주민·외국인등록번호가 든 줄·계좌 줄·이름이 늘어선 명단 줄은 보내지 않음(null). 이름 찾기는 core/privacy.js 규칙(직함 앞뒤 교직원 이름 maskStaff,
    조사가 붙은 이름 maskJosaNames, 표 칸·번호 명단·「학생 김하늘」 같은 이름 stripNames) + core/chat-names.js maskPersons(반 번호 옆·쉼표로 이은 맨 이름).
    lines()는 여러 줄을 한꺼번에 봄(한 줄에 한 명씩인 번호 명단·「이름」 머리 칸 아래 표), 한 번 알아낸 이름은 다른 줄·다음 줄에서도 글자 그대로 가림.
-   보내지 않는 줄이 사람 명단이면(머리 말이 참석·명단·위원·학생… 「참석: 김하늘, 이바다, 한가람」, 표의 「이름」 머리 칸 아래) 그 이름도 배움(privacy.js peopleNames —
-   「준비물: 도시락, 우비, 안내문」 같은 목록의 낱말은 아님), learnList로 받은 칸(회의록 참석 칸 — 사람만 적음)은 두~세 글자 이름도(privacy.js personNames).
+   보내지 않는 명단 줄의 이름도 배움(privacy.js peopleNames — 「참석: 김하늘, 이바다, 한가람」「1. 김하늘 2. 이바다 …」「최우수상: …」, 표는 「이름」 머리 칸 아래.
+   「준비물: 도시락, 우비, 안내문」처럼 머리 말이 사람이 아닌 것의 목록이면 배우지 않음), learnList로 받은 칸(회의록 참석 칸 — 사람만 적음)은 두~세 글자 이름도(privacy.js personNames).
    자리 표시가 사라진 값은 끝에 붙이지 않음. bad(t): 없는 번호·깨진 자리 표시(괄호를 바꾼 【이름1】·{1}도)가 남았는지(되돌린 글에 섞이지 않게 — 부르는 쪽이 그 줄을 버림).
    가정통신문 번역(letter-translate guard)은 따로 그대로 둠 */
 import { MASK, maskStaff, maskJosaNames, maskList, personNames, peopleNames, nameHead, nameUnderHead, stripNames, RRN_RE, INTL_RE } from './privacy.js';
@@ -62,7 +62,7 @@ export function makeRedactor() {
     const flat = [];
     texts.forEach((t, i) => String(t == null ? '' : t).split('\n').forEach(l => flat.push({ i, p: prep(l) })));
     // 명단처럼 이름이 늘어선 줄은 stripNames가 줄 하나만 보고 뺌 — 미리 빼서 이어 붙인 글과 줄이 맞게.
-    // 사람 명단 줄(머리 말이 참석·명단·위원…)과 표의 「이름」 머리 칸(바로 위 표 줄) 아래 칸의 이름은 배움 — 다른 줄의 맨 이름도 가리게
+    // 명단 줄의 이름(머리 말이 준비물·장소 같은 사람이 아닌 것의 목록이면 빼고)과 표의 「이름」 머리 칸(바로 위 표 줄) 아래 칸의 이름은 배움 — 다른 줄의 맨 이름도 가리게
     let head = null;
     flat.forEach(f => {
       const s = f.p && !f.p.blank ? f.p.s : '', cells = s.includes('|') ? s.split('|').map(c => c.trim()) : null;

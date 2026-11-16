@@ -93,20 +93,43 @@ const ROLE_END = /(?:교사|강사|위원|요원|직원|[사관장생부팀청�
    네 글자는 두 글자 성만(진로교사·안전요원은 아님). 흔한 낱말·직함·부서·인원·쉼 말(교장·담임·전원·주무관·연구부·조퇴)은 아님 */
 const personWord = t => DOUBLE.test(t) || (/^[가-힣]{2,3}$/.test(t) && SURNAME.has(t[0]) && !COMMON.has(t) && !TWO_WORD.has(t) && !STAFF_WORD.has(t)
   && !LIST_WORD.has(t) && !ROLE_END.test(t));
+const LIST_SPLIT = /[\s|,，·、/()（）:：;[\]【】<>〈〉《》「」『』→←~]+/;
+const words = text => String(text == null ? '' : text).split(LIST_SPLIT).map(t => t.replace(/^\d+[.)번]?/, '').replace(/^[^가-힣]+|[^가-힣]+$/g, ''));
 /* 사람 이름만 늘어놓는 칸(회의록 참석 칸 — 「김하늘(교무), 이산, 정영자 주무관」)의 이름 → [이름] */
-export const personNames = text => String(text == null ? '' : text).split(/[\s|,，·、/()（）:：;]+/).map(t => t.replace(/^\d+[.)번]?/, '')).filter(personWord);
-// 사람 명단 줄의 머리 말(쌍점 앞, 쌍점이 없으면 첫 이름 앞): 참석·명단·위원·대상·학생·담당·출석·결석·담임·1모둠 …
-const PEOPLE_HEAD = /(?:참석|참석자|참가자|참여자|불참|명단|위원|대상|대상자|학생|담당|담당자|출석|결석|지각|조퇴|담임|교사|교원|강사|교직원|회원|임원|부원|모둠원|팀원|반원|당번|수상자|인솔|인솔자|보호자|학부모|모둠|\d\s*(?:조|반|팀))$/;
+export const personNames = text => words(text).filter(personWord);
+// 사람 명단 줄의 머리 말(쌍점 앞, 쌍점이 없으면 첫 이름 앞의 낱말): 참석·명단·위원·대상·학생·담당·출석·결석·담임·1모둠·신청자·발표자·우수상 …
+// — 이 줄은 두 글자 이름(김솔·이산)도 배움
+const PEOPLE_HEAD = /(?:참석|참석자|참가자|참여자|불참|명단|위원|대상|대상자|학생|담당|담당자|출석|결석|지각|조퇴|담임|교사|교원|강사|교직원|회원|임원|부원|모둠원|팀원|반원|당번|수상자|인솔|인솔자|보호자|학부모|모둠|조|반|팀|신청자|희망자|지원자|발표자|합격자|후보자|입상자|선수|대표|회장|반장|짝|상)$/;
+// 사람이 아닌 것을 늘어놓는 줄의 머리 말(준비물·물품·장소·일정·메뉴 …) — 그 줄의 낱말은 이름으로 배우지 않음(사람 머리 말이 같이 있으면 배움)
+const THING_HEAD = /(?:준비물|물품|품목|재료|준비|장소|일정|내용|과목|교과|메뉴|식단|장비|도서|교재|예산|비품|교구|간식|학용품|기자재|견학지|방문지|체험지|단원)$/;
+const PEOPLE_WORD = /학생|학부모|보호자|어머니|아버지|선생님|교사|담임|[가-힣]님(?![가-힣])/;
 const BULLET = /^\s*(?:[-–—·•○◦▪■□*※>]+|\(?\d{1,2}[.)]|[가-하][.)])\s*/;
-/* 이름이 늘어선 줄(보내지 않는 줄)이 사람 명단이면(머리 말이 사람 무리 — 「참석: 김하늘, 이바다, 한가람」「협의 위원 김하늘 이바다 …」) 그 이름 → [이름],
-   아니면 [](「준비물: 도시락, 우비, 안내문, 신분증」「장소: 강당 체육관 운동장」의 낱말은 이름으로 배우지 않음) */
+// 쌍점 앞 머리 말이 앞 마디와 갈리는 자리(「준비물: 도시락, 우비 / 인솔: …」의 빗금)
+const SEG_CUT = /[/|,，;·]/g;
+/* 보내지 않는 명단 줄에서 배울 이름 → [이름]: 이름 모양 낱말(세 글자 흔한 성 이름·두 글자 성 이름 — 직함·부서·인원 말은 빼고)을 모두,
+   머리 말이 사람 무리면(「참석: …」「신청자: …」「(1모둠) …」) 두 글자 이름도.
+   머리 말이 사람이 아닌 것의 목록이면(「준비물: 도시락, 우비, 안내문, 신분증」「[준비물] …」「메뉴: …」) 그 마디는 배우지 않음.
+   머리 말 없는 목록(「김하늘, 이바다, 한가람」「1. 김하늘 2. 이바다 …」)·상 이름(「최우수상: …」)·「6-1: …」은 배움 */
 export function peopleNames(line) {
-  const s = String(line == null ? '' : line);
-  let c = s.search(/[:：]/);
-  if (c < 0) { const m = [...s.matchAll(/[가-힣]+/g)].find(x => personWord(x[0])); c = m ? m.index : -1; }
-  if (c < 0) return [];
-  const head = s.slice(0, c).replace(/[(（][^)）]*[)）]/g, '').replace(BULLET, '').replace(/[\s|\-–—]+$/, '').trim();
-  return PEOPLE_HEAD.test(head) ? personNames(s.slice(c)) : [];
+  const s = String(line == null ? '' : line), out = [];
+  const seg = (head, body) => {
+    const toks = head.replace(BULLET, '').match(/[가-힣]+/g) || [];
+    const people = toks.some(t => PEOPLE_HEAD.test(t));
+    // 사람이 아닌 것의 목록이라도 몸에 사람 말이 있으면(「내용: 김하늘, 이바다, 한가람 학생 표창」) 배움
+    if (!people && toks.some(t => THING_HEAD.test(t)) && !PEOPLE_WORD.test(body)) return;
+    for (const w of words(body)) if (people ? personWord(w) : cellName(w) && personWord(w)) out.push(w);
+  };
+  // 쌍점이 없는 마디: 첫 이름 모양 낱말 앞이 머리 말
+  const bare = t => { const m = [...t.matchAll(/[가-힣]+/g)].find(x => cellName(x[0]) || personWord(x[0])); if (m) seg(t.slice(0, m.index), t.slice(m.index)); };
+  const parts = s.split(/[:：]/);
+  // 마디 k의 머리 말 = 앞 조각의 끝(마지막 빗금·쉼표 뒤), 몸 = 이 조각(다음 머리 말 앞까지)
+  const cut = t => Math.max(-1, ...[...t.matchAll(SEG_CUT)].map(m => m.index));
+  bare(parts.length > 1 ? parts[0].slice(0, cut(parts[0]) + 1) : s);
+  for (let k = 1; k < parts.length; k++) {
+    const p = parts[k - 1], body = k + 1 < parts.length ? parts[k].slice(0, cut(parts[k]) + 1) : parts[k];
+    seg(p.slice(cut(p) + 1), body);
+  }
+  return out;
 }
 /* 쉼표·가운뎃점으로 이은 목록의 한 항목: 이름 + 「(사정)」이나 「-맡은 일」, 다음 쉼표·줄 끝까지 */
 const ITEM = /(^|[\s:：]|[,，·、]\s*)(○○○|[가-힣]{3,4})(\s*(?:[(（][^)）\n]*[)）]|[-–]\s*[^,，·、\n]*))?\s*(?=[,，·、]|$)/g;

@@ -377,3 +377,59 @@ test('[fix1116-privacy-C2-span] 한글 표 「이름」 칸: 세로로 합친 �
   assert.ok(s.some(t => /^〔이름\d+〕은 기록을 맡음\.$/.test(t)), JSON.stringify(s));
   assert.equal(p.held, 5);
 });
+
+/* ---------- 2026-11-16 두 번째 검토 고침 ---------- */
+// 보내지 않는 명단 줄의 머리 말(쌍점 앞·첫 이름 앞, 글머리·괄호는 벗김) — 사람이 아닌 것의 목록(준비물·장소…)만 배우지 않음
+const ROSTER_HEADS = ['', '[참석] ', '(1모둠) ', '<1모둠> ', '※ 참석자 명단 → ', '6-1: ', '가. 최우수상: ', '우수상: ', '방과후 신청자: ', '발표자: ', '희망자: ',
+  '합격자: ', '후보자: ', '입상자 ', '3월 생일: ', '봉사 활동 우수: ', '참석: ', '청소 당번 '];
+const ROSTER = ['김하늘, 이바다, 한가람, 박솔빛', '김하늘 이바다 한가람 박솔빛'];
+
+test('[fix1116-privacy-R2-docedit-held] 문서 다듬기: 보내지 않는 명단 줄(머리 말 없는 목록·번호 목록·상 이름·신청자·괄호 머리)의 이름을 배워 다른 줄의 같은 이름도 가림', () => {
+  const docs = [
+    ['6학년 현장체험학습 모둠 편성', '1. 김하늘 2. 이바다 3. 한가람 4. 박솔빛', '이바다: 모둠 기록 담당'],
+    ['교내 독서 감상문 대회 결과 안내', '가. 최우수상: 김하늘, 이바다, 한가람, 박솔빛', '나. 이바다, 한가람 작품은 시 대회에 출품합니다.'],
+    ['방과후 신청자: 김하늘, 이바다, 한가람, 박솔빛', '이바다 대기 1순위'],
+    ...ROSTER_HEADS.flatMap(h => ROSTER.map(l => [h + l, '이바다 기록 담당', '한가람: 사진 촬영']))
+  ];
+  for (const d of docs) {
+    const p = payloadOf(startItems(d.map(t => L(t))), '공문체로 다듬어 줘');
+    const s = p.sent.map(x => x.text);
+    assert.ok(!s.some(t => leaks(t).length), `${d[d.length - 2]} → ${JSON.stringify(s)}`);
+    for (const x of p.sent) assert.equal(p.back(x.text), d[x.id - 1].replace(/\r/g, ''), '되돌림');
+  }
+  // 사람이 아닌 것의 목록(준비물·장소·일정·메뉴…)은 그대로 배우지 않음
+  for (const d of [['가. 준비물: 도시락, 우비, 안내문, 신분증', '나. 도시락은 각자 준비하고, 안내문은 미리 읽어 오세요.'],
+    ['[준비물] 도시락, 우비, 안내문, 신분증', '도시락은 각자 준비하고, 안내문은 미리 읽어 오세요.'],
+    ['준비물(개인): 도시락, 우비, 안내문, 신분증', '도시락은 각자 준비하고, 안내문은 미리 읽어 오세요.'],
+    ['체험학습 준비물 도시락 우비 안내문 신분증', '도시락은 각자 준비하고, 안내문은 미리 읽어 오세요.'],
+    ['메뉴: 김치전, 고구마, 오미자, 송편', '오미자 차를 준비합니다.']]) {
+    const p = payloadOf(startItems(d.map(t => L(t))), '공문체로 다듬어 줘');
+    assert.deepEqual(p.sent.map(x => x.text).filter(t => t !== d[0]), [d[1]], d[0]);
+  }
+});
+
+test('[fix1116-privacy-R2-people-head] 인수인계서·회의록(core/redact.js): 보내지 않는 명단 줄은 머리 말이 사람이 아닌 것(준비물·장소·일정…)일 때만 이름을 배우지 않음', () => {
+  for (const h of ROSTER_HEADS) {
+    for (const l of ROSTER) {
+      const r = makeRedactor(), o = r.lines([h + l, '- 이바다: 시 대회 출품 예정', '한가람 버스 예약']);
+      assert.equal(o[0], null, h);
+      assert.deepEqual(leaks(o[1].text + o[2].text), [], `${h}${l} → ${o[1].text} / ${o[2].text}`);
+      assert.equal(r.back(o[1].text), '- 이바다: 시 대회 출품 예정');
+    }
+  }
+  const o = makeRedactor().lines(['1. 김하늘 2. 이바다 3. 한가람 4. 박솔빛', '이바다: 모둠 기록 담당']);
+  assert.deepEqual(o.map(x => x && x.text), [null, '〔이름2〕: 모둠 기록 담당']);
+  // 한 줄에 사람 아닌 목록과 사람 명단이 같이 있으면 사람 명단 쪽 이름은 배움
+  const m = makeRedactor().lines(['준비물: 도시락, 우비 / 인솔: 김하늘, 이바다, 한가람, 박솔빛', '이바다 버스 예약', '도시락은 각자']);
+  assert.deepEqual(m.map(x => x && x.text), [null, '〔이름2〕 버스 예약', '도시락은 각자']);
+  // 사람이 아닌 것의 목록 머리 말이라도 몸에 사람 말(학생·선생님·님)이 있으면 배움
+  const c = makeRedactor().lines(['가. 내용: 김하늘, 이바다, 한가람, 박솔빛 학생 표창', '이바다 기록 담당']);
+  assert.deepEqual(c.map(x => x && x.text), [null, '〔이름2〕 기록 담당']);
+  // 사람이 아닌 것의 목록: 배우지 않음
+  for (const l of ['준비물: 도시락, 우비, 안내문, 신분증', '[준비물] 도시락, 우비, 안내문, 신분증', '- 물품: 도시락, 우비, 안내문, 신분증', '교재: 이야기책, 안내문, 신분증, 도시락',
+    '준비물 도시락 우비 안내문 신분증']) {
+    const r = makeRedactor(), out = r.lines([l, '도시락은 각자 준비하고, 안내문은 미리 읽어 오세요.']);
+    assert.deepEqual(out.map(x => x && x.text), [null, '도시락은 각자 준비하고, 안내문은 미리 읽어 오세요.'], l);
+    assert.deepEqual(r.names, [], l);
+  }
+});

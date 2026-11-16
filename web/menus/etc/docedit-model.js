@@ -52,8 +52,8 @@ export function startItems(lines) {
 /* 문단 안 줄바꿈(한글 <hp:lineBreak/>)은 AI에 이 표시로 보내고 돌아온 글에서 다시 줄바꿈으로(글의 줄바꿈은 「뒤에 더하기」라서) */
 export const BR = '⏎';
 const BR_BACK = new RegExp(`[ \\t]*${BR}`, 'g'); // 돌아온 ⏎(앞에 AI가 더한 빈칸까지) → 줄바꿈
-/* 보내지 않는 줄(주민번호·계좌 줄, 이름만 든 칸)의 이름 모양 낱말과 사람 명단 줄(「참석: …」)의 이름 — 다른 줄에서도 가리게.
-   이름이 늘어선 줄이라도 사람 명단이 아니면(「준비물: 도시락, 우비, 안내문, 신분증」) 배우지 않음 */
+/* 보내지 않는 줄(명단·주민번호·계좌 줄, 이름만 든 칸)의 이름 모양 낱말 — 다른 줄에서도 가리게.
+   이름이 늘어선 명단 줄은 core/privacy.js peopleNames(머리 말이 사람이 아닌 것의 목록 — 「준비물: 도시락, 우비, 안내문, 신분증」이면 배우지 않음) */
 function heldNames(texts) {
   const out = makeRedactor().lines(texts);
   return texts.flatMap((t, k) => {
