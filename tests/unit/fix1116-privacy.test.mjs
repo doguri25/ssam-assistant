@@ -288,3 +288,23 @@ test('[fix1116-privacy-C1-narrow] 끝 글자가 용·순인 이름(재용·영�
     assert.equal(maskPersons(ask, { memo: true }).text, ask, `memo: ${ask}`);
   }
 });
+
+test('[fix1116-privacy-C5-narrow] 세 글자 직함 + 님(주무관님께·장학사님께·연구사님께·조리사님께…)을 이름으로 배우지 않음', () => {
+  const r = makeRedactor();
+  const src = ['담당 주무관님께 제출', '행정실 주무관이 처리함', '교육청 장학사 방문', '담당 장학사님께 보고'];
+  assert.deepEqual(r.lines(src).map(x => x.text), src);
+  assert.deepEqual(r.names, []);
+  for (const l of ['연구사님께 문의', '조리사님께 전달', '변호사님께 자문', '경찰관님께 감사', '소방관님께 감사', '담당 연구관님께 보고', '도지사님께 드림', '이사장님께 보고',
+    '위원장님께 보고', '구청장님께 드림', '강사 장학관님께', '문의: 담당 주무관님']) {
+    assert.equal(maskStaff(l).text, l, `staff: ${l}`);
+    assert.equal(maskJosaNames(l).text, l, `josa: ${l}`);
+    const x = makeRedactor();
+    assert.equal(x.line(l).text, l, l);
+    assert.deepEqual(x.names, [], l);
+  }
+  // 직함 옆 진짜 이름은 그대로 가림
+  for (const [l, n] of [['담당 주무관 박솔빛님께', '박솔빛'], ['한가람님께 제출', '한가람'], ['담당 이바다 주무관님께', '이바다']]) {
+    const x = makeRedactor().line(l).text;
+    assert.ok(!x.includes(n), `${l} → ${x}`);
+  }
+});

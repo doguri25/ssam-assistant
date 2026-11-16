@@ -150,8 +150,11 @@ const TWO_WORD = new Set(('전담 연구 정보 안전 인성 진로 진학 도�
   + '이상 이하 우선 모임 정함 배치 조정 조회 현황 명의 구성 방문 서명 도장 원고 강의 강연 소속 주소 연령 성별 경험 전공 명함 차량 강당 반별 주번 반장 '
   + '유치 초등 중등 고등 특기 방과 정규 주간 야간 오전 오후 당번 장학 인솔 임시 대체 기존 현장 강사 '
   + '선생 원장 주임 위원 박사 소장 차장 국장 기사').split(' '));
-/* 직함 옆 낱말 하나가 교직원 이름 모양인지: 세 글자(흔한 성, 부서 이름·「~님」(주임님·원장님) 아님) 또는 두 글자(흔한 성 + 흔한 낱말 아님) */
-export const staffName = n => (n.length === 3 ? cellName(n) && !STAFF_WORD.has(n) && !/님$/.test(n) : n.length === 2 && SURNAME.has(n[0]) && !TWO_WORD.has(n));
+// 세 글자 직함의 끝 글자(주무관·장학사·연구사·조리사·변호사·경찰관·이사장·위원장·구청장 — 「주무관님께」를 이름 + 님께로 보던 것)
+const TITLE_END = /[관사장]$/;
+/* 직함 옆 낱말 하나가 교직원 이름 모양인지: 세 글자(흔한 성, 부서 이름·「~님」(주임님·원장님)·직함(주무관·장학사)·조리원 아님) 또는 두 글자(흔한 성 + 흔한 낱말 아님) */
+export const staffName = n => (n.length === 3 ? cellName(n) && !STAFF_WORD.has(n) && !LIST_WORD.has(n) && !/님$/.test(n) && !TITLE_END.test(n)
+  : n.length === 2 && SURNAME.has(n[0]) && !TWO_WORD.has(n));
 /* 「김솔께」「이나래에게」 → [이름, 조사] (세 글자 이름부터) */
 const staffJosa = (w, before = '', after = '') => { for (const k of [3, 2]) { if (w.length < k) continue; const n = w.slice(0, k), j = w.slice(k); if (josaOk(n, j, before, after) && staffName(n)) return [n, j]; } return null; };
 /* 직함 앞뒤의 교직원 이름만 ○○○로(그 밖의 글은 그대로 — 가린 자리를 되돌릴 수 있게 바꾸기만 함) → { text, masked } */
@@ -164,8 +167,8 @@ export function maskStaff(text) {
 }
 
 /* ---------- 조사가 붙은 이름 (「김민수의 보호자님께」「이서연이 상을 받았어요」) ---------- */
-// 이름으로 보지 않는 끝 글자(「도시락을」「안내문을」「구급약을」「박물관을」 같은 낱말) — 이름 끝에 드문 글자
-const THING_END = /[락문약료비금권증품물판표실관장소당번처넷스]$/;
+// 이름으로 보지 않는 끝 글자(「도시락을」「안내문을」「구급약을」「박물관을」 같은 낱말, 「장학사님께」「연구사님께」 같은 직함) — 이름 끝에 드문 글자
+const THING_END = /[락문약료비금권증품물판표실관장소당번처넷스사]$/;
 // 「~서·~지·~구·~형·~하·~리·~일·~효」는 가운데가 이름에 흔한 글자일 때만 이름(김민서·이은지·김준형 — 신청서·설문지·서술형·소통하는·이메일은 아님)
 const NAME_MID = /[나도동리미민보서세소수승시아연영예우유윤은재정주준지채태하현혜효희성경상진용혁인선건]/;
 const josaName = n => plainOk(n) && !THING_END.test(n) && (!/[서지구형하리일효]$/.test(n) || NAME_MID.test(n[1]));
