@@ -40,3 +40,23 @@ test('[fix1116-min-bullet-strip] 목록 번호·기호는 지금처럼 뺌(뒤�
   assert.ok(lineOut('1. 11. 20.(금)까지 받기로 함').includes('11. 20.(금)까지'), lineOut('1. 11. 20.(금)까지 받기로 함'));
 });
 
+/* ---------- C14: 다시 정리할 때 종류 ---------- */
+test('[fix1116-min-kind-keep] 다시 정리할 때 AI가 이름을 비워도 남은 이름의 종류 그대로(「기타」로 바뀌지 않음)', () => {
+  const first = normMinutes({ title: '3학년 학년 협의회', agenda: [{ title: 'a' }] }, { year: 2026, today: TODAY });
+  assert.equal(first.kind, 'grade');
+  const second = keepFields(normMinutes({ title: '', agenda: [{ title: 'b' }] }, { year: 2026, today: TODAY }), first, []);
+  assert.deepEqual([second.title, second.kind], ['3학년 학년 협의회', 'grade']);
+  // 선생님이 고친 이름이 남으면 그 이름으로 짐작
+  const typed = { ...blankMinutes(), title: '6학년 과학 교과 협의회', touched: ['title'] };
+  const k = keepFields(normMinutes({ title: '협의 결과', agenda: [{ title: 'b' }] }, { year: 2026, today: TODAY }), typed, ['title']);
+  assert.deepEqual([k.title, k.kind], ['6학년 과학 교과 협의회', 'subject']);
+});
+
+test('[fix1116-min-kind-not] AI 새 이름이 다른 종류면 그 종류, 선생님이 고른 종류(기타 포함)는 그대로', () => {
+  const prev = normMinutes({ title: '3학년 학년 협의회' }, { year: 2026, today: TODAY });
+  assert.equal(keepFields(normMinutes({ title: '6학년 과학 교과 협의회' }, { year: 2026, today: TODAY }), prev, []).kind, 'subject');
+  const chose = { ...prev, kind: 'etc' };
+  assert.equal(keepFields(normMinutes({ title: '' }, { year: 2026, today: TODAY }), chose, ['kind']).kind, 'etc');
+  const council = { ...prev, kind: 'council' };
+  assert.equal(keepFields(normMinutes({ title: '3학년 학년 협의회' }, { year: 2026, today: TODAY }), council, ['kind']).kind, 'council');
+});

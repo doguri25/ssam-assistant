@@ -150,6 +150,8 @@ export function keepFields(next, prev, touched = []) {
   const n = copy(next) || {}, p = prev || {}, t = Array.isArray(touched) ? touched : [];
   for (const k of keptKeys(p, t)) n[k] = copy(p[k]);
   for (const k of SCALAR) if (!t.includes(k) && !String(n[k] || '').trim() && p[k]) n[k] = p[k];
+  // 고르지 않은 종류는 AI 이름으로 짐작한 것: 짐작하지 못했으면(기타) 남은 이름(고친 이름·AI가 비워 그대로 둔 이름)으로 다시, 그래도 모르면 전 값
+  if (!t.includes('kind') && n.kind === 'etc') { n.kind = guessKind(n.title); if (n.kind === 'etc' && KIND_IDS.includes(p.kind)) n.kind = p.kind; }
   if (!t.includes('todos')) n.todos = carryDone(p.todos, Array.isArray(n.todos) ? n.todos : []);
   return n;
 }
