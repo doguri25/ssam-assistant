@@ -1,5 +1,6 @@
 // 2026-11-16 고침 — 문항·활동지 만들기: 직접 쓴 범위 첫 줄의 교직원 이름이 평가 정보(단원 이름)·문제지 제목에 〔이름n〕로 남던 것,
-// 그렇게 되돌린 이름이 나중에 채점·검토·피드백 AI 요청 글로 그대로 가던 것(AI로 가는 글은 가린 채로, 선생님이 보는 것만 원래 이름),
+// 그렇게 되돌린 평가·활동 이름이 나중에 채점·검토·피드백 AI 요청 글로 그대로 가던 것(AI로 가는 이름은 만들 때 가린 글, 선생님이 보는 것만 원래 이름 —
+// 정답표·문항·학생 답은 다시 가리지 않음: 김구 같은 배움 내용 이름),
 // 1단계에서 마지막 문항을 빼고 [문항 더하기]를 하면 다시 내려받는 문제지에 뺀 문항의 물음이 되살아나던 것. 이름·번호는 모두 지어낸 것
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,6 +12,7 @@ import { dropItem } from '../../web/menus/evaluate/unit/unit-model.js';
 import { gradePrompt, feedbackPrompt, redoPrompt, missPrompt } from '../../web/menus/evaluate/unit/unit-ai.js';
 import { gradeReviewPrompt } from '../../web/core/ai-review.js';
 import { gradePrompt as actGradePrompt, reviewPrompt as actReviewPrompt, criteriaPrompt } from '../../web/menus/evaluate/activity/activity-ai.js';
+import * as actAI from '../../web/menus/evaluate/activity/activity-ai.js';
 import * as makeScope from '../../web/menus/evaluate/make-scope.js';
 
 function mem() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k), key: i => [...m.keys()][i], get length() { return m.size; } }; }
@@ -56,71 +58,91 @@ test('[C22] 지나치게 고치지 않음: 이름 없는 범위·이름이 둘�
   assert.equal(words.lines[0], '3. 한글의 짜임과 이슬 같은 말');
 });
 
-// 첫 줄에 교직원 이름과 전화번호가 든 직접 쓴 범위
-const STAFF = '5. 날씨와 우리 생활(한가람 선생님 010-1234-5678)';
+// 첫 줄에 교직원 이름과 전화번호가 든 직접 쓴 범위: 선생님이 보는 단원 이름(SHOWN)과 만들 때 AI로 보낸 가린 글(SENT)
+const STAFF = '5. 날씨와 우리 생활(한가람 선생님 자료, 010-1234-5678)';
+const SHOWN = '날씨와 우리 생활(한가람 선생님 자료, 010-1234-5678)', SENT = '날씨와 우리 생활(〔이름1〕 선생님 자료, {{1}})';
 const leaks = p => p.includes('한가람') || p.includes('010-1234-5678');
-const hideOf = x => (typeof makeScope.madeHide === 'function' ? makeScope.madeHide(x) : { hide: v => v, back: v => v });
+// unit-maker create와 같이: 평가 정보는 범위의 원래 이름, AI로 보낼 값은 만들 때 가린 글(scope.ai)
+const madeTest = (s, items, grade = 4) => testFrom({ meta: { subject: s.subject, grade, unitNo: s.unitNo, unitName: s.unitName, lesson: s.lesson }, items, ai: s.ai });
+// activity-maker create와 같이: 활동 이름은 AI가 지은 이름을 되돌린 것, AI로 보낼 값은 AI가 지은 그대로(가린 글)
+const madeActivity = (s, aiTitle, tasks) => activityFrom({ meta: { subject: s.subject, unit: s.unit, title: s.back(aiTitle) }, tasks, ai: { ...(s.ai || {}), title: aiTitle } });
+const DEW = [
+  { no: 1, type: 'choice', question: '아침에 풀잎에 맺힌 이슬은 무엇이 변한 것인가요?', choices: ['수증기', '모래', '구름', '얼음'], answer: '①', content: '이슬이 생기는 까닭', points: 50 },
+  { no: 2, type: 'essay', question: '이슬이 맺히는 까닭을 쓰세요.', answer: '밤에 기온이 내려가서', criteria: '기온과 수증기를 이어 쓰면 만점', content: '이슬이 맺히는 까닭', points: 50 }];
 
-test('[C22 채점] 직접 쓴 범위로 만든 단원평가: 채점·검토·피드백·복습 문제·틀린 까닭 요청 글은 가린 채로, 선생님이 보는 제목·문제지는 원래 이름', () => {
+test('[C22 채점] 직접 쓴 범위로 만든 단원평가: 채점·검토·피드백·복습 문제·틀린 까닭 요청 글의 평가 이름·문제지 제목은 만들 때 가린 글, 선생님이 보는 제목·문제지는 원래 이름', () => {
   const s = freePick('과학', `${STAFF}\n습도와 이슬`).scope;
-  assert.equal(s.unitName, '날씨와 우리 생활(한가람 선생님 010-1234-5678)');
-  // AI가 만든 문항: 돌아온 글이라 unmaskItem으로 원래 이름을 되돌린 것
-  const items = [
-    { no: 1, type: 'choice', question: '한가람 선생님이 아침에 본 이슬은 어디에 맺혔나요?', choices: ['풀잎', '하늘', '땅속', '구름'], answer: '①', content: '이슬이 맺히는 곳', points: 50 },
-    { no: 2, type: 'essay', question: '이슬이 맺히는 까닭을 쓰세요.', answer: '밤에 기온이 내려가서', criteria: '한가람 선생님 자료의 낱말을 쓰면 만점', content: '이슬이 맺히는 까닭', points: 50 }];
-  const t = testFrom({ meta: { subject: s.subject, grade: 4, unitNo: s.unitNo, unitName: s.unitName, lesson: s.lesson }, items, hide: typeof s.hidden === 'function' ? s.hidden() : undefined });
-  // 선생님이 보는 것: 평가 이름·문제지·저장한 글은 원래 이름
-  assert.equal(paperTitle(t.meta), '4학년 과학 5단원 날씨와 우리 생활(한가람 선생님 010-1234-5678) 단원평가');
-  assert.ok(madeItems(t)[0].question.startsWith('한가람 선생님이'), madeItems(t)[0].question);
-  assert.ok(JSON.stringify(paperDoc(t.meta, madeItems(t)).blocks).includes('한가람 선생님이 아침에'));
-  assert.ok(t.paper.text.includes('한가람') && !t.paper.text.includes('〔'), t.paper.text);
-  // AI로 가는 것: 같은 번호의 자리 표시로 가림
+  assert.equal(s.unitName, SHOWN);
+  const t = madeTest(s, DEW);
+  // 선생님이 보는 것: 평가 이름·문제지·저장한 평가 정보는 원래 이름
+  assert.equal(t.meta.unitName, SHOWN);
+  assert.equal(paperTitle(t.meta), `4학년 과학 5단원 ${SHOWN} 단원평가`);
+  assert.ok(t.paper.text.startsWith(`4학년 과학 5단원 ${SHOWN} 단원평가\n`) && !t.paper.text.includes('〔'), t.paper.text);
+  assert.ok(JSON.stringify(paperDoc(t.meta, madeItems(t)).blocks).includes(SHOWN));
+  // AI로 가는 것: 만들 때 보낸 가린 글
   t.students = [{ no: 1, status: 'done', items: { 1: { pts: 50, read: '①' }, 2: { pts: 0, read: '모르겠어요' } } }];
   const req = { items: [{ no: 2, content: '이슬이 맺히는 까닭', type: 'essay', answer: '밤에 기온이 내려가서', points: 50, criteria: t.key.items[1].criteria, groups: [], answers: [{ id: 'a1', text: '모르겠어요' }] }] };
   const sent = { grade: gradePrompt(t, 1), review: gradeReviewPrompt(t, 1, [2]), feedback: feedbackPrompt(t, t.students), redo: redoPrompt(t, t.key.items), miss: missPrompt(t, req) };
-  for (const [k, p] of Object.entries(sent)) assert.ok(!leaks(p), `${k}: ${p.slice(0, 500)}`);
-  assert.ok(sent.grade.includes('[평가] 4학년 과학 5단원 날씨와 우리 생활(〔이름1〕 선생님 {{1}})'), sent.grade.slice(0, 300));
-  assert.ok(sent.grade.includes('1. 〔이름1〕 선생님이 아침에 본 이슬은') && sent.grade.includes('〔이름1〕 선생님 자료의 낱말을 쓰면 만점'), sent.grade);
-  assert.ok(sent.feedback.includes('날씨와 우리 생활(〔이름1〕 선생님 {{1}})'), sent.feedback.slice(0, 300));
-  // AI 답에 자리 표시가 오면 원래 값으로 되돌려 선생님에게 보임(글·글 목록·객체 안 글)
-  assert.deepEqual(hideOf(t).back({ items: [{ no: 2, read: '', why: '〔이름1〕 선생님 자료의 낱말이 없음({{1}})', sure: false }] }),
-    { items: [{ no: 2, read: '', why: '한가람 선생님 자료의 낱말이 없음(010-1234-5678)', sure: false }] });
+  for (const [k, p] of Object.entries(sent)) assert.ok(!leaks(p) && p.includes(SENT), `${k}: ${p.slice(0, 500)}`);
+  for (const p of [sent.grade, sent.review]) assert.ok(p.includes(`[평가] 4학년 과학 5단원 ${SENT}\n`) && p.includes(`[평가지 글]\n4학년 과학 5단원 ${SENT} 단원평가\n`), p.slice(0, 600));
+  assert.ok(sent.grade.includes('1. 아침에 풀잎에 맺힌 이슬은') && sent.grade.includes('2 | 서술형 | (예) 밤에 기온이 내려가서 | 50 | 기온과 수증기를 이어 쓰면 만점'), sent.grade);
+  // 선생님이 단원 이름을 고쳐 쓰면 고친 글 그대로(만들 때 넣은 문제지 제목 줄은 여전히 가린 글)
+  t.meta.unitName = '날씨와 이슬';
+  const g2 = gradePrompt(t, 1);
+  assert.ok(g2.includes('[평가] 4학년 과학 5단원 날씨와 이슬\n') && !leaks(g2) && g2.includes(`${SENT} 단원평가`), g2.slice(0, 600));
 });
 
-test('[C22 채점] 직접 쓴 범위로 만든 활동지: 채점·검토·기준 요청 글은 가린 채로, 활동 이름·단원·학생 활동지는 원래 이름', () => {
+test('[C22 채점] 정답표·문항·학생 답은 다시 가리지 않음: [이 문항 다시 만들기]로 「김구 선생님」을 가려 보낸 뒤에도 채점·검토·틀린 까닭 요청의 「김구」는 그대로', () => {
+  const s = freePick('사회', '2. 광복을 위한 노력(한가람 선생님 자료)\n대한민국 임시 정부의 활동').scope;
+  const items = [
+    { no: 1, type: 'short', question: '다음 중 김구 선생님이 대한민국 임시 정부에서 맡은 일은 무엇인가요?', answer: '주석', content: '임시 정부에서 맡은 일', points: 50 },
+    { no: 2, type: 'short', question: '대한민국 임시 정부의 주석으로 광복을 위해 힘쓴 사람은 누구인가요?', answer: '김구', content: '임시 정부를 이끈 사람', points: 50 }];
+  // 2번 [이 문항 다시 만들기](unit-maker redoOne): 다른 문항 글을 범위의 가리개로 가려 보냄 — 만들 때 한 번만
+  makeScope.maskList(s, items, ['question']);
+  const t = madeTest(s, items, 6);
+  t.students = [{ no: 1, status: 'done', items: { 1: { pts: 50, read: '주석' }, 2: { pts: 0, read: '안창호' } } }];
+  const req = { items: [{ no: 2, content: '임시 정부를 이끈 사람', type: 'short', answer: '김구', points: 50, criteria: '', groups: [], answers: [{ id: 'a1', text: '안창호' }] }] };
+  const g = gradePrompt(t, 1), r = gradeReviewPrompt(t, 1, [2]), m = missPrompt(t, req);
+  for (const p of [g, r]) assert.ok(p.includes('2 | 단답 | 김구 | 50') && p.includes('1. 다음 중 김구 선생님이 대한민국') && !p.includes('〔이름2〕'), p);
+  assert.ok(m.includes('정답 김구') && m.includes('a1: 안창호') && !m.includes('〔이름2〕'), m);
+  // 범위 첫 줄의 교직원 이름만 만들 때 보낸 가린 글로
+  assert.ok(g.includes('[평가] 6학년 사회 2단원 광복을 위한 노력(〔이름1〕 선생님 자료)\n') && !g.includes('한가람'), g.slice(0, 400));
+});
+
+test('[C22 채점] 직접 쓴 범위로 만든 활동지: 채점·검토·기준 요청 글의 단원·활동 이름은 만들 때 가린 글, 활동 이름·단원·학생 활동지 글은 원래 이름', () => {
   const s = freePick('과학', `${STAFF}\n습도와 이슬`).scope;
-  const tasks = normTasks({ items: [{ kind: 'draw', ask: '한가람 선생님이 보여 준 이슬을 그려 보세요.', answer: '풀잎 위 물방울', ok: '물방울을 자세히 그림', part: '풀잎만 그림' }] });
-  const a = activityFrom({ meta: { subject: s.subject, unit: s.unit, title: '한가람 선생님과 이슬 관찰' }, tasks, hide: typeof s.hidden === 'function' ? s.hidden() : undefined });
+  const tasks = normTasks({ items: [{ kind: 'draw', ask: '이슬이 맺힌 풀잎을 그려 보세요.', answer: '풀잎 위 물방울', ok: '물방울을 자세히 그림', part: '풀잎만 그림' }] });
+  const a = madeActivity(s, '〔이름1〕 선생님과 이슬 관찰', tasks);
   assert.equal(a.meta.title, '한가람 선생님과 이슬 관찰');
   assert.equal(a.meta.unit, STAFF);
-  assert.ok(a.sheet.student.startsWith('한가람 선생님과 이슬 관찰') && a.items[0].ask.startsWith('한가람'), a.sheet.student);
-  const sent = {
-    grade: actGradePrompt(a, 1),
-    review: actReviewPrompt(a, [{ no: 1, read: '물방울', mark: 't', why: '' }]),
-    criteria: criteriaPrompt({ meta: a.meta, student: a.sheet.student, teacher: '', hide: hideOf(a).hide })
-  };
+  assert.ok(a.sheet.student.startsWith(`한가람 선생님과 이슬 관찰\n과학 · ${STAFF}\n`), a.sheet.student);
+  const crit = typeof actAI.criteriaFor === 'function' ? actAI.criteriaFor(a, 0) : criteriaPrompt({ meta: a.meta, student: a.sheet.student, teacher: a.sheet.teacher });
+  const sent = { grade: actGradePrompt(a, 1), review: actReviewPrompt(a, [{ no: 1, read: '물방울', mark: 't', why: '' }]), criteria: crit };
   for (const [k, p] of Object.entries(sent)) assert.ok(!leaks(p), `${k}: ${p.slice(0, 500)}`);
-  assert.ok(sent.grade.includes('5. 날씨와 우리 생활(〔이름1〕 선생님 {{1}})단원') && sent.grade.includes('「〔이름1〕 선생님과 이슬 관찰」') && sent.grade.includes('묻는 말: 〔이름1〕 선생님이 보여 준'), sent.grade.slice(0, 400));
-  assert.deepEqual(hideOf(a).back({ good: '〔이름1〕 선생님이 보여 준 이슬을 자세히 그렸어요.', items: [] }), { good: '한가람 선생님이 보여 준 이슬을 자세히 그렸어요.', items: [] });
+  const unit = `5. ${SENT}`;
+  assert.ok(sent.grade.includes(`과학 · ${unit}단원 · 「〔이름1〕 선생님과 이슬 관찰」`) && sent.grade.includes('묻는 말: 이슬이 맺힌 풀잎을'), sent.grade.slice(0, 400));
+  assert.ok(crit.includes(`과학 · ${unit}단원 · 「〔이름1〕 선생님과 이슬 관찰」`) && crit.includes(`[학생용 활동지 글]\n〔이름1〕 선생님과 이슬 관찰\n과학 · ${unit}\n\n1. 이슬이 맺힌 풀잎을 그려 보세요.`), crit);
+  // 선생님이 활동 이름을 고쳐 쓰면 고친 글 그대로
+  a.meta.title = '이슬 관찰';
+  const g2 = actGradePrompt(a, 1);
+  assert.ok(g2.includes('「이슬 관찰」') && !leaks(g2), g2.slice(0, 400));
 });
 
-test('[C22 채점] 지나치게 가리지 않음: 가린 값이 없는 평가·활동지(이름 없는 범위, 직접 넣은 정답표, 고치기 전에 만든 것)는 요청 글·AI 답이 그대로', () => {
+test('[C22 채점] 지나치게 바꾸지 않음: 가린 이름이 없는 범위·직접 넣은 정답표·잘못 남은 값은 요청 글이 그대로', () => {
   const plain = freePick('사회', '1. 우리 고장의 모습\n고장의 자랑거리 알기').scope;
-  // 범위에서 이름을 찾지 못했으면 남길 값이 없음 — 문항에 쓴 「한가람 마을」은 가리지 않음(가리개가 이름으로 본 적이 없음)
-  const t = testFrom({ meta: { subject: '사회', grade: 3, unitNo: 1, unitName: plain.unitName }, items: [{ no: 1, type: 'short', question: '한가람 마을의 자랑거리를 쓰세요.', answer: '시장', points: 100 }], hide: typeof plain.hidden === 'function' ? plain.hidden() : undefined });
-  assert.equal(t.made.hide, undefined);
+  const t = madeTest(plain, [{ no: 1, type: 'short', question: '한가람 마을의 자랑거리를 쓰세요.', answer: '시장', points: 100 }], 3);
+  assert.equal(t.made.ai, undefined);
   const g = gradePrompt(t, 1);
-  assert.ok(g.includes('[평가] 3학년 사회 1단원 우리 고장의 모습') && g.includes('1. 한가람 마을의 자랑거리를 쓰세요.') && !g.includes('〔'), g.slice(0, 400));
-  // 직접 넣은 정답표(만든 물음 없음)
+  assert.ok(g.includes('[평가] 3학년 사회 1단원 우리 고장의 모습\n') && g.includes('1. 한가람 마을의 자랑거리를 쓰세요.') && !g.includes('〔'), g.slice(0, 400));
+  // 직접 넣은 정답표(만든 물음 없음), 모양이 잘못된 값
   const hand = { meta: { subject: '수학', grade: 3, unitNo: 2, unitName: '평면도형' }, key: { items: [{ no: 1, type: 'short', answer: '3', points: 100, criteria: '' }] }, paper: { text: '' }, students: [] };
-  assert.ok(gradePrompt(hand, 1).includes('[평가] 3학년 수학 2단원 평면도형'));
-  // 이번 고침 전에 만든 평가(자리 표시가 글자로 남아 있고 남긴 값은 없음): AI 답의 자리 표시를 지우지 않음
-  const old = { made: { items: [] } };
-  assert.equal(hideOf(old).back('〔이름1〕 선생님 자료'), '〔이름1〕 선생님 자료');
-  assert.equal(hideOf(old).hide('한가람 선생님 자료'), '한가람 선생님 자료');
-  // 가린 이름이 있어도 낱말 속 같은 글자(「바다이바다」)는 그대로, 조사가 붙은 이름은 가림
-  const h = hideOf({ made: { hide: { names: ['이바다'], secrets: [] } } });
-  assert.equal(h.hide('이바다 선생님과 바다이바다 놀이, 이바다가 준 자료'), '〔이름1〕 선생님과 바다이바다 놀이, 〔이름1〕가 준 자료');
+  assert.ok(gradePrompt(hand, 1).includes('[평가] 3학년 수학 2단원 평면도형\n'));
+  const odd = { ...hand, made: { ai: { unitName: '평면도형', subject: ['', 'x'], grade: [3, 4] } } };
+  assert.ok(gradePrompt(odd, 1).includes('[평가] 3학년 수학 2단원 평면도형\n'));
+  // 활동지도: 가린 이름이 없으면 남기지 않음
+  const a = madeActivity(plain, '자랑거리 찾기', normTasks({ items: [{ kind: 'write', ask: '한가람 마을의 자랑거리를 쓰세요.', ok: 'a', part: 'b' }] }));
+  assert.equal(a.made.ai, undefined);
+  assert.ok(actGradePrompt(a, 1).includes('사회 · 1. 우리 고장의 모습단원 · 「자랑거리 찾기」') && !actGradePrompt(a, 1).includes('〔'));
 });
 
 const made5 = () => testFrom({ meta: { subject: '수학', grade: 3 }, items: [1, 2, 3, 4, 5].map(no => ({ type: 'choice', question: `${no}번 물음`, choices: ['가', '나', '다', '라'], answer: '①②③④①'[no - 1], points: 20 })) });

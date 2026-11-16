@@ -9,7 +9,6 @@ import { onePerPage, setOnePerPage } from '../../../core/slip-layout.js';
 import { getTest, graded, makeTitle, feedbackOf, feedbackText } from './unit-model.js';
 import { feedbackDoc } from './unit-docs.js';
 import { feedbackPrompt, normFeedback, redoPrompt, normRedo } from './unit-ai.js';
-import { madeHide } from '../make-scope.js';
 import { ITEM_TYPES } from './unit-grade.js';
 import { redoFor, redoWant, redoFit, redoTargets, redoBlocks, redoText, redoKind, normAnswer, redoIssues } from './unit-redo.js';
 import { unitAccuracy, accuracyText } from '../grade-accuracy.js';
@@ -137,8 +136,7 @@ async function writeFeedback(only) {
   try {
     for (let i = 0; i < list.length; i += 10) {
       const chunk = list.slice(i, i + 10), nos = new Set(chunk.map(s => s.no));
-      // 만든 평가: 요청 글은 가린 이름 그대로(feedbackPrompt), AI 답의 자리 표시는 원래 이름으로
-      const res = normFeedback(madeHide(t).back(await ai.generateJSON(feedbackPrompt(t, chunk), { task: 'notes', valid: v => Object.keys(normFeedback(v)).length > 0 })));
+      const res = normFeedback(await ai.generateJSON(feedbackPrompt(t, chunk), { task: 'notes', valid: v => Object.keys(normFeedback(v)).length > 0 }));
       const t2 = getTest(id);
       if (!t2) break;
       // 다시 쓰기(only)는 두 칸 모두, 아니면 빈 칸만 채움 (선생님이 쓴 글은 그대로)
@@ -162,8 +160,7 @@ async function reviewFeedback(id, wrote) {
   const score = no => { const s = t.students.find(x => x.no === no); if (!s) return ''; const f = feedbackOf(t, s); return `점수 ${f.score}/${f.total}`; };
   const entries = wrote.map(([no, field, text]) => ({ key: no, field, label: `${no}번 ${FIELD[field]} (${score(no)})`, text }));
   rvState[id] = 'busy'; refresh(id);
-  const h = madeHide(t);
-  const v = h.back(await reviewJSON('notes', h.hide(notesReviewPrompt('feedback', entries)), { valid: x => Array.isArray(x) || !!(x && Array.isArray(x.items)) }));
+  const v = await reviewJSON('notes', notesReviewPrompt('feedback', entries), { valid: x => Array.isArray(x) || !!(x && Array.isArray(x.items)) });
   if (v && v.error) rvState[id] = 'fail'; else delete rvState[id];
   const t2 = getTest(id);
   if (v && !v.error && t2) {
@@ -188,7 +185,7 @@ async function makeRedo() {
   if (!todo.length) { toast('모두 만들었어요. 다시 만들려면 그 문항의 물음을 비우고 눌러요.', 5000); return; }
   redoRun = id; refresh(id);
   try {
-    const res = normRedo(madeHide(t).back(await ai.generateJSON(redoPrompt(t, todo), { task: 'notes', valid: v => Object.keys(normRedo(v, todo)).length > 0 })), todo);
+    const res = normRedo(await ai.generateJSON(redoPrompt(t, todo), { task: 'notes', valid: v => Object.keys(normRedo(v, todo)).length > 0 }), todo);
     const t2 = getTest(id);
     if (t2) {
       const items = { ...((t2.redo && t2.redo.items) || {}) };

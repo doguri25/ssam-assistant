@@ -129,9 +129,9 @@ function create() {
   const probs = problems(M.items);
   if (!M.items.length) return;
   if (probs.length) { M.msg = `고칠 것이 있어요: ${probs.map(p => `${p.no}번 ${p.text}`).join(' · ')}`; render(); const b = getBox().querySelector('#mkMsg'); if (b) b.scrollIntoView({ block: 'center' }); return; }
-  // 만들 때 가린 값도 남김: 평가 이름·문항은 원래 이름이고, 채점·피드백 AI로 보낼 때 다시 가림(make-scope madeHide)
+  // 평가 이름은 원래 이름, 만들 때 AI로 보낸 가린 단원 이름도 남겨 채점·피드백 AI로 보낼 때 씀(make-scope aiMeta)
   const v = valueNow();
-  const t = testFrom({ meta: metaNow(v), items: M.items, hide: v.scope && v.scope.hidden ? v.scope.hidden() : null });
+  const t = testFrom({ meta: metaNow(v), items: M.items, ai: v.scope && v.scope.ai });
   if (!saveOrWarn(t)) return;
   Object.assign(M, { items: [], scope: null, opts: null, busy: '', msg: '', note: '', ptsManual: false });
   U.view = 'list'; U.from = 'list';

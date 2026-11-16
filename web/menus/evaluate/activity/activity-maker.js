@@ -14,7 +14,8 @@ import { saveActivity } from './activity-model.js';
 import { termOf } from './activity-read.js';
 import { registerView, A, render, refresh, getBox, visible, openActivity, curAct, esc, SS } from './activity.js';
 
-const M = { pick: null, tasks: [], scope: null, opts: null, title: '', busy: '', msg: '', note: '' };
+// titleAi: AI가 지은 활동 이름 [되돌린 이름, AI가 지은 그대로(가린 글)] — 선생님이 고쳐 쓰지 않았으면 만든 활동지에 남겨 AI로 보낼 때 씀
+const M = { pick: null, tasks: [], scope: null, opts: null, title: '', titleAi: null, busy: '', msg: '', note: '' };
 const AI_KEY = '설정 › AI에서 키를 넣어 주세요';
 const pick = () => M.pick || (M.pick = newPick({ kinds: KINDS, count: { min: 1, max: 10, d: 3 } }));
 const inMaker = () => visible() && A.view === 'make';
@@ -80,8 +81,10 @@ async function makeAll() {
   try {
     const out = await ai.generateJSON(actPrompt({ scope: v.scope, grade: v.grade, count: v.count, kinds: v.kinds, level: v.level }), { task: 'plan', valid: x => normTasks(x).length > 0 });
     M.tasks = normTasks(out, { count: v.count }).map(t => unmaskItem(v.scope.back, t));
-    // 활동 이름도 돌아온 글: 직접 쓴 범위에서 가린 이름의 자리 표시는 원래 이름으로
-    M.title = v.scope.back(String((out && out.title) || '')).trim().slice(0, 60) || (v.scope.titles && v.scope.titles[0]) || '';
+    // 활동 이름도 돌아온 글: 직접 쓴 범위에서 가린 이름의 자리 표시는 원래 이름으로(AI가 지은 그대로는 titleAi)
+    const raw = String((out && out.title) || '').trim().slice(0, 60);
+    M.title = v.scope.back(raw).trim().slice(0, 60) || (v.scope.titles && v.scope.titles[0]) || '';
+    M.titleAi = raw && raw !== M.title ? [M.title, raw] : null;
     M.scope = v.scope; M.opts = { grade: v.grade, level: v.level };
     M.note = M.tasks.length < v.count ? `AI가 ${M.tasks.length}문항만 만들었어요. [문항 더하기]로 더할 수 있어요.` : '';
   } catch (e) { M.msg = failMsg(e); }
@@ -120,11 +123,12 @@ function create() {
   if (!M.tasks.length) return;
   const probs = taskProblems(M.tasks);
   if (probs.length) { M.msg = `고칠 것이 있어요: ${probs.map(p => `${p.no}번 ${p.text}`).join(' · ')}`; render(); const b = getBox().querySelector('#mkMsg'); if (b) b.scrollIntoView({ block: 'center' }); return; }
-  // 만들 때 가린 값도 남김: 활동 이름·문항은 원래 이름이고, 채점 AI로 보낼 때 다시 가림(make-scope madeHide)
+  // 활동 이름·단원은 원래 이름, 만들 때 AI로 보낸 가린 단원·AI가 지은 활동 이름도 남겨 채점·기준 AI로 보낼 때 씀(make-scope aiMeta)
   const v = valueNow();
-  const a = activityFrom({ meta: metaNow(v), tasks: M.tasks, hide: v.scope && v.scope.hidden ? v.scope.hidden() : null });
+  const ai = { ...((v.scope && v.scope.ai) || {}), title: M.titleAi && M.titleAi[0] === M.title ? M.titleAi[1] : '' };
+  const a = activityFrom({ meta: metaNow(v), tasks: M.tasks, ai });
   if (!saveActivity(a)) { toast('저장 공간이 모자라 저장하지 못했어요. 설정 › 학년도에서 백업하고 지난 자료를 정리해 주세요.', 7000); return; }
-  Object.assign(M, { tasks: [], scope: null, opts: null, title: '', busy: '', msg: '', note: '' });
+  Object.assign(M, { tasks: [], scope: null, opts: null, title: '', titleAi: null, busy: '', msg: '', note: '' });
   openActivity(a.id);
   getBox().scrollIntoView({ block: 'start' });
   toast('활동지를 만들었어요. 기준이 정해져 있어요 — 학생 활동지 스캔을 넣으면 채점해요(학생 활동지는 1단계에서 다시 내려받아요).', 6000);

@@ -1,7 +1,6 @@
 /* 문항·활동지 만들기의 범위 (스펙 2026-11-15-docedit-minutes-quiz §3, 화면 없음 — Node 시험에서도 씀).
    진도표 교과(class-model listSubjects 모양 — 읽기만)의 단원 묶기, 기본 차시(진도표의 다음 차시), AI에 보낼 범위 줄, 평가 정보(단원 번호·이름·차시·쪽),
    진도표가 없을 때 선생님이 쓴 「단원·성취기준·범위」, 유형·종류 나누기, 수준 글. 학생 자료는 다루지 않음 */
-import { knownRedactor } from '../../core/redact.js';
 
 export const LEVELS = [['basic', '기본'], ['normal', '보통'], ['hard', '도전']];
 const LEVEL_TEXT = {
@@ -98,15 +97,35 @@ export function maskList(scope, list, keys) {
   return list.map(x => (x && typeof x === 'object' ? { ...x, ...Object.fromEntries(keys.filter(k => typeof x[k] === 'string').map(k => [k, scope.mask(x[k])])) } : x));
 }
 
-/* 만들 때 가린 값(make-pick scope.hidden — 범위·다시 만들기에서 가린 교직원 이름·전화번호·이메일) → 만든 평가·활동지의 made.hide에 남길 값, 없으면 null */
-export function keepHide(h) {
-  const list = a => (Array.isArray(a) ? a.map(x => String(x == null ? '' : x)) : []);
-  const names = list(h && h.names), secrets = list(h && h.secrets);
-  return names.some(Boolean) || secrets.some(Boolean) ? { names, secrets } : null;
+/* ---------- 만든 평가·활동지가 AI로 보낼 이름 ----------
+   직접 쓴 범위의 교직원 이름·전화번호·이메일은 만들 때 한 번 가려 보내고(make-pick), 돌아온 단원·활동 이름은 원래 이름으로 되돌려
+   선생님이 보는 곳(화면 제목·문서·파일 이름)에 씀. 그 이름을 나중에 채점·검토·피드백·평어 AI로 보낼 때는 만들 때 보낸 가린 글을 씀.
+   made.ai: { 칸: [보이는 값, AI로 보낼 값] }. 문항·정답표·학생 답은 다시 가리지 않음(김구·세종대왕 같은 배움 내용 이름이 그대로 가야 채점됨) */
+/* 보이는 값(meta)과 AI로 보낼 값(sent: { 칸: 가린 글 })이 다른 칸만 → made.ai, 없으면 null */
+export function aiPairs(meta, sent) {
+  const out = {};
+  for (const [k, v] of Object.entries(sent || {})) {
+    const shown = meta && typeof meta[k] === 'string' ? meta[k] : '';
+    if (shown && typeof v === 'string' && v && v !== shown) out[k] = [shown, v];
+  }
+  return Object.keys(out).length ? out : null;
 }
-/* 만든 평가·활동지(x.made.hide)를 AI로 다시 보낼 때: 원래 이름을 되돌려 넣은 평가 이름·문항·기준도 같은 자리 표시로 가려 보내고(hide),
-   AI 답은 되돌림(back). 남긴 값이 없으면(진도표로 만든 것·직접 넣은 것·이 칸이 생기기 전에 만든 것) 둘 다 그대로 */
-export const madeHide = x => knownRedactor(x && x.made && x.made.hide);
+const pairsOf = x => {
+  const p = x && x.made && x.made.ai;
+  return p && typeof p === 'object' ? Object.entries(p).filter(([, v]) => Array.isArray(v) && v.length === 2 && typeof v[0] === 'string' && typeof v[1] === 'string' && v[0] && v[1]) : [];
+};
+/* AI로 보낼 평가·활동지 정보: 보이는 값이 만들 때 그대로인 칸만 가린 글로(선생님이 고쳐 쓴 칸은 고친 글 그대로) */
+export function aiMeta(x) {
+  const m = (x && x.meta) || {}, ps = pairsOf(x).filter(([k, [shown]]) => m[k] === shown);
+  return ps.length ? { ...m, ...Object.fromEntries(ps.map(([k, [, sent]]) => [k, sent])) } : m;
+}
+/* AI로 보낼 문제지 글·활동지 글: 만들 때 넣은 머리(첫 빈 줄 앞 — 제목·교과·단원 줄)의 보이는 이름만 가린 글로. 문항 글은 그대로 */
+export function aiText(x, text) {
+  const s = String(text == null ? '' : text), ps = pairsOf(x);
+  if (!ps.length) return s;
+  const cut = s.indexOf('\n\n'), head = cut < 0 ? s : s.slice(0, cut), rest = cut < 0 ? '' : s.slice(cut);
+  return ps.map(([, p]) => p).sort((a, b) => b[0].length - a[0].length).reduce((h, [shown, sent]) => h.split(shown).join(sent), head) + rest;
+}
 
 /* count를 고른 것(keys)에 비율(weights)대로 나눔: 남는 수는 큰 나머지부터(같으면 앞 것), 문항 수가 되면 고른 것마다 적어도 하나 */
 export function spread(count, keys, weights = {}) {

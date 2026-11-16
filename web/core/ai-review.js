@@ -4,7 +4,7 @@ import * as ai from './ai.js';
 import { pick } from './ai-roles.js';
 import { ITEM_TYPES, gradeCell } from '../menus/evaluate/unit/unit-grade.js';
 import { makeTitle } from '../menus/evaluate/unit/unit-model.js';
-import { madeHide } from '../menus/evaluate/make-scope.js';
+import { aiMeta, aiText } from '../menus/evaluate/make-scope.js';
 
 export const REVIEW_FAIL = '검토하지 못했어요';
 const TYPE_NAME = Object.fromEntries(ITEM_TYPES);
@@ -34,15 +34,15 @@ export function gradeTargets(test, st) {
   return out;
 }
 
-/* 공통(shared): 검토 지시·정답표 전체·평가지 글 — 학생마다 같아 캐시. 학생 글(own): 번호·다시 볼 문항.
-   만든 평가는 만들 때 가린 이름을 다시 가림(unit-ai gradeParts와 같음) */
+/* 공통(shared): 검토 지시·정답표 전체·평가지 글 — 학생마다 같아 캐시. 학생 글(own): 번호·다시 볼 문항 */
 export function gradeReviewParts(test, no, nos) {
   const key = test.key.items.map(i => `${i.no} | ${TYPE_NAME[i.type] || '단답'} | ${i.answer} | ${i.points} | ${i.criteria || ''}`);
-  const paper = String((test.paper && test.paper.text) || '').slice(0, 12000);
+  // 만든 평가의 평가 이름·문제지 제목은 만들 때 보낸 가린 글(unit-ai gradeParts와 같음)
+  const paper = aiText(test, test.paper && test.paper.text).slice(0, 12000);
   const shared = [
     '[채점 검토]',
     '당신은 초등학교 단원평가 채점을 한 번 더 확인하는 교사입니다. 이 글 뒤에 오는 그림은 한 학생이 답을 쓴 평가지입니다. 이름 칸은 가려져 있을 수 있습니다.',
-    `[평가] ${makeTitle(test.meta)}`,
+    `[평가] ${makeTitle(aiMeta(test))}`,
     '', '[정답표] 번호 | 유형 | 정답 | 배점 | 채점 기준', ...key,
     ...(paper ? ['', '[평가지 글]', paper] : []),
     '', '[할 일]',
@@ -54,7 +54,7 @@ export function gradeReviewParts(test, no, nos) {
     '', '[출력] JSON 하나만 출력합니다.',
     '{"items":[{"no":1,"read":"학생이 쓴 답","points":0,"why":"판단 까닭"}]}'
   ].join('\n');
-  return { shared: madeHide(test).hide(shared), own: `[학생] ${no}번 — 바로 위 그림이 이 학생의 평가지예요.\n다시 볼 문항: ${nos.join(', ')}` };
+  return { shared, own: `[학생] ${no}번 — 바로 위 그림이 이 학생의 평가지예요.\n다시 볼 문항: ${nos.join(', ')}` };
 }
 export function gradeReviewPrompt(test, no, nos) { const p = gradeReviewParts(test, no, nos); return `${p.shared}\n\n${p.own}`; }
 

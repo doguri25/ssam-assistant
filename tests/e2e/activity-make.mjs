@@ -1,7 +1,7 @@
 // 평가 › 활동지 › [활동지 만들기] (스펙 2026-11-15-docedit-minutes-quiz §3): 목록의 [활동지 만들기] → 진도표 교과·차시(다음 차시 기본) → [만들기](AI 업무 계획, 학생 자료 없음)
 // → 열린 문항(쓰기·그리기·생각 정리) 카드와 ○·△ 기준, 빈 기준은 확인할 것, 활동 이름, [이 문항 다시 만들기]·[문항 더하기]·[빼기],
 // [학생 활동지 내려받기](맨 위 「학년 반 번호 이름」 칸, 기준은 빼고), [이대로 활동지 만들기] → 기준이 확정된 새 활동지(3단계 학생 활동지)로 열림·채점 요청에 그 기준,
-// 진도표 밖 「직접 쓰기」(교직원 이름은 가려 보내고 활동 이름·단원에는 원래 이름, 만든 활동지의 채점 요청에도 가린 이름만), 학급 화면에는 단추가 없음, 390·360px 가로 넘침·겹침 없음. 학교·이름은 모두 지어낸 것
+// 진도표 밖 「직접 쓰기」(교직원 이름은 가려 보내고 활동 이름·단원에는 원래 이름, 만든 활동지의 채점·기준 요청의 단원·활동 이름은 만들 때 가린 글), 학급 화면에는 단추가 없음, 390·360px 가로 넘침·겹침 없음. 학교·이름은 모두 지어낸 것
 import { readFileSync } from 'node:fs';
 import { open, run, assert, enter, mockClaude } from './helpers.mjs';
 import { unzip } from '../../web/core/zip.js';
@@ -131,7 +131,7 @@ await run('activity-make', [
     await page.waitForSelector(`${V} #actItems`);
     assert((await page.textContent(`${V} #actItems`)).includes('AI가 만듦') && (await page.textContent(`${V} .un-body`)).includes('확정함'), '2단계 기준 확정');
   }],
-  ['진도표 밖 「직접 쓰기」: 첫 줄의 교직원 이름은 가려 보내고, 활동 이름·저장한 단원에는 원래 이름(〔이름n〕이 남지 않음), 채점 요청 글에는 다시 가린 이름', async () => {
+  ['진도표 밖 「직접 쓰기」: 첫 줄의 교직원 이름은 가려 보내고, 활동 이름·저장한 단원에는 원래 이름(〔이름n〕이 남지 않음), 채점·기준 요청의 단원·활동 이름은 만들 때 가린 글', async () => {
     await page.click(`${V} [data-ac="back"]`);
     await page.click(`${V} [data-ac="make"]`);
     await page.waitForSelector(`${MK} #mkSub`);
@@ -151,10 +151,13 @@ await run('activity-make', [
     assert((await page.textContent(`${V} .un-title`)).trim() === '한가람 선생님과 자랑거리 찾기', await page.textContent(`${V} .un-title`));
     const a = (await acts()).find(x => x && x.meta.title === '한가람 선생님과 자랑거리 찾기');
     assert(a && a.meta.unit === '1. 우리 고장의 모습(한가람 선생님 자료)', JSON.stringify(a && a.meta));
-    assert(!JSON.stringify(a).includes('〔'), '자리 표시가 남음');
-    // 선생님이 보는 것만 원래 이름: 채점 AI로 가는 활동지 정보(단원·활동 이름)는 만들 때처럼 가림
-    const g = await page.evaluate(async id => { const m = await import('./menus/evaluate/activity/activity-ai.js'), am = await import('./menus/evaluate/activity/activity-model.js'); return m.gradePrompt(am.getActivity(id), 1); }, a.id);
-    assert(!g.includes('한가람') && g.includes('1. 우리 고장의 모습(〔이름1〕 선생님 자료)') && g.includes('「〔이름1〕 선생님과 자랑거리 찾기」'), g.slice(0, 400));
+    // 선생님이 보는 것(정보·활동지 글·문항)에는 자리 표시가 남지 않음 — 만들 때 AI로 보낸 가린 글은 made.ai에만
+    assert(!JSON.stringify({ meta: a.meta, sheet: a.sheet, items: a.items }).includes('〔'), '자리 표시가 남음');
+    assert(a.made.ai && a.made.ai.title[1] === '〔이름1〕 선생님과 자랑거리 찾기' && a.made.ai.unit[1] === '1. 우리 고장의 모습(〔이름1〕 선생님 자료)', JSON.stringify(a.made));
+    // 채점·기준 AI로 가는 활동지 정보(단원·활동 이름)는 만들 때 보낸 가린 글
+    const [g, c] = await page.evaluate(async id => { const m = await import('./menus/evaluate/activity/activity-ai.js'), am = await import('./menus/evaluate/activity/activity-model.js'), x = am.getActivity(id); return [m.gradePrompt(x, 1), m.criteriaFor(x, 0)]; }, a.id);
+    for (const p of [g, c]) assert(!p.includes('한가람') && p.includes('1. 우리 고장의 모습(〔이름1〕 선생님 자료)') && p.includes('「〔이름1〕 선생님과 자랑거리 찾기」'), p.slice(0, 400));
+    assert(c.includes('[학생용 활동지 글]\n〔이름1〕 선생님과 자랑거리 찾기\n'), c.slice(0, 600));
   }],
   ['휴대폰 390·360px: 고르기·문항 카드·내려받기 줄이 가로로 넘치거나 겹치지 않음', async () => {
     await page.click(`${V} [data-ac="back"]`);

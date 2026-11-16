@@ -1,7 +1,7 @@
 // 평가 › 단원평가 › [문항 만들기] (스펙 2026-11-15-docedit-minutes-quiz §3): 목록의 [문항 만들기] → 진도표 교과·단원·다음 차시(기본) → [만들기](AI 업무 계획, 학생 자료 없음)
 // → 문항 카드(객관식 정답 「3」은 ③으로, 보기 밖 정답은 확인할 것), 배점 합 100(서술형 두 배)·고치기·[배점 고르게 나누기], [이 문항 다시 만들기]·[문항 더하기]·[빼기],
 // [문제지 내려받기](맨 위 「학년 반 번호 이름」 칸)·[정답지 내려받기], [평가 만들기] → 1단계 정답표가 채워진 새 단원평가(채점 요청에 그 정답표·문제지 글),
-// 진도표 밖 「직접 쓰기」(교직원 이름은 가려 보냄 — 만든 평가의 제목·문제지는 원래 이름, 채점 요청 글에는 다시 가린 이름), 만드는 동안 계획 메뉴에 「AI가 일하는 중」 점이 뜨지 않음, 390·360px 가로 넘침·겹침 없음. 학교·이름은 모두 지어낸 것
+// 진도표 밖 「직접 쓰기」(교직원 이름은 가려 보냄 — 만든 평가의 제목·문제지는 원래 이름, 채점 요청의 평가 이름·문제지 제목은 만들 때 가린 글, 정답표의 「김구」는 그대로), 만드는 동안 계획 메뉴에 「AI가 일하는 중」 점이 뜨지 않음, 390·360px 가로 넘침·겹침 없음. 학교·이름은 모두 지어낸 것
 import { readFileSync } from 'node:fs';
 import { open, run, assert, enter, mockClaude } from './helpers.mjs';
 import { unzip } from '../../web/core/zip.js';
@@ -215,8 +215,17 @@ await run('unit-make', [
     }
     await page.setViewportSize({ width: 1280, height: 860 });
   }],
-  ['직접 쓴 범위로 [평가 만들기] → 제목·평가 정보·문제지 글은 원래 이름, 채점 요청 글에는 다시 가린 이름(〔이름1〕)만', async () => {
+  ['직접 쓴 범위로 [평가 만들기] → 제목·평가 정보·문제지 글은 원래 이름, 채점 요청의 평가 이름·문제지 제목은 만들 때 가린 글(〔이름1〕), [이 문항 다시 만들기] 뒤에도 정답표의 「김구」는 그대로', async () => {
     await page.selectOption(`${MK} [data-mk-item="5"] [data-mf="answer"]`, '②');
+    // 배움 내용의 사람 이름: 「김구 선생님」이 든 물음과 정답 「김구」 → 2번 [이 문항 다시 만들기](다른 물음은 가려 보냄 — 만들 때 한 번만)
+    await page.fill(`${MK} [data-mk-item="3"] [data-mf="question"]`, '다음 중 김구 선생님이 맡은 일은 무엇인가요?');
+    await page.fill(`${MK} [data-mk-item="4"] [data-mf="question"]`, '대한민국 임시 정부의 주석으로 광복을 위해 힘쓴 사람은 누구인가요?');
+    await page.fill(`${MK} [data-mk-item="4"] [data-mf="answer"]`, '김구');
+    const n = prompts.length;
+    await page.click(`${MK} [data-mk="redo"][data-no="2"]`);
+    await until(async () => (await page.inputValue(`${MK} [data-mk-item="2"] [data-mf="question"]`)).startsWith('땅에 사는 동물이'));
+    const rp = prompts.slice(n).find(x => x.startsWith('[문항 다시 만들기]'));
+    assert(rp && !/한가람|이바다/.test(rp), (rp || '').slice(0, 400));
     await page.click(`${MK} [data-mk="create"]`);
     await page.waitForSelector(`${V} .un-key`);
     const title = (await page.textContent(`${V} .un-title`)).trim();
@@ -224,7 +233,10 @@ await run('unit-make', [
     const x = (await tests()).find(t => t && t.meta.subject === '사회');
     assert(x && x.meta.unitName === '우리 고장의 모습(한가람 선생님 자료)' && x.paper.text.includes('1. 한가람 선생님이 보여 준 땅속 동물은'), JSON.stringify(x && x.meta));
     const g = await page.evaluate(async id => { const m = await import('./menus/evaluate/unit/unit-ai.js'), u = await import('./menus/evaluate/unit/unit-model.js'); return m.gradePrompt(u.getTest(id), 1); }, x.id);
-    assert(!/한가람|이바다/.test(g) && g.includes('[평가] 3학년 사회 1단원 우리 고장의 모습(〔이름1〕 선생님 자료)') && g.includes('1. 〔이름1〕 선생님이 보여 준 땅속 동물은'), g.slice(0, 600));
+    assert(g.includes('[평가] 3학년 사회 1단원 우리 고장의 모습(〔이름1〕 선생님 자료)\n') && g.includes('[평가지 글]\n3학년 사회 1단원 우리 고장의 모습(〔이름1〕 선생님 자료) 단원평가\n'), g.slice(0, 600));
+    assert(!/이바다/.test(g) && g.split('\n').filter(l => l.startsWith('[평가]') || l.endsWith('단원평가')).every(l => !l.includes('한가람')), g.slice(0, 600));
+    // 정답표·물음은 다시 가리지 않음
+    assert(g.includes('4 | 단답 | 김구 |') && g.includes('3. 다음 중 김구 선생님이 맡은 일은') && !g.includes('〔이름2〕'), g);
   }],
   ['페이지 오류 없음', async () => { assert(!errors.length, errors.join(' | ')); }]
 ]);

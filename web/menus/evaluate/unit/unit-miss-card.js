@@ -9,7 +9,6 @@ import { getTest, makeTitle } from './unit-model.js';
 import { ITEM_TYPES } from './unit-grade.js';
 import { missView, missRequest, normMiss, missGot, mergeItem, missSig, setAct, groupId, missText, missHead, nosText, PENDING } from './unit-miss.js';
 import { missPrompt } from './unit-ai.js';
-import { madeHide } from '../make-scope.js';
 import { missDoc } from './unit-docs.js';
 import { aiNoteHTML } from '../../../core/ui-parts.js';
 import { esc, AI_KEY, inStep, cur, curId, saveOrWarn, refresh, getBox } from './unit.js';
@@ -71,7 +70,7 @@ async function groupMiss(only = null) {
   const req = missRequest(t, todo.map(v => v.it)), sig0 = Object.fromEntries(todo.map(v => [v.no, missSig(t, v.it)]));
   run = id; refresh(id);
   try {
-    const res = normMiss(madeHide(t).back(await ai.generateJSON(missPrompt(t, req), { task: 'notes', valid: v => missGot(normMiss(v, req)) })), req);
+    const res = normMiss(await ai.generateJSON(missPrompt(t, req), { task: 'notes', valid: v => missGot(normMiss(v, req)) }), req);
     const t2 = getTest(id);
     if (t2) {
       const items = { ...((t2.miss && t2.miss.items && typeof t2.miss.items === 'object') ? t2.miss.items : {}) };

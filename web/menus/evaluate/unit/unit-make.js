@@ -6,7 +6,7 @@
    - 정답표(keyItems)는 단원평가 정답지(unit-key.js parseKey)와 같은 모양 → 학생 문제지 스캔만 넣으면 지금처럼 채점
    - 문제지 글(paperText)은 채점 AI가 보는 「평가지 글」, 문제지·정답지 문서는 core/doc-export.js로 한글·워드·PDF */
 import { newTest, makeTitle } from './unit-model.js';
-import { spread, levelLine, keepHide } from '../make-scope.js';
+import { spread, levelLine, aiPairs } from '../make-scope.js';
 
 export const MAKE_TYPES = [['choice', '객관식'], ['short', '단답'], ['essay', '서술형']];
 const TYPE_IDS = MAKE_TYPES.map(t => t[0]);
@@ -206,8 +206,9 @@ export function madeItems(t) {
 }
 
 /* 새 단원평가: 평가 정보(교과·학년·단원·차시), 정답표, 문제지 글. made: 만든 물음·보기(문제지를 다시 내려받을 때),
-   hide: 만들 때 가린 값(make-pick scope.hidden — 평가 이름·문항은 원래 이름이고, 채점·피드백 AI로 보낼 때 이것으로 다시 가림: make-scope madeHide) */
-export function testFrom({ meta = {}, items = [], hide = null } = {}) {
+   ai: 만들 때 AI로 보낸 단원 이름(make-pick scope.ai — 직접 쓴 범위의 교직원 이름을 가린 글). 평가 정보·문제지 글은 원래 이름이고,
+   다른 칸만 made.ai에 남겨 채점·피드백 AI로 보낼 때 씀(make-scope aiMeta·aiText) */
+export function testFrom({ meta = {}, items = [], ai = null } = {}) {
   const key = keyItems(items);
   const t = newTest({
     meta: { subject: meta.subject || '', grade: meta.grade || null, unitNo: meta.unitNo ?? null, unitName: meta.unitName || '', lesson: meta.lesson || '', ...(meta.date ? { date: meta.date } : {}) },
@@ -215,7 +216,7 @@ export function testFrom({ meta = {}, items = [], hide = null } = {}) {
     paper: { text: paperText(meta, items).slice(0, 12000) }
   });
   t.made = { items: items.map((it, i) => ({ no: i + 1, type: it.type, question: str(it.question, 400), choices: (it.choices || []).map(c => str(c, 120)), points: Number(it.points) || 0 })) };
-  const h = keepHide(hide);
-  if (h) t.made.hide = h;
+  const sent = aiPairs(t.meta, { unitName: ai && ai.unitName });
+  if (sent) t.made.ai = sent;
   return t;
 }
