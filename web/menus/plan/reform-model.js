@@ -263,6 +263,10 @@ export function applyEvent(e, f, H, pre, olds) {
   });
   return { plan: out.join('\n'), form };
 }
+/* [되돌리기]로 돌릴 것: 계획서 글·서식 제목 줄·계획서 검토 의견만. 안전 점검표·가정통신문 칸과 그 의견은 바꾸기와 상관없으므로 되돌릴 때 지금 그대로
+   (바꾼 뒤 손으로 고쳐 지운 가정통신문 의견이 되살아나 [이대로 고치기]로 고친 글을 덮지 않게) */
+export const eventSnap = e => ({ plan: str(e.docs.plan), form: [...(e.docs.form || [])], rv: (e.rv || []).filter(x => x.section === 'plan') });
+export const eventRestore = (e, s) => ({ docs: { ...e.docs, plan: s.plan, form: s.form }, rv: [...s.rv, ...(e.rv || []).filter(x => x.section !== 'plan')] });
 
 /* ---------- 학급운영계획: 목차 칸 ---------- */
 /* 목차 → 옛 칸(큰 제목 묶음 — 작은 칸은 그 묶음에 따라감). AI에는 묶음의 글과 작은 칸 「제목: 글」.

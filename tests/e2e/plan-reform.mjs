@@ -177,7 +177,8 @@ await run('plan-reform', [
       (await import('./core/store.js')).flushAll();
       const m = await import('./menus/plan/event-model.js');
       const plan = '2027 가을 운동회 운영 계획\nⅠ. 개요\n가. 일시: 2027. 5. 6.\nⅡ. 운영 방침\n가. 모두가 즐기는 운동회\nⅢ. 세부 운영\n1. 경기 종목\nⅣ. 안전 대책\n가. 보건실 운영\nⅤ. 평가\n가. 만족도 조사';
-      const e = m.saveEvent({ ...m.newEvent(), name: '가을 운동회', grades: '3~6학년', date: '2027-05-06', place: '운동장', step: 1, maxStep: 3, docs: { plan, safety: '- 안전', letter: '날짜 준비물 복장 문의', rain: '', done: false } });
+      const e = m.saveEvent({ ...m.newEvent(), name: '가을 운동회', grades: '3~6학년', date: '2027-05-06', place: '운동장', step: 1, maxStep: 3, docs: { plan, safety: '- 안전', letter: '날짜 준비물 복장 문의', rain: '', done: false },
+        rv: [{ section: 'plan', problem: '목적이 흐려요', fix: '고친 계획서' }, { section: 'letter', problem: '문의처가 없어요', fix: '옛 글로 쓴 가정통신문 수정안' }] });
       m.setCurrentEvent(e.id);
       return e.id;
     });
@@ -223,6 +224,8 @@ await run('plan-reform', [
       assert(await page.$eval(`${P} .sf-slot select[data-sf-pick]`, s => s.value) === '', `${doc} 탭에 계획서 서식이 골라짐`);
       assert(await page.locator(`${P} .sf-slot [data-e="hwpx"]`).count() === 1 && await page.locator(`${P} [data-sf-export]`).count() === 0, `${doc} 탭은 기본 내려받기`);
       assert(await page.locator(`${P} .sf-slot[data-sf="event-${doc}"]`).count() === 1, `${doc} 탭은 따로 고름`);
+      // 바꾼 뒤 가정통신문을 손으로 고침 → 그 칸의 열린 의견이 지워짐
+      if (doc === 'letter') await page.fill(`${P} textarea[data-docf="letter"]`, '날짜 준비물 복장 문의 — 김하늘 선생님이 고침');
     }
     await page.click(`${P} [data-doc="plan"]`);
     await page.waitForSelector(`${P} [data-sf-export="event"]`);
@@ -230,6 +233,10 @@ await run('plan-reform', [
     await page.click(`${P} [data-rf-undo="event"]`);
     await toastHas('되돌렸어요');
     assert((await page.inputValue(`${P} textarea[data-docf="plan"]`)).includes('Ⅱ. 운영 방침'), '되돌림');
+    // 되돌리기는 계획서 글·계획서 의견만: 손으로 고친 가정통신문과 지워진 그 의견은 그대로(옛 수정안으로 덮을 의견이 되살아나지 않음)
+    const ue = await page.evaluate(async id => (await import('./menus/plan/event-model.js')).getEvent(id), EV);
+    assert(ue.docs.letter === '날짜 준비물 복장 문의 — 김하늘 선생님이 고침', ue.docs.letter);
+    assert(ue.rv.map(x => x.section).join('|') === 'plan', '의견: ' + JSON.stringify(ue.rv));
   }],
   ['학급운영계획 1단계: 작년 계획서 .hwpx → 서식 저장·골라 둠', async () => {
     CP = await page.evaluate(async () => {

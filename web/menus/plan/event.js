@@ -24,7 +24,7 @@ import { putLetterDraft } from '../etc/letter.js';
 import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import { letterBodyFromEvent } from '../etc/letter-ai.js';
 import { reformHTML, registerReform, keepLastForm, HWPX_HINT } from './reform.js';
-import { formHeads, withPlanRoles, eventOlds, applyEvent } from './reform-model.js';
+import { formHeads, withPlanRoles, eventOlds, applyEvent, eventSnap, eventRestore } from './reform-model.js';
 import { KINDS, DOCS, REF_KINDS, normRefs, guessKind, planOutlineRule, planFormRule, refsBlock, normRefNotes, newEvent, listEventPlans, getEvent, saveEvent, deleteEvent, currentEventId, setCurrentEvent, normOptions, letterMissing, docDoc, confirmBlockers, normItems, maskResult } from './event-model.js';
 
 const STEPS = ['행사 정보', '구성안', '문서', '설문·결과'];
@@ -531,9 +531,11 @@ registerReform('event', {
       if (e.status === 'final') { e.status = 'draft'; removeEvents('event:' + e.id); }
     }) };
   },
-  snapshot: () => ({ plan: ev.docs.plan, form: [...(ev.docs.form || [])], rv: ev.rv }),
+  // 되돌리기는 계획서 글·서식 제목 줄·계획서 의견만(안전 점검표·가정통신문과 그 의견은 지금 그대로)
+  snapshot: () => eventSnap(ev),
   restore: s => apply(ev.id, e => {
-    e.docs = { ...e.docs, plan: s.plan, form: s.form }; e.rv = s.rv;
+    const b = eventRestore(e, s);
+    e.docs = b.docs; e.rv = b.rv;
     if (e.status === 'final') { e.status = 'draft'; removeEvents('event:' + e.id); }
   }),
   rerender: () => { if (visible() && ev.step === 3) renderMain(); },
