@@ -151,3 +151,20 @@ test('[C19] 제목 낱말 뒤 한 낱말이 제목을 마무리하는 말(「근
     assert.deepEqual([o.title, o.lead, o.cut], [title, lead, true], t);
   }
 });
+
+test('[C20] 새 서식 큰 제목의 빈칸 자리(「목적 :」「일시 : 2027.   .   .(   )」)는 빼고 쌍점 앞만 새 제목으로 — 채워 쓴 제목은 그대로', () => {
+  const FORM = '2027 행사 운영 계획\n1. 목적 :\n2. 일시 : 2027.   .   .(   )\n3. 장소 :\n4. 시간 :   :   ~   :\n5. 세부 운영 계획\n6. 평가';
+  assert.deepEqual(R.formHeads(FORM).heads.map(h => h.title), ['목적', '일시', '장소', '시간', '세부 운영 계획', '평가']);
+  const plan = '1. 목적: 협동심을 기른다.\n2. 일시: 2027. 10. 7.(목)\n3. 장소: 본교 운동장\n4. 세부 운영\n가. 개회식';
+  const e = { docs: { plan, form: [] } };
+  const { pre, olds } = R.eventOlds(e);
+  const H0 = R.formHeads(FORM), hs = R.withPlanRoles(H0.heads);
+  const out = R.applyEvent(e, R.mergeReform(hs, olds, R.ruleMap(olds, hs), null), { ...H0, heads: hs }, pre, olds);
+  assert.ok(out.plan.startsWith('1. 목적\n협동심을 기른다.\n2. 일시\n2027. 10. 7.(목)\n3. 장소\n본교 운동장\n4. 시간\n5. 세부 운영 계획\n가. 개회식'), out.plan);
+  assert.deepEqual(out.form, ['1. 목적', '2. 일시', '3. 장소', '4. 시간', '5. 세부 운영 계획', '6. 평가']);
+  // 연간계획 새 서식도
+  assert.deepEqual(R.yearHeads('Ⅰ. 목적 :\nⅡ. 추진 기간 : 2027년   월   일 ~   월   일\nⅢ. 세부 추진 계획\nⅣ. 추진 일정').heads.map(h => h.title), ['목적', '추진 기간', '세부 추진 계획', '추진 일정']);
+  // 채워 쓴 제목·괄호 안 쌍점은 그대로
+  const keep = ['목적: 협동심 기르기', '일시: 2027. 10. 7.(목)', '일시: 2027. 10. 7.', '일시: 2027년 10월 7일', '시간: 09:00~12:00', '평가 (교사용: 3회)', '예산: 500,000원'];
+  assert.deepEqual(R.formHeads(keep.map((t, i) => `${i + 1}. ${t}`).join('\n')).heads.map(h => h.title), keep);
+});

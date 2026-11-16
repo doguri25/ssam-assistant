@@ -20,9 +20,18 @@ const join = parts => parts.map(tidy).filter(x => x.trim()).join('\n');
 export const lastFormName = file => `작년 계획서 서식 · ${String(file || '').replace(/\.[^.]+$/, '').trim() || '계획서'}`;
 
 /* ---------- 새 서식 읽기 ---------- */
+/* 새 서식 큰 제목의 빈칸 자리(「목적 :」「일시 : 2027.   .   .(   )」「추진 기간 : 2027년   월   일」)는 빼고 쌍점 앞만 제목으로 —
+   쌍점 뒤가 빈칸·숫자·점·괄호뿐이고 숫자가 없거나 빈 자리(「.   .」「(   )」「년   월」)가 있을 때만. 채워 쓴 제목(「목적: 협동심 기르기」「일시: 2027. 10. 7.」「시간: 09:00~12:00」)·괄호 안 쌍점은 그대로 */
+const SLOT_ONLY = /^[\s\d.,·:：~\-–/()（）년월일시분]*$/, BLANK_SLOT = /[.(（]\s*[.)）]|[년월시]\s+[월일분]/;
+export function formTitle(t) {
+  const s = str(t).trim(), m = /^(.*?[^\d\s:：])\s*[:：]\s*(.*)$/.exec(s);
+  if (!m || /[(（[][^)）\]]*$/.test(m[1])) return s;
+  const rest = m[2].trim();
+  return SLOT_ONLY.test(rest) && (!/\d/.test(rest) || BLANK_SLOT.test(rest)) ? m[1].trim() : s;
+}
 /* 새 서식 글 → { heads: [{ title }], roman }. 큰 제목이 셋보다 적으면 heads는 빈 목록(양식으로만 저장) */
 export function formHeads(text) {
-  const top = parseOutline(text).filter(x => x.level === 1).slice(0, MAX_HEADS).map(x => ({ title: x.title }));
+  const top = parseOutline(text).filter(x => x.level === 1).slice(0, MAX_HEADS).map(x => ({ title: formTitle(x.title) }));
   return { heads: top.length >= 3 ? top : [], roman: /^\s*[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]\.\s*\S/m.test(str(text)) };
 }
 /* 제목의 역할: 학급운영계획 표 칸(시수·월별·평가 표) 먼저, 그다음 연간계획 칸 역할(목적·방침·일정·예산·평가·세부) */
@@ -185,13 +194,13 @@ export function yearOlds(d) {
     return { id: 'o' + (i + 1), key, title: title || full, role: sectionRole(title || full), lead, cut: !!cut, body, text: lead ? join([lead, body]) : body };
   });
 }
-/* 새 서식 글 → 새 칸(연간계획 목차 읽기 그대로 key를 정함: 목적·방침·세부·일정·예산·평가, 그 밖은 덧붙임 칸). 일정·예산 칸은 표 그대로.
+/* 새 서식 글 → 새 칸(연간계획 목차 읽기 그대로 key를 정함: 목적·방침·세부·일정·예산·평가, 그 밖은 덧붙임 칸). 일정·예산 칸은 표 그대로. 제목의 빈칸 자리는 뺌(formTitle).
    맞추기 역할은 제목 하나만 보고(sectionRole — 행사·학급운영계획과 같이): 목차 읽기가 앞 칸부터 차지한 key(「추진 배경」이 목적 칸)로 맞추지 않게,
    「추진 배경·추진 목표」처럼 목적 같은 제목이 둘이면 어느 쪽인지 몰라 역할로는 맞추지 않음 */
 export function yearHeads(text) {
   const o = yearOutline(text);
   return {
-    heads: o.items.map(x => ({ title: x.title, key: x.key, role: sectionRole(x.title), ...(x.key === 'schedule' ? { fixed: '일정 표' } : x.key === 'budget' ? { fixed: '예산 표' } : {}) })),
+    heads: o.items.map(x => { const title = formTitle(x.title); return { title, key: x.key, role: sectionRole(title), ...(x.key === 'schedule' ? { fixed: '일정 표' } : x.key === 'budget' ? { fixed: '예산 표' } : {}) }; }),
     roman: o.roman
   };
 }
