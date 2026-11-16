@@ -2,7 +2,7 @@
    이름은 모두 지어낸 것(김하늘·이바다·한가람·박솔빛) */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { maskJosaNames, maskStaff, stripNames, maskContacts } from '../../web/core/privacy.js';
+import { maskJosaNames, maskStaff, stripNames, maskContacts, personNames } from '../../web/core/privacy.js';
 import { maskPersons } from '../../web/core/chat-names.js';
 import { makeRedactor } from '../../web/core/redact.js';
 import { CHIPS, startItems, payloadOf, normChanges, plainDoc } from '../../web/menus/etc/docedit-model.js';
@@ -432,4 +432,33 @@ test('[fix1116-privacy-R2-people-head] 인수인계서·회의록(core/redact.js
     assert.deepEqual(out.map(x => x && x.text), [null, '도시락은 각자 준비하고, 안내문은 미리 읽어 오세요.'], l);
     assert.deepEqual(r.names, [], l);
   }
+});
+
+test('[fix1116-privacy-R2-title-end] 끝 글자가 관·사·장인 교직원 이름(이재관·박정관·이종관·김태관)은 직함 옆에서 그대로 가림 — 직함(주무관·장학사·위원장…)만 목록으로 뺌', () => {
+  for (const [l, n] of [['문의: 교무부 이재관 선생님', '이재관'], ['행정실 박정관 주무관이 처리함.', '박정관'], ['담당 이종관 주무관님께 보고합니다.', '이종관'], ['담당: 이재관', '이재관'],
+    ['정보부장 김태관', '김태관'], ['교무부장 이성관 선생님이 안내합니다.', '이성관'], ['담당 주무관 김재관님께 제출합니다.', '김재관'], ['강사 박영관 선생님께', '박영관'],
+    ['담당 장학사 정우관님께 연락', '정우관'], ['행정실장 최승관님께 문의 바랍니다.', '최승관']]) {
+    const m = maskStaff(l).text;
+    assert.ok(!m.includes(n) && m.includes('○○○'), `staff: ${l} → ${m}`);
+    const r = makeRedactor(), out = r.line(l);
+    assert.ok(!out.text.includes(n), `redact: ${l} → ${out.text}`);
+    assert.equal(r.back(out.text), l);
+  }
+  // 회의록 참석 칸·명단 줄
+  assert.deepEqual(personNames('김재관, 이종관'), ['김재관', '이종관']);
+  assert.deepEqual(personNames('교감 박영관, 행정실장 최승관 주무관'), ['박영관', '최승관']);
+  const memo = '- 이재관: 예산안 설명\n- 김태관 버스 예약';
+  const r = redactInput(memo, { attendees: '이재관, 김태관, 한가람' });
+  assert.ok(!/이재관|김태관/.test(r.text), r.text);
+  assert.equal(r.back(r.text), memo);
+  const o = makeRedactor().lines(['참석: 이재관, 김태관, 박정관, 이종관', '- 김태관: 예산안 설명']);
+  assert.deepEqual(o.map(x => x && x.text), [null, '- 〔이름2〕: 예산안 설명']);
+  // 직함은 그대로(이름으로 배우지 않음)
+  for (const l of ['담당 주무관님께 제출', '담당 장학관님께 보고', '문의 장학사님께', '담당 행정관님께', '담당 위원장님께 보고', '담당 이사장님께 보고']) {
+    assert.equal(maskStaff(l).text, l, l);
+    const x = makeRedactor();
+    assert.equal(x.line(l).text, l, l);
+    assert.deepEqual(x.names, [], l);
+  }
+  assert.deepEqual(personNames('주무관, 장학사, 연구관, 위원장, 이사장, 조리사, 조장, 이장'), []);
 });
