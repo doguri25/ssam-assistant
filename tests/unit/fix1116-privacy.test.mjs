@@ -490,3 +490,41 @@ test('[fix1116-privacy-R2-ro-end] 바꾸는 말 앞(「X로 바꿔 줘」「X로
     assert.equal(r.back(out.text), l);
   }
 });
+
+// 선생님이 흔히 쓰는 말투·꼴 요청
+const TYPICAL_ASKS = ['공문체로 바꿔 줘', '쉬운 말로 바꿔 줘', '표준어로 바꿔 줘', '서술형으로 바꿔 줘', '개조식으로 바꿔 줘', '높임말로 바꿔 줘', '경어체로 바꿔 줘', '존댓말로 바꿔 줘',
+  '명사형으로 바꿔 줘', '해요체로 바꿔 줘', '합쇼체로 바꿔 줘', '평서문으로 바꿔 줘', '명조체로 바꿔 줘', '고딕체로 바꿔 줘', '기본형으로 바꿔 줘', '선택형으로 바꿔 줘', '주관식으로 바꿔 줘',
+  '서술식으로 바꿔 줘', '한 문장으로 바꿔 줘', '가나다순으로 바꿔 줘', '안내문으로 바꿔 줘', '가정통신문으로 바꿔 줘', '긍정문으로 바꿔 줘', '공문체로 고쳐 줘', '공문체로 수정해 줘',
+  '개조식으로 써 줘', '서술형으로 고쳐 써 줘', '공문체로 해 줘', '개조식으로 해 줘', '표준어로 고쳐 넣어 줘', '최종본으로 바꿔 줘', '소제목으로 바꿔 줘', '안내용으로 바꿔 줘'];
+// 검토에서 바꾸는 말 앞에서 이름으로 가리던 흔한 낱말
+const RO_THINGS = ['지우개', '방학중', '오전중', '오후중', '최대치', '최소치', '최고치', '고화질', '반팔티', '연필심', '이월분', '강당앞', '정문앞', '원단위'];
+
+test('[fix1116-privacy-R2-ro-cue] 빠른 요청 칩과 선생님이 흔히 쓰는 요청(공문체로·쉬운 말로·표준어로·서술형으로·개조식으로·높임말로 바꿔 줘)은 가리지 않고 문서로 퍼지지도 않음', () => {
+  const doc = startItems(['가. 담당: 교무부장 김하늘 선생님', '나. 공문체와 표준어, 서술형 문항을 씁니다.'].map(t => L(t)));
+  const plain = payloadOf(doc, '').sent.map(x => x.text);
+  for (const ask of [...CHIPS.map(c => c.ask).filter(Boolean), ...TYPICAL_ASKS]) {
+    const p = payloadOf(doc, ask);
+    assert.equal(p.ask, ask, ask);
+    assert.deepEqual(p.sent.map(x => x.text), plain, ask);
+    assert.equal(maskPersons(ask, { memo: true }).text, ask, `memo: ${ask}`);
+  }
+  // 바꾸는 말 앞 흔한 낱말(지우개·방학중·강당앞 …)
+  for (const w of RO_THINGS) {
+    for (const l of [`${w}${ro(w)} 바꿔 줘`, `${w}${ro(w)} 변경합니다.`]) {
+      const r = makeRedactor();
+      assert.equal(r.line(l).text, l, l);
+      assert.deepEqual(r.names, [], l);
+    }
+  }
+  for (const w of ['우체국', '진주성', '공산성', '이월드']) assert.equal(makeRedactor().line(`체험학습지는 ${w}${ro(w)} 정했습니다.`).text, `체험학습지는 ${w}${ro(w)} 정했습니다.`, w);
+  for (const l of ['집결지를 정문앞에서 후문으로 변경', '보고는 지원청에서 교육청으로 변경', '협의회는 성남시에서 안산시로 변경']) assert.equal(makeRedactor().line(l).text, l, l);
+  // 요청의 낱말이 문서 전체로 퍼지지 않음
+  const d2 = startItems(['가. 준비물: 필통, 지우개, 공책', '나. 지우개는 이름을 써 옵니다.'].map(t => L(t)));
+  const p2 = payloadOf(d2, '준비물의 필통을 지우개로 바꿔 줘');
+  assert.equal(p2.ask, '준비물의 필통을 지우개로 바꿔 줘');
+  assert.deepEqual(p2.sent.map(x => x.text), ['가. 준비물: 필통, 지우개, 공책', '나. 지우개는 이름을 써 옵니다.']);
+  const d3 = startItems(['가. 일시: 2026. 12. 3.(목) 오전', '나. 방학중 돌봄교실 운영 안내', '다. 방학중 급식은 없습니다.'].map(t => L(t)));
+  const p3 = payloadOf(d3, '제목의 일시를 방학중으로 바꿔 줘');
+  assert.equal(p3.ask, '제목의 일시를 방학중으로 바꿔 줘');
+  assert.deepEqual(p3.sent.map(x => x.text), d3.map(x => x.text));
+});
