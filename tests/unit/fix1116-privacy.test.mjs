@@ -308,3 +308,42 @@ test('[fix1116-privacy-C5-narrow] 세 글자 직함 + 님(주무관님께·장�
     assert.ok(!x.includes(n), `${l} → ${x}`);
   }
 });
+
+test('[fix1116-privacy-C10-overlearn] 보내지 않는 줄은 사람 명단(머리 말이 참석·명단·위원·대상·학생·담당…)일 때만 이름을 배움 — 준비물·장소 같은 목록은 배우지 않음', () => {
+  const r = makeRedactor();
+  const doc = ['가. 준비물: 도시락, 우비, 안내문, 신분증', '나. 도시락은 각자 준비하고, 안내문은 미리 읽어 오세요.', '다. 장소: 강당 체육관 운동장 도서관',
+    '라. 체육관은 2층입니다.', '준비물 도시락 우비 안내문 신분증', '대상: 전교생, 교직원, 학부모'];
+  const out = r.lines(doc);
+  assert.deepEqual(out.map(x => x && x.text), [null, doc[1], doc[2], doc[3], null, doc[5]]);
+  assert.deepEqual(r.names, []);
+  // 문서 다듬기도(보내지 않는 줄의 낱말을 배우지 않음)
+  const p = payloadOf(startItems(doc.slice(0, 2).map(t => L(t))), '공문체로');
+  assert.deepEqual(p.sent.map(x => x.text), [doc[1]]);
+  // 사람 명단 줄은 그대로 배움(머리 말이 쌍점 앞이든 띄어 쓴 앞 낱말이든, 괄호 인원이 붙어도)
+  for (const head of ['참석: ', '참석자(4명): ', '3학년 담임: ', '협의 위원 ', '대상 학생: ', '명단 - ', '1. 결석: ']) {
+    const x = makeRedactor(), o = x.lines([`${head}김하늘, 이바다, 한가람, 박솔빛`, '- 이바다: 과학관 추천', '한가람 버스 예약']);
+    assert.equal(o[0], null, head);
+    assert.deepEqual(leaks(o[1].text + o[2].text), [], `${head} → ${o[1].text} / ${o[2].text}`);
+  }
+  // 표: 「이름」 머리 칸 아래 칸만 배움(이름이 늘어선 표 줄을 통째로 보내지 않을 때)
+  const t = makeRedactor(), o = t.lines(['이름 | 이름 | 이름 | 비고', '김하늘 | 이바다 | 한가람 | 도시락', '이바다 발표, 도시락 지참']);
+  assert.equal(o[1], null);
+  assert.equal(o[2].text, '〔이름2〕 발표, 도시락 지참');
+});
+
+test('[fix1116-privacy-C10-narrow] 회의록 참석 칸: 흔한 성으로 시작하는 두~네 글자 이름은 모두 배움(이승기·정영자·김수한·최윤화·김솔·이산) — 직함·인원·부서 말은 아님', () => {
+  for (const [att, memo] of [['이승기, 정영자', '- 이승기: 과학관 추천\n- 정영자 버스 예약'], ['최윤화, 김수한', '- 최윤화: 과학관 추천\n- 김수한 버스 예약'],
+    ['김솔, 이산', '- 김솔: 과학관 추천\n- 이산 버스 예약'], ['교장 남궁하늘, 교감 이바다', '- 남궁하늘: 과학관 추천\n- 이바다 버스 예약'],
+    ['김하늘(교무), 이산(연구), 정영자 주무관', '- 이산: 과학관 추천\n- 정영자 정산']]) {
+    const r = redactInput(memo, { attendees: att });
+    for (const n of att.split(/[\s,()]+/).filter(t => /^(이승기|정영자|최윤화|김수한|김솔|이산|남궁하늘|이바다)$/.test(t))) assert.ok(!r.text.includes(n), `${att}: ${n} → ${r.text}`);
+    assert.equal(r.back(r.text), memo);
+  }
+  // 직함·인원·부서·쉼 말은 배우지 않음
+  const memo = '3학년 담임 협의\n조리원 배치는 행정실 주무관이 정함\n전원 찬성\n연구부 의견 모음\n기타 안건 없음\n서기 지정\n조퇴 1명\n장학사 방문\n진로교사 의견';
+  for (const att of ['3학년 담임 5명', '교무부장 외 3명', '전원 참석', '조리원 2명, 행정실 주무관', '교장, 교감, 연구부', '영양사, 조리사, 지도원', '서기, 기타', '조퇴 1명, 연가 1명',
+    '장학사, 연구사', '진로교사, 정보교사, 안전요원', '위원장, 지역위원', '전교생', '여러분', '선생님들']) {
+    const r = redactInput(memo, { attendees: att });
+    assert.equal(r.text, memo, `${att} → ${r.text}`);
+  }
+});
