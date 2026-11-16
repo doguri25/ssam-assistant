@@ -102,3 +102,22 @@ test('[C16] 연간계획: 큰 제목 줄에 함께 적힌 글(「목적: …」�
   const np = reformYear(plain, 'Ⅰ. 목적\nⅡ. 방침\nⅢ. 세부 추진 계획\nⅣ. 추진 일정\nⅤ. 예산\nⅥ. 평가');
   assert.deepEqual([np.purpose, np.policy, np.details, np.evaluation], ['독서 습관을 기른다.', '가. 전교생이 참여한다.', '1. 아침 독서\n연중 운영한다.', '독서량이 는다.']);
 });
+
+test('[C18] 행사계획: 로마 숫자 새 서식으로 바꾼 뒤 고치거나 더한 큰 제목 줄(「Ⅳ. 평가 및 환류」「Ⅴ. 홍보 계획」)도 큰 제목 — 한글 파일 소제목, 다음 바꾸기에서 따로 맞춤', () => {
+  const form = ['Ⅰ. 목적', 'Ⅱ. 운영 개요', 'Ⅲ. 세부 운영', 'Ⅳ. 평가'];
+  const plan = ['2027 가을 운동회 운영 계획', 'Ⅰ. 목적', '협동심을 기른다.', 'Ⅱ. 운영 개요', '가. 일시: 10월 7일', 'Ⅲ. 세부 운영', '가. 개회식', '1. 경기 종목', 'Ⅳ. 평가 및 환류', '설문으로 평가한다.', 'Ⅴ. 홍보 계획', '가정통신문 발송'].join('\n');
+  const e = { ...E.newEvent(), name: '가을 운동회', docs: { plan, safety: '', letter: '', rain: '', done: false, form } };
+  assert.deepEqual(E.planHeadLines(e, plan), [1, 3, 5, 8, 10]);
+  const blocks = E.docDoc(e, 'plan').blocks;
+  assert.deepEqual(blocks.filter(b => b.type === 'h').map(b => b.text), ['Ⅰ. 목적', 'Ⅱ. 운영 개요', 'Ⅲ. 세부 운영', 'Ⅳ. 평가 및 환류', 'Ⅴ. 홍보 계획']);
+  assert.ok(blocks.some(b => b.type === 'p' && b.text === '가. 개회식\n1. 경기 종목'), '본문의 「1. 경기 종목」은 문단');
+  const { pre, olds } = R.eventOlds(e);
+  assert.equal(pre, '2027 가을 운동회 운영 계획');
+  assert.deepEqual(olds.map(o => [o.title, o.text]), [['목적', '협동심을 기른다.'], ['운영 개요', '가. 일시: 10월 7일'], ['세부 운영', '가. 개회식\n1. 경기 종목'], ['평가 및 환류', '설문으로 평가한다.'], ['홍보 계획', '가정통신문 발송']]);
+  // 숫자 서식(「1. 목적」)은 서식에 없는 「1.」 줄을 큰 제목으로 보지 않음(본문의 「1. 경기 종목」이 큰 제목이 되지 않게)
+  const form2 = ['1. 목적', '2. 운영 개요', '3. 세부 운영'];
+  const plan2 = '1. 목적\n협동심\n2. 운영 개요\n가. 일시\n3. 세부 운영\n1. 경기 종목\n2. 줄다리기\n4. 홍보 계획';
+  assert.deepEqual(E.planHeadLines({ docs: { form: form2 } }, plan2), [0, 2, 4]);
+  // 서식이 없으면 목차 읽기 그대로
+  assert.deepEqual(E.planHeadLines({ docs: {} }, plan), C.topLines(plan));
+});
