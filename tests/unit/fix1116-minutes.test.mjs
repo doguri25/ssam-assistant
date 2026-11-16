@@ -256,3 +256,23 @@ test('[fix1116-min-kind-not] AI 새 이름이 다른 종류면 그 종류, 선�
   const council = { ...prev, kind: 'council' };
   assert.equal(keepFields(normMinutes({ title: '3학년 학년 협의회' }, { year: 2026, today: TODAY }), council, ['kind']).kind, 'council');
 });
+
+test('[fix1116-min-R3-pasted-doc] 붙여 넣은 글 끝 「이 문서·위 문서 다듬어 줘」, 같은 줄의 「…협조 바랍니다. 이 공문 다듬어 줘」는 그 글 — 문서 다듬기로 가서 글이 사라지지 않게', () => {
+  const body = '겨울방학 동안 학생들이 안전하게 지내도록 지도해 주시기 바랍니다.\n방학식은 12월 24일입니다.';
+  for (const tail of ['이 문서 다듬어 줘', '위 문서 맞춤법 고쳐 줘', '문서 맞춤법 봐 줘', '이 문서 좀 다듬어 줄래?', '문서 다듬어 줘']) {
+    const r = route(`${body}\n${tail}`);
+    assert.notEqual(r.intent, 'docedit', `${tail} → ${r.intent} ${r.confidence}`);
+  }
+  assert.notEqual(route('체험학습 결과\n참가 학생 50명, 만족도 높음\n이 문서 공문체로 바꿔 줘').intent, 'docedit');
+  for (const [s, want] of [['학교폭력 실태조사를 11월 25일까지 실시하니 협조 바랍니다. 이 공문 다듬어 줘', 'gongmun'],
+    ['겨울방학 동안 안전하게 지내도록 지도 부탁드립니다. 이 가정통신문 맞춤법 고쳐 줘', 'letter'],
+    ['체험학습 결과 참가 50명 만족도 높음 이 보고서 다듬어 줘', 'report']]) {
+    const r = route(s);
+    assert.notEqual(r.intent, 'docedit', `${s} → ${r.intent} ${r.confidence}`);
+  }
+  // 한글 파일·hwp를 이름으로 말한 끝 줄, 메뉴 이름 「문서 다듬기」, 그 말만 쓴 한 줄은 그대로 문서 다듬기
+  for (const s of ['가정통신문 11월호 원고\n- 행사 일정 고침\n한글 파일 맞춤법 고쳐 줘', '- 결재란 그대로\n- 날짜만 바꿈\n문서 다듬기', '- 결재란 그대로\nhwp 파일 좀 다듬어 줘',
+    '이 공문 다듬어 줘', '가정통신문 맞춤법 봐 줘', '보고서 교정해 주세요']) {
+    assert.equal(route(s).intent, 'docedit', s);
+  }
+});
