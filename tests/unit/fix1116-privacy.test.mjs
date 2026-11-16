@@ -2,7 +2,7 @@
    이름은 모두 지어낸 것(김하늘·이바다·한가람·박솔빛) */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { maskJosaNames, maskStaff } from '../../web/core/privacy.js';
+import { maskJosaNames, maskStaff, stripNames } from '../../web/core/privacy.js';
 import { maskPersons } from '../../web/core/chat-names.js';
 import { makeRedactor } from '../../web/core/redact.js';
 import { startItems, payloadOf } from '../../web/menus/etc/docedit-model.js';
@@ -45,4 +45,40 @@ test('[fix1116-privacy-C1-neg] 「로·으로」가 붙은 흔한 낱말(곳·�
   }
   // 받침과 맞지 않는 꼴(「강당으」+「로」)로 자르지 않음
   assert.equal(maskJosaNames('학생 강당으로 이동').text, '학생 강당으로 이동');
+});
+
+test('[fix1116-privacy-C2] 「이름」 머리 칸 아래 두 글자·조사 끝 글자 이름(이솔·박준·김가을)도 가림 — 글 표(|)와 한글(.hwpx) 표 모두', async () => {
+  const rows = [['번호', '이름', '역할'], ['1', '김가을', '모둠장'], ['2', '이솔', '기록'], ['3', '박준', '발표']];
+  const st = stripNames(rows.map(r => r.join(' | ')).join('\n')).text;
+  for (const n of ['김가을', '이솔', '박준']) assert.ok(!st.includes(n), `${n} → ${st}`);
+  for (const w of ['모둠장', '기록', '발표', '이름', '역할']) assert.ok(st.includes(w), `${w}는 그대로`);
+  // 글만 읽은 문서(.hwp·글)의 「칸 | 칸」 줄
+  const q = payloadOf(startItems(rows.map(r => L(r.join(' | ')))), '공문체로');
+  const qs = q.sent.map(x => x.text).join('\n');
+  for (const n of ['김가을', '이솔', '박준']) assert.ok(!qs.includes(n), `plain ${n} → ${qs}`);
+  assert.ok(qs.includes('모둠장') && qs.includes('발표'));
+  // 한글(.hwpx) 표: 칸마다 줄이 따로라도 「이름」 칸 아래 칸은 보내지 않음
+  const { makeHwpx } = await import('../../web/core/hwpx.js');
+  const { readForm } = await import('../../web/core/hwpx-form.js');
+  const form = await readForm(makeHwpx({ title: '모둠 역할', blocks: [{ type: 'table', head: true, rows }, { type: 'p', text: '이솔은 기록을 맡음.' }] }));
+  const h = payloadOf(startItems(form.lines), '공문체로');
+  const hs = h.sent.map(x => x.text).join('\n');
+  for (const n of ['김가을', '이솔', '박준']) assert.ok(!hs.includes(n), `hwpx ${n} → ${hs}`);
+  for (const w of ['기록', '발표', '이름', '역할']) assert.ok(hs.includes(w), `hwpx ${w}는 보냄`);
+  assert.ok(h.held >= 3, `held ${h.held}`);
+  assert.ok(hs.includes('〔이름') && hs.includes('은 기록을 맡음.'), '표 밖 줄의 같은 이름도 가림');
+});
+
+test('[fix1116-privacy-C2-neg] 「이름」 칸 아래라도 흔한 낱말(합계·전체·모두)은 그대로, 머리 칸 없는 표의 두 글자 칸도 그대로', async () => {
+  const st = stripNames(['이름 | 점수', '김하늘 | 90', '전체 | 25명', '합계 | 300', '모두 | 참여'].join('\n')).text;
+  assert.ok(!st.includes('김하늘'));
+  for (const w of ['전체', '합계', '모두', '이름']) assert.ok(st.includes(w), `${w} → ${st}`);
+  const plain = ['구분 | 내용 | 비고', '기간 | 3월 | 이상', '장소 | 강당 | 전원'].join('\n');
+  assert.equal(stripNames(plain).text, plain, '머리 칸이 이름이 아니면 그대로');
+  const { makeHwpx } = await import('../../web/core/hwpx.js');
+  const { readForm } = await import('../../web/core/hwpx-form.js');
+  const form = await readForm(makeHwpx({ title: '일정', blocks: [{ type: 'table', head: true, rows: [['구분', '내용'], ['기간', '3월'], ['장소', '강당']] }] }));
+  const h = payloadOf(startItems(form.lines), '공문체로');
+  assert.deepEqual(h.sent.map(x => x.text), ['일정', '구분', '내용', '기간', '3월', '장소', '강당']);
+  assert.equal(h.held, 0);
 });

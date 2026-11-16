@@ -84,6 +84,10 @@ function maskList(line) {
   return [out, hits.length];
 }
 const CUE = new RegExp(`^(\\d{1,2}|남|여|남자|여자|${ROLE})$`), HEAD = /^(이름|성명|성 명|학생명|학생 이름)$/;
+/* 표의 「이름·성명」 머리 칸인지 */
+export const nameHead = c => HEAD.test(String(c || '').trim());
+/* 「이름」 머리 칸 아래 칸이 이름인지: 두~네 글자 한글, 흔한 성으로 시작(이솔·박준·김가을처럼 두 글자·조사 끝 글자도). 흔한 낱말(전체·합계·모두)은 아님 */
+export const nameUnderHead = c => { const t = String(c || '').trim(); return /^[가-힣]{2,4}$/.test(t) && SURNAME.has(t[0]) && !COMMON.has(t) && !TWO_WORD.has(t) && !STAFF_WORD.has(t) && !HEAD.test(t); };
 const NUMBERED = /^(\s*\d{1,2}[.)]?\s+)([가-힣]{3})(?=\s|$)/;
 const numName = l => { const m = NUMBERED.exec(l); return !!m && cellName(m[2]); };
 const NUM_SEX = /^\s*\d{1,2}[.)]?\s+[가-힣]{3}\s+(?:남|여|남자|여자)(?=\s|$)/;
@@ -173,15 +177,16 @@ export function stripNames(text, { keep = null } = {}) {
     const [line, n] = maskList(ls[i]);
     ls[i] = line; masked += n;
   }
-  // 표: 「이름」 머리 칸 아래, 또는 번호·남녀·직책 옆에 이름이 세 줄 이상 있는 칸
+  // 표: 「이름」 머리 칸 아래(두 글자 이름도), 또는 번호·남녀·직책 옆에 이름이 세 줄 이상 있는 칸
   for (let a = 0; a < ls.length;) {
     if (!ls[a].includes('|')) { a++; continue; }
     let b = a;
     while (b < ls.length && ls[b].includes('|')) b++;
     const rows = ls.slice(a, b).map(l => l.split('|')), width = Math.max(...rows.map(r => r.length));
     for (let j = 0; j < width; j++) {
-      const cell = r => (r[j] || '').trim(), hits = rows.filter(r => cellName(cell(r)));
-      const head = rows.some(r => HEAD.test(cell(r)));
+      const cell = r => (r[j] || '').trim(), head = rows.some(r => HEAD.test(cell(r)));
+      // 「이름」 머리 칸 아래는 두 글자·조사 끝 글자 이름도(이솔·박준·김가을), 아니면 세 글자 이름만
+      const hits = rows.filter(r => (head ? nameUnderHead : cellName)(cell(r)));
       const cued = hits.filter(r => CUE.test((r[j - 1] || '').trim()) || CUE.test((r[j + 1] || '').trim())).length;
       if (!(head && hits.length) && !(hits.length >= 3 && cued >= 3)) continue;
       for (const r of hits) { r[j] = r[j].replace(cell(r), MASK); masked++; }

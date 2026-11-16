@@ -1,9 +1,10 @@
 /* 문서·소통 › 문서 다듬기 (스펙 2026-11-15 1A): 넣은 문서의 줄(문단·표 칸) 목록과 고친 단계, AI 요청·답 정리. 화면 없이 돌아감(시험).
-   줄(item) = { id(AI에 보내는 번호), src(원래 줄 차례, 더한 줄은 null), tpl(본 문단 줄 차례), box(표 칸), orig(원래 글), text(지금 글), del(지움) }.
+   줄(item) = { id(AI에 보내는 번호), src(원래 줄 차례, 더한 줄은 null), tpl(본 문단 줄 차례), box(표 칸), orig(원래 글), text(지금 글), del(지움),
+   cell(한글 표 칸 줄만 — [표 차례, 줄 차례, 칸 차례]) }.
    함수는 목록을 바꾸지 않고 새 목록을 돌려줌(한 단계 되돌리기가 앞 목록을 그대로 씀).
    보낼 글: 이름·전화번호·이메일은 core/redact.js로 가리고(돌아온 글에 되돌림), 명단·주민번호 줄과 이름만 든 칸은 보내지 않음(그대로 둠) */
 import { makeRedactor } from '../../core/redact.js';
-import { nameCell } from '../../core/privacy.js';
+import { nameCell, nameHead, nameUnderHead } from '../../core/privacy.js';
 import { levelOf } from '../../core/hwpx-form.js';
 import { finalLines } from '../../core/hwpx-edit.js';
 
@@ -19,12 +20,22 @@ export const CHIPS = [
 export const HIST_MAX = 10;
 export const BATCH_CHARS = 12000, BATCH_LINES = 250;
 
+const tag = n => (n && n.name ? n.name.replace(/^.*:/, '') : '');
+/* 한글 표 칸 줄(readForm 줄의 box = 칸의 subList)의 자리 → [표 차례, 줄 차례, 칸 차례], 아니면 null */
+function cellAt(l, tables) {
+  const tc = l && l.inBox && l.box && l.box.up, tr = tc && tc.up, tb = tr && tr.up;
+  if (tag(tc) !== 'tc' || tag(tr) !== 'tr' || tag(tb) !== 'tbl') return null;
+  if (!tables.has(tb)) tables.set(tb, tables.size);
+  return [tables.get(tb), tb.kids.filter(k => tag(k) === 'tr').indexOf(tr), tr.kids.filter(k => tag(k) === 'tc').indexOf(tc)];
+}
 /* 원래 줄(readForm lines 또는 { text, inBox }) → 고칠 줄 목록(빈 줄·그림만 있는 줄은 뺌) */
 export function startItems(lines) {
-  const out = [];
+  const out = [], tables = new Map();
   (lines || []).forEach((l, i) => {
     const t = String((l && l.text) || '');
-    if (t.trim()) out.push({ id: out.length + 1, src: i, tpl: i, box: !!(l && l.inBox), orig: t, text: t, del: false });
+    if (!t.trim()) return;
+    const cell = cellAt(l, tables);
+    out.push({ id: out.length + 1, src: i, tpl: i, box: !!(l && l.inBox), orig: t, text: t, del: false, ...(cell ? { cell } : {}) });
   });
   return out;
 }
@@ -46,10 +57,14 @@ function heldNames(texts) {
 export function payloadOf(items, ask = '') {
   const r = makeRedactor(), all = items || [], sent = [];
   const live = all.filter(x => !x.del && x.text.trim());
-  const cells = live.filter(x => nameCell(x.text.trim())), send = live.filter(x => !nameCell(x.text.trim())); // 이름만 든 칸·줄(명단 표의 이름 칸 등)은 보내지 않음
+  // 한글 표의 「이름·성명」 머리 칸 아래 칸(이솔·박준·김가을처럼 두 글자·조사 끝 글자 이름도)
+  const heads = live.filter(x => x.cell && nameHead(x.text));
+  const underHead = x => !!x.cell && nameUnderHead(x.text) && heads.some(h => h.cell[0] === x.cell[0] && h.cell[2] === x.cell[2] && h.cell[1] < x.cell[1]);
+  const isHeld = x => nameCell(x.text.trim()) || underHead(x);
+  const cells = live.filter(isHeld), send = live.filter(x => !isHeld(x)); // 이름만 든 칸·줄(명단 표의 이름 칸 등)은 보내지 않음
   const asks = String(ask || '').split(/\r?\n/), origs = all.map(x => x.orig).filter(t => t && t.trim());
   r.learn([...origs, ...asks]);
-  for (const n of heldNames([...live.map(x => x.text), ...origs])) if (!r.names.includes(n)) r.names.push(n);
+  for (const n of [...heldNames([...live.map(x => x.text), ...origs]), ...cells.filter(underHead).map(x => x.text.trim())]) if (!r.names.includes(n)) r.names.push(n);
   const outs = r.lines(send.map(x => x.text.replace(/\r/g, '')));
   let held = cells.length;
   send.forEach((x, k) => { if (outs[k]) sent.push({ id: x.id, text: outs[k].text.replace(/\n/g, BR), box: x.box }); else held++; });
