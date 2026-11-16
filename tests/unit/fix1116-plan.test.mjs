@@ -121,3 +121,33 @@ test('[C18] 행사계획: 로마 숫자 새 서식으로 바꾼 뒤 고치거나
   // 서식이 없으면 목차 읽기 그대로
   assert.deepEqual(E.planHeadLines({ docs: {} }, plan), C.topLines(plan));
 });
+
+test('[C19] 제목 낱말 뒤 한 낱말이 제목을 마무리하는 말(「근거 법령」「담당 교사」「예산 집행」「평가 관점」…)이면 제목의 일부 — 뜻 없는 줄(「법령」「담당: 교사」)이 생기지 않음', () => {
+  const titles = ['근거 법령', '담당 교사', '예산 집행', '평가 관점', '목표 달성도', '대상 학년', '장소 배치도', '장소 섭외', '복장 규정', '방침 결정', '근거 자료', '대상 학생'];
+  for (const t of titles) {
+    const head = t.split(' ')[0];
+    const { olds } = R.eventOlds({ docs: { plan: `1. ${t}\n본문\n2. 둘\n3. 셋`, form: [] } });
+    assert.deepEqual([olds[0].title, olds[0].lead, olds[0].text], [head, '', '본문'], t);
+    const co = R.classOlds({ outline: [{ id: 's1', title: t, level: 1 }], draft: { s1: '본문' }, guide: null });
+    assert.deepEqual([co[0].title, co[0].lead, co[0].text], [head, '', '본문'], '학급운영: ' + t);
+  }
+  // 연간계획 목차 제목도
+  const yo = R.yearOlds(Y.normDraft({ purpose: '가', policy: '나', details: '다', evaluation: '라', outline: [{ key: 'x1', title: '근거 법령' }, { key: 'purpose', title: '목적' }, { key: 'budget', title: '예산 집행' }] }));
+  assert.deepEqual(yo.map(o => [o.title, o.lead]), [['근거', ''], ['목적', ''], ['예산', '']]);
+  const plan = '1. 근거 법령\n가. 학교안전법 제8조\n2. 목적\n가. 협동심을 기른다.\n3. 세부 운영\n가. 개회식\n4. 담당 교사\n가. 체육부 운영\n5. 예산 집행\n가. 학교운영비 500,000원';
+  const e = { docs: { plan, form: [] } };
+  const { pre, olds } = R.eventOlds(e);
+  const H = R.formHeads('Ⅰ. 추진 근거\nⅡ. 목적\nⅢ. 세부 운영\nⅣ. 업무 분장\nⅤ. 소요 예산'), hs = R.withPlanRoles(H.heads);
+  // 규칙으로 맞추는 것은 전처럼(「근거」↔「추진 근거」, 「예산」↔「소요 예산」), 「담당 교사」만 AI가 옮김
+  const rules = R.ruleMap(olds, hs);
+  assert.deepEqual(rules, [['o1'], ['o2'], ['o3'], [], ['o5']]);
+  const f = R.mergeReform(hs, olds, rules, { map: [{ to: 3, from: ['o4'] }], write: [] });
+  assert.equal(R.applyEvent(e, f, { ...H, heads: hs }, pre, olds).plan,
+    'Ⅰ. 추진 근거\n가. 학교안전법 제8조\nⅡ. 목적\n가. 협동심을 기른다.\nⅢ. 세부 운영\n가. 개회식\nⅣ. 업무 분장\n가. 체육부 운영\nⅤ. 소요 예산\n가. 학교운영비 500,000원');
+  // 제목 낱말 뒤가 글이면 그대로 자름(한 낱말이어도)
+  for (const [t, title, lead] of [['대상 전교생', '대상', '전교생'], ['장소 강당', '장소', '강당'], ['장소 본교 운동장', '장소', '본교 운동장'], ['담당 체육부 교사', '담당', '체육부 교사'],
+    ['일시 연중', '일시', '연중'], ['예산 없음', '예산', '없음'], ['대상 전교 학생', '대상', '전교 학생']]) {
+    const o = R.eventOlds({ docs: { plan: `1. ${t}\n본문\n2. 둘\n3. 셋`, form: [] } }).olds[0];
+    assert.deepEqual([o.title, o.lead, o.cut], [title, lead, true], t);
+  }
+});
