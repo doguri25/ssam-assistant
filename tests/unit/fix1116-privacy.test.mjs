@@ -528,3 +528,28 @@ test('[fix1116-privacy-R2-ro-cue] 빠른 요청 칩과 선생님이 흔히 쓰�
   assert.equal(p3.ask, '제목의 일시를 방학중으로 바꿔 줘');
   assert.deepEqual(p3.sent.map(x => x.text), d3.map(x => x.text));
 });
+
+test('[fix1116-privacy-R3-colon] 명단 줄 이름 뒤에 쌍점(「09:00 출발」「※ 장소: 강당」「(시상: 12. 3.)」)이 있어도 이름을 모두 배움', () => {
+  const docs = [
+    ['1모둠: 김하늘, 이바다, 한가람, 박솔빛 (09:00 출발)', '박솔빛 기록 담당'],
+    ['1모둠: 김하늘 이바다 한가람 박솔빛 (09:00 출발)', '박솔빛 기록 담당', '이바다 사진 촬영'],
+    ['1모둠(김하늘, 이바다, 한가람, 박솔빛) 09:00 출발', '박솔빛 기록 담당'],
+    ['최우수상 김하늘 이바다 한가람 박솔빛 (시상: 12. 3.)', '이바다 작품은 시 대회에 출품합니다.'],
+    ['참석: 김하늘, 이바다, 한가람, 박솔빛 ※ 장소: 강당', '박솔빛 사회'],
+    ['인솔: 김하늘, 이바다, 한가람, 박솔빛 / 장소: 강당', '한가람 기록'],
+    ['합창단원: 김하늘, 이바다, 한가람, 박솔빛', '박솔빛 기록 담당', '이바다 사진 촬영'],
+    ['봉사단원 김하늘 이바다 한가람 박솔빛', '이바다 사진 촬영'],
+    ['참석: 1번 김하늘 1번 이바다 1번 한가람 1번 박솔빛 외 2명 참석: 확인', '박솔빛 기록 담당', '이바다 사진 촬영']
+  ];
+  for (const d of docs) {
+    const p = payloadOf(startItems(d.map(t => L(t))), '공문체로 다듬어 줘');
+    const s = p.sent.map(x => x.text);
+    assert.ok(!s.some(t => leaks(t).length), `${d[0]} → ${JSON.stringify(s)}`);
+  }
+  // 사람이 아닌 목록은 여전히 배우지 않음(쌍점이 여럿이어도)
+  const p = payloadOf(startItems(['가. 준비물: 도시락, 우비, 안내문 / 장소: 강당', '나. 도시락은 각자 준비하고 안내문은 미리 읽어 오세요.'].map(t => L(t))), '공문체로 다듬어 줘');
+  assert.ok(p.sent.some(x => x.text.includes('도시락은') && x.text.includes('안내문은')), JSON.stringify(p.sent.map(x => x.text)));
+  // 단원(교과 단원) 머리는 그대로 물건 목록
+  const q = payloadOf(startItems(['단원: 도시락, 안내문, 신분증, 우비', '도시락은 각자'].map(t => L(t))), '공문체로 다듬어 줘');
+  assert.ok(q.sent.some(x => x.text.includes('도시락은')), JSON.stringify(q.sent.map(x => x.text)));
+});

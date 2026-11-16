@@ -122,13 +122,11 @@ const words = text => String(text == null ? '' : text).split(LIST_SPLIT).map(t =
 export const personNames = text => words(text).filter(personWord);
 // 사람 명단 줄의 머리 말(쌍점 앞, 쌍점이 없으면 첫 이름 앞의 낱말): 참석·명단·위원·대상·학생·담당·출석·결석·담임·1모둠·신청자·발표자·우수상 …
 // — 이 줄은 두 글자 이름(김솔·이산)도 배움
-const PEOPLE_HEAD = /(?:참석|참석자|참가자|참여자|불참|명단|위원|대상|대상자|학생|담당|담당자|출석|결석|지각|조퇴|담임|교사|교원|강사|교직원|회원|임원|부원|모둠원|팀원|반원|당번|수상자|인솔|인솔자|보호자|학부모|모둠|조|반|팀|신청자|희망자|지원자|발표자|합격자|후보자|입상자|선수|대표|회장|반장|짝|상)$/;
+const PEOPLE_HEAD = /(?:참석|참석자|참가자|참여자|불참|명단|위원|대상|대상자|학생|담당|담당자|출석|결석|지각|조퇴|담임|교사|교원|강사|교직원|회원|임원|부원|모둠원|팀원|반원|당번|수상자|인솔|인솔자|보호자|학부모|모둠|조|반|팀|신청자|희망자|지원자|발표자|합격자|후보자|입상자|선수|대표|회장|반장|짝|[가-힣]단원|상)$/;
 // 사람이 아닌 것을 늘어놓는 줄의 머리 말(준비물·물품·장소·일정·메뉴 …) — 그 줄의 낱말은 이름으로 배우지 않음(사람 머리 말이 같이 있으면 배움)
-const THING_HEAD = /(?:준비물|물품|품목|재료|준비|장소|일정|내용|과목|교과|메뉴|식단|장비|도서|교재|예산|비품|교구|간식|학용품|기자재|견학지|방문지|체험지|단원)$/;
+const THING_HEAD = /(?:준비물|물품|품목|재료|준비|장소|일정|내용|과목|교과|메뉴|식단|장비|도서|교재|예산|비품|교구|간식|학용품|기자재|견학지|방문지|체험지)$|^단원$/;
 const PEOPLE_WORD = /학생|학부모|보호자|어머니|아버지|선생님|교사|담임|[가-힣]님(?![가-힣])/;
 const BULLET = /^\s*(?:[-–—·•○◦▪■□*※>]+|\(?\d{1,2}[.)]|[가-하][.)])\s*/;
-// 쌍점 앞 머리 말이 앞 마디와 갈리는 자리(「준비물: 도시락, 우비 / 인솔: …」의 빗금)
-const SEG_CUT = /[/|,，;·]/g;
 /* 보내지 않는 명단 줄에서 배울 이름 → [이름]: 이름 모양 낱말(세 글자 흔한 성 이름·두 글자 성 이름 — 직함·부서·인원 말은 빼고)을 모두,
    머리 말이 사람 무리면(「참석: …」「신청자: …」「(1모둠) …」) 두 글자 이름도.
    머리 말이 사람이 아닌 것의 목록이면(「준비물: 도시락, 우비, 안내문, 신분증」「[준비물] …」「메뉴: …」) 그 마디는 배우지 않음.
@@ -144,14 +142,20 @@ export function peopleNames(line) {
   };
   // 쌍점이 없는 마디: 첫 이름 모양 낱말 앞이 머리 말
   const bare = t => { const m = [...t.matchAll(/[가-힣]+/g)].find(x => cellName(x[0]) || personWord(x[0])); if (m) seg(t.slice(0, m.index), t.slice(m.index)); };
-  const parts = s.split(/[:：]/);
-  // 마디 k의 머리 말 = 앞 조각의 끝(마지막 빗금·쉼표 뒤), 몸 = 이 조각(다음 머리 말 앞까지)
-  const cut = t => Math.max(-1, ...[...t.matchAll(SEG_CUT)].map(m => m.index));
-  bare(parts.length > 1 ? parts[0].slice(0, cut(parts[0]) + 1) : s);
-  for (let k = 1; k < parts.length; k++) {
-    const p = parts[k - 1], body = k + 1 < parts.length ? parts[k].slice(0, cut(parts[k]) + 1) : parts[k];
-    seg(p.slice(cut(p) + 1), body);
-  }
+  // 머리 말 쌍점: 시각(「09:00」)의 쌍점은 빼고. 머리 말 = 쌍점 바로 앞에 띄어쓰기로만 이어진 낱말들(「참석자 명단:」, 「(시상:」의 「시상」).
+  // 그 앞쪽의 이름 모양 낱말(「…, 박솔빛 ※ 장소:」「박솔빛 (시상:」의 박솔빛)은 앞 목록 몫 — 머리 말에 묻혀 배우지 못하는 일이 없게
+  const heads = [...s.matchAll(/[:：]/g)].map(m => m.index).filter(c => !(/\d/.test(s[c - 1] || '') && /\d/.test(s[c + 1] || ''))).map(c => {
+    const m = /[0-9A-Za-z가-힣]+(?:[ \t]+[0-9A-Za-z가-힣]+)*[ \t]*$/.exec(s.slice(0, c));
+    let at = m ? m.index : c;
+    // 마지막 이름 모양 낱말 뒤부터가 머리 말(「1번 김하늘 … 정우진 외 2명 참석:」의 「외 2명 참석」)
+    if (m) for (const w of m[0].matchAll(/[0-9A-Za-z가-힣]+/g)) {
+      if (/^[가-힣]+$/.test(w[0]) && (cellName(w[0]) || personWord(w[0])) && !PEOPLE_HEAD.test(w[0]) && !THING_HEAD.test(w[0])) at = m.index + w.index + w[0].length;
+    }
+    return { at, c };
+  });
+  // 마디 k: 머리 말 = 그 쌍점 앞 머리 말, 몸 = 쌍점 뒤부터 다음 머리 말 앞까지
+  bare(s.slice(0, heads.length ? heads[0].at : s.length));
+  heads.forEach((h, k) => seg(s.slice(h.at, h.c), s.slice(h.c + 1, k + 1 < heads.length ? heads[k + 1].at : s.length)));
   return out;
 }
 /* 쉼표·가운뎃점으로 이은 목록의 한 항목: 이름 + 「(사정)」이나 「-맡은 일」, 다음 쉼표·줄 끝까지 */
