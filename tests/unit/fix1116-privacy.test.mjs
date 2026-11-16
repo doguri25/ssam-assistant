@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { maskJosaNames, maskStaff, stripNames, maskContacts } from '../../web/core/privacy.js';
 import { maskPersons } from '../../web/core/chat-names.js';
 import { makeRedactor } from '../../web/core/redact.js';
-import { startItems, payloadOf, normChanges, plainDoc } from '../../web/menus/etc/docedit-model.js';
+import { CHIPS, startItems, payloadOf, normChanges, plainDoc } from '../../web/menus/etc/docedit-model.js';
 import { redactInput } from '../../web/menus/etc/minutes-ai.js';
 
 const L = (text, inBox = false) => ({ text, inBox });
@@ -46,6 +46,13 @@ test('[fix1116-privacy-C1-neg] 「로·으로」가 붙은 흔한 낱말(곳·�
   }
   // 받침과 맞지 않는 꼴(「강당으」+「로」)로 자르지 않음
   assert.equal(maskJosaNames('학생 강당으로 이동').text, '학생 강당으로 이동');
+  // 요청에 흔한 말투·쓰임·차례 낱말 + 로(빠른 요청 칩 글 그대로 가야 AI가 알아들음)
+  const doc = startItems([L('가. 담당: 교무부장 김하늘 선생님')]);
+  for (const ask of [...CHIPS.map(c => c.ask).filter(Boolean), '공문체로 다듬어 줘', '경어체로 바꿔 줘', '표준어로 고쳐 줘', '명조체로', '안내용으로 짧게', '홍보용으로 바꿔 줘',
+    '최종본으로 정리', '소제목으로 나눠 줘', '이름순으로 정렬', '기본값으로 둬', '기차역으로 모임', '민속촌으로 감', '장학사로 바꿈']) {
+    assert.equal(payloadOf(doc, ask).ask, ask, ask);
+    assert.equal(maskPersons(ask, { memo: true }).text, ask, `memo: ${ask}`);
+  }
 });
 
 test('[fix1116-privacy-C2] 「이름」 머리 칸 아래 두 글자·조사 끝 글자 이름(이솔·박준·김가을)도 가림 — 글 표(|)와 한글(.hwpx) 표 모두', async () => {
