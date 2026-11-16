@@ -173,15 +173,17 @@ export function attachOrphan(f, id, i) {
 /* ---------- 연간계획: 목차 key·글 ---------- */
 const won = n => Number(n || 0).toLocaleString('ko-KR');
 const dayText = s => (s.date ? `${+s.date.slice(5, 7)}월 ${+s.date.slice(8, 10)}일` : s.month ? `${s.month}월` : '');
-/* 초안 → 옛 칸(화면 차례: 목차, 없으면 기본 차례). 일정·예산 표는 줄 글로(글 칸에 붙이면 그 글). 역할은 새 칸과 같이 제목으로(sectionRole) */
+/* 초안 → 옛 칸(화면 차례: 목차, 없으면 기본 차례). 일정·예산 표는 줄 글로(글 칸에 붙이면 그 글). 역할은 새 칸과 같이 제목으로(sectionRole).
+   목차 제목에 쌍점으로·제목 낱말 뒤에 함께 적힌 글(작년 계획서 「Ⅰ. 목적: 책을 즐겨 읽는 습관 기르기」)은 lead — 새 제목으로 바꿀 때 그 칸 글 첫 줄로(행사·학급운영계획과 같이) */
 export function yearOlds(d) {
   const order = d && d.outline && d.outline.length ? d.outline.map(o => [o.key, o.title]) : SECTIONS;
-  return order.map(([key, title], i) => ({
-    id: 'o' + (i + 1), key, title, role: sectionRole(title),
-    text: key === 'schedule' ? ((d && d.schedule) || []).map(s => [dayText(s), s.title].filter(Boolean).join(' ')).join('\n')
+  return order.map(([key, full], i) => {
+    const body = key === 'schedule' ? ((d && d.schedule) || []).map(s => [dayText(s), s.title].filter(Boolean).join(' ')).join('\n')
       : key === 'budget' ? ((d && d.budget) || []).map(b => `${b.name} ${won(b.amount)}원${b.note ? ` (${b.note})` : ''}`).join('\n')
-      : str(d && d[key])
-  }));
+      : str(d && d[key]);
+    const { title, lead, cut } = headSplit(str(full).trim());
+    return { id: 'o' + (i + 1), key, title: title || full, role: sectionRole(title || full), lead, cut: !!cut, body, text: lead ? join([lead, body]) : body };
+  });
 }
 /* 새 서식 글 → 새 칸(연간계획 목차 읽기 그대로 key를 정함: 목적·방침·세부·일정·예산·평가, 그 밖은 덧붙임 칸). 일정·예산 칸은 표 그대로.
    맞추기 역할은 제목 하나만 보고(sectionRole — 행사·학급운영계획과 같이): 목차 읽기가 앞 칸부터 차지한 key(「추진 배경」이 목적 칸)로 맞추지 않게,
@@ -195,15 +197,28 @@ export function yearHeads(text) {
 }
 /* 일정·예산 표 칸에는 그 표만 */
 export const yearAccepts = (h, o) => !(h.key === 'schedule' || h.key === 'budget') || o.key === h.key;
-/* 바꾼 초안: 새 목차(fromForm — 「다시 만들기」도 이 차례), 글 칸은 옮겨 온 칸 글 + 새로 쓴 글, 일정·예산 표는 그대로 */
+/* 바꾼 초안: 새 목차(fromForm — 「다시 만들기」도 이 차례), 글 칸은 옮겨 온 칸 글(제목 줄 글이 첫 줄) + 새로 쓴 글, 일정·예산 표는 그대로.
+   일정·예산 표 칸으로 간 옛 칸의 제목 줄 글(「추진 일정: 학기별 2회」)은 표에 넣을 자리가 없으므로 가까운 글 칸에 「옛 제목: 글」로(앞 글 칸 끝, 없으면 뒤 글 칸 첫머리).
+   표 머리 괄호 글(「소요 예산 (단위: 원)」)은 옮기지 않음 */
 export function applyYear(d, f, H, olds) {
   const byId = new Map(olds.map(o => [o.id, o]));
   const v = { ...d, outline: H.heads.map(h => ({ key: h.key, title: h.title })), roman: H.roman, fromForm: true };
   for (const k of Object.keys(v)) if (isExtra(k)) delete v[k];
   for (const k of TEXT_SECTIONS) v[k] = '';
+  const table = h => h.key === 'schedule' || h.key === 'budget';
+  const first = H.heads.map(() => []), last = H.heads.map(() => []);
   H.heads.forEach((h, i) => {
-    if (h.key === 'schedule' || h.key === 'budget') return;
-    v[h.key] = join([...f.to[i].from.map(id => (byId.get(id) || {}).text), f.to[i].write]);
+    if (!table(h)) return;
+    const lines = f.to[i].from.map(id => byId.get(id)).filter(o => o && o.cut && leadLine(o, h)).map(o => `${o.title}: ${o.lead}`);
+    if (!lines.length) return;
+    let j = i - 1;
+    while (j >= 0 && table(H.heads[j])) j--;
+    if (j >= 0) last[j].push(...lines);
+    else { j = H.heads.findIndex((x, k) => k > i && !table(x)); if (j >= 0) first[j].push(...lines); }
+  });
+  H.heads.forEach((h, i) => {
+    if (table(h)) return;
+    v[h.key] = join([...first[i], ...f.to[i].from.map(id => byId.get(id)).filter(Boolean).map(o => oldText(o, h)), f.to[i].write, ...last[i]]);
   });
   return normDraft(v);
 }

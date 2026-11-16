@@ -68,3 +68,37 @@ test('[C17] 연간계획 [되돌리기]: 바꾸기 전 목차·글로 — 바꾸
   // 지금 초안이 없으면 스냅숏 그대로
   assert.deepEqual(R.yearRestore(null, snap), snap);
 });
+
+test('[C16] 연간계획: 큰 제목 줄에 함께 적힌 글(「목적: …」「일시: 연중…」「추진 일정: …」)도 새 서식으로 바꾸면 그 칸 글로 남음 — 한 번만', () => {
+  const LAST = '2026학년도 독서교육 운영 계획\nⅠ. 목적: 책을 즐겨 읽는 습관 기르기\n가. 독서\nⅡ. 운영 방침\n가. 전교생\nⅢ. 세부 추진 내용\n1. 아침 독서\nⅣ. 일시: 연중(3월~12월)\nⅤ. 추진 일정: 학기별 2회\nⅥ. 소요 예산 (단위: 원)\nⅦ. 기대 효과';
+  const o = Y.yearOutline(LAST);
+  assert.deepEqual(o.items.map(x => x.key), ['purpose', 'policy', 'details', 'x1', 'schedule', 'budget', 'evaluation']);
+  const d = Y.normDraft({ purpose: '독서 습관을 기른다.', policy: '가. 전교생이 참여한다.', details: '1. 아침 독서', evaluation: '독서량이 는다.', x1: '연중 운영한다.',
+    schedule: [{ title: '계획 수립', date: '2027-03-10' }], budget: [{ name: '도서', amount: 1000, note: '' }], outline: o.items, roman: o.roman });
+  const olds = R.yearOlds(d);
+  assert.deepEqual(olds.map(x => x.title), ['목적', '운영 방침', '세부 추진 내용', '일시', '추진 일정', '소요 예산 (단위: 원)', '기대 효과'], '쌍점 앞이 맞출 제목');
+  assert.equal(olds[0].role, 'purpose');
+  assert.equal(olds[0].text, '책을 즐겨 읽는 습관 기르기\n독서 습관을 기른다.', 'AI에도 제목 줄 글');
+  const nd = reformYear(d, 'Ⅰ. 목적\nⅡ. 방침\nⅢ. 세부 추진 계획\nⅣ. 추진 일정\nⅤ. 예산\nⅥ. 평가');
+  const all = Y.planText({ year: 2027, name: '독서', draft: nd });
+  for (const s of ['책을 즐겨 읽는 습관 기르기', '일시: 연중(3월~12월)', '추진 일정: 학기별 2회', '연중 운영한다.', '1. 아침 독서']) assert.equal(count(all, s), 1, `${s} 한 번:\n${all}`);
+  assert.equal(nd.purpose, '책을 즐겨 읽는 습관 기르기\n독서 습관을 기른다.', '비슷한 제목 칸이면 글만 첫 줄로');
+  // 옮길 곳 없는 「일시」는 앞 칸(세부)에 붙고 옛 제목을 붙임, 일정 표 칸 제목 줄 글은 가까운 글 칸(앞 칸) 끝으로
+  assert.equal(nd.details, '1. 아침 독서\n일시: 연중(3월~12월)\n연중 운영한다.\n추진 일정: 학기별 2회');
+  assert.ok(!all.includes('단위: 원'), '표 칸 제목의 괄호 글(표 머리)은 글 칸으로 옮기지 않음:\n' + all);
+  assert.deepEqual(nd.schedule, d.schedule, '일정 표 그대로');
+  // 같은 제목 줄 서식(작년 계획서)으로 옮기면 제목 줄 글을 다시 쓰지 않음
+  const same = reformYear(d, LAST);
+  const t2 = Y.planText({ year: 2027, name: '독서', draft: same });
+  for (const s of ['책을 즐겨 읽는 습관 기르기', '연중(3월~12월)', '학기별 2회']) assert.equal(count(t2, s), 1, `${s} 한 번:\n${t2}`);
+  assert.equal(same.purpose, '독서 습관을 기른다.');
+  // 일정 표 칸이 맨 앞이면 뒤 글 칸 첫머리로
+  const o3 = Y.yearOutline('Ⅰ. 추진 일정: 연중\nⅡ. 목적\nⅢ. 세부 추진 내용');
+  const d3 = Y.normDraft({ purpose: '독서 습관', details: '아침 독서', schedule: [{ title: '계획 수립', date: '2027-03-10' }], outline: o3.items, roman: o3.roman });
+  const n3 = reformYear(d3, 'Ⅰ. 월별 추진 일정\nⅡ. 목적\nⅢ. 세부 추진 계획');
+  assert.equal(n3.purpose, '추진 일정: 연중\n독서 습관');
+  // 제목 줄 글이 없는 목차는 전과 같음
+  const plain = Y.normDraft({ ...d, outline: Y.yearOutline('Ⅰ. 목적\nⅡ. 운영 방침\nⅢ. 세부 추진 내용\nⅣ. 일시\nⅤ. 추진 일정\nⅥ. 소요 예산\nⅦ. 기대 효과').items });
+  const np = reformYear(plain, 'Ⅰ. 목적\nⅡ. 방침\nⅢ. 세부 추진 계획\nⅣ. 추진 일정\nⅤ. 예산\nⅥ. 평가');
+  assert.deepEqual([np.purpose, np.policy, np.details, np.evaluation], ['독서 습관을 기른다.', '가. 전교생이 참여한다.', '1. 아침 독서\n연중 운영한다.', '독서량이 는다.']);
+});
