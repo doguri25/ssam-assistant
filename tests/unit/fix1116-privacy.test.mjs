@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { maskJosaNames, maskStaff, stripNames, maskContacts } from '../../web/core/privacy.js';
 import { maskPersons } from '../../web/core/chat-names.js';
 import { makeRedactor } from '../../web/core/redact.js';
-import { startItems, payloadOf, normChanges } from '../../web/menus/etc/docedit-model.js';
+import { startItems, payloadOf, normChanges, plainDoc } from '../../web/menus/etc/docedit-model.js';
 import { redactInput } from '../../web/menus/etc/minutes-ai.js';
 
 const L = (text, inBox = false) => ({ text, inBox });
@@ -196,4 +196,22 @@ test('[fix1116-privacy-C8-neg] 날짜·기간·금액 범위·앞자리만 쓴 �
     const out = makeRedactor().line(l);
     assert.ok(out && out.text === l, `${l} → ${out && out.text}`);
   }
+});
+
+test('[fix1116-privacy-C4] 글만 읽은 문서 → 기본 문서: .hwp 표(「칸 | 칸」 줄)는 표로, 워드 문단 안 탭(「1.⇥목적」)은 문단으로', () => {
+  const doc = lines => { const ls = lines.map(t => L(t)); return plainDoc(ls, startItems(ls)); };
+  // .hwp(blocksToText): 표 칸을 「 | 」로 이은 줄, 빈 끝 칸은 「|」로 끝남
+  assert.deepEqual(doc(['체험학습 안내', '구분 | 내용 | 비고', '기간 | 2026. 3. |', '장소 | 과학관 | 버스', '끝.']).blocks, [
+    { type: 'table', rows: [['구분', '내용', '비고'], ['기간', '2026. 3.', ''], ['장소', '과학관', '버스']] },
+    { type: 'p', text: '끝.' }
+  ]);
+  // 워드: 번호·붙임 뒤 탭이 든 문단은 표가 아님(서로 합치지도 않음)
+  assert.deepEqual(doc(['계획', '1.\t목적', '가.\t즐거움을 알게 함.', '붙임\t계획서 1부.  끝.']).blocks, [
+    { type: 'p', text: '1.\t목적' }, { type: 'p', text: '가.\t즐거움을 알게 함.' }, { type: 'p', text: '붙임\t계획서 1부.  끝.' }
+  ]);
+  // 워드 표(칸마다 탭)는 그대로 표 — 두 줄 넘게, 또는 한 줄이라도 칸이 셋 넘으면
+  assert.deepEqual(doc(['결재', '담당\t교감\t교장']).blocks, [{ type: 'table', rows: [['담당', '교감', '교장']] }]);
+  assert.deepEqual(doc(['일정', '1.\t3월\t입학식', '2.\t4월\t체험학습']).blocks, [{ type: 'table', rows: [['1.', '3월', '입학식'], ['2.', '4월', '체험학습']] }]);
+  // 표 줄 사이 「|」가 없는 보통 줄은 문단
+  assert.deepEqual(doc(['안내', '가 또는 나를 고름', 'A|B 꼴 이름']).blocks, [{ type: 'p', text: '가 또는 나를 고름' }, { type: 'p', text: 'A|B 꼴 이름' }]);
 });

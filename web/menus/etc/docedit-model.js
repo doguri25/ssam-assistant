@@ -245,7 +245,19 @@ export function editsOf(items) {
   }
   return ed;
 }
-/* 글만 읽은 파일(.hwp·워드·PDF·글) → 쌤비서 기본 문서 { title, blocks }: 첫 줄은 제목, 탭으로 나뉜 줄이 이어지면 표, 빈 줄은 하나로 */
+// 표 줄: .hwp 글(평가 메뉴 blocksToText)은 칸을 「 | 」로 이음(빈 끝 칸은 「|」로 끝남), 워드 표는 칸마다 탭
+const PIPE_ROW = /\s\|(?:\s|$)|^\|\s/;
+// 워드 문단 안 탭(「1.⇥목적」「붙임⇥계획서 1부.」): 칸 둘이고 앞 칸이 번호·기호·붙임이면 표 줄이 아님
+const ITEM_HEAD = /^(?:\d{1,2}[.)]|[가-하][.)]|\(\d{1,2}\)|\([가-하]\)|[①-⑳]|[□■○●◦·•▪※\-–]|붙임(?:\s*\d+\.?)?)$/;
+function rowOf(t) {
+  const s = t.trim();
+  if (PIPE_ROW.test(s)) return { k: '|', cells: s.split(/\s*\|\s*/).map(c => c.trim()) };
+  if (!t.includes('\t')) return null;
+  const cells = t.split('\t').map(c => c.trim());
+  return cells.length === 2 && ITEM_HEAD.test(cells[0]) ? null : { k: '\t', cells };
+}
+/* 글만 읽은 파일(.hwp·워드·PDF·글) → 쌤비서 기본 문서 { title, blocks }: 첫 줄은 제목, 「칸 | 칸」 줄(.hwp 표)이나 탭으로 나뉜 줄(워드 표)이 이어지면 표,
+   빈 줄은 하나로. 탭 줄은 두 줄 넘게 이어지거나 칸이 셋 넘을 때만 표(문단 안 탭 한 줄은 문단 그대로) */
 export function plainDoc(lines, items) {
   const all = finalLines(lines, editsOf(items));
   const first = all.findIndex(t => t.trim());
@@ -253,13 +265,20 @@ export function plainDoc(lines, items) {
   const rest = all.slice(first + 1);
   while (rest.length && !rest[rest.length - 1].trim()) rest.pop();
   const blocks = [];
-  for (const t of rest) {
-    const last = blocks[blocks.length - 1];
-    if (t.includes('\t')) {
-      const row = t.split('\t').map(c => c.trim());
-      if (last && last.type === 'table') last.rows.push(row); else blocks.push({ type: 'table', rows: [row] });
-    } else if (!t.trim()) { if (!(last && last.type === 'p' && !last.text)) blocks.push({ type: 'p', text: '' }); }
+  for (let i = 0; i < rest.length;) {
+    const t = rest[i], row = rowOf(t), last = blocks[blocks.length - 1];
+    if (row) {
+      let j = i + 1;
+      const rows = [row.cells];
+      for (let r; j < rest.length && (r = rowOf(rest[j])) && r.k === row.k; j++) rows.push(r.cells);
+      if (row.k === '|' || rows.length >= 2 || row.cells.length >= 3) blocks.push({ type: 'table', rows });
+      else blocks.push({ type: 'p', text: t });
+      i = j;
+      continue;
+    }
+    if (!t.trim()) { if (!(last && last.type === 'p' && !last.text)) blocks.push({ type: 'p', text: '' }); }
     else blocks.push({ type: 'p', text: t });
+    i++;
   }
   return { title, blocks };
 }
