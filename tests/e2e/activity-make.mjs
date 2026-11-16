@@ -1,7 +1,7 @@
 // 평가 › 활동지 › [활동지 만들기] (스펙 2026-11-15-docedit-minutes-quiz §3): 목록의 [활동지 만들기] → 진도표 교과·차시(다음 차시 기본) → [만들기](AI 업무 계획, 학생 자료 없음)
 // → 열린 문항(쓰기·그리기·생각 정리) 카드와 ○·△ 기준, 빈 기준은 확인할 것, 활동 이름, [이 문항 다시 만들기]·[문항 더하기]·[빼기],
 // [학생 활동지 내려받기](맨 위 「학년 반 번호 이름」 칸, 기준은 빼고), [이대로 활동지 만들기] → 기준이 확정된 새 활동지(3단계 학생 활동지)로 열림·채점 요청에 그 기준,
-// 학급 화면에는 단추가 없음, 390·360px 가로 넘침·겹침 없음. 학교·이름은 모두 지어낸 것
+// 진도표 밖 「직접 쓰기」(교직원 이름은 가려 보내고 활동 이름·단원에는 원래 이름), 학급 화면에는 단추가 없음, 390·360px 가로 넘침·겹침 없음. 학교·이름은 모두 지어낸 것
 import { readFileSync } from 'node:fs';
 import { open, run, assert, enter, mockClaude } from './helpers.mjs';
 import { unzip } from '../../web/core/zip.js';
@@ -22,7 +22,8 @@ await page.addInitScript(() => {
 const prompts = [];
 await mockClaude(page, async ({ prompt }) => {
   prompts.push(prompt);
-  if (prompt.startsWith('[활동지 만들기]')) return JSON.stringify({ title: '새싹마을 자랑거리', items: [
+  // 직접 쓴 범위에서 가린 이름(〔이름1〕)이 오면 활동 이름에 그 자리 표시를 그대로 씀
+  if (prompt.startsWith('[활동지 만들기]')) return JSON.stringify({ title: prompt.includes('〔이름1〕') ? '〔이름1〕 선생님과 자랑거리 찾기' : '새싹마을 자랑거리', items: [
     { kind: 'write', ask: '우리 고장의 자랑거리 두 가지와 그 까닭을 쓰세요.', answer: '새싹시장 — 물건이 싱싱해서', ok: '자랑거리 두 가지와 까닭을 씀', part: '자랑거리만 쓰거나 하나만 씀' },
     { kind: 'draw', ask: '자랑거리 한 곳을 그려 보세요.', answer: '건물과 사람들', ok: '장소의 특징이 드러나게 자세히 그림', part: '' },
     { kind: 'think', ask: '자랑거리를 알리는 방법을 생각그물로 정리해 보세요.', answer: '포스터, 누리집', ok: '방법 세 가지 넘게 정리', part: '방법 하나만 정리' }] });
@@ -129,6 +130,28 @@ await run('activity-make', [
     await page.click(`${V} .steps [data-step="2"]`);
     await page.waitForSelector(`${V} #actItems`);
     assert((await page.textContent(`${V} #actItems`)).includes('AI가 만듦') && (await page.textContent(`${V} .un-body`)).includes('확정함'), '2단계 기준 확정');
+  }],
+  ['진도표 밖 「직접 쓰기」: 첫 줄의 교직원 이름은 가려 보내고, 활동 이름·저장한 단원에는 원래 이름(〔이름n〕이 남지 않음)', async () => {
+    await page.click(`${V} [data-ac="back"]`);
+    await page.click(`${V} [data-ac="make"]`);
+    await page.waitForSelector(`${MK} #mkSub`);
+    await page.selectOption(`${MK} #mkSub`, '__free');
+    await page.waitForSelector(`${MK} #mkFree`);
+    await page.fill(`${MK} #mkSubject`, '사회');
+    await page.fill(`${MK} #mkFree`, '1. 우리 고장의 모습(한가람 선생님 자료)\n고장의 자랑거리 알기');
+    const n = prompts.length;
+    await page.click(`${MK} [data-mk="make"]`);
+    await until(async () => await cards() === 3);
+    const p = prompts.slice(n).find(x => x.startsWith('[활동지 만들기]'));
+    assert(p && !p.includes('한가람') && p.includes('〔이름1〕 선생님 자료'), (p || '').slice(0, 300));
+    assert(await page.inputValue(`${MK} #mkTitle`) === '한가람 선생님과 자랑거리 찾기', await page.inputValue(`${MK} #mkTitle`));
+    await page.fill(`${MK} [data-mk-item="2"] [data-mf="part"]`, '장소만 간단히 그림');
+    await page.click(`${MK} [data-mk="create"]`);
+    await page.waitForFunction(s => { const c = document.querySelector(`${s} .steps li.cur`); return c && c.textContent.includes('학생 활동지'); }, V);
+    assert((await page.textContent(`${V} .un-title`)).trim() === '한가람 선생님과 자랑거리 찾기', await page.textContent(`${V} .un-title`));
+    const a = (await acts()).find(x => x && x.meta.title === '한가람 선생님과 자랑거리 찾기');
+    assert(a && a.meta.unit === '1. 우리 고장의 모습(한가람 선생님 자료)', JSON.stringify(a && a.meta));
+    assert(!JSON.stringify(a).includes('〔'), '자리 표시가 남음');
   }],
   ['휴대폰 390·360px: 고르기·문항 카드·내려받기 줄이 가로로 넘치거나 겹치지 않음', async () => {
     await page.click(`${V} [data-ac="back"]`);

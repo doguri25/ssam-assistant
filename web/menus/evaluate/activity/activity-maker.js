@@ -79,7 +79,8 @@ async function makeAll() {
   try {
     const out = await ai.generateJSON(actPrompt({ scope: v.scope, grade: v.grade, count: v.count, kinds: v.kinds, level: v.level }), { task: 'plan', valid: x => normTasks(x).length > 0 });
     M.tasks = normTasks(out, { count: v.count }).map(t => unmaskItem(v.scope.back, t));
-    M.title = String((out && out.title) || '').trim().slice(0, 60) || (v.scope.titles && v.scope.titles[0]) || '';
+    // 활동 이름도 돌아온 글: 직접 쓴 범위에서 가린 이름의 자리 표시는 원래 이름으로
+    M.title = v.scope.back(String((out && out.title) || '')).trim().slice(0, 60) || (v.scope.titles && v.scope.titles[0]) || '';
     M.scope = v.scope; M.opts = { grade: v.grade, level: v.level };
     M.note = M.tasks.length < v.count ? `AI가 ${M.tasks.length}문항만 만들었어요. [문항 더하기]로 더할 수 있어요.` : '';
   } catch (e) { M.msg = failMsg(e); }

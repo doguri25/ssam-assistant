@@ -126,7 +126,11 @@ export function pickValue(S) {
   else {
     const text = String(S.free).split('\n').map(l => rd.line(l)).filter(Boolean).map(x => x.text).join('\n');
     if (!text.trim()) error = '범위에 명단·주민번호 줄만 있어 보낼 글이 없어요. 단원·성취기준·범위만 써 주세요.';
-    else scope = { ...freeScope(S.subject, text), titles: [], mask, back: rd.back };
+    else {
+      // AI로 보내는 범위 줄(lines)은 가린 채로, 평가 정보·문제지 제목·활동지에 남는 단원 칸은 원래 이름으로
+      const fs = freeScope(S.subject, text);
+      scope = { ...fs, unit: rd.back(fs.unit), unitName: rd.back(fs.unitName), titles: [], mask, back: rd.back };
+    }
   }
   if (!error && !base.kinds.length) error = '유형을 하나 넘게 골라 주세요.';
   return { ...base, scope, error };
