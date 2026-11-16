@@ -2,7 +2,7 @@
    이름은 모두 지어낸 것(김하늘·이바다·한가람·박솔빛) */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { maskJosaNames, maskStaff, stripNames } from '../../web/core/privacy.js';
+import { maskJosaNames, maskStaff, stripNames, maskContacts } from '../../web/core/privacy.js';
 import { maskPersons } from '../../web/core/chat-names.js';
 import { makeRedactor } from '../../web/core/redact.js';
 import { startItems, payloadOf, normChanges } from '../../web/menus/etc/docedit-model.js';
@@ -181,4 +181,19 @@ test('[fix1116-privacy-C7] AI가 자리 표시 괄호를 바꾼 글(【이름1�
 test('[fix1116-privacy-C7-neg] 자리 표시와 비슷하지만 보통 글(「이름 2자 이내」「(이름) 칸」「[1]」「(1)」)은 깨진 것이 아님', () => {
   const { bad } = makeRedactor();
   for (const t of ['이름 2자 이내로 씁니다', '(이름) 칸에 적기', '이름(한글)', '1) 이름 쓰기', '[1] 목적', '(1) 일시', '「이름」 칸', '학년 반 번호 이름 칸', '[붙임 1] 계획서']) assert.equal(bad(t), false, t);
+});
+
+test('[fix1116-privacy-C8] 주민등록번호: 긴 줄표·전각 하이픈(080101–3123456)·뒷자리 가린 꼴(080101-3******)이 든 줄도 보내지 않음', () => {
+  for (const l of ['주민등록번호: 080101–3123456', '주민등록번호 080101－3123456', '김하늘 080101-3******', '외국인등록번호 080101 — 5＊＊＊＊＊＊', '생년월일 080101-3xxxxxx', '080101‐3123456']) {
+    assert.equal(makeRedactor().line(l), null, l);
+    assert.ok(!/080101/.test(maskContacts(l)), `maskContacts ${l} → ${maskContacts(l)}`);
+  }
+  assert.equal(makeRedactor().line('주민등록번호: 080101-3123456'), null, '예전 꼴도 그대로');
+});
+
+test('[fix1116-privacy-C8-neg] 날짜·기간·금액 범위·앞자리만 쓴 생년월일은 그대로 보냄', () => {
+  for (const l of ['사업 기간 2026. 3. 1.–2027. 2. 28.', '예산 300000–1500000원', '행사일 2026-11-15', '생년월일: 080101-3', '번호 1–3번, 5–7번', '접수 2026–2027학년도']) {
+    const out = makeRedactor().line(l);
+    assert.ok(out && out.text === l, `${l} → ${out && out.text}`);
+  }
 });
