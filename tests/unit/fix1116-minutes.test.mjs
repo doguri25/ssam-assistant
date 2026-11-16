@@ -40,6 +40,24 @@ test('[fix1116-min-bullet-strip] 목록 번호·기호는 지금처럼 뺌(뒤�
   assert.ok(lineOut('1. 11. 20.(금)까지 받기로 함').includes('11. 20.(금)까지'), lineOut('1. 11. 20.(금)까지 받기로 함'));
 });
 
+/* ---------- C12: 공문체·맞춤법 ---------- */
+test('[fix1116-min-docedit-words] 「이 공문 맞춤법 고쳐 줘」「한글 파일 공문체로」「가정통신문 맞춤법 봐 줘」 → 문서 다듬기(공문 처리·가정통신문 쓰기가 아님)', () => {
+  for (const s of ['이 공문 맞춤법 고쳐 줘', '한글 파일 공문체로', '이 문서 공문체로', '공문 다듬어 줘', '공문을 교정해 줘', '공문 맞춤법이랑 띄어쓰기 좀 봐 줘', '가정통신문 맞춤법 봐 줘', '안내장 띄어쓰기 고쳐 줘', '보고서 맞춤법 고쳐 줘', '이 파일 다듬어 줘']) {
+    const r = route(s);
+    assert.equal(r.intent, 'docedit', `${s} → ${r.intent} ${r.candidates}`);
+  }
+});
+
+test('[fix1116-min-docedit-not] 공문 처리·글 쓰기 말은 그대로, 「공문체로 ○○ 써 줘」는 그 글', () => {
+  const cases = [['공문 처리해 줘', 'gongmun'], ['공문 기한 정리해 줘', 'gongmun'], ['교육청 공문 처리', 'gongmun'], ['협의회 결과 공문 처리', 'gongmun'],
+    ['공문체로 쪽지 써 줘', 'message'], ['공문체로 가정통신문 써 줘', 'letter'], ['가정통신문 써 줘', 'letter'], ['결과 보고서 써 줘', 'report'],
+    ['학생 문집 맞춤법 교정 활동 결과 보고서 써 줘', 'report'], ['공문 처리해 줘\n제출 문서는 맞춤법을 확인하여 보내 주시기 바랍니다', 'gongmun']];
+  for (const [s, want] of cases) { const r = route(s); assert.equal(r.intent, want, `${s} → ${r.intent} ${r.candidates}`); }
+  // 맞춤법 뒤가 고치는 말이 아니면(확인 후 발송·확인 안내) 넣을 내용 — 문서 다듬기로 가지 않음
+  assert.equal(route('학부모 안내장 맞춤법 확인 후 발송').intent, 'letter');
+  assert.notEqual(route('공문 맞춤법 확인 안내 쪽지 써 줘').intent, 'docedit');
+});
+
 /* ---------- C14: 다시 정리할 때 종류 ---------- */
 test('[fix1116-min-kind-keep] 다시 정리할 때 AI가 이름을 비워도 남은 이름의 종류 그대로(「기타」로 바뀌지 않음)', () => {
   const first = normMinutes({ title: '3학년 학년 협의회', agenda: [{ title: 'a' }] }, { year: 2026, today: TODAY });
