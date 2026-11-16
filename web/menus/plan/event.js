@@ -23,7 +23,7 @@ import { putReportSources } from './report.js';
 import { putLetterDraft } from '../etc/letter.js';
 import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import { letterBodyFromEvent } from '../etc/letter-ai.js';
-import { reformHTML, registerReform, keepLastForm, HWPX_HINT } from './reform.js';
+import { reformHTML, registerReform, keepLastForm, dropReform, HWPX_HINT } from './reform.js';
 import { formHeads, withPlanRoles, eventOlds, applyEvent, eventSnap, eventRestore } from './reform-model.js';
 import { KINDS, DOCS, REF_KINDS, normRefs, guessKind, planOutlineRule, planFormRule, refsBlock, normRefNotes, newEvent, listEventPlans, getEvent, saveEvent, deleteEvent, currentEventId, setCurrentEvent, normOptions, letterMissing, docDoc, confirmBlockers, normItems, maskResult } from './event-model.js';
 
@@ -620,7 +620,7 @@ function askDelete() {
     <p class="muted" style="margin:0">구성안·문서·설문 결과가 모두 지워지고, 학사일정에 넣은 행사 날짜도 빠져요. 되돌릴 수 없어요.</p>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>그만두기</button><button class="btn primary" type="button" data-e="deleteYes">지우기</button></div>`,
   sh => sh.querySelector('[data-e="deleteYes"]').addEventListener('click', () => {
-    deleteEvent(id); removeEvents('event:' + id);
+    deleteEvent(id); removeEvents('event:' + id); dropReform('event', id);
     S.closeSheet();
     ev = listEventPlans()[0] || newEvent(); saved = !!getEvent(ev.id);
     if (saved) setCurrentEvent(ev.id);

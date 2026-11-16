@@ -20,7 +20,7 @@ import {
   normSections, normMonthly, normEvalRows, normGuide, guideStatus, insertSentence, draftText, hoursRows, planTitle, planDoc, planText
 } from './classplan-model.js';
 import { overlap } from './year-model.js';
-import { reformHTML, registerReform, keepLastForm } from './reform.js';
+import { reformHTML, registerReform, keepLastForm, dropReform } from './reform.js';
 import { formHeads, withPlanRoles, classOlds, applyClass } from './reform-model.js';
 import { guidePrompt, draftPrompt, evalPrompt } from './classplan-ai.js';
 import { parseJindo } from '../class/class-import.js';
@@ -547,7 +547,7 @@ function askDelete() {
     <p class="muted" style="margin:0">계획서·목차·넣은 자료·첨부 요약이 모두 지워져요. 되돌릴 수 없어요.</p>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>그만두기</button><button class="btn primary" type="button" data-c="deleteYes">지우기</button></div>`,
   sh => sh.querySelector('[data-c="deleteYes"]').addEventListener('click', () => {
-    deletePlan(id);
+    deletePlan(id); dropReform('classplan', id);
     S().closeSheet();
     plan = listPlans()[0] || newPlan(); saved = !!getPlan(plan.id);
     if (saved) setCurrent(plan.id);

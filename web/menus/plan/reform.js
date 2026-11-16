@@ -9,7 +9,7 @@ import { toast } from '../../core/ui.js';
 import { MAX_FORM } from '../../core/form-store.js';
 import { saveForm, pickedForm, pickForm, formError } from '../../core/school-form.js';
 import { aiNoteHTML } from '../../core/ui-parts.js';
-import { lastFormName, ruleMap, needsAI, reformPrompt, normReform, mergeReform, attachOrphan, undoPick } from './reform-model.js';
+import { lastFormName, ruleMap, needsAI, reformPrompt, normReform, mergeReform, attachOrphan, undoPick, dropPick } from './reform-model.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const ROMAN = 'ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ';
@@ -22,6 +22,8 @@ const ADAPT = new Map();
 export const registerReform = (key, a) => { ADAPT.set(key, a); };
 const undo = new Map(); // '이름:계획 id' → { snap, form(바꾸기 전에 고른 양식), picked(이 바꾸기가 고른 양식), seq(바꾼 차례) } — 한 단계
 let seq = 0;
+// 같은 종류(이름) 다른 계획의 남은 되돌리기
+const othersOf = key => [...undo].filter(([k]) => k.startsWith(key + ':')).map(([, x]) => x);
 
 /* 내려받기 줄의 단추: [새 서식으로 바꾸기] (바꾼 뒤에는 [되돌리기]도) */
 export function reformHTML(key) {
@@ -160,11 +162,18 @@ function undoReform(key) {
   a.restore(u.snap);
   // 고른 양식은 계획 종류마다 하나: 같은 종류 다른 계획이 바꾸며 지금 양식을 골라 두었으면(같은 서식 파일 포함) 그대로,
   // 아니면 이 바꾸기가 고른 양식이 아직 골라져 있을 때만 그 전 양식으로(선생님이 고른 양식은 그대로) — undoPick
-  const others = [...undo].filter(([k]) => k.startsWith(key + ':')).map(([, x]) => x);
-  const to = undoPick(u, others, pickedForm(key));
+  const to = undoPick(u, othersOf(key), pickedForm(key));
   if (to != null) pickForm(key, to);
   a.rerender();
   toast('새 서식으로 바꾸기 전 초안으로 되돌렸어요.', 5000);
+}
+/* 계획을 지울 때(「이 행사 지우기」「이 계획 지우기」) 그 계획의 [되돌리기]도 버림 — 지운 계획이 바꾸며 고른 양식을 붙잡아
+   같은 서식 파일로 바꾼 다른 계획을 되돌려도 고른 양식이 그대로 남지 않게. 지금 고른 양식은 그대로(dropPick) */
+export function dropReform(key, id) {
+  const k = `${key}:${id}`, u = undo.get(k);
+  if (!u) return;
+  undo.delete(k);
+  dropPick(u, othersOf(key));
 }
 
 if (typeof document !== 'undefined' && !globalThis.__ssamReform) {

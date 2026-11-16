@@ -16,7 +16,7 @@ import { stepsHTML } from '../../core/steps.js';
 import { keepFiles } from '../../core/keep-files.js';
 import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import { rvBoxHTML, runPlanReview, onRvClick, markDone, dropOpen, hasOpen, clearState } from './plan-review.js';
-import { reformHTML, registerReform, keepLastForm } from './reform.js';
+import { reformHTML, registerReform, keepLastForm, dropReform } from './reform.js';
 import { yearOlds, yearHeads, yearAccepts, applyYear, yearRestore } from './reform-model.js';
 import { SECTIONS, TEXT_SECTIONS, yearOutline, draftOutline, textKeys, insertKey, isExtra, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent, normReview, normGuide, normDraft, overlap, guideStatus, insertSentence, planDoc, planText, textForAI, ownerForAI, fitSchedule } from './year-model.js';
 
@@ -315,7 +315,7 @@ function askDelete() {
     <p class="muted" style="margin:0">계획서·일정·넣은 자료가 모두 지워지고, 확정해서 학사일정에 넣은 일정도 빠져요. 되돌릴 수 없어요.</p>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>그만두기</button><button class="btn primary" type="button" data-y="deleteYes">지우기</button></div>`,
   sh => sh.querySelector('[data-y="deleteYes"]').addEventListener('click', () => {
-    deletePlan(id); removeEvents('year:' + id);
+    deletePlan(id); removeEvents('year:' + id); dropReform('year', id);
     S.closeSheet();
     plan = listPlans()[0] || newPlan(); saved = !!getPlan(plan.id);
     if (saved) setCurrent(plan.id);

@@ -188,12 +188,18 @@ export function attachOrphan(f, id, i) {
    others: 같은 종류 다른 계획의 남은 되돌리기, cur: 지금 고른 양식 → 고를 양식(그대로 두면 null).
    다른 계획이 바꾸며 지금 양식을 골라 두었으면(같은 서식 파일로 바꾼 계획 포함) 그 계획이 쓰므로 그대로,
    아니면 이 바꾸기가 고른 양식이 아직 골라져 있을 때만 그 전 양식으로(그 뒤 선생님이 고른 양식은 그대로).
-   이 바꾸기가 고른 양식 위에서 바꾼 바로 다음 바꾸기는 이 바꾸기 전 양식을 이어받음(그것까지 되돌리면 둘 다 하기 전 양식으로) — others의 form을 고침 */
+   이 바꾸기가 고른 양식 위에서 바꾼 바로 다음 바꾸기는 이 바꾸기 전 양식을 이어받음(그것까지 되돌리면 둘 다 하기 전 양식으로) — others의 form을 고침(dropPick) */
 export function undoPick(u, others, cur) {
   if (!u || !u.picked) return null;
+  dropPick(u, others);
+  return cur === u.picked && !others.some(x => x.picked === cur) ? u.form : null;
+}
+/* 되돌리기를 버릴 때(그 계획을 지움): 지금 고른 양식은 그대로 두고, 이 바꾸기가 고른 양식 위에서 바꾼 바로 다음 바꾸기가 이 바꾸기 전 양식을 이어받음 —
+   지운 계획의 되돌리기가 남아 다른 계획을 되돌려도 그 양식을 붙잡거나(undoPick의 others), 지운 계획이 고른 양식으로 되돌아가지 않게 */
+export function dropPick(u, others) {
+  if (!u || !u.picked) return;
   const next = others.filter(x => x.seq > u.seq && x.form === u.picked).sort((a, b) => a.seq - b.seq)[0];
   if (next) next.form = u.form;
-  return cur === u.picked && !others.some(x => x.picked === cur) ? u.form : null;
 }
 
 /* ---------- 연간계획: 목차 key·글 ---------- */

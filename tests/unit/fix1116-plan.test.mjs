@@ -274,3 +274,30 @@ test('[R2-1 검토] 연간계획: 목차 제목은 제목 낱말 뒤 한 낱말(
   const c = R.yearOlds(Y.normDraft({ purpose: '가', outline: [{ key: 'purpose', title: '목표 달성도: 80% 이상' }, { key: 'x1', title: '둘' }, { key: 'x2', title: '셋' }] }))[0];
   assert.deepEqual([c.title, c.lead, c.cut], ['목표 달성도', '80% 이상', true]);
 });
+
+test('[R2-2 검토] 계획을 지우면 그 계획의 [되돌리기]도 지움(dropPick): 같은 서식 파일로 바꾼 지운 계획이 다른 계획을 되돌릴 때 고른 양식을 붙잡지 않음', () => {
+  // 행사 A: P0 → X, 행사 B: 같은 파일이라 X → X. B를 지움 → A를 되돌리면 바꾸기 전 양식 P0
+  const A = { form: 'P0', picked: 'X', seq: 1 }, B = { form: 'X', picked: 'X', seq: 2 };
+  R.dropPick(B, [A]);
+  assert.deepEqual(A, { form: 'P0', picked: 'X', seq: 1 }, '앞 바꾸기는 그대로');
+  assert.equal(R.undoPick(A, [], 'X'), 'P0');
+  // A를 지우면 A 양식 위에서 바꾼 B가 A 전 양식을 이어받음 → B를 되돌리면 P0
+  const A2 = { form: 'P0', picked: 'X', seq: 1 }, B2 = { form: 'X', picked: 'X', seq: 2 };
+  R.dropPick(A2, [B2]);
+  assert.equal(B2.form, 'P0');
+  assert.equal(R.undoPick(B2, [], 'X'), 'P0');
+  // 다른 파일: A P0 → X, B X → Y. A를 지우고 B를 되돌리면 P0(지운 A가 고른 X가 아님)
+  const A3 = { form: 'P0', picked: 'X', seq: 1 }, B3 = { form: 'X', picked: 'Y', seq: 2 };
+  R.dropPick(A3, [B3]);
+  assert.equal(R.undoPick(B3, [], 'Y'), 'P0');
+  // 남은 다른 계획이 같은 양식을 쓰면 전처럼 그대로([C21 검토]): A·B·C 같은 파일, C를 지우고 A를 되돌림 → B가 쓰는 X 그대로
+  const A4 = { form: 'P0', picked: 'X', seq: 1 }, B4 = { form: 'X', picked: 'X', seq: 2 }, C4 = { form: 'X', picked: 'X', seq: 3 };
+  R.dropPick(C4, [A4, B4]);
+  assert.equal(R.undoPick(A4, [B4], 'X'), null);
+  assert.equal(R.undoPick(B4, [], 'X'), 'P0');
+  // 서식을 저장하지 못한 바꾸기(picked '')를 지워도 다른 되돌리기는 그대로
+  const A5 = { form: '', picked: '', seq: 1 }, B5 = { form: '', picked: 'X', seq: 2 };
+  R.dropPick(A5, [B5]);
+  assert.deepEqual(B5, { form: '', picked: 'X', seq: 2 });
+  R.dropPick(null, [B5]);
+});
