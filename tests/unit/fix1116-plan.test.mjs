@@ -131,9 +131,9 @@ test('[C19] 제목 낱말 뒤 한 낱말이 제목을 마무리하는 말(「근
     const co = R.classOlds({ outline: [{ id: 's1', title: t, level: 1 }], draft: { s1: '본문' }, guide: null });
     assert.deepEqual([co[0].title, co[0].lead, co[0].text], [head, '', '본문'], '학급운영: ' + t);
   }
-  // 연간계획 목차 제목도
+  // 연간계획 목차 제목(작년 계획서 큰 제목 줄)도 뜻 없는 줄이 생기지 않음 — 제목 전체로 맞춤([R2-1 검토])
   const yo = R.yearOlds(Y.normDraft({ purpose: '가', policy: '나', details: '다', evaluation: '라', outline: [{ key: 'x1', title: '근거 법령' }, { key: 'purpose', title: '목적' }, { key: 'budget', title: '예산 집행' }] }));
-  assert.deepEqual(yo.map(o => [o.title, o.lead]), [['근거', ''], ['목적', ''], ['예산', '']]);
+  assert.deepEqual(yo.map(o => [o.title, o.lead]), [['근거 법령', ''], ['목적', ''], ['예산 집행', '']]);
   const plan = '1. 근거 법령\n가. 학교안전법 제8조\n2. 목적\n가. 협동심을 기른다.\n3. 세부 운영\n가. 개회식\n4. 담당 교사\n가. 체육부 운영\n5. 예산 집행\n가. 학교운영비 500,000원';
   const e = { docs: { plan, form: [] } };
   const { pre, olds } = R.eventOlds(e);
@@ -242,4 +242,35 @@ test('[C21 검토] [되돌리기]와 고른 학교 양식: 같은 서식 파일(
   const A4 = { form: '', picked: 'X', seq: 1 }, B4 = { form: 'T', picked: 'X', seq: 2 };
   assert.equal(R.undoPick(A4, [B4], 'X'), null);
   assert.equal(R.undoPick(B4, [], 'X'), 'T');
+});
+
+// ---------- 두 번째 검토 뒤 고침 ----------
+test('[R2-1 검토] 연간계획: 목차 제목은 제목 낱말 뒤 한 낱말(「목표 달성도」「근거 법령」)도 자르지 않고 제목 전체로 맞춤 — 「목표 달성도」 글이 「추진 목표」로 가 목적 글을 밀어내지 않음', () => {
+  const LAST = 'Ⅰ. 추진 목적\nⅡ. 운영 방침\nⅢ. 세부 추진 계획\nⅣ. 추진 일정\nⅤ. 소요 예산\nⅥ. 목표 달성도';
+  const NEW = 'Ⅰ. 추진 배경\nⅡ. 추진 목표\nⅢ. 세부 추진 계획\nⅣ. 월별 추진 일정\nⅤ. 소요 예산\nⅥ. 평가';
+  const o = Y.yearOutline(LAST);
+  assert.deepEqual(o.items.map(x => x.key), ['purpose', 'policy', 'details', 'schedule', 'budget', 'x1']);
+  const d = Y.normDraft({ purpose: '독서 습관을 기른다.', policy: '가. 전교생이 참여한다.', details: '1. 아침 독서', x1: '독서량 설문으로 달성도를 본다.',
+    schedule: [{ title: '계획 수립', date: '2027-03-10' }], budget: [{ name: '도서 구입', amount: 500000, note: '' }], outline: o.items, roman: o.roman });
+  const olds = R.yearOlds(d);
+  // 미리 보기 창의 옛 칸 이름도 제목 전체(「목표」로 줄여 보이지 않음)
+  assert.deepEqual([olds[5].title, olds[5].lead, olds[5].cut], ['목표 달성도', '', false]);
+  const H = R.yearHeads(NEW);
+  const rules = R.ruleMap(olds, H.heads, { accepts: R.yearAccepts });
+  assert.deepEqual(rules[1], ['o1'], '「추진 목표」에는 「추진 목적」: ' + JSON.stringify(rules));
+  // AI 없이 바꿔도 「추진 목표」 칸은 목적 글로 시작(갈 곳 없는 「운영 방침」은 가까운 칸에 붙음), 「목표 달성도」 글은 그 칸으로 가지 않고 한 번만
+  const nd = reformYear(d, NEW);
+  const all = Y.planText({ year: 2027, name: '독서', draft: nd });
+  const sec = /Ⅱ\. 추진 목표\n([\s\S]*?)\nⅢ\./.exec(all);
+  assert.ok(sec && sec[1].split('\n')[0] === '독서 습관을 기른다.' && !sec[1].includes('달성도'), all);
+  assert.equal(count(all, '독서 습관을 기른다.'), 1, all);
+  assert.equal(count(all, '독서량 설문으로 달성도를 본다.'), 1, all);
+  // 제목 낱말 뒤 한 낱말로 끝나는 목차 제목은 모두 제목 그대로(행사·학급운영계획은 [C19]처럼 제목 낱말로)
+  for (const t of ['근거 법령', '담당 교사', '예산 집행', '평가 관점', '목표 달성도', '대상 학년', '장소 배치도', '복장 규정', '방침 결정', '근거 자료', '대상 학생']) {
+    const y = R.yearOlds(Y.normDraft({ purpose: '가', details: '나', outline: [{ key: 'purpose', title: '목적' }, { key: 'x1', title: t }, { key: 'details', title: '세부 추진 계획' }] }))[1];
+    assert.deepEqual([y.title, y.lead, y.cut], [t, '', false], t);
+  }
+  // 쌍점 뒤 글은 전처럼 자름([C16])
+  const c = R.yearOlds(Y.normDraft({ purpose: '가', outline: [{ key: 'purpose', title: '목표 달성도: 80% 이상' }, { key: 'x1', title: '둘' }, { key: 'x2', title: '셋' }] }))[0];
+  assert.deepEqual([c.title, c.lead, c.cut], ['목표 달성도', '80% 이상', true]);
 });

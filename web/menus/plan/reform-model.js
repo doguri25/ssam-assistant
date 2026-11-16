@@ -201,7 +201,7 @@ const won = n => Number(n || 0).toLocaleString('ko-KR');
 const dayText = s => (s.date ? `${+s.date.slice(5, 7)}월 ${+s.date.slice(8, 10)}일` : s.month ? `${s.month}월` : '');
 /* 초안 → 옛 칸(화면 차례: 목차, 없으면 기본 차례). 일정·예산 표는 줄 글로(글 칸에 붙이면 그 글). 역할은 새 칸과 같이 제목으로(sectionRole).
    목차 제목에 쌍점으로 함께 적힌 글(작년 계획서 「Ⅰ. 목적: 책을 즐겨 읽는 습관 기르기」)은 lead — 새 제목으로 바꿀 때 그 칸 글 첫 줄로(행사·학급운영계획과 같이).
-   목차 제목은 작년 계획서의 큰 제목 줄이므로 쌍점 없이 제목 낱말 뒤에 이어진 말(「예산 확보」「내용 체계」「평가 회의」「일정 표」)은 제목의 일부 — 자르지 않음(words: false) */
+   목차 제목은 작년 계획서의 큰 제목 줄이므로 쌍점 없이 제목 낱말 뒤에 이어진 말(「예산 확보」「내용 체계」「평가 회의」「일정 표」「목표 달성도」「근거 법령」)은 제목의 일부 — 자르지 않고 제목 전체로 맞춤(words: false) */
 export function yearOlds(d) {
   const order = d && d.outline && d.outline.length ? d.outline.map(o => [o.key, o.title]) : SECTIONS;
   return order.map(([key, full], i) => {
@@ -259,7 +259,7 @@ export const yearRestore = (now, snap) => (now ? { ...snap, schedule: now.schedu
    그 밖에 쌍점 없이 계획서 제목 낱말 뒤에 적힌 글(「목적 협동심과 체력 증진」「장소 본교 운동장」)은 그 낱말 뒤에서 자름 —
    뒤가 제목을 잇는 말(「평가 및 환류」「평가 (교사용)」「평가 계획」「대상 학년 및 인원」: 및·과·괄호·가운뎃점으로 시작하거나 첫·끝 낱말이 제목 낱말)이면 제목 그대로.
    뒤가 제목을 마무리하는 한 낱말(「근거 법령」「담당 교사」「예산 집행」)이면 그 낱말도 제목의 일부라 글로 옮기지 않음(맞추기는 전처럼 제목 낱말로).
-   words: false(연간계획 목차 제목)면 제목 낱말 뒤에서 자르지 않음 — 쌍점 뒤만 글 */
+   words: false(연간계획 목차 제목)면 제목 낱말 뒤에서 자르지 않고 제목 전체로 맞춤(마무리하는 낱말도 — 「목표 달성도」가 「목표」로 줄어 「추진 목표」에 맞지 않게) — 쌍점 뒤만 글 */
 const COLON = /^(.*?[^\d\s:：])\s*[:：]\s*(.*)$/;
 // 제목 낱말: 연간계획 역할 표(목적·방침·일정·예산·평가)·행사 개요 표(일시·대상·장소)·가정통신문 항목(준비물·복장·문의)에서
 const HEAD_WORD = /^(목적|목표|필요성|취지|배경|일시|날짜|기간|장소|대상|방침|방향|내용|방법|예산|경비|준비물|복장|담당|근거|일정|평가|기대\s*효과|유의\s*사항|문의처?|연락처)\s+(\S.*)$/;
@@ -276,9 +276,9 @@ function headSplit(t, { long = false, words = true } = {}) {
   if (m && !/[(（[][^)）\]]*$/.test(m[1])) return { title: m[1].trim(), lead: m[2].trim(), cut: true };
   // 괄호 안 쌍점(「개요 (장소: 강당)」)은 자르지 않고 그 줄 글 전체를 남김
   if (m || (long && (/\d/.test(t) || t.replace(/\s/g, '').length > 20))) return { title: t, lead: t };
-  const w = HEAD_WORD.exec(t);
+  const w = words && HEAD_WORD.exec(t);
   if (w && TAIL_ONE.test(norm(w[2]))) return { title: w[1], lead: '' };
-  return w && words && !titleTail(w[2]) ? { title: w[1], lead: w[2].trim(), cut: true } : { title: t, lead: '' };
+  return w && !titleTail(w[2]) ? { title: w[1], lead: w[2].trim(), cut: true } : { title: t, lead: '' };
 }
 /* 새 제목(h) 아래 넣을 제목 줄 글: 새 제목이 그 글이나 옛 제목 줄 전체와 같으면 없음(같은 줄을 글로 다시 쓰지 않게), 자른 글이 비슷하지 않은 제목 칸으로 가면 「옛 제목: 글」(「일시: …」가 「운영 개요」 아래로) */
 const leadLine = (o, h) => (!o.lead || norm(o.lead) === norm(h.title) || norm(o.title + o.lead) === norm(h.title) ? '' : o.cut && similar(o.title, h.title) < SIMILAR ? `${o.title}: ${o.lead}` : o.lead);
