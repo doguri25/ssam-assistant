@@ -84,12 +84,13 @@ const OLD_END = /[이가는을를의에도만와과로한할된던운간친른�
    memo: 행특 메모(잘못 가려도 덜 아까움 — 을·를·과도, 홀로 쓴 이름도), first: 줄의 첫 낱말 */
 function hit(tok, prev, next, { memo = false, first = false, before = '', after = '' } = {}) {
   const cue = NEXT_CUE.test(next || '') || PREV_CUE.test(prev || '');
-  // 「로·으로(부터)」(s)는 이름 자리일 때만(privacy.js roSpot — 「바꿔·정함·뽑」 앞, 「로부터」는 「연락·받」 앞). 「예정대로」「노란색으로」는 낱말 끝 글자로도 거름(roName)
-  const ro = s => !/^으?로/.test(s) || roSpot(s, before, after);
+  // 「로·으로(부터)」(s)는 이름 자리일 때만(privacy.js roSpot — 「바꿔·정함·뽑」 앞, 「로부터」는 「연락·받」 앞). 「예정대로」「노란색으로」는 낱말 끝 글자로도 거름(roName).
+  // 목록의 이름(g)은 「로 해 줘·로 함」 앞에서도(「담당자를 김민준으로 해 줘」)
+  const ro = (s, g = '') => !/^으?로/.test(s) || roSpot(s, before, after, GIVEN.has(g));
   // 두 글자 성(남궁·황보·제갈·선우·독고) + 두 글자 이름
   if (DOUBLE.test(tok) && tok.length >= 4) {
     const g = tok.slice(2, 4), s = tok.slice(4);
-    if (SUFFIX.test(s) && ro(s) && (GIVEN.has(g) || ((cue || GLUED.test(s)) && SYL.has(g[0]) && SYL.has(g[1])))) return 4;
+    if (SUFFIX.test(s) && ro(s, g) && (GIVEN.has(g) || ((cue || GLUED.test(s)) && SYL.has(g[0]) && SYL.has(g[1])))) return 4;
   }
   // 성 + 두 글자 이름: 목록의 이름이면 조사가 붙든 홀로 쓰든. 목록 밖이면 두 글자 모두 이름 글자이고, 낱말 끝이 아니고,
   // 앞뒤에 사람을 가리키는 말이 있거나 사람 조사가 붙거나 홀로 쓰고 뒤에 메모 말이 올 때(행특 메모는 조사가 무엇이든·홀로 써도)
@@ -97,7 +98,7 @@ function hit(tok, prev, next, { memo = false, first = false, before = '', after 
     const n = tok.slice(0, 3), g = n.slice(1), s = tok.slice(3);
     // 「로·으로」: 목록의 이름(「김민준으로」 — 끝 글자가 지안·은지·민호여도)은 이름 자리일 때, 목록 밖은 낱말 끝 글자도 봄(「공문체로」「노란색으로」는 아님)
     const roOk = !/^으?로/.test(s) || roName(n, s, before, after);
-    if (!EXCEPT.has(n) && SUFFIX.test(s) && ro(s)) {
+    if (!EXCEPT.has(n) && SUFFIX.test(s) && ro(s, g)) {
       // 「설정은」「인정은」「여성은」처럼 받침 있는 두 글자 낱말 + 은은 이름(정은·성은·영은·경은)과 같아 보여서, 홀로 쓰면 앞뒤를 봄
       const topic = g[1] === '은' && batchim(g[0]) && !s;
       // 「지도하는」「이동하는」「공유하는」「구별하는」: 이름(도하·동하·유하·별하) + 는과 같아 보이는 동사로 봄(「지도하는 교사」처럼 뒤에 사람 말이 와도)
