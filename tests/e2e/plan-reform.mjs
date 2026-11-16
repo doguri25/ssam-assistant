@@ -155,10 +155,15 @@ await run('plan-reform', [
     await clickStep(5);
     await page.waitForSelector(`${P} [data-rf-undo="year"]`);
   }],
-  ['[되돌리기]: 바꾸기 전 초안(옛 차례)과 그 전에 고른 양식으로, 되돌리기는 한 단계', async () => {
+  ['[되돌리기]: 바꾸기 전 초안(옛 차례)과 그 전에 고른 양식으로, 되돌리기는 한 단계 — 바꾼 뒤 고친 일정 날짜는 그대로', async () => {
+    // 바꾼 뒤 같은 화면 일정 표에서 날짜를 고침(바꾸기와 상관없는 표)
+    await page.fill(`${P} #ypDays input[data-date="0"]`, '2027-03-17');
+    await page.dispatchEvent(`${P} #ypDays input[data-date="0"]`, 'change');
     await page.click(`${P} [data-rf-undo="year"]`);
     await toastHas('되돌렸어요');
     const p = await page.evaluate(async id => (await import('./menus/plan/year-model.js')).getPlan(id), YP);
+    assert(p.draft.schedule[0].date === '2027-03-17', '고친 일정 날짜가 바꾸기 전으로 돌아감: ' + JSON.stringify(p.draft.schedule));
+    assert(await page.inputValue(`${P} #ypDays input[data-date="0"]`) === '2027-03-17', '화면 일정 날짜');
     assert(p.draft.outline.map(o => o.title).join('|') === '추진 근거|목적|운영 방침|세부 추진 내용|추진 일정|소요 예산|기대 효과', p.draft.outline.map(o => o.title).join('|'));
     assert(!p.draft.fromForm && p.draft.x1.includes('기본계획'), JSON.stringify(p.draft).slice(0, 200));
     assert((await picked('year')) === lastYearId, '그 전에 고른 양식');
@@ -177,7 +182,8 @@ await run('plan-reform', [
       (await import('./core/store.js')).flushAll();
       const m = await import('./menus/plan/event-model.js');
       const plan = '2027 가을 운동회 운영 계획\nⅠ. 개요\n가. 일시: 2027. 5. 6.\nⅡ. 운영 방침\n가. 모두가 즐기는 운동회\nⅢ. 세부 운영\n1. 경기 종목\nⅣ. 안전 대책\n가. 보건실 운영\nⅤ. 평가\n가. 만족도 조사';
-      const e = m.saveEvent({ ...m.newEvent(), name: '가을 운동회', grades: '3~6학년', date: '2027-05-06', place: '운동장', step: 1, maxStep: 3, docs: { plan, safety: '- 안전', letter: '날짜 준비물 복장 문의', rain: '', done: false } });
+      const e = m.saveEvent({ ...m.newEvent(), name: '가을 운동회', grades: '3~6학년', date: '2027-05-06', place: '운동장', step: 1, maxStep: 3, docs: { plan, safety: '- 안전', letter: '날짜 준비물 복장 문의', rain: '', done: false },
+        rv: [{ section: 'plan', problem: '목적이 흐려요', fix: '고친 계획서' }, { section: 'letter', problem: '문의처가 없어요', fix: '옛 글로 쓴 가정통신문 수정안' }] });
       m.setCurrentEvent(e.id);
       return e.id;
     });
@@ -223,13 +229,100 @@ await run('plan-reform', [
       assert(await page.$eval(`${P} .sf-slot select[data-sf-pick]`, s => s.value) === '', `${doc} 탭에 계획서 서식이 골라짐`);
       assert(await page.locator(`${P} .sf-slot [data-e="hwpx"]`).count() === 1 && await page.locator(`${P} [data-sf-export]`).count() === 0, `${doc} 탭은 기본 내려받기`);
       assert(await page.locator(`${P} .sf-slot[data-sf="event-${doc}"]`).count() === 1, `${doc} 탭은 따로 고름`);
+      // 바꾼 뒤 가정통신문을 손으로 고침 → 그 칸의 열린 의견이 지워짐
+      if (doc === 'letter') await page.fill(`${P} textarea[data-docf="letter"]`, '날짜 준비물 복장 문의 — 김하늘 선생님이 고침');
     }
     await page.click(`${P} [data-doc="plan"]`);
     await page.waitForSelector(`${P} [data-sf-export="event"]`);
     assert(await page.$eval(`${P} select[data-sf-pick="event"]`, s => s.options[s.selectedIndex].textContent) === '운동회 새 서식', '계획서 탭은 새 서식');
+    // 같은 종류 다른 계획(행사 B)을 다른 서식으로 바꿈 → 고른 양식은 계획 종류마다 하나라 B의 서식이 골라짐
+    const EV2 = await page.evaluate(async () => {
+      const m = await import('./menus/plan/event-model.js');
+      const plan = '2027 봄 운동회 운영 계획\nⅠ. 개요\n가. 일시: 2027. 4. 20.\nⅡ. 운영 방침\n가. 안전한 운동회\nⅢ. 세부 운영\n1. 경기 종목';
+      return m.saveEvent({ ...m.newEvent(), name: '봄 운동회', date: '2027-04-20', step: 3, maxStep: 3, docs: { plan, safety: '- 안전', letter: '날짜 준비물 복장 문의', rain: '', done: false } }).id;
+    });
+    await goTab('year'); await goTab('event');
+    await page.click(`${P} [data-ev="${EV2}"]`);
+    await page.waitForSelector(`${P} [data-rf="event"]`);
+    await upload(`${P} [data-rf="event"]`, file('봄 운동회 서식.hwpx', NEW_EVENT));
+    await page.waitForSelector('#rfSheet #rfMap');
+    await page.click('#rfSheet [data-rf-ok]');
+    await toastHas('봄 운동회 서식');
+    const bForm = await formId('봄 운동회 서식');
+    assert(bForm && (await picked('event')) === bForm, '행사 B 서식을 골라 둠');
+    await page.click(`${P} [data-ev="${EV}"]`);
+    await page.waitForSelector(`${P} [data-rf-undo="event"]`);
     await page.click(`${P} [data-rf-undo="event"]`);
     await toastHas('되돌렸어요');
+    assert((await picked('event')) === bForm, '행사 A를 되돌려도 행사 B를 위해 고른 양식은 그대로');
     assert((await page.inputValue(`${P} textarea[data-docf="plan"]`)).includes('Ⅱ. 운영 방침'), '되돌림');
+    // 되돌리기는 계획서 글·계획서 의견만: 손으로 고친 가정통신문과 지워진 그 의견은 그대로(옛 수정안으로 덮을 의견이 되살아나지 않음)
+    const ue = await page.evaluate(async id => (await import('./menus/plan/event-model.js')).getEvent(id), EV);
+    assert(ue.docs.letter === '날짜 준비물 복장 문의 — 김하늘 선생님이 고침', ue.docs.letter);
+    assert(ue.rv.map(x => x.section).join('|') === 'plan', '의견: ' + JSON.stringify(ue.rv));
+    // 행사 C를 행사 B와 같은 서식 파일로 바꿈 → 같은 이름·같은 곳이라 같은 양식(id)이 골라짐
+    const first = await formId('작년 계획서 서식 · 2026 작년 운동회 계획서');
+    const EV3 = await page.evaluate(async () => {
+      const m = await import('./menus/plan/event-model.js');
+      const plan = '2027 여름 물놀이 운영 계획\nⅠ. 개요\n가. 일시: 2027. 7. 9.\nⅡ. 운영 방침\n가. 안전한 물놀이\nⅢ. 세부 운영\n1. 물총 놀이';
+      return m.saveEvent({ ...m.newEvent(), name: '여름 물놀이', date: '2027-07-09', step: 3, maxStep: 3, docs: { plan, safety: '- 안전', letter: '날짜 준비물 복장 문의', rain: '', done: false } }).id;
+    });
+    await goTab('year'); await goTab('event');
+    await page.click(`${P} [data-ev="${EV3}"]`);
+    await page.waitForSelector(`${P} [data-rf="event"]`);
+    await upload(`${P} [data-rf="event"]`, file('봄 운동회 서식.hwpx', NEW_EVENT));
+    await page.waitForSelector('#rfSheet #rfMap');
+    await page.click('#rfSheet [data-rf-ok]');
+    await toastHas('새 서식 차례로 바꿨어요');
+    assert((await formsList()).filter(f => f.name === '봄 운동회 서식').length === 1 && (await picked('event')) === bForm, '같은 서식 파일은 같은 양식');
+    // 행사 B를 되돌려도 같은 양식으로 바꾼 행사 C의 양식은 그대로
+    await page.click(`${P} [data-ev="${EV2}"]`);
+    await page.waitForSelector(`${P} [data-rf-undo="event"]`);
+    await page.click(`${P} [data-rf-undo="event"]`);
+    await toastHas('되돌렸어요');
+    assert((await picked('event')) === bForm, '행사 B를 되돌리자 행사 C를 위해 고른 양식이 바뀜: ' + (await picked('event')));
+    assert((await page.inputValue(`${P} textarea[data-docf="plan"]`)).includes('Ⅱ. 운영 방침'), '행사 B 되돌림');
+    // 행사 C까지 되돌리면 모든 바꾸기 전에 고른 양식으로
+    await page.click(`${P} [data-ev="${EV3}"]`);
+    await page.waitForSelector(`${P} [data-rf-undo="event"]`);
+    await page.click(`${P} [data-rf-undo="event"]`);
+    await page.waitForFunction(() => document.querySelector('section[data-menu="plan"] textarea[data-docf="plan"]')?.value.includes('Ⅱ. 운영 방침'));
+    assert(first && (await picked('event')) === first, '모두 되돌리면 바꾸기 전 양식: ' + (await picked('event')));
+  }],
+  ['행사계획: 같은 서식 파일로 바꾼 다른 행사를 지운 뒤 [되돌리기] → 바꾸기 전 양식으로(지운 행사의 되돌리기가 고른 양식을 붙잡지 않음)', async () => {
+    const first = await formId('작년 계획서 서식 · 2026 작년 운동회 계획서'), bForm = await formId('봄 운동회 서식');
+    assert(first && bForm && (await picked('event')) === first, '앞 단계 끝: 바꾸기 전 양식');
+    const make = (name, date) => page.evaluate(async ([name, date]) => {
+      const m = await import('./menus/plan/event-model.js');
+      const plan = `2027 ${name} 운영 계획\nⅠ. 개요\n가. 일시: ${date}\nⅡ. 운영 방침\n가. 안전한 행사\nⅢ. 세부 운영\n1. 학년별 발표`;
+      return m.saveEvent({ ...m.newEvent(), name, date, step: 3, maxStep: 3, docs: { plan, safety: '- 안전', letter: '날짜 준비물 복장 문의', rain: '', done: false } }).id;
+    }, [name, date]);
+    const D = await make('가을 학예회', '2027-10-15'), E = await make('가을 학예회(겹침)', '2027-10-15');
+    await goTab('year'); await goTab('event');
+    // 두 행사를 같은 서식 파일로 바꿈 → 같은 양식(id)
+    for (const id of [D, E]) {
+      await page.click(`${P} [data-ev="${id}"]`);
+      await page.waitForSelector(`${P} [data-rf="event"]`);
+      await upload(`${P} [data-rf="event"]`, file('봄 운동회 서식.hwpx', NEW_EVENT));
+      await page.waitForSelector('#rfSheet #rfMap');
+      await page.click('#rfSheet [data-rf-ok]');
+      await page.waitForSelector('#rfSheet', { state: 'detached' });
+      await page.waitForSelector(`${P} [data-rf-undo="event"]`);
+    }
+    assert((await formsList()).filter(f => f.name === '봄 운동회 서식').length === 1 && (await picked('event')) === bForm, '같은 서식 파일은 같은 양식');
+    // 겹쳐 만든 행사 E를 지움 — 지우기만으로 고른 양식은 바뀌지 않음
+    await page.click(`${P} [data-e="delete"]`);
+    await page.click('[data-e="deleteYes"]');
+    await toastHas('지웠어요');
+    assert(!(await page.evaluate(async id => (await import('./menus/plan/event-model.js')).getEvent(id), E)), '행사 E 지움');
+    assert((await picked('event')) === bForm, '지우자 고른 양식이 바뀜');
+    // 남은 행사 D를 되돌리면 바꾸기 전 양식으로(같은 양식을 쓰는 행사가 더는 없음)
+    await page.click(`${P} [data-ev="${D}"]`);
+    await page.waitForSelector(`${P} [data-rf-undo="event"]`);
+    await page.click(`${P} [data-rf-undo="event"]`);
+    await toastHas('되돌렸어요');
+    assert((await page.inputValue(`${P} textarea[data-docf="plan"]`)).includes('Ⅱ. 운영 방침'), '행사 D 되돌림');
+    assert((await picked('event')) === first, '지운 행사 E가 고른 양식을 붙잡음: ' + (await picked('event')));
   }],
   ['학급운영계획 1단계: 작년 계획서 .hwpx → 서식 저장·골라 둠', async () => {
     CP = await page.evaluate(async () => {
@@ -301,6 +394,48 @@ await run('plan-reform', [
       await page.waitForSelector('#rfSheet', { state: 'detached' });
     }
     await page.setViewportSize({ width: 1280, height: 860 });
+  }],
+  ['학급운영계획: 같은 서식 파일로 바꾼 다른 계획을 지운 뒤 [되돌리기] → 바꾸기 전 양식으로', async () => {
+    const before = await picked('classplan');
+    assert(before === (await formId('작년 계획서 서식 · 학급운영계획-작년-예시')), '앞 단계 끝: 바꾸기 전 양식');
+    const reformHere = async () => {
+      await clickStep(4);
+      await page.waitForFunction(() => [...document.querySelectorAll('section[data-menu="plan"] [data-rf="classplan"]')].some(x => x.checkVisibility()));
+      await uploadVisible(`${P} [data-rf="classplan"]`, file('학급 새 서식.hwpx', NEW_CLASS));
+      await page.waitForSelector('#rfSheet #rfMap');
+      await page.click('#rfSheet [data-rf-ok]');
+      await page.waitForSelector('#rfSheet', { state: 'detached' });
+      await page.waitForFunction(() => [...document.querySelectorAll('section[data-menu="plan"] [data-rf-undo="classplan"]')].some(x => x.checkVisibility()));
+    };
+    const open = async id => { await page.$eval(`${P} [data-cp="${id}"]`, b => b.click()); await page.waitForTimeout(150); };
+    // 계획 A(지금 계획)를 바꾸고, 겹쳐 만든 계획 B도 같은 서식 파일로 바꿈 → 같은 양식(id)
+    await reformHere();
+    const nf = await formId('학급 새 서식');
+    assert(nf && (await picked('classplan')) === nf, '새 서식을 골라 둠');
+    const CP2 = await page.evaluate(async () => {
+      (await import('./core/store.js')).flushAll();
+      const c = await import('./menus/plan/classplan-model.js');
+      const p = c.newPlan();
+      Object.assign(p, { grade: 3, room: 2, step: 4, maxStep: 4, outline: [{ id: 's1', title: '학급 현황', level: 1 }, { id: 's4', title: '학급 교육 목표', level: 1 }, { id: 's7', title: '월별 운영 계획', level: 1 }],
+        draft: { s1: '남 12명 여 13명', s4: '서로 돕는 반', s7: '3월 학급 세우기' } });
+      return c.savePlan(p).id;
+    });
+    await goTab('year'); await goTab('class');
+    await page.waitForSelector(`${P} [data-cp="${CP2}"]`, { state: 'attached' });
+    await open(CP2);
+    await reformHere();
+    assert((await formsList()).filter(f => f.name === '학급 새 서식').length === 1 && (await picked('classplan')) === nf, '같은 서식 파일은 같은 양식');
+    // 계획 B를 지움 → 계획 A를 되돌리면 바꾸기 전 양식으로
+    await clickVisible(`${P} [data-c="delete"]`);
+    await page.click('#sheetRoot [data-c="deleteYes"]');
+    await toastHas('지웠어요');
+    assert(!(await page.evaluate(async id => (await import('./menus/plan/classplan-model.js')).getPlan(id), CP2)), '계획 B 지움');
+    await open(CP);
+    await clickStep(4);
+    await page.waitForFunction(() => [...document.querySelectorAll('section[data-menu="plan"] [data-rf-undo="classplan"]')].some(x => x.checkVisibility()));
+    await clickVisible(`${P} [data-rf-undo="classplan"]`);
+    await toastHas('되돌렸어요');
+    assert((await picked('classplan')) === before, '지운 계획 B가 고른 양식을 붙잡음: ' + (await picked('classplan')));
   }],
   ['페이지 오류 없음', async () => { assert(!errors.length, errors.join('\n')); }]
 ]);

@@ -20,9 +20,21 @@ const join = parts => parts.map(tidy).filter(x => x.trim()).join('\n');
 export const lastFormName = file => `작년 계획서 서식 · ${String(file || '').replace(/\.[^.]+$/, '').trim() || '계획서'}`;
 
 /* ---------- 새 서식 읽기 ---------- */
+/* 새 서식 큰 제목의 빈칸 자리(「목적 :」「일시 : 2027.   .   .(   )」「추진 기간 : 2027년   월   일」「목적: ____」「소요 예산 :      원」「인원 : (   )명」)는 빼고 쌍점 앞만 제목으로 —
+   쌍점 뒤가 빈칸·밑줄·숫자·점·괄호·단위 낱말뿐이고 숫자가 없거나 빈 자리(「.   .」「(   )」「년   월」「__」)가 있을 때만.
+   채워 쓴 제목(「목적: 협동심 기르기」「일시: 2027. 10. 7.」「시간: 09:00~12:00」「예산: 500,000원」「인원: 25명」)·괄호 안 쌍점은 그대로 */
+const SLOT_ONLY = /^[\s\d.,·:：~\-–/()（）년월일시분_＿%％]*$/, BLANK_SLOT = /[.(（]\s*[.)）]|[년월시]\s+[월일분]|[_＿]/;
+// 빈칸 자리의 단위 낱말(「   원」「(   )명」「   학년   반」「금      원정」「   시간」) — 빈칸·숫자·괄호 사이에 떨어져 있을 때만(「매일」「금연」은 글)
+const UNIT = /(^|[\s\d_＿.,·~\-–/()（）])(?:원정|원|명|학년|학급|반|회|차시|시간|일간|주간|개월|개|권|건|부|매|쪽|주|금)(?=$|[\s\d_＿.,·~\-–/()（）%％])/g;
+export function formTitle(t) {
+  const s = str(t).trim(), m = /^(.*?[^\d\s:：])\s*[:：]\s*(.*)$/.exec(s);
+  if (!m || /[(（[][^)）\]]*$/.test(m[1])) return s;
+  const rest = m[2].trim().replace(UNIT, '$1 ');
+  return SLOT_ONLY.test(rest) && (!/\d/.test(rest) || BLANK_SLOT.test(rest)) ? m[1].trim() : s;
+}
 /* 새 서식 글 → { heads: [{ title }], roman }. 큰 제목이 셋보다 적으면 heads는 빈 목록(양식으로만 저장) */
 export function formHeads(text) {
-  const top = parseOutline(text).filter(x => x.level === 1).slice(0, MAX_HEADS).map(x => ({ title: x.title }));
+  const top = parseOutline(text).filter(x => x.level === 1).slice(0, MAX_HEADS).map(x => ({ title: formTitle(x.title) }));
   return { heads: top.length >= 3 ? top : [], roman: /^\s*[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]\.\s*\S/m.test(str(text)) };
 }
 /* 제목의 역할: 학급운영계획 표 칸(시수·월별·평가 표) 먼저, 그다음 연간계획 칸 역할(목적·방침·일정·예산·평가·세부) */
@@ -170,50 +182,90 @@ export function attachOrphan(f, id, i) {
   return { ...f, to, attached };
 }
 
+/* ---------- [되돌리기]와 고른 학교 양식 ---------- */
+/* 고른 양식은 계획 종류마다 하나이고, 바꾸기마다 그 서식을 저장해 골라 둠(같은 서식 파일이면 같은 양식 id).
+   u: 되돌리는 바꾸기 { form(그 전에 고른 양식), picked(이 바꾸기가 고른 양식 — 저장하지 못했으면 ''), seq(바꾼 차례) },
+   others: 같은 종류 다른 계획의 남은 되돌리기, cur: 지금 고른 양식 → 고를 양식(그대로 두면 null).
+   다른 계획이 바꾸며 지금 양식을 골라 두었으면(같은 서식 파일로 바꾼 계획 포함) 그 계획이 쓰므로 그대로,
+   아니면 이 바꾸기가 고른 양식이 아직 골라져 있을 때만 그 전 양식으로(그 뒤 선생님이 고른 양식은 그대로).
+   이 바꾸기가 고른 양식 위에서 바꾼 바로 다음 바꾸기는 이 바꾸기 전 양식을 이어받음(그것까지 되돌리면 둘 다 하기 전 양식으로) — others의 form을 고침(dropPick) */
+export function undoPick(u, others, cur) {
+  if (!u || !u.picked) return null;
+  dropPick(u, others);
+  return cur === u.picked && !others.some(x => x.picked === cur) ? u.form : null;
+}
+/* 되돌리기를 버릴 때(그 계획을 지움): 지금 고른 양식은 그대로 두고, 이 바꾸기가 고른 양식 위에서 바꾼 바로 다음 바꾸기가 이 바꾸기 전 양식을 이어받음 —
+   지운 계획의 되돌리기가 남아 다른 계획을 되돌려도 그 양식을 붙잡거나(undoPick의 others), 지운 계획이 고른 양식으로 되돌아가지 않게 */
+export function dropPick(u, others) {
+  if (!u || !u.picked) return;
+  const next = others.filter(x => x.seq > u.seq && x.form === u.picked).sort((a, b) => a.seq - b.seq)[0];
+  if (next) next.form = u.form;
+}
+
 /* ---------- 연간계획: 목차 key·글 ---------- */
 const won = n => Number(n || 0).toLocaleString('ko-KR');
 const dayText = s => (s.date ? `${+s.date.slice(5, 7)}월 ${+s.date.slice(8, 10)}일` : s.month ? `${s.month}월` : '');
-/* 초안 → 옛 칸(화면 차례: 목차, 없으면 기본 차례). 일정·예산 표는 줄 글로(글 칸에 붙이면 그 글). 역할은 새 칸과 같이 제목으로(sectionRole) */
+/* 초안 → 옛 칸(화면 차례: 목차, 없으면 기본 차례). 일정·예산 표는 줄 글로(글 칸에 붙이면 그 글). 역할은 새 칸과 같이 제목으로(sectionRole).
+   목차 제목에 쌍점으로 함께 적힌 글(작년 계획서 「Ⅰ. 목적: 책을 즐겨 읽는 습관 기르기」)은 lead — 새 제목으로 바꿀 때 그 칸 글 첫 줄로(행사·학급운영계획과 같이).
+   목차 제목은 작년 계획서의 큰 제목 줄이므로 쌍점 없이 제목 낱말 뒤에 이어진 말(「예산 확보」「내용 체계」「평가 회의」「일정 표」「목표 달성도」「근거 법령」)은 제목의 일부 — 자르지 않고 제목 전체로 맞춤(words: false) */
 export function yearOlds(d) {
   const order = d && d.outline && d.outline.length ? d.outline.map(o => [o.key, o.title]) : SECTIONS;
-  return order.map(([key, title], i) => ({
-    id: 'o' + (i + 1), key, title, role: sectionRole(title),
-    text: key === 'schedule' ? ((d && d.schedule) || []).map(s => [dayText(s), s.title].filter(Boolean).join(' ')).join('\n')
+  return order.map(([key, full], i) => {
+    const body = key === 'schedule' ? ((d && d.schedule) || []).map(s => [dayText(s), s.title].filter(Boolean).join(' ')).join('\n')
       : key === 'budget' ? ((d && d.budget) || []).map(b => `${b.name} ${won(b.amount)}원${b.note ? ` (${b.note})` : ''}`).join('\n')
-      : str(d && d[key])
-  }));
+      : str(d && d[key]);
+    const { title, lead, cut } = headSplit(str(full).trim(), { words: false });
+    return { id: 'o' + (i + 1), key, title: title || full, role: sectionRole(title || full), lead, cut: !!cut, body, text: lead ? join([lead, body]) : body };
+  });
 }
-/* 새 서식 글 → 새 칸(연간계획 목차 읽기 그대로 key를 정함: 목적·방침·세부·일정·예산·평가, 그 밖은 덧붙임 칸). 일정·예산 칸은 표 그대로.
+/* 새 서식 글 → 새 칸(연간계획 목차 읽기 그대로 key를 정함: 목적·방침·세부·일정·예산·평가, 그 밖은 덧붙임 칸). 일정·예산 칸은 표 그대로. 제목의 빈칸 자리는 뺌(formTitle).
    맞추기 역할은 제목 하나만 보고(sectionRole — 행사·학급운영계획과 같이): 목차 읽기가 앞 칸부터 차지한 key(「추진 배경」이 목적 칸)로 맞추지 않게,
    「추진 배경·추진 목표」처럼 목적 같은 제목이 둘이면 어느 쪽인지 몰라 역할로는 맞추지 않음 */
 export function yearHeads(text) {
   const o = yearOutline(text);
   return {
-    heads: o.items.map(x => ({ title: x.title, key: x.key, role: sectionRole(x.title), ...(x.key === 'schedule' ? { fixed: '일정 표' } : x.key === 'budget' ? { fixed: '예산 표' } : {}) })),
+    heads: o.items.map(x => { const title = formTitle(x.title); return { title, key: x.key, role: sectionRole(title), ...(x.key === 'schedule' ? { fixed: '일정 표' } : x.key === 'budget' ? { fixed: '예산 표' } : {}) }; }),
     roman: o.roman
   };
 }
 /* 일정·예산 표 칸에는 그 표만 */
 export const yearAccepts = (h, o) => !(h.key === 'schedule' || h.key === 'budget') || o.key === h.key;
-/* 바꾼 초안: 새 목차(fromForm — 「다시 만들기」도 이 차례), 글 칸은 옮겨 온 칸 글 + 새로 쓴 글, 일정·예산 표는 그대로 */
+/* 바꾼 초안: 새 목차(fromForm — 「다시 만들기」도 이 차례), 글 칸은 옮겨 온 칸 글(제목 줄 글이 첫 줄) + 새로 쓴 글, 일정·예산 표는 그대로.
+   일정·예산 표 칸으로 간 옛 칸의 제목 줄 글(「추진 일정: 학기별 2회」)은 표에 넣을 자리가 없으므로 가까운 글 칸에 「옛 제목: 글」로(앞 글 칸 끝, 없으면 뒤 글 칸 첫머리).
+   표 머리 괄호 글(「소요 예산 (단위: 원)」)은 옮기지 않음 */
 export function applyYear(d, f, H, olds) {
   const byId = new Map(olds.map(o => [o.id, o]));
   const v = { ...d, outline: H.heads.map(h => ({ key: h.key, title: h.title })), roman: H.roman, fromForm: true };
   for (const k of Object.keys(v)) if (isExtra(k)) delete v[k];
   for (const k of TEXT_SECTIONS) v[k] = '';
+  const table = h => h.key === 'schedule' || h.key === 'budget';
+  const first = H.heads.map(() => []), last = H.heads.map(() => []);
   H.heads.forEach((h, i) => {
-    if (h.key === 'schedule' || h.key === 'budget') return;
-    v[h.key] = join([...f.to[i].from.map(id => (byId.get(id) || {}).text), f.to[i].write]);
+    if (!table(h)) return;
+    const lines = f.to[i].from.map(id => byId.get(id)).filter(o => o && o.cut && leadLine(o, h)).map(o => `${o.title}: ${o.lead}`);
+    if (!lines.length) return;
+    let j = i - 1;
+    while (j >= 0 && table(H.heads[j])) j--;
+    if (j >= 0) last[j].push(...lines);
+    else { j = H.heads.findIndex((x, k) => k > i && !table(x)); if (j >= 0) first[j].push(...lines); }
+  });
+  H.heads.forEach((h, i) => {
+    if (table(h)) return;
+    v[h.key] = join([...first[i], ...f.to[i].from.map(id => byId.get(id)).filter(Boolean).map(o => oldText(o, h)), f.to[i].write, ...last[i]]);
   });
   return normDraft(v);
 }
+/* [되돌리기]: 바꾸기 전 목차·글 칸으로. 일정·예산 표는 바꾸기가 건드리지 않으므로 지금 그대로(바꾼 뒤 5단계에서 고친 날짜·4단계 예산이 남게) */
+export const yearRestore = (now, snap) => (now ? { ...snap, schedule: now.schedule, budget: now.budget } : snap);
 
 /* ---------- 제목 줄에 함께 적힌 글 ---------- */
 /* 큰 제목 → { title(맞출 제목), lead(제목 줄에 함께 적힌 글 — 새 제목으로 바뀌어도 그 칸 글 첫 줄로 남김), cut(쌍점·제목 낱말 뒤에서 자름) }.
    쌍점(:·：) 앞이 제목, 뒤가 글(「목적: 협동심과 체력 증진」, 시각 「09:00」의 쌍점은 아님). 괄호 안 쌍점이면 그 줄 글 전체를 글 첫 줄로도 남김.
    long: 쌍점이 없어도 짧은 제목보다 긴 줄(숫자가 있거나 20자 넘음)은 그 줄 글 전체를 글 첫 줄로도 남김(「일시 2027. 10. 7.(목)」).
    그 밖에 쌍점 없이 계획서 제목 낱말 뒤에 적힌 글(「목적 협동심과 체력 증진」「장소 본교 운동장」)은 그 낱말 뒤에서 자름 —
-   뒤가 제목을 잇는 말(「평가 및 환류」「평가 (교사용)」「평가 계획」「대상 학년 및 인원」: 및·과·괄호·가운뎃점으로 시작하거나 첫·끝 낱말이 제목 낱말)이면 제목 그대로 */
+   뒤가 제목을 잇는 말(「평가 및 환류」「평가 (교사용)」「평가 계획」「대상 학년 및 인원」: 및·과·괄호·가운뎃점으로 시작하거나 첫·끝 낱말이 제목 낱말)이면 제목 그대로.
+   뒤가 제목을 마무리하는 한 낱말(「근거 법령」「담당 교사」「예산 집행」)이면 그 낱말도 제목의 일부라 글로 옮기지 않음(맞추기는 전처럼 제목 낱말로).
+   words: false(연간계획 목차 제목)면 제목 낱말 뒤에서 자르지 않고 제목 전체로 맞춤(마무리하는 낱말도 — 「목표 달성도」가 「목표」로 줄어 「추진 목표」에 맞지 않게) — 쌍점 뒤만 글 */
 const COLON = /^(.*?[^\d\s:：])\s*[:：]\s*(.*)$/;
 // 제목 낱말: 연간계획 역할 표(목적·방침·일정·예산·평가)·행사 개요 표(일시·대상·장소)·가정통신문 항목(준비물·복장·문의)에서
 const HEAD_WORD = /^(목적|목표|필요성|취지|배경|일시|날짜|기간|장소|대상|방침|방향|내용|방법|예산|경비|준비물|복장|담당|근거|일정|평가|기대\s*효과|유의\s*사항|문의처?|연락처)\s+(\S.*)$/;
@@ -223,12 +275,15 @@ const titleTail = rest => {
   const w = rest.split(/\s+/);
   return /^(?:(?:및|과|와|또는|그리고)(?:\s|$)|[(（[〔<〈《·ㆍ,、/&+])/.test(rest) || [w[0], w[w.length - 1]].some(x => TITLE_WORD.test(norm(x)));
 };
-function headSplit(t, { long = false } = {}) {
+// 제목 낱말 뒤 한 낱말로 제목을 마무리하는 말(「근거 법령」「담당 교사」「예산 집행」「평가 관점」「목표 달성도」「대상 학년」) — 한 낱말 글(「대상 전교생」「장소 강당」)·여러 낱말 글(「담당 체육부 교사」)은 아님
+const TAIL_ONE = /^(?:법령|법규|규정|지침|자료|교사|교원|인력|집행|편성|배정|관점|척도|요소|문항|달성도|배치도|섭외|결정|조정|변경|학년|학급|학생)$/;
+function headSplit(t, { long = false, words = true } = {}) {
   const m = COLON.exec(t);
   if (m && !/[(（[][^)）\]]*$/.test(m[1])) return { title: m[1].trim(), lead: m[2].trim(), cut: true };
   // 괄호 안 쌍점(「개요 (장소: 강당)」)은 자르지 않고 그 줄 글 전체를 남김
   if (m || (long && (/\d/.test(t) || t.replace(/\s/g, '').length > 20))) return { title: t, lead: t };
-  const w = HEAD_WORD.exec(t);
+  const w = words && HEAD_WORD.exec(t);
+  if (w && TAIL_ONE.test(norm(w[2]))) return { title: w[1], lead: '' };
   return w && !titleTail(w[2]) ? { title: w[1], lead: w[2].trim(), cut: true } : { title: t, lead: '' };
 }
 /* 새 제목(h) 아래 넣을 제목 줄 글: 새 제목이 그 글이나 옛 제목 줄 전체와 같으면 없음(같은 줄을 글로 다시 쓰지 않게), 자른 글이 비슷하지 않은 제목 칸으로 가면 「옛 제목: 글」(「일시: …」가 「운영 개요」 아래로) */
@@ -263,6 +318,10 @@ export function applyEvent(e, f, H, pre, olds) {
   });
   return { plan: out.join('\n'), form };
 }
+/* [되돌리기]로 돌릴 것: 계획서 글·서식 제목 줄·계획서 검토 의견만. 안전 점검표·가정통신문 칸과 그 의견은 바꾸기와 상관없으므로 되돌릴 때 지금 그대로
+   (바꾼 뒤 손으로 고쳐 지운 가정통신문 의견이 되살아나 [이대로 고치기]로 고친 글을 덮지 않게) */
+export const eventSnap = e => ({ plan: str(e.docs.plan), form: [...(e.docs.form || [])], rv: (e.rv || []).filter(x => x.section === 'plan') });
+export const eventRestore = (e, s) => ({ docs: { ...e.docs, plan: s.plan, form: s.form }, rv: [...s.rv, ...(e.rv || []).filter(x => x.section !== 'plan')] });
 
 /* ---------- 학급운영계획: 목차 칸 ---------- */
 /* 목차 → 옛 칸(큰 제목 묶음 — 작은 칸은 그 묶음에 따라감). AI에는 묶음의 글과 작은 칸 「제목: 글」.

@@ -192,19 +192,26 @@ const pickedOption = e => (e.options && e.picked != null ? e.options[e.picked] :
    작년·기존 계획서가 없거나 글에 큰 제목이 없으면 null(앱의 개요 표·시간표·세부 계획 차례). 학교 새 서식으로 바꾼 계획서는 작년 계획서 없이도 그 서식 차례 */
 const squash = s => String(s || '').replace(/[\s\p{P}\p{S}]/gu, '');
 /* 계획서 글의 큰 제목 줄 번호: 학교 새 서식으로 바꾼 계획서는 그 서식 제목 줄(차례대로, 띄어쓰기·문장부호 무시 — 본문의 「1. 경기 종목」이 큰 제목이 되지 않게),
-   셋 넘게 찾지 못하면(다시 만든 글이 제목 줄을 바꿈 등) 목차 읽기와 같은 큰 제목 줄 */
+   셋 넘게 찾지 못하면(다시 만든 글이 제목 줄을 바꿈 등) 목차 읽기와 같은 큰 제목 줄.
+   로마 숫자 서식(Ⅰ.·Ⅱ.)이면 서식에 없는 「Ⅳ. 평가 및 환류」「Ⅴ. 홍보 계획」 줄(선생님이 고치거나 더한 큰 제목)도 큰 제목 — 본문 번호(1.·가.)와 헷갈리지 않으므로 */
+const ROMAN_LINE = /^\s*[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ]\.\s*\S/;
 export function planHeadLines(e, text) {
   const form = (e && e.docs && e.docs.form) || [];
   if (form.length) {
-    const at = [];
+    const at = [], lines = String(text || '').split('\n');
     let j = 0;
-    String(text || '').split('\n').forEach((l, i) => {
+    lines.forEach((l, i) => {
       const q = squash(l);
       if (!q) return;
       const k = form.findIndex((f, n) => n >= j && squash(f) === q);
       if (k >= 0) { at.push(i); j = k + 1; }
     });
-    if (at.length >= Math.min(3, form.length)) return at;
+    if (at.length >= Math.min(3, form.length)) {
+      if (!form.every(f => ROMAN_LINE.test(f))) return at;
+      // 표 줄(|)·41자 넘는 줄은 큰 제목이 아님(목차 읽기와 같이)
+      lines.forEach((l, i) => { if (ROMAN_LINE.test(l) && !/[|\t]/.test(l) && l.trim().length <= 41 && !at.includes(i)) at.push(i); });
+      return at.sort((a, b) => a - b);
+    }
   }
   return topLines(text);
 }
