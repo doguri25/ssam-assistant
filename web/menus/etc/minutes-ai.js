@@ -11,8 +11,11 @@ export const MAX_TEXT = 12000, MAX_AGENDA = 12, MAX_LINES = 12, MAX_TODOS = 20;
 
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const one = (v, n) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n);
-// 줄 앞 기호·번호(「- 」「· 」「○ 」「1. 」「가. 」「(2) 」)는 뺌 — 앱이 다시 붙임
-const BULLET = /^\s*(?:[-–—·•○◦▪■□*※>]+|\(?\d{1,2}[.)]|[가-하][.)])\s*/;
+// 줄 앞 기호·번호(「- 」「· 」「○ 」「1. 」「가. 」「(2) 」)는 뺌 — 앱이 다시 붙임.
+// 점 뒤에 숫자가 바로 붙거나(「1.5배」「3.1절」「11.25.」) 「숫자.」·「숫자(」가 오면(「11. 20.(금)」「12. 24.(목)」) 날짜·소수라 번호가 아님(「3. 1학기」「3. 1.5배」는 번호).
+// 그 뒤에 또 「숫자.」·「숫자(」가 와서 온전한 날짜(월. 일.·월. 일(요일))가 이어질 때만(「1. 12. 24.(목)」「1. 10. 3. 개천절」) 앞 숫자는 날짜 앞의 번호 —
+// 「11. 20. 14:00 협의」「11. 20. 2교시」「12. 24. 10:00 방학식」은 「월. 일. 시각·교시」라 달을 자르지 않음
+const BULLET = /^\s*(?:[-–—·•○◦▪■□*※>]+|\(?\d{1,2}(?:\.(?!\d|\s*\d{1,2}\s*(?:\.(?!\d)|\()(?!\s*\d{1,2}\s*[.(]))|\))|[가-하][.)])\s*/;
 const lineOf = (v, n) => one(String(v == null ? '' : v).replace(BULLET, ''), n);
 
 /* 회의 이름 → 회의 종류 짐작(선생님이 고르지 않았을 때) */
@@ -150,6 +153,8 @@ export function keepFields(next, prev, touched = []) {
   const n = copy(next) || {}, p = prev || {}, t = Array.isArray(touched) ? touched : [];
   for (const k of keptKeys(p, t)) n[k] = copy(p[k]);
   for (const k of SCALAR) if (!t.includes(k) && !String(n[k] || '').trim() && p[k]) n[k] = p[k];
+  // 고르지 않은 종류는 AI 이름으로 짐작한 것: 짐작하지 못했으면(기타) 남은 이름(고친 이름·AI가 비워 그대로 둔 이름)으로 다시, 그래도 모르면 전 값
+  if (!t.includes('kind') && n.kind === 'etc') { n.kind = guessKind(n.title); if (n.kind === 'etc' && KIND_IDS.includes(p.kind)) n.kind = p.kind; }
   if (!t.includes('todos')) n.todos = carryDone(p.todos, Array.isArray(n.todos) ? n.todos : []);
   return n;
 }

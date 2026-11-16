@@ -49,5 +49,10 @@ export function putMinutes(x) {
   return set(KEY, [n, ...listMinutes().filter(y => y.id !== n.id)].sort((a, b) => b.at - a.at).slice(0, MAX_MINUTES));
 }
 export const removeMinutes = id => set(KEY, listMinutes().filter(y => y.id !== id));
+/* 고친 회의록 저장: 내용이 있으면 넣고, 없으면 넣지 않음(빈 새 회의록) — 저장했던 회의록의 마지막 할 일·글을 지웠으면 목록에서도 뺌(지운 할 일이 「오늘」에 남지 않게) */
+export function saveMinutes(x) {
+  if (hasContent(x)) return putMinutes(x);
+  return x && getMinutes(x.id) ? removeMinutes(x.id) : false;
+}
 export const currentId = () => String(get(CUR, '') || '');
 export const setCurrent = id => set(CUR, String(id || ''));

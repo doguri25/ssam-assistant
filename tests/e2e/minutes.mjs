@@ -299,6 +299,40 @@ await run('minutes', [
     assert(a && a.place === '5학년 연구실' && a.time === '15:00' && a.agenda[0].title === '다시 정리한 안건', JSON.stringify(a).slice(0, 300));
     assert((await stored()).length === s0, '회의록 수 ' + (await stored()).length);
   }],
+  ['채팅: 메모를 먼저 쓰고 끝 줄에 「회의록 써 줘」 → 회의록에 메모만 넣고 정리(메모 속 「가정통신문」으로 가정통신문을 쓰지 않음)', async () => {
+    const n0 = mins().length, all0 = prompts.length;
+    reply = { title: '4학년 학년 협의회', agenda: [{ title: '현장체험학습', discussion: ['과학관으로 정함'], decisions: [] }], todos: [] };
+    const memo = '- 체험학습 장소 과학관으로 정함\n- 가정통신문 11/18 발송';
+    await chatSend(`${memo}\n회의록 써 줘`);
+    await page.waitForFunction(b => (document.querySelector(`${b} [data-mnf="title"]`) || {}).value === '4학년 학년 협의회', B);
+    assert(mins().length === n0 + 1, 'AI 요청 ' + (mins().length - n0));
+    const sent = mins()[mins().length - 1].split('\n[메모]\n')[1].split('\n\n[출력]')[0];
+    assert(sent === memo, '메모만(명령 줄 뺌): ' + sent);
+    assert(await page.inputValue(`${B} #mnPaste`) === memo, await page.inputValue(`${B} #mnPaste`));
+    assert(!prompts.slice(all0).some(p => p.startsWith('[가정통신문]')), '가정통신문을 씀');
+    await chatClose();
+  }],
+  ['다른 칸이 빈 회의록의 마지막 할 일을 [✕]로 빼면 저장소·최근 회의록·「오늘」에서도 빠짐', async () => {
+    await page.click(`${B} [data-mn="new"]`);
+    await page.waitForFunction(b => document.querySelector(`${b} [data-mnf="title"]`).value === '', B);
+    const has = async () => (await stored()).some(x => x.todos.some(t => t.task === '체육복 수거'));
+    const s0 = (await stored()).length;
+    await page.click(`${B} [data-mn="addTodo"]`);
+    await page.fill(`${B} [data-mnt="0"][data-mnk="task"]`, '체육복 수거');
+    await page.fill(`${B} [data-mnt="0"][data-mnk="due"]`, '2026-11-17');
+    await until(has, '할 일 저장');
+    assert((await stored()).length === s0 + 1, '회의록 수 ' + (await stored()).length);
+    await page.click(`${B} [data-mn-delt="0"]`);
+    await page.waitForTimeout(150);
+    assert(!(await has()), '뺀 할 일이 저장소에 남음: ' + JSON.stringify(await stored()).slice(0, 300));
+    assert((await stored()).length === s0, '빈 회의록은 목록에서 빠짐 ' + (await stored()).length);
+    assert(!(await page.textContent(`${B} #mnRecent`)).includes('제목 없는 회의록'), await page.textContent(`${B} #mnRecent`));
+    const H = 'section[data-menu="home"]';
+    await page.click('nav.app-side [data-menu-go="home"]');
+    await page.waitForSelector(`${H} .hm-head h2`);
+    await page.waitForTimeout(200);
+    assert(!(await page.textContent(H)).includes('체육복 수거'), '「오늘」에 남음');
+  }],
   ['페이지 오류 없음', async () => { assert(!errors.length, errors.join('\n')); }]
 ]);
 await t.close();
