@@ -104,6 +104,21 @@ test('[fix1116-min-docedit-not] 공문 처리·글 쓰기 말은 그대로, 「�
   assert.notEqual(route('공문 맞춤법 확인 안내 쪽지 써 줘').intent, 'docedit');
 });
 
+test('[fix1116-min-docedit-topic] 교정·다듬기·맞춤법이 쪽지의 글감이면(뒤에 「쪽지 써 줘」 같은 다른 글이 이어지면) 문서 다듬기로 가지 않음 — 쪽지 글이 사라지지 않게', () => {
+  for (const s of ['가정통신문 교정 부탁 쪽지 써 줘', '교감 선생님께 공문 교정 부탁드리는 쪽지 써 줘', '보고서 교정 부탁 쪽지 써 줘', '공문 다듬기 연수 안내 쪽지 써 줘',
+    '가정통신문 맞춤법 검사해서 보내기 안내 쪽지 써 줘', '결과 보고서 맞춤법 고쳐서 내 달라고 쪽지 써 줘', '이번 주 가정통신문 교정 봐 주실 분 구하는 쪽지 써 줘',
+    '보고서 다듬어서 제출 바란다는 쪽지 써 줘']) {
+    const r = route(s);
+    assert.notEqual(r.intent, 'docedit', `${s} → ${r.intent} ${r.candidates}`);
+    assert.ok(r.intent === 'message' || r.candidates.includes('message'), `${s} → ${r.intent} ${r.candidates}`);
+  }
+  // 고치는 말로 끝나면(부탁 꼬리만 뒤에) 문서 다듬기
+  for (const s of ['통신문 교정 부탁드려요', '파일 교정 부탁해', '공문 좀 다듬어 줘', '가정통신문 맞춤법 검사해 줘', '보고서 교정해 주세요', '공문 맞춤법 좀 봐 줄래?', '이거 손봐 줘']) {
+    const r = route(s);
+    assert.equal(r.intent, 'docedit', `${s} → ${r.intent} ${r.candidates}`);
+  }
+});
+
 /* ---------- C13: 마지막 할 일을 빼면 저장소에서도 ---------- */
 test('[fix1116-min-save-empty] 저장한 회의록에서 마지막 할 일·글을 지우면 저장소에서도 빠짐(「오늘」에 남지 않음), 새 빈 회의록은 넣지 않음', () => {
   const x = blankMinutes();
