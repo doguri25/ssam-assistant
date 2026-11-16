@@ -1,7 +1,9 @@
 /* 활동지 AI(스펙 4.2·4.4): 기준 만들기, 채점, 검토 프롬프트와 답 다듬기, 고르기·짝짓기·빈칸의 앱 판정.
-   AI에는 이름 가린 그림과 활동지 글만 보냄(학생 이름 없음). 업무별 AI 「채점」 */
+   AI에는 이름 가린 그림과 활동지 글만 보냄(학생 이름 없음). 업무별 AI 「채점」.
+   [활동지 만들기]로 만든 활동지는 만들 때 가린 교직원 이름·전화번호를 요청 글에서도 같은 자리 표시로 가림(make-scope madeHide) */
 import { autoJudge } from '../unit/unit-grade.js';
 import { parseKey } from '../unit/unit-key.js';
+import { madeHide } from '../make-scope.js';
 
 export const TYPES = [['choice', '고르기'], ['match', '짝짓기'], ['short', '빈칸·단답'], ['write', '쓰기'], ['draw', '그림·색칠']];
 export const MARK = { o: '○', t: '△', x: '×', n: '안 함' };
@@ -15,8 +17,9 @@ const metaLine = m => [m.subject, m.unit && `${m.unit}단원`.replace(/단원단
 const itemLine = it => `[${it.no}] ${TYPE_NAME[it.type] || '쓰기'} | 묻는 말: ${it.ask} | ${['choice', 'match', 'short'].includes(it.type) ? '정답' : '예시 답안'}: ${it.answer || '-'} | ○ 기준: ${it.ok || '-'} | △ 기준: ${it.part || '-'}`;
 
 /* ---------- 기준 만들기 ---------- */
-export function criteriaPrompt({ meta = {}, student = '', teacher = '', nImages = 0 } = {}) {
-  return ['[활동지 기준]',
+/* hide: 만든 활동지면 madeHide(a).hide(가린 이름을 다시 가림) */
+export function criteriaPrompt({ meta = {}, student = '', teacher = '', nImages = 0, hide = t => t } = {}) {
+  return hide(['[활동지 기준]',
     '당신은 초등학교 수업 활동지를 채점할 기준을 미리 정하는 경력 많은 담임교사입니다.',
     `[활동지] ${metaLine(meta) || '(정보 없음)'}`,
     nImages ? `첨부한 그림 ${nImages}장은 이 활동지(빈 활동지·교사용)를 찍은 것입니다.` : '',
@@ -29,7 +32,7 @@ export function criteriaPrompt({ meta = {}, student = '', teacher = '', nImages 
     '- src: 교사용·예시·정답 글에서 가져왔으면 "teacher", 직접 만들었으면 "ai"',
     '- 정답이 정해지지 않는 열린 문항은 예시 답안과 기준만 씁니다. 활동지에 없는 문항은 만들지 않습니다.',
     '', '[출력] JSON 하나만 출력합니다.',
-    '{"items":[{"no":1,"type":"write","ask":"…","answer":"…","ok":"…","part":"…","src":"teacher"}]}'].filter(x => x !== '').join('\n');
+    '{"items":[{"no":1,"type":"write","ask":"…","answer":"…","ok":"…","part":"…","src":"teacher"}]}'].filter(x => x !== '').join('\n'));
 }
 export function normCriteria(v) {
   const seen = new Set(), out = [];
@@ -126,7 +129,7 @@ export function gradeParts(act, nImages) {
     '- level: good(잘함) · ok(보통) · try(노력) 중 하나, levelWhy: 그렇게 본 까닭 한 문장.',
     '', '[출력] JSON 하나만 출력합니다.',
     '{"items":[{"no":1,"read":"…","mark":"o|t|x|n","why":"…","sure":true}],"good":"…","next":"…","level":"good|ok|try","levelWhy":"…"}'].join('\n');
-  return { shared, own: `바로 위 그림 ${nImages}장은 한 학생의 활동지${nImages > 1 ? '(차례대로)' : ''}입니다.` };
+  return { shared: madeHide(act).hide(shared), own: `바로 위 그림 ${nImages}장은 한 학생의 활동지${nImages > 1 ? '(차례대로)' : ''}입니다.` };
 }
 export function gradePrompt(act, nImages) { const p = gradeParts(act, nImages); return `${p.shared}\n\n${p.own}`; }
 export const validGrade = v => Array.isArray(v) || !!(v && typeof v === 'object' && Array.isArray(v.items));
@@ -171,7 +174,8 @@ export function reviewParts(act, cells) {
     '', '[문항과 기준]', ...act.items.map(itemLine),
     '', '[규칙] 맨 끝 「먼저 채점한 결과」에 있는 문항만 다시 봅니다. mark는 o·t·x·n 중 하나입니다.',
     '', '[출력] JSON 하나만 출력합니다.', '{"items":[{"no":1,"mark":"o","why":"까닭"}]}'].join('\n');
-  return { shared, own: ['[먼저 채점한 결과]', ...cells.map(c => `[${c.no}] 읽은 답: ${c.read || '-'} | 표시: ${MARK[c.mark] || '없음'} | 까닭: ${c.why || '-'}`)].join('\n') };
+  const h = madeHide(act);
+  return { shared: h.hide(shared), own: h.hide(['[먼저 채점한 결과]', ...cells.map(c => `[${c.no}] 읽은 답: ${c.read || '-'} | 표시: ${MARK[c.mark] || '없음'} | 까닭: ${c.why || '-'}`)].join('\n')) };
 }
 export function reviewPrompt(act, cells) { const p = reviewParts(act, cells); return `${p.shared}\n\n${p.own}`; }
 export function normReview(v, nos) {

@@ -12,6 +12,7 @@ import { readBundle, openBundleCard, needsCard, bundleBoxHTML, onBundle, bundleM
 import { newActivity, listActivities, getActivity, saveActivity, removeActivity, dropItems, addItem, getSet } from './activity-model.js';
 import { readMeta, termOf, SUBJECTS, cleanSheet } from './activity-read.js';
 import { TYPES, criteriaPrompt, normCriteria, applyKey, itemsFromSheets } from './activity-ai.js';
+import { madeHide } from '../make-scope.js';
 import { sampleActivity } from './activity-sample.js';
 import { accuracyText, yearAccuracy, yearText } from '../grade-accuracy.js';
 import { introHTML, aiNoteHTML } from '../../../core/ui-parts.js';
@@ -255,7 +256,9 @@ async function makeCriteria(id) {
   A.busy = 'criteria:' + id; A.msg = ''; A.note = ''; render();
   try {
     const images = await critImages(id);
-    const v = await ai.generateJSON(criteriaPrompt({ meta: a0.meta, student: a0.sheet.student, teacher: a0.sheet.teacher, nImages: images.length }), { images, task: 'grade', valid: x => normCriteria(x).length > 0 });
+    // 만든 활동지: 가린 이름은 요청 글에서 다시 가리고 AI 답에서 되돌림
+    const h = madeHide(a0);
+    const v = h.back(await ai.generateJSON(criteriaPrompt({ meta: a0.meta, student: a0.sheet.student, teacher: a0.sheet.teacher, nImages: images.length, hide: h.hide }), { images, task: 'grade', valid: x => normCriteria(x).length > 0 }));
     const a = (curAct() && curAct().id === id) ? curAct() : getActivity(id);
     if (a) {
       a.items = a.sheet.teacher ? applyKey(normCriteria(v), a.sheet.teacher) : normCriteria(v);

@@ -3,7 +3,7 @@
    열린 문항(쓰기·그리기·생각 정리)마다 묻는 말·예시 답안·○(잘함)·△(조금 더) 기준 → activity-model newActivity로
    문항·기준을 확정한 새 활동지(sheet.student = 활동지 글). 채점은 지금 활동지 3·4단계 그대로(그리기는 「그림·색칠」, 쓰기·생각 정리는 「쓰기」) */
 import { newActivity } from './activity-model.js';
-import { spread, levelLine } from '../make-scope.js';
+import { spread, levelLine, keepHide } from '../make-scope.js';
 import { NAME_BOX } from '../unit/unit-make.js';
 
 export const KINDS = [['write', '쓰기'], ['draw', '그리기'], ['think', '생각 정리']];
@@ -106,14 +106,16 @@ export function sheetDoc(meta, tasks) {
   return { title: '', blocks };
 }
 
-/* 새 활동지: 정보, 문항·기준(출처 AI, 확정), 활동지 글 */
-export function activityFrom({ meta = {}, tasks = [] } = {}) {
+/* 새 활동지: 정보, 문항·기준(출처 AI, 확정), 활동지 글. hide: 만들 때 가린 값(채점 AI로 보낼 때 다시 가림 — unit-make testFrom과 같음) */
+export function activityFrom({ meta = {}, tasks = [], hide = null } = {}) {
   const a = newActivity({ subject: meta.subject || '', unit: meta.unit || '', lesson: meta.lesson || '', pages: meta.pages || '', title: titleOf(meta),
     ...(meta.date ? { date: meta.date } : {}), term: meta.term ?? null });
   a.items = tasks.map((t, i) => ({ no: i + 1, type: TYPE_OF[t.kind] || t.type || 'write', ask: str(t.ask, 200), answer: str(t.answer, 300), ok: str(t.ok, 300), part: str(t.part, 300), src: 'ai' }));
   a.confirmed = a.items.length > 0;
   a.sheet = { student: sheetText({ ...meta, title: titleOf(meta) }, tasks).slice(0, 12000), teacher: '' };
   a.made = { tasks: tasks.map((t, i) => ({ no: i + 1, kind: KIND_IDS.includes(t.kind) ? t.kind : 'write' })) };
+  const h = keepHide(hide);
+  if (h) a.made.hide = h;
   return a;
 }
 /* 만든 활동지를 다시 내려받을 문항: 지금 문항(2단계에서 고친 물음·더한 문항 그대로) + 만들 때의 종류(그리기는 큰 칸). 만들지 않은 활동지는 [] */

@@ -10,6 +10,7 @@ import { actPrompt, activityFrom, normTasks } from '../../web/menus/evaluate/act
 import { dropItem } from '../../web/menus/evaluate/unit/unit-model.js';
 import { gradePrompt, feedbackPrompt, redoPrompt, missPrompt } from '../../web/menus/evaluate/unit/unit-ai.js';
 import { gradeReviewPrompt } from '../../web/core/ai-review.js';
+import { gradePrompt as actGradePrompt, reviewPrompt as actReviewPrompt, criteriaPrompt } from '../../web/menus/evaluate/activity/activity-ai.js';
 import * as makeScope from '../../web/menus/evaluate/make-scope.js';
 
 function mem() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k), key: i => [...m.keys()][i], get length() { return m.size; } }; }
@@ -84,6 +85,23 @@ test('[C22 채점] 직접 쓴 범위로 만든 단원평가: 채점·검토·피
   // AI 답에 자리 표시가 오면 원래 값으로 되돌려 선생님에게 보임(글·글 목록·객체 안 글)
   assert.deepEqual(hideOf(t).back({ items: [{ no: 2, read: '', why: '〔이름1〕 선생님 자료의 낱말이 없음({{1}})', sure: false }] }),
     { items: [{ no: 2, read: '', why: '한가람 선생님 자료의 낱말이 없음(010-1234-5678)', sure: false }] });
+});
+
+test('[C22 채점] 직접 쓴 범위로 만든 활동지: 채점·검토·기준 요청 글은 가린 채로, 활동 이름·단원·학생 활동지는 원래 이름', () => {
+  const s = freePick('과학', `${STAFF}\n습도와 이슬`).scope;
+  const tasks = normTasks({ items: [{ kind: 'draw', ask: '한가람 선생님이 보여 준 이슬을 그려 보세요.', answer: '풀잎 위 물방울', ok: '물방울을 자세히 그림', part: '풀잎만 그림' }] });
+  const a = activityFrom({ meta: { subject: s.subject, unit: s.unit, title: '한가람 선생님과 이슬 관찰' }, tasks, hide: typeof s.hidden === 'function' ? s.hidden() : undefined });
+  assert.equal(a.meta.title, '한가람 선생님과 이슬 관찰');
+  assert.equal(a.meta.unit, STAFF);
+  assert.ok(a.sheet.student.startsWith('한가람 선생님과 이슬 관찰') && a.items[0].ask.startsWith('한가람'), a.sheet.student);
+  const sent = {
+    grade: actGradePrompt(a, 1),
+    review: actReviewPrompt(a, [{ no: 1, read: '물방울', mark: 't', why: '' }]),
+    criteria: criteriaPrompt({ meta: a.meta, student: a.sheet.student, teacher: '', hide: hideOf(a).hide })
+  };
+  for (const [k, p] of Object.entries(sent)) assert.ok(!leaks(p), `${k}: ${p.slice(0, 500)}`);
+  assert.ok(sent.grade.includes('5. 날씨와 우리 생활(〔이름1〕 선생님 {{1}})단원') && sent.grade.includes('「〔이름1〕 선생님과 이슬 관찰」') && sent.grade.includes('묻는 말: 〔이름1〕 선생님이 보여 준'), sent.grade.slice(0, 400));
+  assert.deepEqual(hideOf(a).back({ good: '〔이름1〕 선생님이 보여 준 이슬을 자세히 그렸어요.', items: [] }), { good: '한가람 선생님이 보여 준 이슬을 자세히 그렸어요.', items: [] });
 });
 
 test('[C22 채점] 지나치게 가리지 않음: 가린 값이 없는 평가·활동지(이름 없는 범위, 직접 넣은 정답표, 고치기 전에 만든 것)는 요청 글·AI 답이 그대로', () => {

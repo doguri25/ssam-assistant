@@ -23,9 +23,10 @@ const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000
 const blank = no => ({ no, kind: 'write', type: 'write', ask: '', answer: '', ok: '', part: '' });
 const renumber = () => { M.tasks = M.tasks.map((t, i) => ({ ...t, no: i + 1 })); };
 
-/* 활동지 정보: 문항을 만든 범위(없으면 지금 고른 것). 차시는 활동지 칸처럼 번호만(「3/8」 → 「3」) */
-function metaNow() {
-  const v = M.scope ? { scope: M.scope } : pickValue(pick());
+/* 문항을 만든 범위(없으면 지금 고른 것) */
+const valueNow = () => (M.scope ? { scope: M.scope } : pickValue(pick()));
+/* 활동지 정보: 그 범위의 교과·단원·차시·쪽과 활동 이름. 차시는 활동지 칸처럼 번호만(「3/8」 → 「3」) */
+function metaNow(v = valueNow()) {
   const s = v.scope || { subject: pick().subject };
   const lesson = s.lesson && s.lesson !== '단원 전체' ? s.lesson.split(', ').map(x => x.split('/')[0]).join(', ') : '';
   const date = today();
@@ -119,7 +120,9 @@ function create() {
   if (!M.tasks.length) return;
   const probs = taskProblems(M.tasks);
   if (probs.length) { M.msg = `고칠 것이 있어요: ${probs.map(p => `${p.no}번 ${p.text}`).join(' · ')}`; render(); const b = getBox().querySelector('#mkMsg'); if (b) b.scrollIntoView({ block: 'center' }); return; }
-  const a = activityFrom({ meta: metaNow(), tasks: M.tasks });
+  // 만들 때 가린 값도 남김: 활동 이름·문항은 원래 이름이고, 채점 AI로 보낼 때 다시 가림(make-scope madeHide)
+  const v = valueNow();
+  const a = activityFrom({ meta: metaNow(v), tasks: M.tasks, hide: v.scope && v.scope.hidden ? v.scope.hidden() : null });
   if (!saveActivity(a)) { toast('저장 공간이 모자라 저장하지 못했어요. 설정 › 학년도에서 백업하고 지난 자료를 정리해 주세요.', 7000); return; }
   Object.assign(M, { tasks: [], scope: null, opts: null, title: '', busy: '', msg: '', note: '' });
   openActivity(a.id);

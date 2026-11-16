@@ -14,6 +14,7 @@ import { arrangePages } from '../unit/unit-pages.js';
 import { go } from '../../../core/shell.js';
 import { getActivity, getSet, saveSet, listActivities } from './activity-model.js';
 import { gradeParts, validGrade, normGrade, mergeMarks, reviewParts, normReview, MARK, LEVEL } from './activity-ai.js';
+import { madeHide } from '../make-scope.js';
 import { A, registerStep, curAct, commitAct, refresh, render, goStep, esc, SS, getBox, visible, openActivity } from './activity.js';
 import { reviewQueue } from './activity-board.js';
 import { acceptActivity } from '../eval-stage.js';
@@ -221,7 +222,8 @@ async function gradeOne(id, i, meter) {
     if (!images.length) throw { code: 'no_scan' };
     // 공통(지시·문항과 기준)을 앞에 두어 학생마다 캐시 → 학생 그림 → 학생 글
     const parts = gradeParts(a0, images.length);
-    const v = await ai.generateJSON(parts.own, { shared: { text: parts.shared }, images, signal: ctrl.signal, valid: validGrade, task: 'grade', meter });
+    // 만든 활동지의 가린 이름 자리 표시는 AI 답(읽은 답·까닭·잘한 점·더 해 볼 점)에서 되돌림
+    const v = madeHide(a0).back(await ai.generateJSON(parts.own, { shared: { text: parts.shared }, images, signal: ctrl.signal, valid: validGrade, task: 'grade', meter }));
     const r = normGrade(v, a0.items);
     const a = getActivity(id), s = a && a.students[i];
     if (!s || s.no !== no) return;
@@ -254,7 +256,7 @@ async function reviewOne(id, i, no, images, signal, meter) {
   const cells = a.items.filter(it => s.marks[it.no] && s.marks[it.no].chk && !s.marks[it.no].manual).map(it => ({ no: it.no, ...s.marks[it.no] }));
   if (!cells.length) return;
   const parts = reviewParts(a, cells);
-  const v = await reviewJSON('grade', parts.own, { shared: { text: parts.shared }, images, signal, valid: x => Array.isArray(x) || !!(x && Array.isArray(x.items)), meter });
+  const v = madeHide(a).back(await reviewJSON('grade', parts.own, { shared: { text: parts.shared }, images, signal, valid: x => Array.isArray(x) || !!(x && Array.isArray(x.items)), meter }));
   if (!v || signal.aborted || v.error === 'cancelled') return; // 멈추기는 검토 실패가 아님
   const a2 = getActivity(id), s2 = a2 && a2.students[i];
   if (!s2 || s2.no !== no) return;
