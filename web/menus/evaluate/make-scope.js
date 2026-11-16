@@ -97,6 +97,36 @@ export function maskList(scope, list, keys) {
   return list.map(x => (x && typeof x === 'object' ? { ...x, ...Object.fromEntries(keys.filter(k => typeof x[k] === 'string').map(k => [k, scope.mask(x[k])])) } : x));
 }
 
+/* ---------- 만든 평가·활동지가 AI로 보낼 이름 ----------
+   직접 쓴 범위의 교직원 이름·전화번호·이메일은 만들 때 한 번 가려 보내고(make-pick), 돌아온 단원·활동 이름은 원래 이름으로 되돌려
+   선생님이 보는 곳(화면 제목·문서·파일 이름)에 씀. 그 이름을 나중에 채점·검토·피드백·평어 AI로 보낼 때는 만들 때 보낸 가린 글을 씀.
+   made.ai: { 칸: [보이는 값, AI로 보낼 값] }. 문항·정답표·학생 답은 다시 가리지 않음(김구·세종대왕 같은 배움 내용 이름이 그대로 가야 채점됨) */
+/* 보이는 값(meta)과 AI로 보낼 값(sent: { 칸: 가린 글 })이 다른 칸만 → made.ai, 없으면 null */
+export function aiPairs(meta, sent) {
+  const out = {};
+  for (const [k, v] of Object.entries(sent || {})) {
+    const shown = meta && typeof meta[k] === 'string' ? meta[k] : '';
+    if (shown && typeof v === 'string' && v && v !== shown) out[k] = [shown, v];
+  }
+  return Object.keys(out).length ? out : null;
+}
+const pairsOf = x => {
+  const p = x && x.made && x.made.ai;
+  return p && typeof p === 'object' ? Object.entries(p).filter(([, v]) => Array.isArray(v) && v.length === 2 && typeof v[0] === 'string' && typeof v[1] === 'string' && v[0] && v[1]) : [];
+};
+/* AI로 보낼 평가·활동지 정보: 보이는 값이 만들 때 그대로인 칸만 가린 글로(선생님이 고쳐 쓴 칸은 고친 글 그대로) */
+export function aiMeta(x) {
+  const m = (x && x.meta) || {}, ps = pairsOf(x).filter(([k, [shown]]) => m[k] === shown);
+  return ps.length ? { ...m, ...Object.fromEntries(ps.map(([k, [, sent]]) => [k, sent])) } : m;
+}
+/* AI로 보낼 문제지 글·활동지 글: 만들 때 넣은 머리(첫 빈 줄 앞 — 제목·교과·단원 줄)의 보이는 이름만 가린 글로. 문항 글은 그대로 */
+export function aiText(x, text) {
+  const s = String(text == null ? '' : text), ps = pairsOf(x);
+  if (!ps.length) return s;
+  const cut = s.indexOf('\n\n'), head = cut < 0 ? s : s.slice(0, cut), rest = cut < 0 ? '' : s.slice(cut);
+  return ps.map(([, p]) => p).sort((a, b) => b[0].length - a[0].length).reduce((h, [shown, sent]) => h.split(shown).join(sent), head) + rest;
+}
+
 /* count를 고른 것(keys)에 비율(weights)대로 나눔: 남는 수는 큰 나머지부터(같으면 앞 것), 문항 수가 되면 고른 것마다 적어도 하나 */
 export function spread(count, keys, weights = {}) {
   const ks = [...new Set(keys)].filter(Boolean);

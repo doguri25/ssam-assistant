@@ -1,9 +1,11 @@
-/* 단원평가 AI 프롬프트와 답 읽기 (스펙 3.2~3.4). 학생은 번호로만, 이름은 보내지 않음 */
+/* 단원평가 AI 프롬프트와 답 읽기 (스펙 3.2~3.4). 학생은 번호로만, 이름은 보내지 않음.
+   [문항 만들기]로 만든 평가의 평가 이름·문제지 제목은 만들 때 보낸 가린 글로(make-scope aiMeta·aiText — 직접 쓴 범위의 교직원 이름) */
 import { itemType } from './unit-key.js';
 import { ITEM_TYPES, studentTotal } from './unit-grade.js';
 import { makeTitle, LEVEL_NAME, itemName } from './unit-model.js';
 import { redoKind } from './unit-redo.js';
 import { evidenceList, evidencePrompt, EVIDENCE_RULE, normSentences, joinSentences } from '../../../core/evidence.js';
+import { aiMeta, aiText } from '../make-scope.js';
 
 const TYPE_NAME = Object.fromEntries(ITEM_TYPES);
 const TYPES = ITEM_TYPES.map(t => t[0]);
@@ -14,11 +16,11 @@ const numOr = (v, d = null) => { const m = /^\s*(-?\d+(?:\.\d+)?)/.exec(String(v
 /* 학생마다 같은 공통(shared, 앞에 두어 캐시)과 학생 글(own). 그림은 그 사이(공통 글 → 학생 그림 → 학생 글) */
 export function gradeParts(test, no) {
   const key = test.key.items.map(i => `${i.no} | ${TYPE_NAME[i.type] || '단답'} | ${i.answer} | ${i.points} | ${i.criteria || ''}`);
-  const paper = String((test.paper && test.paper.text) || '').slice(0, 12000);
+  const paper = aiText(test, test.paper && test.paper.text).slice(0, 12000);
   const shared = [
     '[단원평가 채점]',
     '당신은 초등학교 단원평가를 채점하는 담임교사를 돕습니다. 이 글 뒤에 오는 그림은 한 학생이 답을 쓴 평가지입니다. 이름 칸은 가려져 있을 수 있습니다.',
-    `[평가] ${makeTitle(test.meta)}`,
+    `[평가] ${makeTitle(aiMeta(test))}`,
     '', '[정답표] 번호 | 유형 | 정답 | 배점 | 채점 기준', ...key,
     ...(paper ? ['', '[평가지 글]', paper] : []),
     '', '[할 일]',
@@ -90,7 +92,7 @@ export function feedbackPrompt(test, students) {
   });
   return [
     '[단원평가 피드백]',
-    `${test.meta.grade ? test.meta.grade + '학년' : '초등학교'} 학생들에게 ${makeTitle(test.meta)} 결과와 함께 줄 말을 씁니다.`,
+    `${test.meta.grade ? test.meta.grade + '학년' : '초등학교'} 학생들에게 ${makeTitle(aiMeta(test))} 결과와 함께 줄 말을 씁니다.`,
     '', '[학생]', ...lines,
     '', '[규칙]',
     '- good: 맞힌 내용에 근거한 잘한 점 1문장. cheer: 다시 볼 내용을 따뜻하게 권하는 격려 1문장.',
@@ -165,7 +167,7 @@ export function normPyeongeo(v, lists = {}) {
 /* 결과지 복습 문제 (스펙 2026-11-06 A): 평가 하나에 한 번. 문항 번호·평가 내용·영역·유형·정답·교과서 쪽만 보냄(학생 정보·채점 기준 없음) */
 const KIND_NAME = { choice: '고르기(보기 4개)', short: '단답', essay: '서술형' };
 export function redoPrompt(test, items) {
-  const m = test.meta || {};
+  const m = aiMeta(test);
   return [
     '[단원평가 복습 문제]',
     `${m.grade ? m.grade + '학년' : '초등학교'} ${makeTitle({ ...m, sample: false })} 단원평가에서 틀린 학생이 있는 문항입니다. 문항마다 같은 개념을 묻는 비슷한 복습 문제를 1개씩 만듭니다.`,
@@ -208,7 +210,7 @@ export function normRedo(v, items) {
    문항(번호·평가 내용·유형·정답·채점 기준)과 틀린 답 글만, 학생은 a1·a2 같은 임시 번호로(학생 번호·이름은 없음, 앱이 다시 맞춤).
    앱이 고른 답으로 묶은 것(g1·g2)은 그 답을 고른 까닭 짐작과 활동만 받음. 답은 unit-miss.js normMiss로 읽음 */
 export function missPrompt(test, req) {
-  const m = test.meta || {};
+  const m = aiMeta(test);
   const body = req.items.flatMap(it => [
     '', `[문항 ${it.no}] ${it.content} | ${TYPE_NAME[it.type] || '단답'} | 정답 ${it.answer || '(없음)'} | 배점 ${it.points}${it.criteria ? ` | 채점 기준 ${it.criteria}` : ''}`,
     ...(it.groups.length ? ['앱이 묶은 것(임시 번호: 묶음, 사람 수):', ...it.groups.map(g => `- ${g.id}: ${g.why} (${g.n}명)`)] : []),

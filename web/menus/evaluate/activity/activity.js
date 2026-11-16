@@ -11,7 +11,7 @@ import { aiRowHTML } from '../../../core/ai-roles.js';
 import { readBundle, openBundleCard, needsCard, bundleBoxHTML, onBundle, bundleMsg } from '../../../core/bundle.js';
 import { newActivity, listActivities, getActivity, saveActivity, removeActivity, dropItems, addItem, getSet } from './activity-model.js';
 import { readMeta, termOf, SUBJECTS, cleanSheet } from './activity-read.js';
-import { TYPES, criteriaPrompt, normCriteria, applyKey, itemsFromSheets } from './activity-ai.js';
+import { TYPES, criteriaFor, normCriteria, applyKey, itemsFromSheets } from './activity-ai.js';
 import { sampleActivity } from './activity-sample.js';
 import { accuracyText, yearAccuracy, yearText } from '../grade-accuracy.js';
 import { introHTML, aiNoteHTML } from '../../../core/ui-parts.js';
@@ -255,7 +255,7 @@ async function makeCriteria(id) {
   A.busy = 'criteria:' + id; A.msg = ''; A.note = ''; render();
   try {
     const images = await critImages(id);
-    const v = await ai.generateJSON(criteriaPrompt({ meta: a0.meta, student: a0.sheet.student, teacher: a0.sheet.teacher, nImages: images.length }), { images, task: 'grade', valid: x => normCriteria(x).length > 0 });
+    const v = await ai.generateJSON(criteriaFor(a0, images.length), { images, task: 'grade', valid: x => normCriteria(x).length > 0 });
     const a = (curAct() && curAct().id === id) ? curAct() : getActivity(id);
     if (a) {
       a.items = a.sheet.teacher ? applyKey(normCriteria(v), a.sheet.teacher) : normCriteria(v);

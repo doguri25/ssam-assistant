@@ -1,7 +1,8 @@
 /* 문항·활동지 만들기의 「무엇으로 만들까요」 고르기 칸 (스펙 2026-11-15-docedit-minutes-quiz §3) — 단원평가 문항 만들기(unit-maker.js)·활동지 만들기(activity-maker.js)가 같이 씀.
    교과(진도표 교과, 없으면 직접 쓰기) → 단원 → 차시(기본: 진도표의 다음 차시, 「단원 전체」·여러 차시), 진도표가 없으면 「단원·성취기준·범위」 글 칸.
    학년·문항 수·수준·유형. 진도표·학급 정보는 학급 메뉴 자료를 읽기만 함(class-model) — 학급 화면은 고치지 않음.
-   직접 쓴 범위는 교직원 이름·전화번호·이메일을 가려 보내고(core/redact.js, 명단·주민번호 줄은 뺌) 돌아온 문항에서 되돌림(scope.back → make-scope unmaskItem) */
+   직접 쓴 범위는 교직원 이름·전화번호·이메일을 가려 보내고(core/redact.js, 명단·주민번호 줄은 뺌) 돌아온 문항에서 되돌림(scope.back → make-scope unmaskItem).
+   단원 칸은 원래 이름(선생님이 보는 평가 정보·문제지 제목·활동지)과 만들 때 보낸 가린 글(scope.ai — 만든 평가·활동지에 남겨 나중에 AI로 보낼 때 씀: make-scope aiMeta) */
 import { listSubjects, makeCtx, progressOf, getInfo } from '../class/class-model.js';
 import { makeRedactor } from '../../core/redact.js';
 import { unitsOf, defaultPick, scopeOf, freeScope, clampInt, LEVELS, lessonNo } from './make-scope.js';
@@ -126,7 +127,12 @@ export function pickValue(S) {
   else {
     const text = String(S.free).split('\n').map(l => rd.line(l)).filter(Boolean).map(x => x.text).join('\n');
     if (!text.trim()) error = '범위에 명단·주민번호 줄만 있어 보낼 글이 없어요. 단원·성취기준·범위만 써 주세요.';
-    else scope = { ...freeScope(S.subject, text), titles: [], mask, back: rd.back };
+    else {
+      // AI로 보내는 범위 줄(lines)은 가린 채로, 평가 정보·문제지 제목·활동지에 남는 단원 칸은 원래 이름으로.
+      // 단원 칸을 나중에 채점·평어 AI로 보낼 때는 만들 때 보낸 가린 글 그대로(ai — 문항·정답은 다시 가리지 않음)
+      const fs = freeScope(S.subject, text);
+      scope = { ...fs, unit: rd.back(fs.unit), unitName: rd.back(fs.unitName), ai: { unit: fs.unit, unitName: fs.unitName }, titles: [], mask, back: rd.back };
+    }
   }
   if (!error && !base.kinds.length) error = '유형을 하나 넘게 골라 주세요.';
   return { ...base, scope, error };

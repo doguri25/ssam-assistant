@@ -117,6 +117,14 @@ export function spreadSkipNos(students, count = 0) {
   for (const s of students) if (s.skip) { if (!(s.no >= 1) || taken.has(s.no)) s.no = next++; taken.add(s.no); }
   return students;
 }
+/* 1단계 정답표에서 문항 하나 빼기: 그 번호의 학생 채점 칸(같은 번호로 다시 더하면 지난 점수가 새 배점을 넘지 않게)과
+   [문항 만들기]로 만든 물음·보기(t.made — 같은 번호로 다시 더한 문항에 뺀 물음이 붙어 문제지로 나가지 않게)도 지움 */
+export function dropItem(test, no) {
+  test.key.items = test.key.items.filter(i => i.no !== no);
+  for (const st of test.students || []) if (st.items) delete st.items[no];
+  if (test.made && Array.isArray(test.made.items)) test.made.items = test.made.items.filter(m => m.no !== no);
+  return test;
+}
 /* 이 평가의 이름 칸 가림 (정하지 않았으면 null) */
 export const maskOf = t => (t && Array.isArray(t.mask) ? { mask: t.mask, all: !!t.maskAll } : null);
 /* 날짜의 학기: 학교 여름방학 끝 다음 날부터 2학기(활동지와 같게). 방학을 모르면 3~8월 1학기, 날짜가 없으면 2학기 */

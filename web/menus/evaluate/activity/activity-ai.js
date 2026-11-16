@@ -1,7 +1,9 @@
 /* 활동지 AI(스펙 4.2·4.4): 기준 만들기, 채점, 검토 프롬프트와 답 다듬기, 고르기·짝짓기·빈칸의 앱 판정.
-   AI에는 이름 가린 그림과 활동지 글만 보냄(학생 이름 없음). 업무별 AI 「채점」 */
+   AI에는 이름 가린 그림과 활동지 글만 보냄(학생 이름 없음). 업무별 AI 「채점」.
+   [활동지 만들기]로 만든 활동지의 단원·활동 이름은 만들 때 보낸 가린 글로(make-scope aiMeta·aiText — 직접 쓴 범위의 교직원 이름) */
 import { autoJudge } from '../unit/unit-grade.js';
 import { parseKey } from '../unit/unit-key.js';
+import { aiMeta, aiText } from '../make-scope.js';
 
 export const TYPES = [['choice', '고르기'], ['match', '짝짓기'], ['short', '빈칸·단답'], ['write', '쓰기'], ['draw', '그림·색칠']];
 export const MARK = { o: '○', t: '△', x: '×', n: '안 함' };
@@ -31,6 +33,8 @@ export function criteriaPrompt({ meta = {}, student = '', teacher = '', nImages 
     '', '[출력] JSON 하나만 출력합니다.',
     '{"items":[{"no":1,"type":"write","ask":"…","answer":"…","ok":"…","part":"…","src":"teacher"}]}'].filter(x => x !== '').join('\n');
 }
+/* 활동지 하나의 기준 만들기 요청(activity.js [기준 만들기]): 만든 활동지면 정보·학생용 글 머리의 이름은 만들 때 보낸 가린 글 */
+export const criteriaFor = (a, nImages = 0) => criteriaPrompt({ meta: aiMeta(a), student: aiText(a, a.sheet && a.sheet.student), teacher: a.sheet && a.sheet.teacher, nImages });
 export function normCriteria(v) {
   const seen = new Set(), out = [];
   for (const x of listOf(v, 'items')) {
@@ -114,7 +118,7 @@ export function gradeParts(act, nImages) {
   const shared = ['[활동지 채점]',
     '당신은 초등학교 수업 활동지를 채점하는 경력 많은 담임교사입니다.',
     '이 글 뒤에 오는 그림은 한 학생의 활동지입니다. 이름 칸은 가려져 있을 수 있습니다. 학생 이름을 짐작하거나 쓰지 않습니다.',
-    `[활동지] ${metaLine(act.meta || {}) || '(정보 없음)'}`,
+    `[활동지] ${metaLine(aiMeta(act)) || '(정보 없음)'}`,
     '', '[문항과 기준]', ...act.items.map(itemLine),
     '', '[채점 규칙]',
     '- 문항마다 read(학생이 쓴 답·그린 것을 짧게), mark, why(짧은 까닭), sure(확신하면 true)를 씁니다.',

@@ -11,7 +11,7 @@ import { readText, fileMessage } from '../../../core/files.js';
 import { stepsHTML } from '../../../core/steps.js';
 import { parseKey, parsePaper, keyTotal, splitCombined } from './unit-key.js';
 import { ITEM_TYPES, rescoreItem } from './unit-grade.js';
-import { listTests, getTest, saveTest, removeTest, newTest, makeTitle, graded, maskOf } from './unit-model.js';
+import { listTests, getTest, saveTest, removeTest, newTest, makeTitle, graded, maskOf, dropItem } from './unit-model.js';
 import { keyPrompt, normKeyAI } from './unit-ai.js';
 import { sampleTests } from './unit-sample.js';
 import { readBundle, openBundleCard, needsCard, bundleBoxHTML, onBundle, filledName, filledNameLine, maskNameFields } from '../../../core/bundle.js';
@@ -482,10 +482,8 @@ document.addEventListener('click', e => {
     t.key.items.push({ no, content: '', domain: '', type: 'short', answer: '', points: 0, criteria: '', pages: '' });
     commit(t); render();
   } else if (a === 'delItem') {
-    // 그 문항의 채점 칸도 지움 (같은 번호로 다시 더하면 지난 점수가 새 배점을 넘지 않게)
-    const no = Number(b.dataset.no);
-    t.key.items = t.key.items.filter(i => i.no !== no);
-    for (const st of t.students) if (st.items) delete st.items[no];
+    // 그 문항의 채점 칸·만든 물음도 지움 (unit-model dropItem)
+    dropItem(t, Number(b.dataset.no));
     commit(t); render();
   } else if (a === 'next') goStep(2);
   else if (a === 'linkEdit') openLinkSheet({ subject: t.meta.subject, link: t.link, save: l => { const t2 = cur(); t2.link = l; commit(t2); render(); } });
