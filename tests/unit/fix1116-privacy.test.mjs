@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { maskJosaNames, maskStaff, stripNames } from '../../web/core/privacy.js';
 import { maskPersons } from '../../web/core/chat-names.js';
 import { makeRedactor } from '../../web/core/redact.js';
-import { startItems, payloadOf } from '../../web/menus/etc/docedit-model.js';
+import { startItems, payloadOf, normChanges } from '../../web/menus/etc/docedit-model.js';
 import { redactInput } from '../../web/menus/etc/minutes-ai.js';
 
 const L = (text, inBox = false) => ({ text, inBox });
@@ -142,4 +142,25 @@ test('[fix1116-privacy-C5-pos] 직함 옆 교직원 이름은 그대로 가림',
     const m = maskStaff(l).text;
     assert.ok(!m.includes(n) && m.includes('○○○'), `${l} → ${m}`);
   }
+});
+
+test('[fix1116-privacy-C6] 「이름: 이름을 정자로」의 「이름」을 이름으로 배우지 않고, 아는 이름을 가릴 때 자리 표시 〔이름n〕 안은 건드리지 않음', () => {
+  const it = startItems(['3. 작성 요령', '가. 이름: 이름을 정자로 씁니다.', '나. 문의: 교무부장 이바다 선생님'].map(t => L(t)));
+  const p = payloadOf(it, '공문체로');
+  assert.deepEqual(p.sent.map(x => x.text), ['3. 작성 요령', '가. 이름: 이름을 정자로 씁니다.', '나. 문의: 교무부장 〔이름1〕 선생님']);
+  const ai = { changes: [{ id: 3, op: 'replace', text: '나. 문의: 교무부장 〔이름1〕 선생님께 바랍니다' }] };
+  const r = normChanges(ai, { ids: new Set(p.sent.map(x => x.id)), back: p.back, bad: p.bad });
+  assert.deepEqual(r.changes.map(c => c.text), ['나. 문의: 교무부장 이바다 선생님께 바랍니다']);
+  // 「이름」이 이름 목록에 들어 있어도(다른 규칙이 배운 경우) 자리 표시 안은 그대로
+  const rd = makeRedactor();
+  rd.names.push('이름');
+  const out = rd.line('이름 칸에는 교무부장 이바다 선생님').text;
+  assert.ok(!out.includes('〔〔'), out);
+  assert.equal(rd.back(out), '이름 칸에는 교무부장 이바다 선생님');
+  // 쌍점 뒤 진짜 이름은 그대로 가림
+  for (const [l, n] of [['이름: 김하늘', '김하늘'], ['성명: 이솔', '이솔'], ['이름: 박준', '박준']]) {
+    const x = makeRedactor().line(l).text;
+    assert.ok(!x.includes(n), `${l} → ${x}`);
+  }
+  for (const l of ['성명: 성함을 적어 주세요', '이름: 이름만 적어 주세요']) assert.equal(makeRedactor().line(l).text, l);
 });

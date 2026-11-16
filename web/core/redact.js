@@ -37,11 +37,11 @@ export function makeRedactor() {
     if (account(s)) return null;
     return { s };
   }
-  /* 아는 이름을 글자 그대로 자리 표시로(긴 이름부터) */
+  /* 아는 이름을 글자 그대로 자리 표시로(긴 이름부터). 이미 넣은 자리 표시 〔이름n〕 안의 「이름」은 건드리지 않음 */
   function known(t) {
     let out = t;
     names.map((n, i) => [n, i + 1]).filter(([n]) => /^[가-힣]{2,4}$/.test(n)).sort((a, b) => b[0].length - a[0].length)
-      .forEach(([n, k]) => { out = out.replace(new RegExp(`(?<![가-힣])${reEsc(n)}${AFTER_NAME}`, 'g'), `〔이름${k}〕`); });
+      .forEach(([n, k]) => { out = out.replace(new RegExp(`(?<![가-힣〔])${reEsc(n)}${AFTER_NAME}`, 'g'), `〔이름${k}〕`); });
     return out;
   }
   /* 가린 글(stLine — 여러 줄 규칙을 거친 줄)과 원래 글(s)을 맞대어 이름마다 번호 → 보낼 글(아는 이름 가리기 전), 못 맞추면 null.
