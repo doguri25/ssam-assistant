@@ -7,7 +7,9 @@ const COMMON = new Set(['이야기', '우리반', '우리말', '우리들', '도
   '전문성', '도덕성', '공공성', '우수성', '지속성', '연계성', '진정성', '성실성', '도우미',
   '나머지', '장애인', '한부모', '나이스', '경계선', '전학온', '이주민', '조부모', '임원진', '구글폼', '최우수',
   // 성씨 글자로 시작하는 흔한 외래어(「인터뷰를」을 이름 + 조사로 보던 것)
-  '인터뷰', '유튜브', '마라톤', '오디션', '유니폼', '하모니', '마스크']);
+  '인터뷰', '유튜브', '마라톤', '오디션', '유니폼', '하모니', '마스크',
+  // 「로·으로」가 흔히 붙는 낱말(「최우선으로」「지정석으로」「이번주로」 — 끝 글자가 이름에도 흔해 끝 글자 규칙으로 못 거르는 것)
+  '최우선', '지정석', '이번주', '지난주', '성희롱', '예정순', '기재용', '소재용', '정동진']);
 // 전화번호: 0으로 시작하는 국번(앞에 숫자가 붙지 않음) — 「1200000 1150000」「3000 4000 5000」 같은 금액·숫자 줄은 아님
 const PHONE = /(?<!\d)\(?0\d{1,2}\)?[-.\s)]{0,2}\d{3,4}[-.\s]?\d{4}/;
 
@@ -27,24 +29,42 @@ const ROLE_NAME = new RegExp(`((?:${ROLE})(?:\\s*[:：|]\\s*|\\s+))([가-힣]{3,
 /* 이름 뒤 조사(「김민준과」「이서연이」「김민수에게」「이영희님께」「김하늘로」「김민준으로부터」) — 이름만 가리고 조사는 남김 */
 const JOSA = /^(?:님|씨)?(?:에게|께서|한테|하고|이랑|까지|부터|처럼|보다|(?:으로|로)(?:부터)?|[은는이가을를과와의에도만께랑])?$/;
 const batchimOf = ch => { const c = ch.charCodeAt(0) - 0xac00; return c >= 0 && c < 11172 ? c % 28 : -1; };
-// 「로·으로」가 흔히 붙는 말투·쓰임·차례·곳 낱말의 끝 글자(공문체로·표준어로·안내용으로·최종본으로·소제목으로·이름순으로·기본값으로·기차역으로·경복궁으로·민속촌으로·장학사로·한글날로) — 이름 끝에 드묾
-export const RO_NOUN = /[체어용본목순값역궁촌사날]$/; // core/chat-names.js도 같은 규칙
+/* ----- 「로·으로」: 흔한 조사가 아니라 이름 자리에서만 (core/chat-names.js도 같은 규칙) -----
+   「예정대로」「노란색으로」「지원청으로」「최종안으로」처럼 성 글자로 시작하는 낱말에 아주 흔히 붙어서, 이름 + 로는
+   같은 마디 몇 글자 안에 바꾸기·고르기 말이 올 때만(「김하늘을 이바다로 바꿔 줘」「학생회장은 김하늘로 정함」「한가람으로 뽑았다」),
+   「로부터」는 연락·받기 말이 올 때만(「박솔빛으로부터 연락이 옴」). 다른 줄에서 이름으로 안 낱말은 core/redact.js가 어디서나 가림 */
+// 「로·으로」가 흔히 붙는 말투·쓰임·차례·곳·색·안·부서·물건 낱말의 끝 글자(공문체로·표준어로·안내용으로·최종본으로·소제목으로·이름순으로·기본값으로·기차역으로·
+// 경복궁으로·민속촌으로·장학사로·한글날로·예정대로·노란색으로·지원청으로·최종안으로·기획팀으로·정규직으로·지하층으로·소그룹으로·전학급으로·전염병으로·
+// 연장전으로·명령조로·공지글로·인사말로·서술형으로·홍보지로·최근호로·고정석으로·손글씨로·노트북으로·민원인으로·공용폰으로·소규모로·연수원으로·서울숲으로·
+// 남이섬으로·임진각으로·김장철로·정문쪽으로·이번달로) — 이름 끝에 드물거나, 흔한 이름(은지·민호·현석·혜인·지원·영철)은 core/chat-names.js 이름 목록이 가림
+const RO_END = /[체어용본목순값역궁촌사날대색청팀직층룹급병전안조글말형지호석씨북인폰모원숲섬각철쪽달]$/;
+// 끝 글자가 용·순이어도 흔한 이름(한재용·이영순·박정순·최병용)
+const RO_GIVEN = new Set('재용 병용 태용 영순 정순 미순 옥순 금순 복순 말순'.split(' '));
+export const roNoun = n => RO_END.test(n) && !RO_GIVEN.has(n.slice(-2));
+const RO_CUE = /^[^.,;:!?。\n]{0,8}?(?:바꾸|바꿔|바꿈|바꿨|바꾼|바뀌|바뀜|바뀐|고쳐|고치|고침|고쳤|고친|정함|정했|정하|정해|정한|뽑|선출|변경|교체|임명|위촉|지정|추천|선정|선발|결정)/;
+const FROM_CUE = /^[^.,;:!?。\n]{0,8}?(?:연락|전화|문자|편지|메일|메시지|소식|말씀|얘기|받|들었|들음|전해|부탁|요청|문의)/;
+// 앞 낱말이 곳·색·날·꼴을 가리키면(「장소를 서울숲으로 바꿔 줘」「글씨 색을 하늘색으로」) 이름이 아님
+const RO_THING = /(?:장소|곳|위치|색|색깔|색상|글꼴|글씨|날짜|요일|시간|형식|양식|방법|말투|문체|순서|차례|배경)\s*(?:을|를|은|는|도|만)?\s*$/;
+/* 「로·으로(부터)」(j)가 붙은 자리가 이름 자리인지(바꾸기·고르기 말 앞, 곳·색 말 뒤가 아님): before·after = 낱말 앞·조사 뒤 글 */
+export const roSpot = (j, before = '', after = '') => !RO_THING.test(String(before)) && (/부터$/.test(j) ? FROM_CUE : RO_CUE).test(String(after));
+/* 낱말 n + 「로·으로(부터)」가 이름인지: 이름 자리이고 n이 말투·쓰임·곳 낱말(roNoun)·흔한 낱말이 아님 */
+export const roName = (n, j, before = '', after = '') => !roNoun(n) && !COMMON.has(n) && roSpot(j, before, after);
 /* 이름(n) + 조사(j)가 맞는 꼴인지: 「로」는 받침 없거나 ㄹ 받침 뒤, 「으로」는 그 밖의 받침 뒤(「강당으로」를 「강당으」+「로」로 자르지 않게).
-   「로·으로」는 세 글자 넘는 이름만(「담당 주제로」「담당 지역으로」 같은 두 글자 낱말은 아님), 말투·쓰임 낱말(공문체로·안내용으로)은 아님 */
-function josaOk(n, j) {
+   「로·으로」는 세 글자 넘는 이름만(「담당 주제로」「담당 지역으로」 같은 두 글자 낱말은 아님), 이름 자리일 때만(roName — 「님으로·씨로」는 늘) */
+function josaOk(n, j, before = '', after = '') {
   if (!JOSA.test(j)) return false;
   const m = /^(님|씨)?(으?)로/.exec(j);
   if (!m) return true;
   const b = batchimOf((m[1] || n).slice(-1));
-  return n.length >= 3 && !/으$/.test(n) && (m[1] || !RO_NOUN.test(n)) && (m[2] ? b > 0 && b !== 8 : b === 0 || b === 8);
+  return n.length >= 3 && !/으$/.test(n) && (m[1] || roName(n, j, before, after)) && (m[2] ? b > 0 && b !== 8 : b === 0 || b === 8);
 }
 // 조사가 붙었을 때 이름으로 보지 않는 끝 글자 (이해도를·연수회를·홍보단을·공부방을처럼 「~도·~회·~단·~방」 낱말)
 const NOUN_END = /[도감력화회권별제법실부생들표단방작비장품물집책판함증점식터반란]$/;
-/* 낱말 → [이름, 조사] (긴 이름부터 — 이름 끝 글자가 조사로 남지 않게), 아니면 null. ok(이름, 조사) */
-function nameJosa(w, ok) {
+/* 낱말 → [이름, 조사] (긴 이름부터 — 이름 끝 글자가 조사로 남지 않게), 아니면 null. ok(이름, 조사), before·after: 낱말 앞·뒤 글(「로」 자리 보기) */
+function nameJosa(w, ok, before = '', after = '') {
   for (let k = Math.min(4, w.length); k >= 2; k--) {
     const n = w.slice(0, k), j = w.slice(k);
-    if (josaOk(n, j) && ok(n, j)) return [n, j];
+    if (josaOk(n, j, before, after) && ok(n, j)) return [n, j];
   }
   return null;
 }
@@ -133,13 +153,13 @@ const TWO_WORD = new Set(('전담 연구 정보 안전 인성 진로 진학 도�
 /* 직함 옆 낱말 하나가 교직원 이름 모양인지: 세 글자(흔한 성, 부서 이름·「~님」(주임님·원장님) 아님) 또는 두 글자(흔한 성 + 흔한 낱말 아님) */
 export const staffName = n => (n.length === 3 ? cellName(n) && !STAFF_WORD.has(n) && !/님$/.test(n) : n.length === 2 && SURNAME.has(n[0]) && !TWO_WORD.has(n));
 /* 「김솔께」「이나래에게」 → [이름, 조사] (세 글자 이름부터) */
-const staffJosa = w => { for (const k of [3, 2]) { if (w.length < k) continue; const n = w.slice(0, k), j = w.slice(k); if (josaOk(n, j) && staffName(n)) return [n, j]; } return null; };
+const staffJosa = (w, before = '', after = '') => { for (const k of [3, 2]) { if (w.length < k) continue; const n = w.slice(0, k), j = w.slice(k); if (josaOk(n, j, before, after) && staffName(n)) return [n, j]; } return null; };
 /* 직함 앞뒤의 교직원 이름만 ○○○로(그 밖의 글은 그대로 — 가린 자리를 되돌릴 수 있게 바꾸기만 함) → { text, masked } */
 export function maskStaff(text) {
   let masked = 0;
   const s = String(text == null ? '' : text)
     .replace(STAFF_AFTER, (m, pre, n, sp, who) => (staffName(n) && !(n.length === 2 && who === '님') ? (masked++, pre + MASK + sp + who) : m))
-    .replace(STAFF_BEFORE, (m, pre, w) => { const r = staffJosa(w); return r ? (masked++, pre + MASK + r[1]) : m; });
+    .replace(STAFF_BEFORE, (m, pre, w, off, str) => { const r = staffJosa(w, str.slice(0, off + pre.length), str.slice(off + m.length)); return r ? (masked++, pre + MASK + r[1]) : m; });
   return { text: s, masked };
 }
 
@@ -152,9 +172,9 @@ const josaName = n => plainOk(n) && !THING_END.test(n) && (!/[서지구형하리
 /* 흔한 성으로 시작하는 세 글자 낱말 + 조사(빈 조사는 아님)만 ○○○로 → { text, masked } */
 export function maskJosaNames(text) {
   let masked = 0;
-  const s = String(text == null ? '' : text).replace(/(^|[^가-힣○])([가-힣]{4,8})(?![가-힣])/g, (m, pre, w) => {
+  const s = String(text == null ? '' : text).replace(/(^|[^가-힣○])([가-힣]{4,8})(?![가-힣])/g, (m, pre, w, off, str) => {
     const n = w.slice(0, 3), j = w.slice(3);
-    if (!j || !josaOk(n, j) || !josaName(n)) return m;
+    if (!j || !josaOk(n, j, str.slice(0, off + pre.length), str.slice(off + m.length)) || !josaName(n)) return m;
     masked++;
     return pre + MASK + j;
   });
@@ -176,14 +196,14 @@ export function stripNames(text, { keep = null } = {}) {
     return true;
   });
   // 직책 옆 이름 (「회장 김가람」, 「담임: 김준형」, 「회장 | 이나래」)
-  for (let i = 0; i < ls.length; i++) ls[i] = ls[i].replace(ROLE_NAME, (m, pre, w) => { const r = nameJosa(w, roleOk); return r ? (masked++, pre + MASK + r[1]) : m; });
+  for (let i = 0; i < ls.length; i++) ls[i] = ls[i].replace(ROLE_NAME, (m, pre, w, off, str) => { const r = nameJosa(w, roleOk, str.slice(0, off + pre.length), str.slice(off + m.length)); return r ? (masked++, pre + MASK + r[1]) : m; });
   // 이름 칸 (「6번 이름 김민수」「이름: 김솔」)
   for (let i = 0; i < ls.length; i++) ls[i] = ls[i].replace(LABEL_NAME, (m, pre, sep, w, off, str) => {
     const before = str.slice(0, off);
     if (GROUP.test(before)) return m;
     // 쌍점, 닫힌 괄호(「이름( 김솔 )」), 「6번」 바로 뒤면 두 글자 이름도
     const strong = /[:：]/.test(sep) || (/[(（[]/.test(sep) && /^\s*[)）\]]/.test(str.slice(off + m.length))) || /\d\s*\)?\s*번\s*$/.test(before);
-    const r = nameJosa(w, labelOk(strong));
+    const r = nameJosa(w, labelOk(strong), before + pre, str.slice(off + m.length));
     return r ? (masked++, pre + MASK + r[1]) : m;
   });
   // 이름 뒤 「학생·어머니」(「김민수 학생은」), 쉼표로 이은 둘째 이름부터(「관심 학생: ○○○(정서 불안), 최하은(교우 관계)」)

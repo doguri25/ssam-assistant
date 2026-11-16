@@ -223,3 +223,68 @@ test('[fix1116-privacy-C4] 글만 읽은 문서 → 기본 문서: .hwp 표(「�
   // 표 줄 사이 「|」가 없는 보통 줄은 문단
   assert.deepEqual(doc(['안내', '가 또는 나를 고름', 'A|B 꼴 이름']).blocks, [{ type: 'p', text: '가 또는 나를 고름' }, { type: 'p', text: 'A|B 꼴 이름' }]);
 });
+
+/* ---------- 2026-11-16 검토 고침(되짚기) ---------- */
+// 검토에서 찾은 흔한 공문 낱말 + 로·으로(성 글자로 시작하는 세 글자 낱말)
+const RO_WORDS = ['예정대로', '기존대로', '지침대로', '안내대로', '공문대로', '원안대로', '양식대로', '명단대로', '방침대로', '신청대로', '지시대로',
+  '노란색으로', '하늘색으로', '주황색으로', '연두색으로', '황금색으로', '지원청으로', '최종안으로', '조정안으로', '기본안으로', '정부안으로',
+  '정규직으로', '전문직으로', '최우선으로', '지정석으로', '지하층으로', '기획팀으로', '지원팀으로', '이번주로', '지난주로', '전염병으로', '성희롱으로',
+  '소그룹으로', '연장전으로', '전학급으로', '지원청으로부터'];
+
+test('[fix1116-privacy-C1-regress] 흔한 공문 낱말 + 로·으로(예정대로·노란색으로·지원청으로·최종안으로·기획팀으로·이번주로)는 이름으로 보지 않음 — 바꾸는 말이 뒤에 와도', () => {
+  for (const w of RO_WORDS) {
+    for (const l of [`${w} 진행합니다.`, `관할 ${w} 보고합니다.`, `${w} 바꿔 줘`, `담당을 ${w} 정함`, `${w} 연락이 옴`]) {
+      assert.equal(maskJosaNames(l).text, l, `josa: ${l}`);
+      assert.equal(maskStaff(l).text, l, `staff: ${l}`);
+      for (const memo of [false, true]) assert.equal(maskPersons(l, { memo }).text, l, `persons(${memo}): ${l}`);
+      const r = makeRedactor();
+      assert.equal(r.line(l).text, l, `redact: ${l}`);
+      assert.deepEqual(r.names, [], l);
+    }
+  }
+  // 문서 다듬기: 한 줄에서 이름으로 배워 문서 전체로 퍼지지 않음
+  const it = startItems(['가. 일정: 기존 계획은 예정대로 추진함.', '나. 우천 시에도 예정대로 실시하되 장소는 강당으로 함.', '다. 표시는 노란색으로, 보고는 관할 지원청으로 함.'].map(t => L(t)));
+  for (const c of CHIPS.filter(c => c.ask)) {
+    const p = payloadOf(it, c.ask);
+    assert.deepEqual(p.sent.map(x => x.text), it.map(x => x.text), c.ask);
+    assert.equal(p.ask, c.ask);
+  }
+  // 장소·색 같은 것을 바꾸는 요청(「장소를 서울숲으로 바꿔 줘」)
+  for (const ask of ['장소를 서울숲으로 바꿔 줘', '글씨 색을 하늘색으로 바꿔 줘', '날짜를 금요일로 바꿔 줘', '말투를 명령조로 바꿔 줘', '인사말로 바꿔 줘', '공지글로 바꿔 줘']) {
+    assert.equal(payloadOf(it, ask).ask, ask, ask);
+  }
+});
+
+test('[fix1116-privacy-C1-ctx] 「이름 + 로·으로」는 바꾸기·고르기 말(바꿔·정함·뽑·선출·변경·추천…) 앞이거나 이미 아는 이름일 때만 가림', () => {
+  const doc = startItems([L('가. 담당: 교무부장 김하늘 선생님')]);
+  for (const ask of ['김하늘을 이바다로 바꿔 줘', '담당자를 한가람으로 바꿔 줘', '담당자를 박솔빛으로 다시 바꿔 줘', '대표를 박솔빛으로 추천함']) {
+    const p = payloadOf(doc, ask);
+    assert.deepEqual(leaks(p.ask), [], `${ask} → ${p.ask}`);
+    assert.equal(p.back(p.ask), ask);
+  }
+  for (const l of ['학생회장은 김하늘로 정함', '반장을 박솔빛으로 뽑았다.', '위원장은 한가람으로 선출함.', '담당을 박솔빛으로 변경함', '박솔빛으로부터 연락이 옴']) {
+    const r = makeRedactor(), out = r.line(l);
+    assert.ok(!out.text.includes(l.match(/김하늘|박솔빛|한가람/)[0]), `${l} → ${out.text}`);
+    assert.equal(r.back(out.text), l);
+  }
+  // 바꾸는 말이 없어도 다른 줄에서 이름으로 안 낱말은 가림
+  const p = payloadOf(startItems(['가. 담당: 박솔빛 선생님', '나. 다음 담당도 박솔빛으로 함.'].map(t => L(t))), '공문체로');
+  assert.deepEqual(p.sent.map(x => x.text), ['가. 담당: 〔이름1〕 선생님', '나. 다음 담당도 〔이름1〕으로 함.']);
+  // 채팅·행특 메모(maskPersons)도 같은 규칙
+  assert.equal(maskPersons('담당을 한가람으로 바꿔 줘').text, '담당을 ○○○으로 바꿔 줘');
+  assert.equal(maskPersons('담당을 최윤슬로 바꿔 줘', { memo: true }).text, '담당을 ○○○로 바꿔 줘');
+  assert.equal(maskPersons('담당은 최윤슬로 해 줘', { memo: true }).text, '담당은 최윤슬로 해 줘', '바꾸는 말이 없으면 목록 밖 이름은 그대로');
+  assert.equal(maskPersons('예정대로 바꿔 줘', { memo: true }).text, '예정대로 바꿔 줘');
+});
+
+test('[fix1116-privacy-C1-narrow] 끝 글자가 용·순인 이름(재용·영순·정순·병용)도 바꾸는 말 앞에서는 가림 — 홍보용·이름순·성적순 같은 낱말은 그대로', () => {
+  for (const [ask, n] of [['담당자를 한재용으로 바꿔 줘', '한재용'], ['담당자를 이영순으로 바꿔 줘', '이영순'], ['담당자를 박정순으로 바꿔 줘', '박정순'], ['담당자를 최병용으로 바꿔 줘', '최병용']]) {
+    const p = payloadOf(startItems([L('가. 담당: 교무부장 김하늘 선생님')]), ask);
+    assert.ok(!p.ask.includes(n), `${ask} → ${p.ask}`);
+    assert.equal(p.back(p.ask), ask);
+  }
+  for (const ask of ['홍보용으로 바꿔 줘', '안내용으로 바꿔 줘', '이름순으로 바꿔 줘', '성적순으로 바꿔 줘', '성명순으로 정렬해 바꿔 줘', '조정용으로 바꿔 줘', '지정용으로 바꿔 줘', '예정순으로 바꿔 줘']) {
+    assert.equal(payloadOf(startItems([L('가. 담당: 교무부장 김하늘 선생님')]), ask).ask, ask, ask);
+    assert.equal(maskPersons(ask, { memo: true }).text, ask, `memo: ${ask}`);
+  }
+});
