@@ -1,6 +1,6 @@
 /* 견적서 읽기: 엑셀·CSV·한글·글은 표에서 품목을 찾고(AI 없음), 사진·글 없는 PDF는 AI가 읽음 → { items, by: 'table'|'ai' }
-   items: [{ name, spec, qty, price }] (수는 숫자). 합계·소계·부가세·공급가액 줄은 뺌 */
-import { readTable, findItems } from '../../core/sheet.js';
+   items: [{ name, spec, qty, price }] (수는 숫자). 합계·소계·총계·계·총액·부가세·공급가액 줄은 뺌(core/sheet.js isTotalName) */
+import { readTable, findItems, isTotalName } from '../../core/sheet.js';
 import { readText } from '../../core/files.js';
 import * as ai from '../../core/ai.js';
 
@@ -14,7 +14,7 @@ export function quotePrompt() {
 }
 export function normQuoteItems(v) {
   const list = Array.isArray(v) ? v : v && Array.isArray(v.items) ? v.items : [];
-  return list.filter(x => x && String(x.name || '').trim() && !TOTAL.test(String(x.name)))
+  return list.filter(x => x && String(x.name || '').trim() && !TOTAL.test(String(x.name)) && !isTotalName(x.name))
     .map(x => ({ name: String(x.name).trim(), spec: String(x.spec || '').trim(), ...(String(x.unit || '').trim() ? { unit: String(x.unit).trim().slice(0, 10) } : {}), qty: num(x.qty) || 1, price: num(x.price) }));
 }
 const fromRows = rows => normQuoteItems(findItems(rows));

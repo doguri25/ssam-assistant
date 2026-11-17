@@ -6,6 +6,7 @@ import { isDate } from '../../core/calendar.js';
 import { personalColumn } from '../../core/survey.js';
 import { safeText } from '../../core/chat-route.js';
 import { normRv } from './plan-rv.js';
+import { isTotalName } from '../../core/sheet.js';
 
 const LIST_KEY = 'events', CUR_KEY = 'event:current';
 
@@ -40,7 +41,8 @@ export function normOptions(v) {
       .map(t => ({ time: str(t.time).trim(), activity: str(t.activity).trim(), place: str(t.place).trim() })),
     pros: strs(o.pros),
     staffNeed: str(o.staffNeed).trim(),
-    budget: (Array.isArray(o.budget) ? o.budget : []).filter(b => isObj(b) && str(b.name).trim()).map(b => ({ name: str(b.name).trim(), amount: num(b.amount) }))
+    // AI가 넣은 「합계·계」 줄은 뺌(계획서 예산 표에 합계가 두 번, 품의로 넘기면 소요 예산에 한 번 더 들어갔음 — 합계는 앱이 셈)
+    budget: (Array.isArray(o.budget) ? o.budget : []).filter(b => isObj(b) && str(b.name).trim() && !isTotalName(str(b.name))).map(b => ({ name: str(b.name).trim(), amount: num(b.amount) }))
   })).filter(o => o.timetable.length).slice(0, 3);
 }
 

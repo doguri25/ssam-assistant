@@ -97,7 +97,20 @@ const HEAD = {
   supply: /^(공급가액)$/,
   tax: /^(세액|부가세|부가가치세)$/
 };
-const SKIP = /합계|소계|총계|부가세|VAT/i;
+/* 합계·소계·세액·할인 같은 줄의 이름(품목이 아님 — 품목으로 읽으면 소요 예산에 합계가 한 번 더 들어감).
+   「합계·소계·총계·부가세·VAT」가 든 이름(「합계금액」「부가세(VAT)」)은 예전처럼, 견적서·계획서 표의 「합   계」「총 계」「총 액(부가세 포함)」처럼
+   띄어 쓰거나 괄호를 붙인 이름은 띄어쓰기·괄호 속 말·쌍점을 빼고 이름 전체가 합계 말일 때만(「계량컵」「총채」「세제」「소 계량컵」은 품목).
+   견적서 읽기(sheet·quote)·품의 넣기(줄글·표·AI 답)·행사계획 예산이 함께 씀 */
+const SUM_IN = /합계|소계|총계|부가세|VAT/i;
+const SUM_ALL = new RegExp('^(?:계|총|합계|소계|총계|총합|총합계|총액|총금액|합계금액|금액합계|합산|모두|전부|다해서|전체(?:금액)?'
+  + '|공급가액?|공급금액|세액|부가세|부가가치세|vat|(?:총|최종)?결제(?:예정)?(?:금액|액)|총?주문(?:금액|액)|총?상품(?:금액|가격)|소요(?:예산|액|금액)'
+  + '|총?예산액?|총(?:구입|구매|지출|사업)(?:비|액|금액)|총비용|(?:sub|grand)?total|sum|할인(?:금액|액)?|쿠폰(?:할인)?|적립금(?:사용)?|포인트사용)$', 'i');
+export const totalKey = s => String(s == null ? '' : s).replace(/[(（[［][^)）\]］]*[)）\]］]/g, '').replace(/[\s:：=]/g, '');
+export function isTotalName(s) {
+  const k = totalKey(s);
+  // 「총액은」「합계가」처럼 조사가 붙은 말도(「공급가」는 그대로 봄)
+  return !!k && (SUM_IN.test(String(s)) || SUM_ALL.test(k) || SUM_ALL.test(k.replace(/(?:은|는|이|가)$/, '')));
+}
 // 열 이름 뒤 괄호(「수량(개)」「수량(EA)」「단가(원)」「금액（원）」)는 빼고 봄 — 「수량(개)」를 못 읽으면 수량이 모두 1이 됐음
 const normHead = v => String(v == null ? '' : v).replace(/\s|[(（][^)）]*[)）]/g, '');
 
@@ -112,7 +125,7 @@ export function findItems(rows) {
     for (const r of list.slice(h + 1)) {
       const cell = k => (cols[k] == null || !r ? '' : String(r[cols[k]] == null ? '' : r[cols[k]]).trim());
       const name = cell('name');
-      if (!name || SKIP.test(name)) continue;
+      if (!name || isTotalName(name)) continue;
       const q = toNumber(cell('qty'));
       const qty = q > 0 ? q : 1;
       let price = cell('price') !== '' ? toNumber(cell('price')) : Math.round(toNumber(cell('amount')) / qty);
