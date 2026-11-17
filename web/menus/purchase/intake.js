@@ -3,7 +3,7 @@
 import * as ai from '../../core/ai.js';
 import { emptyItem, findPersonal, toNumber, plainItemName, plainOfficial, PER_UNIT } from './rules.js';
 import { readQuote } from './quote.js';
-import { findItems } from '../../core/sheet.js';
+import { findItems, isTotalName, totalKey } from '../../core/sheet.js';
 import { readText } from '../../core/files.js';
 import { nameCell, staffName, MASK, maskContacts } from '../../core/privacy.js';
 
@@ -112,16 +112,29 @@ function itemClauses(line) {
   const nums = clauses(line).filter(hasNumber);
   return nums.length >= 2 && nums.every(p => parseLine(p)) ? nums : [line];
 }
-/* 합계만 적은 줄(「합계 36,000원」·「총액 3만원」) → 총액 칸 */
-const TOTAL_LINE = /^\s*(?:[-•·*]\s*)?(?:합\s*계|총\s*합\s*계|총\s*액|총\s*금\s*액|총)\s*:?\s*([\d,]+(?:\.\d+)?)\s*(만)?\s*원?\s*$/;
+/* 합계·소계·세액·할인만 적은 줄(「합계 36,000원」「총 결제금액: 78,000원」「계 1,140,000원」「합계 36,000원(VAT 포함)」「총액은 3만원 정도」):
+   품목으로 읽으면 소요 예산에 합계가 한 번 더 들어갔음. 이름은 core/sheet.js isTotalName(견적서 표와 같은 말)으로 봄.
+   합계·총액 → 총액 칸(total), 소계·공급가액·세액 → 버림(품목 금액에 이미 들어 있음, part), 할인·빼는 금액 → 못 읽은 줄(off — AI가 되면 할인 뒤 단가로 다시 읽음) */
+const SUM_LINE = /^\s*(?:[-•·*▪◦]\s*|\d+[).]\s*|\(\d+\)\s*|[가-하][.)]\s+|\([가-하]\)\s*|[①-⑳]\s*)?((?:[^\d\n(（]|[(（][^)）\n]*[)）])*?)\s*(?:[:：=]|[-–](?!\d))?\s*([-−－](?=\d))?\s*([\d,]+(?:\.\d+)?)\s*(만)?\s*원?\s*(?:[(（][^)）\n]*[)）])?\s*(?:정도|쯤|가량|내외|이내|입니다|이에요|예요|임)?\s*[.。]?\s*$/;
+function sumLine(line) {
+  const m = SUM_LINE.exec(line);
+  if (!m) return null;
+  // 빼는 금액(「배송비 할인 -3,000원」「쿠폰 -2,000원」)은 사는 물품이 아님
+  if (m[2]) return { kind: 'off' };
+  if (!isTotalName(m[1])) return null;
+  const k = totalKey(m[1]);
+  const kind = /할인|쿠폰|적립|포인트/.test(k) ? 'off'
+    : /공급|세액|부가세|부가가치세|VAT|소계/i.test(k) && !/포함|총계|총액|결제|합계금액/.test(k) ? 'part' : 'total';
+  return { kind, amount: money(m[3], m[4]) };
+}
 export function parseLines(text) {
   const items = [], missed = [];
   let said = null, sum = 0, inexact = false;
   for (const raw of String(text || '').split(/\r?\n/)) {
     if (!raw.trim()) continue;
     // 「₩3,000」「￦3,000」은 「3,000원」으로
-    const line = koWon(raw.replace(/[₩￦]\s*(\d[\d,]*(?:\.\d+)?)/g, '$1원')), t = TOTAL_LINE.exec(line);
-    if (t) { said = money(t[1], t[2]); continue; }
+    const line = koWon(raw.replace(/[₩￦]\s*(\d[\d,]*(?:\.\d+)?)/g, '$1원')), t = sumLine(line);
+    if (t) { if (t.kind === 'total') said = t.amount; else if (t.kind === 'off') missed.push(raw.trim()); continue; }
     const parts = itemClauses(line);
     for (const part of parts) {
       const p = parseLine(part);
@@ -156,7 +169,7 @@ export function tableItems(text) {
   const items = [], missed = [];
   for (const cells of rows) {
     const it = rowItem(cells);
-    if (it && TOTAL.test(it.name)) continue;
+    if (it && (TOTAL.test(it.name) || isTotalName(it.name))) continue;
     if (it) items.push(it); else missed.push(cells.filter(Boolean).join(' '));
   }
   return { items, fields: {}, missed };
@@ -213,13 +226,20 @@ export function normIntake(v, kind = 'text') {
   const bad = t => findPersonal(t) || hasContact(t);
   const items = [];
   for (const x of listOf(v, 'items')) {
-    if (!(x && typeof x === 'object') || blank(x.name) || TOTAL.test(str(x.name))) continue;
+    if (!(x && typeof x === 'object') || blank(x.name) || TOTAL.test(str(x.name)) || isTotalName(x.name)) continue;
     const it = { name: plainItemName(str(x.name, 120)), spec: str(x.spec, 80), unit: str(x.unit, 10), qty: String(toNumber(x.qty) > 0 ? toNumber(x.qty) : 1), price: String(Math.max(0, Math.round(toNumber(x.price)))), vendor: str(x.vendor, 40) };
     if (bad(it.name) || ['spec', 'unit', 'vendor'].some(k => findPersonal(it[k]))) { dropped++; continue; }
     for (const k of ['spec', 'unit', 'vendor']) if (hasContact(it[k])) { it[k] = ''; dropped++; }
     items.push(it);
   }
   const shipping = listOf(v, 'shipping').filter(x => x && typeof x === 'object').map(x => ({ vendor: hasContact(x.vendor) ? '' : str(x.vendor, 40), fee: Math.max(0, Math.round(toNumber(x.fee))) }));
+  // AI가 배송비를 품목(items)에도 넣고 배송비(shipping)에도 넣으면 두 번 더해졌음: 같은 판매처(한쪽이 비어도)·같은 금액인 배송비 품목은 뺌(배송비 줄 하나만)
+  for (const s of shipping) {
+    if (!(s.fee > 0)) continue;
+    const i = items.findIndex(it => SHIP.test(it.name.replace(/\s/g, '')) && Math.round(toNumber(it.qty) * toNumber(it.price)) === s.fee
+      && (!(it.vendor || it.spec) || !s.vendor || (it.vendor || it.spec) === s.vendor));
+    if (i >= 0) items.splice(i, 1);
+  }
   const fields = {};
   const f = v && v.fields && typeof v.fields === 'object' ? v.fields : {};
   for (const k of FIELDS) {
