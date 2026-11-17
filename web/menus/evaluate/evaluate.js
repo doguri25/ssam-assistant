@@ -3877,13 +3877,15 @@ const GR = {
   id: null, title: '', unitId: '', criteria: '', critImgs: [], critDocs: [], createdAt: 0,
   // critDocs: 한글 정답표에서 읽은 글 [{ name, text }]
   pages: [],          // [{ name, blob, url, w, h }] — 이 화면에만 있고 저장하지 않음
-  students: [],       // [{ id, no, pages:[i], skip, status, score, score0, level, manual, summary, evidence, strengths, improve, unreadable, text, d, stale, err }]
+  students: [],       // [{ id, no, pages:[i], skip, status, score, score0, level, manual, summary, evidence, strengths, improve, unreadable, text, d, stale, err, rb, rbBase }]
+  // rb: 기준표 요소별 수준 [{ name, level }] · rbBase: 기준 점수(고른 수준 점수 합을 100점으로) — 기준표로 채점했을 때만
   settings: { pagesPer: 1, startNo: 1, except: [], ratio: { top: 10, high: 30, mid: 40, low: 20 }, maskOn: true, maskAll: false, mask: [], mix: 'mix', byNo: false, noBox: null },
   // byNo·noBox: 적힌 번호로 학생 맞추기(걷은 순서와 상관없이, core/student-no.js) · 번호 칸 { x, y, w, h }
   // mix: 평어 내용 — 'plan' 평가계획 위주 · 'mix' 섞어서(기본) · 'sheet' 평가지 위주
   phase: 'setup',     // setup | grading | ranking | writing | done
   queue: [], running: new Map(), err: '', loading: '', view: 'no', calibrated: false, history: [], showRes: false,
-  refs: [], refsAll: false  // refs: 평어에 참고할 단원평가·활동지 ['activity:<id>' | 'unit:<id>'] (활동지 스펙 4.8)
+  refs: [], refsAll: false,  // refs: 평어에 참고할 단원평가·활동지 ['activity:<id>' | 'unit:<id>'] (활동지 스펙 4.8)
+  rubric: null        // 수준별 기준표 사본(rubric.js): 채점을 시작할 때 그 평가요소의 기준표를 복사해 기록에 둠 — 이 기록의 채점·맞추기·검토·평어는 이것만 씀
 };
 const LV_KEYS = ['top', 'high', 'mid', 'low'];
 // 나이스에 차례로 붙여넣기 상태 (아래 「전체복사」 부분에서 씀)
@@ -3898,13 +3900,15 @@ const GRStore = {
     return {
       kind: 'gr', title: (grUnit() && (grUnit().elem || grUnit().unit)) || GR.title, unitId: GR.unitId, criteria: GR.criteria, critDocs: GR.critDocs.map(d => ({ name: d.name, text: d.text })), createdAt: GR.createdAt || Date.now(),
       settings: { ...GR.settings, mask: GR.settings.mask.map(r => ({ ...r })) }, calibrated: GR.calibrated, refs: GR.refs.slice(),
+      ...(GR.rubric ? { rubric: GR.rubric } : {}),
       ...(GR.aiUse ? { aiUse: { at: +GR.aiUse.at || 0, sent: +GR.aiUse.sent || 0, cached: +GR.aiUse.cached || 0, out: +GR.aiUse.out || 0 } } : {}),
       // 채점에서 뺀 학생도 번호 자리를 지키도록 저장 (나이스에 차례로 붙여넣을 때 칸이 밀리지 않게)
       students: GR.students.map(s => ({
         id: s.id, no: s.no, n: s.pages.length, skip: s.skip ? 1 : 0, score: s.score ?? null, level: s.level || null, manual: s.manual ? 1 : 0,
         summary: s.summary || '', evidence: s.evidence || [], strengths: s.strengths || '', improve: s.improve || '',
         unreadable: s.unreadable ? 1 : 0, text: s.text || '', d: s.d ? 1 : 0, stale: s.stale ? 1 : 0,
-        ...(s.trv ? { trv: s.trv } : {}), ...(s.trvd ? { trvd: 1 } : {}), ...(s.rv ? { rv: s.rv } : {}), ...(s.ev && s.text ? { ev: s.ev } : {})
+        ...(s.trv ? { trv: s.trv } : {}), ...(s.trvd ? { trvd: 1 } : {}), ...(s.rv ? { rv: s.rv } : {}), ...(s.ev && s.text ? { ev: s.ev } : {}),
+        ...(s.rb && s.rb.length ? { rb: s.rb } : {}), ...(s.rbBase != null ? { rbBase: s.rbBase } : {})
       }))
     };
   },
@@ -4233,6 +4237,30 @@ async function grCritImages() {
 
 /* ---------- 프롬프트 ---------- */
 function grUnit() { return GR.unitId ? unitById(GR.unitId) : null; }
+/* 수준별 기준표(rubric.js, 스펙 2026-11-16-rubric-design 「채점」): 이 기록에 사본이 있을 때만 규칙 모듈, 없으면 null(지금 채점 그대로) */
+const grRb = () => (GR.rubric && RB() ? RB() : null);
+/* AI가 준 점수 → 0~100. 기준표로 채점했으면 기준 점수 −4~+4로 자름(기준 점수가 없으면 자르지 않음) */
+function grClampScore(v, base) {
+  const R = grRb(), x = R ? R.clampScore(v, base) : v;
+  return Math.max(0, Math.min(100, x));
+}
+/* AI 답의 요소별 수준(j.rubric) → { rb: [{ name, level }], rbBase: 기준 점수 | null } — 기준표가 없으면 null */
+function grRbOf(j) {
+  const R = grRb();
+  if (!R) return null;
+  const rb = R.normRb(j && j.rubric, GR.rubric);
+  return { rb, rbBase: R.baseScore(rb, GR.rubric) };
+}
+/* 학생 기록에 요소별 수준·기준 점수 두기(없으면 지움) */
+function grPutRb(st, o) {
+  if (o && o.rb && o.rb.length) st.rb = o.rb; else delete st.rb;
+  if (o && o.rbBase != null) st.rbBase = o.rbBase; else delete st.rbBase;
+}
+/* 요소별 수준 글: 「곱셈 원리 이해 중 · 풀이 과정 안 함」 (기준표의 요소 이름) */
+function grRbText(s) {
+  const R = RB();
+  return R && s && Array.isArray(s.rb) ? s.rb.map(x => `${x.name} ${R.LV_NAME[x.level] || x.level}`).join(' · ') : '';
+}
 /* 평가지 채점에 보낼 학년: 평가계획 → 학급 메뉴의 학년 → 행특 탭에서 고른 학년. 정한 곳이 없으면 ''(행특 기본값 3학년은 쓰지 않음) */
 function grClassGrade() {
   if (S.plan && S.plan.grade) return S.plan.grade;
@@ -4265,22 +4293,28 @@ function grJSON(text) {
 function grGradeParts(st, nCrit) {
   const n = st.pages.length;
   const crit = grCritText();
+  // 기준표로 채점하면: 평가 정보 뒤에 기준표 블록, 할 일 2번(고정 구간 대신 요소별 수준·기준 점수 ±4), 답에 요소별 수준
+  const R = grRb(), lvs = R ? [...(GR.rubric.levels || ['high', 'mid', 'low']), 'none'].join('|') : '';
   const shared = [
     `당신은 초등학교 수행평가를 채점하는 경력 많은 담임교사입니다.`,
     `${nCrit ? `이 글 앞의 그림 ${nCrit}장은 정답·채점 기준입니다. ` : ''}이 글 뒤에 오는 그림은 한 학생의 수행평가지입니다. 이름 칸은 가려져 있을 수 있습니다.`,
     ``,
     `[평가 정보]`, grTaskText(),
+    ...(R ? [``, R.gradeBlock(GR.rubric)] : []),
     ``,
-    crit || nCrit ? `[채점 기준]\n${crit || '(첨부한 정답·채점 기준 이미지를 따릅니다.)'}` : `[채점 기준] 따로 정한 채점 기준이 없습니다. 위 평가 정보의 성취기준과 평가기준, 그리고 교사로서의 판단으로 채점합니다.`,
+    crit || nCrit ? `[채점 기준]\n${crit || '(첨부한 정답·채점 기준 이미지를 따릅니다.)'}`
+      : R ? `[채점 기준] 위 수준별 채점 기준표 말고 따로 정한 정답·채점 기준은 없습니다. 기준표와 평가 정보의 성취기준·평가기준, 그리고 교사로서의 판단으로 채점합니다.`
+      : `[채점 기준] 따로 정한 채점 기준이 없습니다. 위 평가 정보의 성취기준과 평가기준, 그리고 교사로서의 판단으로 채점합니다.`,
     ``,
     `[할 일]`,
     `1. 학생이 쓴 답, 그림, 풀이 과정을 빠짐없이 읽고 문항마다 맞고 틀림과 이해 정도를 판단합니다.`,
-    `2. 100점 만점으로 점수를 매깁니다. 90점 이상은 평가기준 '상'을 넘어서는 수준, 70~89점은 '상', 40~69점은 '중', 39점 이하는 '하'입니다. 같은 수준 안에서도 차이가 드러나게 1점 단위로 매깁니다.`,
+    R ? `2. 요소마다 기준표의 수준 하나를 고릅니다(비웠거나 전혀 하지 않았으면 none). 점수는 고른 수준 점수의 합을 100점으로 바꾼 값에서 −4~+4 안에서, 같은 점수인 학생끼리 답안의 차이를 드러내게 매깁니다.`
+      : `2. 100점 만점으로 점수를 매깁니다. 90점 이상은 평가기준 '상'을 넘어서는 수준, 70~89점은 '상', 40~69점은 '중', 39점 이하는 '하'입니다. 같은 수준 안에서도 차이가 드러나게 1점 단위로 매깁니다.`,
     `3. 글씨를 알아보기 어렵거나 비어 있는 곳이 많으면 그 점을 적고 점수에 반영합니다.`,
     `4. 가려진 부분은 무시하고, 학생 이름을 추측하거나 적지 않습니다.`,
     ``,
     `[출력] 아래 형식의 JSON 하나만 출력합니다.`,
-    `{"score": 0~100 정수, "summary": "답안에서 드러난 수행 모습 한두 문장", "evidence": ["답안에서 확인한 구체적인 근거", "..."], "strengths": "잘한 점", "improve": "보완할 점", "unreadable": false}`
+    `{"score": 0~100 정수, ${R ? `"rubric": [{"name": "요소 이름", "level": "${lvs}"}], ` : ''}"summary": "답안에서 드러난 수행 모습 한두 문장", "evidence": ["답안에서 확인한 구체적인 근거", "..."], "strengths": "잘한 점", "improve": "보완할 점", "unreadable": false}`
   ].join('\n');
   return { shared, own: `바로 위 그림 ${n}장은 한 학생의 수행평가지(${n > 1 ? '순서대로' : '1쪽'})입니다. 이름 칸은 가려져 있을 수 있어요.` };
 }
@@ -4291,12 +4325,16 @@ function grUse() {
   if (t && (t.sent || t.out)) { GR.aiUse = { at: Date.now(), ...t }; GR.usedNow = true; GRStore.save(); }
 }
 function grCalibPrompt(list) {
+  // 기준표로 채점했으면 고정 구간 대신 기준표 블록과 학생마다 기준 점수·요소별 수준, 그 ±4 안에서만 고침
+  const R = grRb();
+  const rbOf = s => (R && s.rbBase != null ? ` | 기준 점수 ${s.rbBase}점${grRbText(s) ? ` · ${grRbText(s)}` : ''}` : '');
   return [
     `같은 수행평가를 본 학생 ${list.length}명의 채점 결과입니다. 학생마다 따로 채점해서 점수 기준이 조금씩 다를 수 있습니다.`,
-    `관찰 내용을 서로 비교해 점수를 일관되게 다시 매겨 주세요. 더 잘한 학생이 더 높은 점수, 비슷한 학생은 비슷한 점수가 되게 하고, 90점 이상 최상·70~89 상·40~69 중·39 이하 하의 기준은 그대로 지킵니다.`,
-    ``, `[평가 정보]`, grTaskText(), grCritText() ? `\n[채점 기준]\n${grCritText()}` : '',
+    R ? `관찰 내용을 서로 비교해 점수를 일관되게 다시 매겨 주세요. 더 잘한 학생이 더 높은 점수, 비슷한 학생은 비슷한 점수가 되게 하고, 학생마다 기준 점수 −4~+4 안에서만 고칩니다.`
+      : `관찰 내용을 서로 비교해 점수를 일관되게 다시 매겨 주세요. 더 잘한 학생이 더 높은 점수, 비슷한 학생은 비슷한 점수가 되게 하고, 90점 이상 최상·70~89 상·40~69 중·39 이하 하의 기준은 그대로 지킵니다.`,
+    ``, `[평가 정보]`, grTaskText(), R ? `\n${R.gradeBlock(GR.rubric)}` : '', grCritText() ? `\n[채점 기준]\n${grCritText()}` : '',
     ``, `[학생별 결과]`,
-    ...list.map(s => `- ${s.no}번 | ${s.score0}점 | ${s.summary} | 근거: ${(s.evidence || []).join(' / ')} | 보완: ${s.improve || '-'}`),
+    ...list.map(s => `- ${s.no}번 | ${s.score0}점${rbOf(s)} | ${s.summary} | 근거: ${(s.evidence || []).join(' / ')} | 보완: ${s.improve || '-'}`),
     ``, `[출력] 모든 학생을 빠짐없이 담은 JSON 배열 하나만 출력합니다. 예: [{"no": 1, "score": 85}]`
   ].filter(x => x !== '').join('\n');
 }
@@ -4394,6 +4432,9 @@ function grEvList(s) {
   const ev = EV(); if (!ev) return [];
   const mode = grMix(), u = grUnit(), c = (u && u.crit) || {}, items = [];
   if (s.level) items.push({ kind: 'gr', label: `수준 「${LVNAME[s.level]}」${c[s.level] ? ` 기준: ${c[s.level]}` : '으로 판정'}` });
+  // 기준표 요소마다 학생이 한 일(고른 수준의 사본 칸 글, 수준 이름 없음·「안 함」 뺌)
+  const B = grRb();
+  if (B && s.rb) for (const x of B.evidenceLines(s.rb, GR.rubric)) items.push({ kind: 'gr', label: x });
   if (mode !== 'plan') for (const x of String(s.summary || '').split(/(?<=[.!?。])\s+/)) if (x.trim()) items.push({ kind: 'gr', label: '요약: ' + x.trim() });
   if (mode === 'sheet') for (const x of s.evidence || []) items.push({ kind: 'gr', label: x });
   if (s.strengths && s.strengths !== '-') items.push({ kind: 'gr', label: '잘한 점: ' + s.strengths });
@@ -4442,6 +4483,8 @@ function grWritePrompt(lv, group, avoid, lists) {
     `6. 학생마다 시작하는 말, 핵심 표현, 서술어를 다르게 써서 서로 겹치지 않게 합니다.`,
     `7. ${pronounRule()}`,
     ev ? `8. ${ev.EVIDENCE_RULE} 근거 번호는 그 학생 줄 아래 [근거 목록]의 번호입니다.` : '',
+    // 기준표 근거 줄(「기준표 「요소」: 칸 글」)은 학생이 한 일 — 기준표의 수준(3단계 상 등)과 평어 수준을 섞지 않게
+    grRb() ? `${ev ? 9 : 8}. 기준표 근거는 학생이 한 일이에요. 문장의 수준은 위 [수준]을 따라요.` : '',
     ``, `[학생]`,
     ...(grActiveRefs().length ? ['', '[참고: 단원평가·활동지] 학생 줄 아래 「참고:」는 같은 평가 영역의 다른 평가 결과입니다. 그 학생다운 평어를 쓰는 데만 참고하고, 점수·평가 이름은 쓰지 않습니다.', ''] : []),
     ...group.map(s => who(s) + grRefLine(s.no)),
@@ -4468,8 +4511,11 @@ async function grGrade(st) {
     const sc = Math.round(Number(j.score));
     if (!Number.isFinite(sc)) throw { code: 'bad_json' };
     const prevLevel = st.level;
+    // 기준표로 채점하면 요소별 수준·기준 점수를 남기고 점수는 기준 점수 −4~+4로 자름
+    const rbo = grRbOf(j), score = grClampScore(sc, rbo && rbo.rbBase);
+    if (rbo) grPutRb(st, rbo);
     Object.assign(st, {
-      score0: Math.max(0, Math.min(100, sc)), score: Math.max(0, Math.min(100, sc)),
+      score0: score, score,
       summary: String(j.summary || '').trim(), evidence: Array.isArray(j.evidence) ? j.evidence.map(String).slice(0, 5) : [],
       strengths: String(j.strengths || '').trim(), improve: String(j.improve || '').trim(), unreadable: !!j.unreadable,
       status: 'done'
@@ -4521,6 +4567,8 @@ async function grStart() {
   // 적힌 번호로 학생 맞추기: 번호를 읽어 확인한 뒤에 채점 (스캔·번호가 바뀌면 다시 읽음)
   if (GR.settings.byNo && (GR.noSig !== grNoSig() || grActive().some(s => !(s.no > 0)))) { grAskNos(); return; }
   if (!GR.id) { GR.id = Date.now().toString(36); GR.createdAt = Date.now(); }
+  // 수준별 기준표 사본: 고른 평가요소(같은 과목·평가요소)의 기준표를 기록에 복사. 이미 채점한 학생이 있는 기록이면 그 사본 그대로(직접 입력은 없음)
+  if (!GR.students.some(s => s.status === 'done')) { const u = grUnit(), live = u && RB() ? RB().getFor(u) : null; GR.rubric = live ? JSON.parse(JSON.stringify(live)) : null; }
   if (neisIsGr() && (NEIS.state === 'armed' || NEIS.state === 'arming')) neisClose();
   GR.err = ''; GR.calibrated = false; GR._critCache = null;
   // 이 채점에 쓴 AI 양을 새로 모음(다시 채점하면 바뀜)
@@ -4579,7 +4627,8 @@ async function grCalibrate(signal) {
     if (!Array.isArray(arr)) return;
     const m = new Map(arr.map(x => [Number(x.no), Math.round(Number(x.score))]));
     let hit = 0;
-    for (const s of list) { const v = m.get(s.no); if (Number.isFinite(v)) { s.score = Math.max(0, Math.min(100, v)); hit++; } }
+    // 기준표로 채점했으면 학생마다 기준 점수 −4~+4 안으로(요소별 수준은 그대로)
+    for (const s of list) { const v = m.get(s.no); if (Number.isFinite(v)) { s.score = grClampScore(v, s.rbBase); hit++; } }
     GR.calibrated = hit >= list.length * 0.8;
     if (!GR.calibrated) list.forEach(s => { s.score = s.score0; });
   } catch (e) { list.forEach(s => { s.score = s.score0; }); }
@@ -4625,8 +4674,9 @@ async function grReviewScores(signal) {
         const r = await generate(parts.own, { signal, images: imgs, shared: { text: parts.shared, images: crit }, fresh: true, careful: true, use, role: 'review', logAs: 'grade', meter: GR.meter });
         const j = grJSON(r.text), sc = Math.round(Number(j && j.score));
         if (!Number.isFinite(sc)) continue;
-        const v = Math.max(0, Math.min(100, sc));
-        if (R.grDiffers(st.score, v)) st.rv = { score: v, summary: String(j.summary || '').trim().slice(0, 300) };
+        // 기준표로 채점했으면 검토 답의 요소별 수준으로 기준 점수를 셈해 자르고, 두 의견을 고를 때 함께 씀
+        const rbo = grRbOf(j), v = grClampScore(sc, rbo && rbo.rbBase);
+        if (R.grDiffers(st.score, v)) st.rv = { score: v, summary: String(j.summary || '').trim().slice(0, 300), ...(rbo && rbo.rb.length ? { rb: rbo.rb } : {}), ...(rbo && rbo.rbBase != null ? { rbBase: rbo.rbBase } : {}) };
         else delete st.rv;
       } catch (e) {
         const code = (e && e.code) || 'upstream_error';
@@ -4645,6 +4695,7 @@ GR_RV.handle = (key, use) => {
   let re = [];
   if (use) {
     s.score = s.rv.score; if (s.rv.summary) s.summary = s.rv.summary;
+    if (GR.rubric) grPutRb(s, s.rv); // 기준표 요소별 수준·기준 점수도 검토 답의 것으로
     if (!GR.running.size && !GR.writeCtl) {
       const done = GR.phase === 'done';
       grAssign(true);
@@ -4805,6 +4856,19 @@ function grUnitOptions() {
 // 설정 칸의 글 칸에 입력하는 중인지
 const grTyping = () => { const box = $('#grSetup'), a = document.activeElement; return !!(box && a && box.contains(a) && /^(TEXTAREA|INPUT)$/.test(a.tagName) && !/^(checkbox|radio|file|button)$/.test(a.type)); };
 const grHistHTML = () => (GR.history.length ? `<div class="gr-step"><div class="gr-h"><b>지난 채점</b></div><ul class="gr-hist">${GR.history.slice(0, 10).map(h => `<li><button type="button" data-grhist="${esc(h.id)}" ${h.id === GR.id ? 'aria-current="true"' : ''}><span>${esc(h.title || '(제목 없음)')}</span><small class="num">${h.createdAt ? new Date(h.createdAt).toLocaleDateString('ko-KR') : ''} · ${h.n}명</small></button><button class="icon-btn tiny" type="button" data-grhistdel="${esc(h.id)}" aria-label="지우기" title="지우기">${ICON.x}</button></li>`).join('')}</ul></div>` : '');
+/* 1단계 수준별 기준표 줄(스펙 2026-11-16-rubric-design 「화면 › 1」, rubric.js grLineHTML).
+   채점 중이거나 채점한 학생이 있는 기록이면 그 기록의 사본(사본이 없으면 줄 없음) → [보기]만. 아니면 지금 기준표 [보기·고치기] / [수준별 기준표 만들기].
+   직접 입력이면 단추 없이 안내 글(평가계획이 있을 때만). 사본과 지금 기준표의 고친 때가 다르면 한 줄 알림(반 전체 다시 채점 단추는 없음 — 스캔은 저장하지 않음) */
+const grRbSnap = locked => (GR.rubric && (locked || GR.students.some(s => s.status === 'done')) ? GR.rubric : null);
+// 사본이 있는데 지금 평가계획에서 그 평가요소를 못 찾으면 사본의 과목·평가요소로(보기·바뀐 기준표 찾기용)
+const grRbUnit = snap => grUnit() || (snap ? { subject: snap.subject, elem: snap.elem, unit: snap.unit, std: snap.std, crit: {} } : null);
+function grRbLineHTML(locked) {
+  const R = RB(); if (!R) return '';
+  const snap = grRbSnap(locked), u = grRbUnit(snap);
+  if (!u) return S.plan && !locked ? '<p class="muted gr-rb-hint">평가요소를 고르면 수준별 기준표로 채점할 수 있어요</p>' : '';
+  const live = snap ? R.getFor(u) : null;
+  return R.grLineHTML(u, { snapshot: snap, locked }) + (live && live.at !== snap.at ? '<p class="muted gr-rb-note">이 채점은 채점할 때의 기준표로 했어요. 바뀐 기준표는 새 채점부터 써요.</p>' : '');
+}
 function renderGRSetup() {
   const box = $('#grSetup'); if (!box) return;
   grSetupStale = false;
@@ -4833,6 +4897,7 @@ function renderGRSetup() {
         ${grUnitOptions()}
       </select>
       ${u ? `<p class="muted gr-crit">${esc(u.subject)} · ${esc(u.unit || '')}<br>상: ${esc(u.crit.high || '-')}</p>` : `<input class="field" id="grTitle" placeholder="수행평가 제목 (예: 3학년 수학 곱셈 서술형)" value="${esc(GR.title)}" ${locked ? 'disabled' : ''} autocomplete="off">`}
+      ${grRbLineHTML(locked)}
       ${grRefsHTML(u)}
       <div class="crit-box" id="grCritBox">
       <label class="lab" for="grCrit">채점 기준·정답 <span class="muted">(있으면 넣기)</span></label>
@@ -5118,6 +5183,7 @@ function renderGRResults() {
             <span class="grow"></span>
             ${s.d && s.text ? `<span class="chip done">${ICON.check}사용함</span>` : ''}
           </div>
+          ${s.rb && s.rb.length && s.status === 'done' && !s.skip && grRbText(s) ? `<p class="gr-rb">기준표 · ${esc(grRbText(s))}</p>` : ''}
           ${s.text && !s.skip ? `<div class="gr-text ${s.d ? 'done' : ''} ${s.stale ? 'stale' : ''}${rvOpen(s, 'trv') ? ' rv-mark' : ''}" role="button" tabindex="0" data-grcopy="${esc(s.id)}" aria-label="${s.d ? '사용함. ' : ''}${s.no}번 평어 복사">${esc(s.text)}</div>${grEvHTML(s)}${rvInline(s, 'gr:' + encodeURIComponent(s.id), `${s.no}번 평어`, 'trv', 'text')}` : ''}
           ${s.stale && s.text && !s.writing ? `<p class="muted warn">수준이 바뀌었어요. 평어를 다시 쓰세요.</p>` : ''}
           ${s.summary && !s.skip ? `<p class="muted gr-sum">${esc(s.summary)}</p>` : ''}
@@ -5308,8 +5374,9 @@ function grNew(keepPages) {
   if (neisIsGr()) neisClose();
   grStop();
   GR.id = null; GR.createdAt = 0; GR.calibrated = false; GR.err = ''; GR._critCache = null; GR.aiUse = null; GR.meter = null; GR.usedNow = false; GR.noMaskOk = false; GR.rvw = null;
+  GR.rubric = null; // 새 채점은 시작할 때 지금 기준표를 다시 복사
   if (!keepPages) { grFreePages(); GR.pages = []; GR.students = []; GR.settings.startNo = 1; }
-  else GR.students.forEach(s => Object.assign(s, { status: 'idle', score: null, score0: null, level: null, manual: false, summary: '', evidence: [], strengths: '', improve: '', text: '', d: 0, stale: false, err: '', ev: null }));
+  else GR.students.forEach(s => { Object.assign(s, { status: 'idle', score: null, score0: null, level: null, manual: false, summary: '', evidence: [], strengths: '', improve: '', text: '', d: 0, stale: false, err: '', ev: null }); grPutRb(s, null); });
   GR.phase = 'setup'; GR.showRes = false;
 }
 async function grOpenHistory(id) {
@@ -5333,6 +5400,8 @@ async function grOpenHistory(id) {
   // 예전 기록에는 채점에서 뺀 학생이 없음 → 예외 번호가 아닌 빈 번호는 「채점 안 함」 학생으로 채움
   grFillNos((b.settings && b.settings.except) || []);
   GR.aiUse = b.aiUse && typeof b.aiUse === 'object' ? b.aiUse : null;
+  // 채점할 때의 기준표 사본(예전 기록에는 없음 — 지금처럼). 학생 rb·rbBase는 위에서 그대로 옮김
+  GR.rubric = b.rubric && typeof b.rubric === 'object' && Array.isArray(b.rubric.rows) ? b.rubric : null;
   GR.phase = grActive().every(s => s.text && !s.stale) ? 'done' : 'partial';
   if (fixed) GRStore.save();
   GR.showRes = true; $('#grView').classList.add('show-pane');
@@ -5341,6 +5410,15 @@ async function grOpenHistory(id) {
 document.addEventListener('click', async e => {
   if (S.mode !== 'gr' || !evalShown()) return;
   const t = e.target;
+  // 수준별 기준표 줄: [보기]는 이 기록의 사본(읽기만), [보기·고치기]·[만들기]는 지금 기준표(저장하면 줄을 다시 그림)
+  const rbb = t.closest('#grSetup [data-rb]');
+  if (rbb) {
+    const R = RB(), locked = ['grading', 'ranking', 'writing'].includes(GR.phase), snap = grRbSnap(locked), u = grRbUnit(snap);
+    if (!R || !u) return;
+    if (rbb.dataset.rb === 'view') { if (snap) R.open(u, { readOnly: true, snapshot: snap }); }
+    else if (!snap && !locked) R.open(u, { grade: S.plan && S.plan.grade, onSave: () => renderGRSetup() });
+    return;
+  }
   const b = t.closest('[data-gr]');
   if (b && !b.disabled) {
     const a = b.dataset.gr;

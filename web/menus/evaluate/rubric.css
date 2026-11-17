@@ -42,6 +42,9 @@
 /* 화면 줄(교과 평어 평가요소 화면·평가지 채점 1단계) */
 .rb-line{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-size:13px;min-width:0}
 .rb-line-t{font-weight:600;color:var(--ink2);min-width:0}
+/* 평가지 채점: 1단계 안내·바뀐 기준표 알림, 결과 학생 줄의 요소별 수준(평어 위, 글자로) */
+.gr-rb-hint,.gr-rb-note{margin:0;font-size:12.5px}
+.gr-rb{margin:0;font-size:12.5px;color:var(--ink2);overflow-wrap:anywhere}
 @media (max-width:560px){
   .rb-lvrow{grid-template-columns:44px minmax(0,1fr);grid-template-areas:"tag pts" "txt txt"}
   .rb-lvrow .lvtag{grid-area:tag;margin-top:0}
