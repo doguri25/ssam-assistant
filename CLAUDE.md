@@ -4,7 +4,9 @@
 
 ## 지금 상태 (2026-11-17)
 
-- 최신 릴리즈는 **v0.34.0**. main과 작업 브랜치 `claude/wonderful-johnson-lqb8em`이 같은 커밋에 있다.
+- 최신 릴리즈는 **v0.34.1**. main과 작업 브랜치 `claude/wonderful-johnson-lqb8em`이 같은 커밋에 있다.
+  - 0.34.1: 남은 한계 고침 — 기준표 칸 글은 AI로 갈 때 이름을 ○○○로(`rubric-model.js aiCell`), 「김정대로 바꿔 줘」(privacy `DAERO`·`roGivenName`),
+    물건 머리 줄의 이름은 다른 줄에서 사람으로 쓰일 때 배움(privacy `personUse`), 품의 「총 30자루 15,000원」(`tests/unit/fix1117-limits.test.mjs`).
   - 수준별 기준표(루브릭): 설계 `docs/superpowers/specs/2026-11-16-rubric-design.md`, 계획 `docs/superpowers/plans/2026-11-16-rubric.md`.
     `web/menus/evaluate/rubric-model.js`(규칙)·`rubric.js`(시트, `window.SSAM.rubric`). 과목·평가요소가 둘 다 같을 때만 채점·평어에 씀, 「직접 입력」은 안 씀.
     채점 기록에 사본(`GR.rubric`), 평가요소를 바꾸면 사본은 쉼(unitKey가 같을 때만). 요소가 다 있어야 기준 점수 ±4로 자름.
@@ -12,9 +14,8 @@
     사유 차례 「(목적·일시·대상·장소 있을 때만) / 구입 품목 / 지출액 / (예산 과목) / 기타:」(예전 차례는 `reasonTailV1`로만 견줌),
     합계·총계·계 줄은 품목 아님(`core/sheet.js isTotalName`), 한글 조합 중에는 저장·다시 그리기를 미룸.
   - 0.33.2 몫(릴리즈하지 않고 0.34.0에 합침): 미뤄 둔 작은 문제 2개, 0.31.1 뒤 버그 찾기 23개 중 22개(`tests/unit/fix1116-*.test.mjs`).
-- 남은 한계: 기준표 칸에 되돌린 교직원 이름은 가리지 않고 채점 AI로 감(선생님이 칸을 확인함 — 바꾸려면 선생님 확인), 「볼펜 총 30자루 15,000원」을 30원으로 읽음.
 - 이름 가리기 원칙(2026-11-16 선생님과 정함): 이름이 새는 것이 낱말을 지나치게 가리는 것보다 나쁨. 고칠 때마다 원래 코드와 견줘 새로 새는 이름이 없는지 확인.
-  남은 한계: 「김정대로 바꿔 줘」(「예정대로」와 같은 꼴)·「준비물:」 같은 물건 머리 아래 이름은 못 가림.
+  남은 한계: 흔한 이름 목록에 없는 이름이 「준비물:」 같은 물건 머리 줄에만 나오고 다른 줄에서 사람으로 쓰이지 않으면 배우지 않음(그 줄은 보내지 않음).
 - 알고 있지만 요청이 없어 남겨 둔 작은 문제:
   - 학급 › 오늘 수업의 공문 띠 차례(`web/menus/class/today.js`, 아래 규칙 때문에 손대지 않음)
 
@@ -33,7 +34,7 @@
 
 ## 시험
 
-- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1505개 통과)
+- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1509개 통과)
 - e2e 한 파일: `node tests/e2e/<이름>.mjs`
 - e2e 전체: `node tests/e2e/run-all.mjs` (약 170개 파일, 45~50분). 파일마다 다른 포트를 써서 나눠 돌려도 된다. 전체가 도는 동안에는 작업 폴더를 고치지 말고 `.claude/worktrees/` 아래 worktree에서 일한다(그 안에서는 저장소의 node_modules를 그대로 찾는다).
 
