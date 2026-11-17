@@ -543,6 +543,37 @@ await run('rubric', [
     reviewLow = false;
     await page.evaluate(() => localStorage.removeItem('ssam:ai-roles'));
   }],
+  ['채점한 기록의 평가요소를 바꾸면 사본은 쓰지 않음(지우지는 않음): 직접 입력·과학에서 [다시 채점]은 기준표 블록 없음·고정 구간 문장·점수 안 자름, 1단계·결과 줄에 「채점했어요」·기준표 없음 → 수학으로 돌리면 사본 그대로', async () => {
+    await until(async () => (await page.textContent('#grResults .gr-top')).includes('채점과 평어를 마쳤어요') && !(await page.locator('#grResults .chip.run').count()), '앞 쓰기 끝', 20000);
+    const ids = (await cur()).students.map(s => s.id);
+    const regrade = async (sid, what) => {
+      const n = grPrompts.length;
+      await page.click(`#grResults [data-grregrade="${sid}"]`);
+      await until(async () => grPrompts.length > n && (await cur()).students.find(s => s.id === sid).score === 99 && !(await page.locator('#grResults .chip.run').count()), `${what} 다시 채점`, 20000);
+      const p = grPrompts.at(-1);
+      assert(!p.includes('[수준별 채점 기준표]') && !p.includes('"rubric"') && p.includes('90점 이상은'), `${what} 채점 글에 기준표 블록`);
+    };
+    // 직접 입력
+    await page.selectOption('#grUnit', { value: '' });
+    await page.waitForSelector('#grTitle');
+    assert(await page.locator('#grSetup .rb-line').count() === 0 && await page.locator('#grSetup [data-rb]').count() === 0 && !(await page.textContent('#grSetup')).includes('채점했어요'), '직접 입력 1단계에 사본 줄');
+    assert(await page.locator('#grResults .gr-rb').count() === 0, '직접 입력 결과 줄에 기준표');
+    await regrade(ids[0], '직접 입력');
+    // 과학(같은 평가요소 이름)
+    await page.selectOption('#grUnit', 's1');
+    await until(async () => (await page.textContent('#grSetup .rb-line')).includes('수준별 기준표 만들기'), '과학 줄');
+    assert(!(await page.textContent('#grSetup')).includes('채점했어요') && !(await page.textContent('#grSetup')).includes('바뀐 기준표는'), '과학 1단계에 사본 줄·알림');
+    assert(await page.locator('#grResults .gr-rb').count() === 0, '과학 결과 줄에 기준표');
+    await regrade(ids[1], '과학');
+    let g = await cur();
+    assert(g.rubric && g.rubric.subject === '수학' && g.students.filter(s => s.rb).length === ids.length - 2, '사본·다시 채점 안 한 학생의 수준은 그대로');
+    // 수학으로 돌리면 사본 그대로
+    await page.selectOption('#grUnit', 'm1');
+    await until(async () => (await page.locator('#grSetup .rb-line [data-rb="view"]').count()) === 1, '수학 사본 줄');
+    assert((await page.textContent('#grSetup .rb-line')).includes('수준별 기준표로 채점했어요'), await page.textContent('#grSetup .rb-line'));
+    assert(await page.locator('#grResults .gr-rb').count() === ids.length - 2, '결과 줄 기준표(다시 채점 안 한 학생)');
+    await until(async () => { const x = await cur(); return x.unitId === 'm1' && x.rubric && x.rubric.subject === '수학'; }, '기록(미뤄 둔 저장)');
+  }],
   ['페이지 오류 없음', async () => { assert(!errors.length, errors.join(' | ')); }]
 ]);
 await t.close();

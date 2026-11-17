@@ -4237,8 +4237,15 @@ async function grCritImages() {
 
 /* ---------- 프롬프트 ---------- */
 function grUnit() { return GR.unitId ? unitById(GR.unitId) : null; }
-/* 수준별 기준표(rubric.js, 스펙 2026-11-16-rubric-design 「채점」): 이 기록에 사본이 있을 때만 규칙 모듈, 없으면 null(지금 채점 그대로) */
-const grRb = () => (GR.rubric && RB() ? RB() : null);
+/* 수준별 기준표(rubric.js, 스펙 2026-11-16-rubric-design 「채점」): 이 기록에 사본이 있고 지금 고른 평가요소가 사본과 같은 과목·평가요소일 때만 규칙 모듈,
+   아니면 null(지금 채점 그대로). 채점한 기록의 평가요소를 다른 과목·직접 입력으로 바꾸면 사본을 쓰지 않음(지우지는 않음 — 되돌리면 다시 씀).
+   지금 평가계획에서 그 평가요소를 못 찾으면(다른 평가계획을 열어 둠) 사본 그대로 */
+function grRb() {
+  const R = RB();
+  if (!GR.rubric || !R || !GR.unitId) return null;
+  const u = grUnit();
+  return !u || R.unitKey(u) === R.unitKey({ subject: GR.rubric.subject, elem: GR.rubric.elem }) ? R : null;
+}
 /* AI가 준 점수 → 0~100. 기준표로 채점했으면 기준 점수 −4~+4로 자름(기준 점수가 없으면 자르지 않음) */
 function grClampScore(v, base) {
   const R = grRb(), x = R ? R.clampScore(v, base) : v;
@@ -4512,8 +4519,9 @@ async function grGrade(st) {
     if (!Number.isFinite(sc)) throw { code: 'bad_json' };
     const prevLevel = st.level;
     // 기준표로 채점하면 요소별 수준·기준 점수를 남기고 점수는 기준 점수 −4~+4로 자름
+    // (기준표 없이 다시 채점하면 지난 요소별 수준은 이 점수와 맞지 않아 지움)
     const rbo = grRbOf(j), score = grClampScore(sc, rbo && rbo.rbBase);
-    if (rbo) grPutRb(st, rbo);
+    grPutRb(st, rbo);
     Object.assign(st, {
       score0: score, score,
       summary: String(j.summary || '').trim(), evidence: Array.isArray(j.evidence) ? j.evidence.map(String).slice(0, 5) : [],
@@ -4695,7 +4703,7 @@ GR_RV.handle = (key, use) => {
   let re = [];
   if (use) {
     s.score = s.rv.score; if (s.rv.summary) s.summary = s.rv.summary;
-    if (GR.rubric) grPutRb(s, s.rv); // 기준표 요소별 수준·기준 점수도 검토 답의 것으로
+    if (grRb()) grPutRb(s, s.rv); // 기준표 요소별 수준·기준 점수도 검토 답의 것으로
     if (!GR.running.size && !GR.writeCtl) {
       const done = GR.phase === 'done';
       grAssign(true);
@@ -4859,7 +4867,7 @@ const grHistHTML = () => (GR.history.length ? `<div class="gr-step"><div class="
 /* 1단계 수준별 기준표 줄(스펙 2026-11-16-rubric-design 「화면 › 1」, rubric.js grLineHTML).
    채점 중이거나 채점한 학생이 있는 기록이면 그 기록의 사본(사본이 없으면 줄 없음) → [보기]만. 아니면 지금 기준표 [보기·고치기] / [수준별 기준표 만들기].
    직접 입력이면 단추 없이 안내 글(평가계획이 있을 때만). 사본과 지금 기준표의 고친 때가 다르면 한 줄 알림(반 전체 다시 채점 단추는 없음 — 스캔은 저장하지 않음) */
-const grRbSnap = locked => (GR.rubric && (locked || GR.students.some(s => s.status === 'done')) ? GR.rubric : null);
+const grRbSnap = locked => (grRb() && (locked || GR.students.some(s => s.status === 'done')) ? GR.rubric : null);
 // 사본이 있는데 지금 평가계획에서 그 평가요소를 못 찾으면 사본의 과목·평가요소로(보기·바뀐 기준표 찾기용)
 const grRbUnit = snap => grUnit() || (snap ? { subject: snap.subject, elem: snap.elem, unit: snap.unit, std: snap.std, crit: {} } : null);
 function grRbLineHTML(locked) {
@@ -5183,7 +5191,7 @@ function renderGRResults() {
             <span class="grow"></span>
             ${s.d && s.text ? `<span class="chip done">${ICON.check}사용함</span>` : ''}
           </div>
-          ${s.rb && s.rb.length && s.status === 'done' && !s.skip && grRbText(s) ? `<p class="gr-rb">기준표 · ${esc(grRbText(s))}</p>` : ''}
+          ${s.rb && s.rb.length && s.status === 'done' && !s.skip && grRb() && grRbText(s) ? `<p class="gr-rb">기준표 · ${esc(grRbText(s))}</p>` : ''}
           ${s.text && !s.skip ? `<div class="gr-text ${s.d ? 'done' : ''} ${s.stale ? 'stale' : ''}${rvOpen(s, 'trv') ? ' rv-mark' : ''}" role="button" tabindex="0" data-grcopy="${esc(s.id)}" aria-label="${s.d ? '사용함. ' : ''}${s.no}번 평어 복사">${esc(s.text)}</div>${grEvHTML(s)}${rvInline(s, 'gr:' + encodeURIComponent(s.id), `${s.no}번 평어`, 'trv', 'text')}` : ''}
           ${s.stale && s.text && !s.writing ? `<p class="muted warn">수준이 바뀌었어요. 평어를 다시 쓰세요.</p>` : ''}
           ${s.summary && !s.skip ? `<p class="muted gr-sum">${esc(s.summary)}</p>` : ''}
