@@ -2,7 +2,7 @@
    AI는 제목과 사유 첫 문장만 쓰고, 가~라 줄·금액·합계는 앱이 만든다 (PRD 5.2) */
 import { onEnter, go } from '../../core/shell.js';
 import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
-import { get, set } from '../../core/store.js';
+import { get, set, onFlush } from '../../core/store.js';
 import * as ai from '../../core/ai.js';
 import { copyText, toast } from '../../core/ui.js';
 import { keepFiles } from '../../core/keep-files.js';
@@ -167,6 +167,14 @@ function refocus(f) {
   try { if (f.a != null) el.setSelectionRange(f.a, f.b); } catch (e) { /* 커서가 없는 칸 */ }
 }
 
+/* 관련 칸 안내(비우면 「…」): 칸을 비웠을 때 들어갈 기본값(사업명·종류를 따름). 칸에 친 글을 따라가지 않음 —
+   예전에는 관련 칸에 치는 동안 그 칸의 안내 글이 글자마다 바뀌었음(한글 조합 중에 치는 칸의 속성이 바뀜) */
+const relatedPh = () => `비우면 「${relatedLine({ ...st.form, related: '' }, curYear())}」`;
+/* 칸 둘레 글·HTML은 바뀔 때만 다시 씀(글자마다 산출 내역·확인 목록·칩을 통째로 다시 그리지 않게, 누르는 칩이 바뀌어 첫 누름이 먹히지 않게) */
+const drawn = new WeakMap();
+function put(el, html) { if (el && drawn.get(el) !== html) { el.innerHTML = html; drawn.set(el, html); } }
+function putText(el, t) { if (el && el.textContent !== t) el.textContent = t; }
+
 function render() {
   if (!box) return;
   // 넣기 칸에 쓰던 글, 쓰던 칸의 초점·커서는 다시 그려도 그대로(AI가 초안을 쓰거나 캡처를 읽는 동안 친 글)
@@ -192,7 +200,7 @@ function render() {
         </div>
         <details class="pc-more" id="pcMore"${viewFull() ? ' open' : ''}><summary>자세히 고치기 <span class="muted">관련·사업명·목적·일시·대상·장소·예산 과목·품목·붙임</span></summary>
         <div class="pc-fields">
-          ${field('related', '관련 (계획·공문)', { ph: `비우면 「${relatedLine(st.form, curYear())}」`, wide: true })}
+          ${field('related', '관련 (계획·공문)', { ph: relatedPh(), wide: true })}
           ${field('project', '사업명', { ph: '예) ' + ex.project, wide: true })}
           ${field('purpose', '목적', { req: true, ph: '예) ' + ex.purpose, wide: true })}
           ${field('date', '일시', { ph: '예) ' + ex.date })}
@@ -312,11 +320,12 @@ function updateRv() {
     const i = box.querySelector(inp); if (i) i.classList.toggle('rv-mark', !!openRv(f));
   }
 }
-/* 손으로 고친 칸의 아직 고르지 않은 의견은 지움 */
+/* 손으로 고친 칸의 아직 고르지 않은 의견은 지움(화면은 paintDraft에서) */
+let rvDirty = false;
 function dropRv(f) {
   if (!openRv(f)) return;
   st.draft.rv = st.draft.rv.filter(x => x.field !== f || x.done);
-  updateRv();
+  rvDirty = true;
 }
 /* 초안 뒤 한 번: 메인에 보낸 메모와 제목·첫 문장을 검토 AI가 봄. 검토 중에 고친 칸·바뀐 초안의 의견은 버림 */
 async function runReview(memo) {
@@ -340,27 +349,17 @@ const replaceFirst = withIntro;
 /* 입력이 바뀌면 금액·합계·확인 목록·산출 내역만 고쳐 그림 (입력 칸은 다시 그리지 않음 — 한글 입력이 끊기지 않게) */
 function live() {
   if (!box) return;
-  const sum = box.querySelector('#pcSum');
-  if (sum) sum.textContent = `합계 ${won(sumItems(st.form.items))}원`;
-  st.form.items.forEach((it, i) => {
-    const el = box.querySelector(`[data-amt="${i}"]`);
-    if (el) el.textContent = cleanItems([it]).length ? won(itemAmount(cleanItems([it])[0])) : '';
-  });
-  const cw = box.querySelector('#pcCalcWrap');
-  if (cw) cw.innerHTML = calcHTML();
-  const cb = box.querySelector('#pcChecksBox');
-  if (cb) cb.innerHTML = checksHTML();
-  const qn = box.querySelector('#pcQuoteNote');
-  if (qn) qn.textContent = quoteNote(sumItems(st.form.items), st.form.vat).text;
-  const wh = box.querySelector('#pcWh');
-  if (wh) wh.innerHTML = whHTML();
-  const bh = box.querySelector('#pcBudgetHints');
-  if (bh) bh.innerHTML = hintsHTML();
-  const ch = box.querySelector('#pcChips');
-  if (ch) ch.innerHTML = chipsHTML();
+  putText(box.querySelector('#pcSum'), `합계 ${won(sumItems(st.form.items))}원`);
+  st.form.items.forEach((it, i) => putText(box.querySelector(`[data-amt="${i}"]`), cleanItems([it]).length ? won(itemAmount(cleanItems([it])[0])) : ''));
+  put(box.querySelector('#pcCalcWrap'), calcHTML());
+  put(box.querySelector('#pcChecksBox'), checksHTML());
+  putText(box.querySelector('#pcQuoteNote'), quoteNote(sumItems(st.form.items), st.form.vat).text);
+  put(box.querySelector('#pcWh'), whHTML());
+  put(box.querySelector('#pcBudgetHints'), hintsHTML());
+  put(box.querySelector('#pcChips'), chipsHTML());
   // 관련 칸 안내(비우면 「…」)도 사업명·종류를 따라
-  const rf = box.querySelector('#pcRelated');
-  if (rf) rf.placeholder = `비우면 「${relatedLine(st.form, curYear())}」`;
+  const rf = box.querySelector('#pcRelated'), ph = relatedPh();
+  if (rf && rf.placeholder !== ph) rf.placeholder = ph;
   syncReason();
   if (tried) markBad(checks());
 }
@@ -421,6 +420,61 @@ function catchUp(ta) {
 }
 document.addEventListener('compositionstart', e => { if (e.target && e.target.id === 'pcReason') imeEl = e.target; });
 document.addEventListener('compositionend', e => { if (e.target !== imeEl) return; imeEl = null; if (lagEl === e.target) catchUp(e.target); });
+
+/* 한글 조합 중(입력기가 자모로 글자를 만드는 중)에는 칸 값만 st에 받아 두고, 저장과 화면 고치기(합계·산출 내역·확인 목록·칩·사유 맞추기)는 미룸.
+   예전에는 자모마다(조합 중 input마다) 이것을 다 해서 Windows 앱(WebView2)에서 입력기 창이 왼쪽 위에 뜨고 글자가 한 박자 늦게 들어갔음
+   (선생님 알림 2026-11-17). 미룬 일(held)은 조합을 마친 뒤 다음 음절 조합이 바로 이어지지 않으면, 치다 멈추면(HOLD_MS),
+   칸을 떠나면, 창을 닫거나 학년도를 옮기기 전(onFlush)에 한 번 함. 단추를 누르는 중이면 뗀 뒤에(누르는 칩이 바뀌어 첫 누름이 먹히지 않게) */
+const HOLD_MS = 600;
+let held = null, heldT = 0, imeOn = null, pressing = false, afterPress = false;
+function hold(el) { held = el; clearTimeout(heldT); heldT = setTimeout(() => settle(true), HOLD_MS); }
+function unhold(el) { if (held === el) { held = null; clearTimeout(heldT); } }
+const composing = () => !!(imeOn && imeOn.isConnected && document.activeElement === imeOn);
+function settle(force = false) {
+  if (!held || (!force && composing())) return;
+  if (pressing) {
+    // 뗀 것을 못 받으면(고르기 상자 목록이 열림 등) 1.5초 뒤에
+    if (!afterPress) setTimeout(() => { if (afterPress) unpress(); }, 1500);
+    afterPress = true; return;
+  }
+  const el = held; held = null; clearTimeout(heldT);
+  save();
+  if (!(curTab === 'new' && box && box.isConnected)) return;
+  if (el.dataset.d && st.draft) paintDraft(el); else live();
+}
+document.addEventListener('compositionstart', e => { if (box && box.contains(e.target)) imeOn = e.target; });
+document.addEventListener('compositionend', e => { if (imeOn === e.target) imeOn = null; if (held) setTimeout(() => settle(), 0); });
+document.addEventListener('focusout', e => { if (imeOn === e.target) imeOn = null; if (held && held === e.target) settle(true); });
+document.addEventListener('pointerdown', () => { pressing = true; }, true);
+const unpress = () => { pressing = false; if (afterPress) { afterPress = false; setTimeout(() => settle(true), 0); } };
+document.addEventListener('pointerup', unpress, true);
+document.addEventListener('pointercancel', unpress, true);
+onFlush(() => { if (held) { held = null; clearTimeout(heldT); save(); } });
+
+/* 제목·사유 칸에 친 글 → st(화면은 건드리지 않음 — 조합 중에도 부름) */
+function takeDraft(el) {
+  st.draft[el.dataset.d] = el.value;
+  if (el.dataset.d === 'reason') {
+    const intro = firstPara(el.value), rel = relatedOf(el.value), y = curYear();
+    // 「1. 관련:」 줄을 고쳤으면(다른 줄과 함께 고쳐도) 관련 칸으로 옮김 — 칸·칩·[사유 다시 맞추기]가 같은 관련을 봄.
+    // 관련 글을 다 지웠으면 칸도 비움(기본값). 「1. 근거:」·여러 줄 관련처럼 손으로 쓴 머리(rel null)는 옮기지 않음
+    if (rel != null && rel !== relatedLine(st.form, y)) { st.form.related = rel; st.form.guessed = st.form.guessed.filter(k => k !== 'related'); }
+    if (rel != null) st.draft.rel = rel;
+    // 첫 문장(과 관련)만 고쳤으면(가~붙임은 앱이 만든 그대로) 계속 맞춤, 그 밖을 고쳤으면 손으로 고친 사유
+    if (intro && el.value.trim() === composeReason({ intro, form: st.form, year: y }).trim()) { st.draft.intro = intro; st.draft.edited = false; st.draft.tail = reasonTail(st.form); }
+    else st.draft.edited = true;
+  }
+  dropRv(el.dataset.d === 'title' ? 'title' : 'intro');
+}
+/* 제목·사유를 고친 뒤 둘레 화면: 관련 칸(사유에서 옮긴 관련)·칩·[사유 다시 맞추기]·검토 의견 */
+function paintDraft(el) {
+  if (!box) return;
+  const rf = box.querySelector('#pcRelated'), rel = String(st.form.related || '');
+  if (rf && document.activeElement !== rf && rf.value !== rel) rf.value = rel;
+  put(box.querySelector('#pcChips'), chipsHTML());
+  if (el.dataset.d === 'reason') putResync();
+  if (rvDirty) { rvDirty = false; updateRv(); }
+}
 function syncReason() {
   if (!st.draft || !box) return;
   const ta = box.querySelector('#pcReason'), rel = relatedLine(st.form, curYear());
@@ -440,18 +494,19 @@ function syncReason() {
   putResync();
 }
 
+/* 빨간 칸: 바뀐 칸만 고침(치는 칸의 class를 글자마다 뺐다 넣지 않게) */
 function markBad(r) {
-  box.querySelectorAll('.field.bad').forEach(el => el.classList.remove('bad'));
+  const want = new Set();
   for (const k of [...r.missing, ...r.personal]) {
     if (k === 'items') {
       // 개인정보가 든 칸만(품명·규격·단위·구입처), 품목이 없으면 첫 줄 품명
       const bad = r.personal.includes('items') ? st.form.items.flatMap((it, i) => ['name', 'spec', 'unit', 'vendor'].filter(f => findPersonal(it[f])).map(f => [i, f])) : [];
-      (bad.length ? bad : [[0, 'name']]).forEach(([i, f]) => { const el = box.querySelector(`[data-item="${i}"][data-f="${f}"]`); if (el) el.classList.add('bad'); });
-    } else {
-      const el = box.querySelector(`[data-k="${k}"]`);
-      if (el) el.classList.add('bad');
-    }
+      (bad.length ? bad : [[0, 'name']]).forEach(([i, f]) => want.add(box.querySelector(`[data-item="${i}"][data-f="${f}"]`)));
+    } else want.add(box.querySelector(`[data-k="${k}"]`));
   }
+  want.delete(null);
+  box.querySelectorAll('.field.bad').forEach(el => { if (!want.has(el)) el.classList.remove('bad'); });
+  want.forEach(el => { if (!el.classList.contains('bad')) el.classList.add('bad'); });
 }
 
 function rerenderAttach() { const el = box && box.querySelector('#pcAttach'); if (el) el.outerHTML = attachHTML(); live(); }
@@ -578,6 +633,8 @@ async function downloadDoc() {
 document.addEventListener('input', e => {
   if (!box || !box.contains(e.target) || curTab !== 'new') return;
   const el = e.target;
+  // 다른 칸에서 미룬 일이 있으면 먼저(조합을 마치지 않고 다른 칸으로 옮겨 친 때)
+  if (held && held !== el) settle(true);
   if (el.dataset.k) { st.form[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value; st.form.guessed = st.form.guessed.filter(k => k !== el.dataset.k); }
   else if (el.dataset.item != null && el.dataset.f) { const it = st.form.items[+el.dataset.item]; if (it) it[el.dataset.f] = el.value; }
   else if (el.dataset.d && st.draft) {
@@ -585,25 +642,10 @@ document.addEventListener('input', e => {
     if (el === imeEl && !e.isComposing) imeEl = null;
     // 앱이 맞춘 사유를 조합을 마친 뒤 보일 참이면(칸에는 옛 가~붙임) 조합 중의 글은 저장하지 않음
     if (el === lagEl) { if (!e.isComposing) catchUp(el); return; }
-    st.draft[el.dataset.d] = el.value;
-    if (el.dataset.d === 'reason') {
-      const intro = firstPara(el.value), rel = relatedOf(el.value), y = curYear();
-      // 「1. 관련:」 줄을 고쳤으면(다른 줄과 함께 고쳐도) 관련 칸으로 옮김 — 칸·칩·[사유 다시 맞추기]가 같은 관련을 봄.
-      // 관련 글을 다 지웠으면 칸도 비움(기본값). 「1. 근거:」·여러 줄 관련처럼 손으로 쓴 머리(rel null)는 옮기지 않음
-      const moved = rel != null && rel !== relatedLine(st.form, y);
-      if (moved) {
-        st.form.related = rel; st.form.guessed = st.form.guessed.filter(k => k !== 'related');
-        const rf = box.querySelector('#pcRelated'); if (rf && document.activeElement !== rf) rf.value = rel;
-        const ch = box.querySelector('#pcChips'); if (ch) ch.innerHTML = chipsHTML();
-      }
-      if (rel != null) st.draft.rel = rel;
-      // 첫 문장(과 관련)만 고쳤으면(가~붙임은 앱이 만든 그대로) 계속 맞춤, 그 밖을 고쳤으면 손으로 고친 사유
-      if (intro && el.value.trim() === composeReason({ intro, form: st.form, year: y }).trim()) { st.draft.intro = intro; st.draft.edited = false; st.draft.tail = reasonTail(st.form); }
-      else st.draft.edited = true;
-      putResync();
-    }
-    dropRv(el.dataset.d === 'title' ? 'title' : 'intro');
-    save(); return;
+    takeDraft(el);
+    if (e.isComposing) { hold(el); return; }
+    unhold(el);
+    paintDraft(el); save(); return;
   }
   else if (el.dataset.attach) {
     const set = new Set(st.form.attach);
@@ -611,6 +653,9 @@ document.addEventListener('input', e => {
     st.form.attach = (ATTACH[st.form.type] || ATTACH.goods).map(a => a.id).filter(id => set.has(id));
   }
   else return;
+  // 한글 조합 중: 값만 받아 두고 저장·합계·사유 맞추기는 조합을 마친 뒤(hold)
+  if (e.isComposing) { hold(el); return; }
+  unhold(el);
   save();
   live();
 });
@@ -819,7 +864,9 @@ async function runIntake(input, mine = st) {
   // 바꾸기는 초안·칸이 모두 바뀌어 화면을 다시 그림(치던 칸에 예전 글이 남지 않게)
   if (how === 'replace') { if (curTab === 'new' && box && box.isConnected) render(); }
   else showRead();
-  setTimeout(() => { fresh = new Set(); if (box) box.querySelectorAll('.pc-irow.new').forEach(el => el.classList.remove('new')); }, 3000);
+  // 노란 표시는 3초 뒤 뺌(한글을 조합하는 중이면 마친 뒤 — 조합 중에는 칸 둘레를 고치지 않음)
+  const unfresh = () => { if (composing()) { setTimeout(unfresh, 500); return; } fresh = new Set(); if (box) box.querySelectorAll('.pc-irow.new').forEach(el => el.classList.remove('new')); };
+  setTimeout(unfresh, 3000);
   const ship = r.items.filter(it => it.name === '배송비').length;
   toast(`품목 ${r.items.length}개${ship ? '(배송비 포함)' : ''}를 넣었어요${r.missed && r.missed.length ? ` · 못 읽은 줄 ${r.missed.length}개` : ''}${r.by === 'ai' ? ' · AI가 읽었어요. 금액을 확인해 주세요' : ''}${note}`, 6000);
   const vs = vendorsOf(st.form.items);
