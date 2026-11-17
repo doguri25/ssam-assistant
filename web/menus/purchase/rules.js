@@ -223,18 +223,18 @@ export function draftMemo(form) {
 /* 품의 사유의 앱이 만드는 부분: 가~ 줄(빈 칸 빼고 다시 매김) + 붙임 (스펙 4.5).
    기본 차례는 「구입 품목 → 지출액 → 기타」(2026-11-17 선생님): 목적·일시·대상·장소는 칸에 글이 있을 때만 맨 앞에,
    예산 과목은 있을 때만 지출액 뒤에, 「기타:」 줄은 비어 있어도 늘 마지막에(선생님이 채움). 강사 수당은 「지급 내역」.
-   구입 품목이 3개 이상이면 「비커(500ml) 외 2개」(강사는 「외 2명」), 붙임은 「기타:」 바로 다음 줄(빈 줄 없음 — 2026-11-17 선생님) */
+   구입 품목이 3개 이상이면 「비커(500ml) 외 2종」(강사는 「외 2명」), 붙임은 「기타:」 바로 다음 줄(빈 줄 없음 — 2026-11-17 선생님) */
 const KO = '가나다라마바사아자차카타파하';
 export const ITEMS_LABEL = type => (type === 'lecturer' ? '지급 내역' : '구입 품목');
 const tailRows = rows => rows.filter(([, v]) => !blank(v)).map(([l, v], i) => `  ${KO[i]}. ${l}: ${String(v).trim()}`);
 const budgetOf = f => (f.budgetUnknown || blank(f.budget) ? '' : f.budget);
 const spentOf = (items, total) => (items.length ? `금${won(total)}원(${koreanWon(total)})` : '');
-/* 가~ 줄의 품목: 1~2개는 산출 근거(단가 × 수량 = 금액), 3개 이상은 첫 품목 외 n개 */
+/* 가~ 줄의 품목: 1~2개는 산출 근거(단가 × 수량 = 금액), 3개 이상은 「첫 품목 외 n종」(강사는 외 n명 — 2026-11-17 선생님) */
 export function itemsSummary(list, type = 'goods') {
   const items = cleanItems(list);
   if (items.length < 3) return items.map(it => basisLine(it, type)).join(', ');
   const first = items[0].name + (blank(items[0].spec) ? '' : `(${items[0].spec})`);
-  return `${first} 외 ${items.length - 1}${type === 'lecturer' ? '명' : '개'}`;
+  return `${first} 외 ${items.length - 1}${type === 'lecturer' ? '명' : '종'}`;
 }
 export function reasonTail(form) {
   const f = form || {}, type = f.type || 'goods', items = cleanItems(f.items);

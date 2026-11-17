@@ -1,4 +1,4 @@
-/* 품의 짧게(2026-11-17 선생님 요청): 구입 품목 3개 이상은 「○○ 외 2개」, 「기타:」 바로 아래 붙임(빈 줄 없음),
+/* 품의 짧게(2026-11-17 선생님 요청): 구입 품목 3개 이상은 「○○ 외 2종」, 「기타:」 바로 아래 붙임(빈 줄 없음),
    첫 문장은 한두 줄의 한 문장(「… 운영 물품을 구매하고자 합니다.」), 관련 기본값은 「학교명-xxxxx(올해. xx. xx.)」 */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,9 +10,9 @@ const it3 = [{ name: '비커', spec: '500ml', qty: 8, price: 4500 }, { name: '�
 const goods = items => ({ ...emptyForm('goods'), items });
 
 test('구입 품목이 3개 이상이면 첫 품목 외 n개', () => {
-  assert.equal(itemsSummary(it3, 'goods'), '비커(500ml) 외 2개');
-  assert.equal(itemsSummary([...it3, { name: '스포이트', qty: 10, price: 300 }], 'goods'), '비커(500ml) 외 3개');
-  assert.match(reasonTail(goods(it3)), /^ {2}가\. 구입 품목: 비커\(500ml\) 외 2개\n {2}나\. 지출액: 금137,600원\(금일십삼만칠천육백원\)\n {2}다\. 기타:\n붙임/);
+  assert.equal(itemsSummary(it3, 'goods'), '비커(500ml) 외 2종');
+  assert.equal(itemsSummary([...it3, { name: '스포이트', qty: 10, price: 300 }], 'goods'), '비커(500ml) 외 3종');
+  assert.match(reasonTail(goods(it3)), /^ {2}가\. 구입 품목: 비커\(500ml\) 외 2종\n {2}나\. 지출액: 금137,600원\(금일십삼만칠천육백원\)\n {2}다\. 기타:\n붙임/);
   // 강사 수당은 사람 수로
   const lec = { ...emptyForm('lecturer'), items: [{ name: '강사 수당', spec: '2시간', qty: 2, price: 50000 }, { name: '강사 수당', qty: 2, price: 50000 }, { name: '보조 강사 수당', qty: 2, price: 30000 }] };
   assert.match(reasonTail(lec), /가\. 지급 내역: 강사 수당\(2시간\) 외 2명\n/);
@@ -46,7 +46,7 @@ test('관련 기본값: 저장된 학교 이름-xxxxx(올해. xx. xx.)', () => {
   // 선생님이 쓴 관련은 그대로
   assert.equal(relatedLine({ ...emptyForm('goods'), related: '과학 동아리 운영 계획' }, 2026, '새싹초등학교'), '과학 동아리 운영 계획');
   assert.equal(composeReason({ intro: '과학 탐구 동아리 운영 물품을 구매하고자 합니다.', form: goods(it3), year: 2026, school: '새싹초등학교' }).split('\n').slice(0, 3).join('\n'),
-    '1. 관련: 새싹초등학교-xxxxx(2026. xx. xx.)\n2. 과학 탐구 동아리 운영 물품을 구매하고자 합니다.\n  가. 구입 품목: 비커(500ml) 외 2개');
+    '1. 관련: 새싹초등학교-xxxxx(2026. xx. xx.)\n2. 과학 탐구 동아리 운영 물품을 구매하고자 합니다.\n  가. 구입 품목: 비커(500ml) 외 2종');
 });
 
 test('예전 관련 기본값(0.34까지)은 견줄 때만', () => {

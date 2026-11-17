@@ -134,7 +134,7 @@ test('품의 사유: 1. 관련 + 2. 첫 문장 + 가~ 줄(목적·일시·대상
   assert.ok(r.endsWith('붙임  1. 지출품의서 1부.\n      2. 견적서 1부.  끝.'));
   const many = { ...form, place: '과학실', budget: '교육운영비', items: [1, 2, 3, 4].map(i => ({ name: '물품' + i, qty: 1, price: 1000 })) };
   const r2 = composeReason({ intro: 'A', form: many });
-  assert.ok(r2.includes('라. 장소: 과학실\n  마. 구입 품목: 물품1 외 3개\n  바. 지출액: 금4,000원(금사천원)\n  사. 예산 과목: 교육운영비\n  아. 기타:'), r2);
+  assert.ok(r2.includes('라. 장소: 과학실\n  마. 구입 품목: 물품1 외 3종\n  바. 지출액: 금4,000원(금사천원)\n  사. 예산 과목: 교육운영비\n  아. 기타:'), r2);
   // 칸이 모두 비면 기본 세 줄(구입 품목·지출액·기타)만, 강사 수당은 「지급 내역」
   const bare = composeReason({ intro: 'B', form: { ...emptyForm('goods'), items: [{ name: '공책', qty: 2, price: 500 }] } });
   assert.deepEqual(bare.split('\n').filter(l => /^  [가-하]\. /.test(l)), ['  가. 구입 품목: 공책 500원 × 2개 = 1,000원', '  나. 지출액: 금1,000원(금일천원)', '  다. 기타:']);

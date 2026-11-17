@@ -95,7 +95,9 @@ const HEAD = {
   price: /^(단가|개당가격|가격)$/,
   amount: /^(금액|공급가액|합계금액)$/,
   supply: /^(공급가액)$/,
-  tax: /^(세액|부가세|부가가치세)$/
+  tax: /^(세액|부가세|부가가치세)$/,
+  // 계획서 예산 표의 「산출 근거」 칸(「인화지 37,000원*8개=296,000원 …」) — 품의 넣기가 그 안의 품목들로 나눔(intake.js splitBasis)
+  basis: /^(산출근거|산출내역|산출기초|산출|세부내역|세부산출내역)$/
 };
 /* 합계·소계·세액·할인 같은 줄의 이름(품목이 아님 — 품목으로 읽으면 소요 예산에 합계가 한 번 더 들어감).
    「합계·소계·총계·부가세·VAT」가 든 이름(「합계금액」「부가세(VAT)」)은 예전처럼, 견적서·계획서 표의 「합   계」「총 계」「총 액(부가세 포함)」처럼
@@ -134,7 +136,7 @@ export function findItems(rows) {
         const supply = cols.supply != null && cell('supply') !== '' ? toNumber(cell('supply')) : price * qty;
         price = Math.round((supply + toNumber(cell('tax'))) / qty);
       }
-      out.push({ name, spec: cell('spec'), ...(cols.unit != null ? { unit: cell('unit') } : {}), qty, price });
+      out.push({ name, spec: cell('spec'), ...(cols.unit != null ? { unit: cell('unit') } : {}), qty, price, ...(cell('basis') ? { basis: cell('basis') } : {}) });
     }
     return out;
   }

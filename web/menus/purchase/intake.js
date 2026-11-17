@@ -16,6 +16,36 @@ const money = (n, man) => Math.round(Number(String(n).replace(/,/g, '')) * (man 
 const CONTACT = /(?:^|[^\d])01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}(?!\d)|(?:^|[^\d])0(?:2|[3-6]\d)[-.)\s]\d{3,4}[-.\s]\d{4}(?!\d)|[\w.+-]+@[\w-]+\.[\w.]+/;
 export const hasContact = v => CONTACT.test(String(v == null ? '' : v));
 
+/* 산출 근거 꼴 「품명 단가원*수량단위(*수량단위)=금액원」 → 품목들(2026-11-17 선생님: 계획서 예산 표의 산출 근거 칸).
+   한 칸·한 줄에 여러 개(「인화지 37,000원*8개=296,000원 전시 용품 11,000원*31학급=341,000원」)도 나눔. 단위는 아무 말이나(학급·식·세트).
+   글이 이 꼴로만 되어 있을 때만(남는 글에 숫자가 없을 때) 품목들, 아니면 null. 품명이 없으면(「4,500원×8개=36,000원」) name(줄의 품명) */
+const BASIS = /(?:([^\s=][^=]*?)\s*)?(?<![\d,.])(\d[\d,]*)\s*원\s*[*×xX✕]\s*(\d[\d,]*(?:\.\d+)?)\s*([가-힣A-Za-z]{0,4})\s*(?:[*×xX✕]\s*(\d[\d,]*(?:\.\d+)?)\s*([가-힣A-Za-z]{0,4})\s*)?=\s*\d[\d,]*\s*원/g;
+const LEAD = /^[\s,·•\-–/:;+]+|[\s,·:;+]+$/g;
+const SIZE = /^\d[\d.,]*\s*(?:ml|mL|L|l|g|kg|mm|cm|m|인치|매|장|호|평)?$/;
+export function basisItems(text, name = '') {
+  const s = String(text || ''), out = [];
+  let left = s;
+  for (const m of s.matchAll(BASIS)) {
+    // 앞 글이 「500ml」「30cm」 같은 크기뿐이면 품명이 아니라 규격(품명은 줄의 품명)
+    const own = String(m[1] || '').replace(LEAD, '').trim(), size = SIZE.test(own);
+    const nm = /[가-힣A-Za-z]/.test(own) && !size ? own : String(name || '').trim();
+    if (!/[가-힣A-Za-z]/.test(nm)) return null;
+    const q1 = toNumber(m[3]), q2 = m[5] ? toNumber(m[5]) : null, times = q2 ? `${m[3]}${m[4]}×${m[5]}${m[6]}` : '';
+    out.push({ ...emptyItem(), name: plainItemName(nm), spec: [size ? own : '', times].filter(Boolean).join(' '), unit: q2 ? '' : m[4], qty: String((q2 ? q1 * q2 : q1) || 1), price: String(Math.round(toNumber(m[2]))) });
+    left = left.replace(m[0], ' ');
+  }
+  return out.length && !/\d/.test(left) ? out : null;
+}
+/* 표·AI가 읽은 품목 가운데 규격(또는 품명) 칸이 산출 근거 꼴이면 그 안의 품목들로 바꿈.
+   계획서 예산 표 「항목 | 산출 근거 | 금액」을 읽으면 항목이 품명, 산출 근거 전체가 규격에 들어갔었음(머리줄을 찾으면 산출 근거는 버렸음).
+   basis: 표 머리줄이 「산출 근거」인 칸(core/sheet.js findItems) */
+export const splitBasis = items => (items || []).flatMap(it => {
+  if (!it) return [];
+  const { basis, ...row } = it;
+  const b = basisItems(basis, row.name) || basisItems(row.spec, row.name) || (blank(row.spec) ? basisItems(row.name) : null);
+  return b ? b.map(x => ({ ...x, vendor: String(row.vendor || '') })) : [row];
+});
+
 /* 줄 하나 → { it, stated } 또는 null. stated: 「총 N원」으로 적은 금액(수량으로 나눠 단가를 냄) */
 const WON = /([\d,]*\d(?:\.\d+)?)\s*(?:(만)\s*원|(만)(?![가-힣])|원)/g;
 const MEASURE = /^(g|kg|ml|L|m|매|입|줄)$/; // 규격에 가까운 단위(100매·80g) — 포장 단위가 따로 있으면 수량이 아님
@@ -139,6 +169,8 @@ export function parseLines(text) {
     // 「₩3,000」「￦3,000」은 「3,000원」으로
     const line = koWon(raw.replace(/[₩￦]\s*(\d[\d,]*(?:\.\d+)?)/g, '$1원')), t = sumLine(line);
     if (t) { if (t.kind === 'total') said = t.amount; else if (t.kind === 'off') missed.push(raw.trim()); continue; }
+    const b = basisItems(line);
+    if (b) { for (const it of b) { if (findPersonal(it.name)) { missed.push(raw.trim()); continue; } items.push(it); sum += Math.round(toNumber(it.qty) * toNumber(it.price)); } continue; }
     const parts = itemClauses(line);
     for (const part of parts) {
       const p = parseLine(part);
@@ -169,14 +201,15 @@ function rowItem(cells) {
 export function tableItems(text) {
   const rows = String(text || '').split(/\r?\n/).filter(l => l.trim()).map(l => l.split('\t').map(c => c.trim()));
   const head = findItems(rows);
-  if (head.length) return { items: head.map(it => ({ ...emptyItem(), name: it.name, spec: it.spec || '', unit: it.unit || '', qty: String(it.qty), price: String(it.price) })), fields: {}, missed: [] };
+  if (head.length) return { items: splitBasis(head.map(it => ({ ...emptyItem(), name: it.name, spec: it.spec || '', unit: it.unit || '', qty: String(it.qty), price: String(it.price), basis: it.basis }))), fields: {}, missed: [] };
   const items = [], missed = [];
   for (const cells of rows) {
     const it = rowItem(cells);
     if (it && (TOTAL.test(it.name) || isTotalName(it.name))) continue;
-    if (it) items.push(it); else missed.push(cells.filter(Boolean).join(' '));
+    // 금액이 없는 줄(계획서 본문·날짜·제목·머리줄)은 품목을 못 읽은 줄로 세지 않음 — 계획서를 넣으면 「못 읽은 줄 44개」가 떴음
+    if (it) items.push(it); else if (cells.some(c => /\d\s*원|\d,\d{3}/.test(c))) missed.push(cells.filter(Boolean).join(' '));
   }
-  return { items, fields: {}, missed };
+  return { items: splitBasis(items), fields: {}, missed };
 }
 
 export function intakePrompt(kind, text = '') {
@@ -188,6 +221,7 @@ export function intakePrompt(kind, text = '') {
     '- 배송비는 품목에 넣지 말고 shipping에 판매처별로 넣습니다(무료면 0).',
     '- 합계·소계·부가세·공급가액·할인 줄은 품목이 아닙니다.',
     '- fields: 글에 있을 때만 related(관련)·project(사업명)·purpose(목적)·target(대상)·date(일시)·place(장소)·budget(예산 과목). 없으면 빼고, 지어내지 않습니다.',
+    '- 계획서 예산 표의 산출 근거(「인화지 37,000원*8개=296,000원 전시 용품 11,000원*31학급=341,000원」)는 그 안의 품목마다 한 줄씩(name은 그 품목, unit은 「개·학급·식」, qty·price는 숫자). 표의 「항목」 이름(행사·활동 이름)은 품명으로 쓰지 않습니다.',
     '- related(관련): 넣은 것이 계획서·공문이면 그 문서 제목을 그대로(예: 2026학년도 학교폭력 예방 캠페인 운영 계획). purpose(목적)는 계획서면 그 「목적」 항목의 내용을 짧게 쓰고, 계획서 제목을 옮기지 않습니다.',
     '- 주문자·받는 사람 이름, 주소, 전화번호, 이메일, 결제 수단, 주민번호·계좌번호는 절대 쓰지 않습니다.',
     ...(kind === 'text' ? ['', '[메모]', String(text).slice(0, 8000)] : []),
@@ -229,7 +263,8 @@ export function normIntake(v, kind = 'text') {
   let dropped = 0;
   const bad = t => findPersonal(t) || hasContact(t);
   const items = [];
-  for (const x of listOf(v, 'items')) {
+  // AI가 계획서 표를 「항목 = 품명, 산출 근거 = 규격」으로 읽어 와도 산출 근거 안의 품목들로(splitBasis)
+  for (const x of splitBasis(listOf(v, 'items').filter(x => x && typeof x === 'object').map(x => ({ ...x, name: str(x.name, 120), spec: String(x.spec == null ? '' : x.spec) })))) {
     if (!(x && typeof x === 'object') || blank(x.name) || TOTAL.test(str(x.name)) || isTotalName(x.name)) continue;
     const it = { name: plainItemName(str(x.name, 120)), spec: str(x.spec, 80), unit: str(x.unit, 10), qty: String(toNumber(x.qty) > 0 ? toNumber(x.qty) : 1), price: String(Math.max(0, Math.round(toNumber(x.price)))), vendor: str(x.vendor, 40) };
     if (bad(it.name) || ['spec', 'unit', 'vendor'].some(k => findPersonal(it[k]))) { dropped++; continue; }
@@ -340,7 +375,7 @@ export async function readIntake({ text, file, noAI = false } = {}) {
     if (!q.items.length && /\.(hwpx?|xlsx|csv)$/i.test(String(file.name || ''))) return readIntake({ text: (await readText(file)).replace(/[ \t]*\|[ \t]*/g, '\t'), noAI: true });
     // 한글·PDF 계획서를 넣으면 표의 품목과 함께 계획서 제목(관련)·목적(planHead)
     const head = /\.(hwpx?|pdf)$/i.test(String(file.name || '')) ? await readText(file).then(planHead, () => ({})) : {};
-    return { items: q.items.map(it => ({ ...emptyItem(), name: it.name, spec: it.spec || '', unit: it.unit || '', qty: String(it.qty), price: String(it.price), vendor: it.vendor || '' })), fields: { ...(q.fields || {}), ...head }, by: q.by, missed: [] };
+    return { items: splitBasis(q.items.map(it => ({ ...emptyItem(), name: it.name, spec: it.spec || '', unit: it.unit || '', qty: String(it.qty), price: String(it.price), vendor: it.vendor || '', basis: it.basis }))), fields: { ...(q.fields || {}), ...head }, by: q.by, missed: [] };
   }
   // 주민번호·계좌 모양이 있는 줄은 읽지 않고(AI로도 보내지 않음) 수만 알려 줌
   const lines = String(text || '').split(/\r?\n/);

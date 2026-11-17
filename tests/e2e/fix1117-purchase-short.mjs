@@ -1,4 +1,4 @@
-// 2026-11-17 선생님 요청(품의 짧게): 구입 품목 3개 이상은 「○○ 외 2개」, 붙임은 「기타:」 바로 아래(빈 줄 없음),
+// 2026-11-17 선생님 요청(품의 짧게): 구입 품목 3개 이상은 「○○ 외 2종」, 붙임은 「기타:」 바로 아래(빈 줄 없음),
 // 2. 첫 문장은 한두 줄의 한 문장(「… 운영 물품을 구매하고자 합니다.」 — AI가 길게 써도 첫 문장만, 「다음과 같이」 뺌),
 // 1. 관련은 저장된 학교 이름으로 「새싹초등학교-xxxxx(올해. xx. xx.)」, 계획서를 넣으면 그 뒤에 「계획서 제목」.
 // 예전(0.34)에 손으로 고친 초안은 열기만 해서는 바뀌지 않음
@@ -43,13 +43,13 @@ async function go(text) {
 
 await page.goto(t.url);
 await run('fix1117-purchase-short', [
-  ['품목 3개: 「비커 외 2개」, 「기타:」 바로 아래 붙임, 관련은 「새싹초등학교-xxxxx(올해. xx. xx.)」, 첫 문장은 한 문장', async () => {
+  ['품목 3개: 「비커 외 2종」, 「기타:」 바로 아래 붙임, 관련은 「새싹초등학교-xxxxx(올해. xx. xx.)」, 첫 문장은 한 문장', async () => {
     await reset();
     await go('비커 8개 4500원\n유리 막대 8개 1200원\n전자저울 4개 23000원');
     const r = await reason(), lines = r.split('\n');
     assert(lines[0] === `1. 관련: 새싹초등학교-xxxxx(${Y}. xx. xx.)`, lines[0]);
     assert(lines[1] === '2. 과학 탐구 동아리 운영을 위하여 실험 재료를 구매하고자 합니다.', lines[1]);
-    assert(/구입 품목: 비커 외 2개\n/.test(r) && !r.includes('×'), r);
+    assert(/구입 품목: 비커 외 2종\n/.test(r) && !r.includes('×'), r);
     assert(/  [가-하]\. 기타:\n붙임  1\. 지출품의서 1부\./.test(r) && !r.includes('\n\n'), r);
     assert((await chips()).includes('관련 · 문서 번호·날짜 채우기'), await chips());
     assert((await page.getAttribute(`${P} #pcRelated`, 'placeholder')) === `비우면 「새싹초등학교-xxxxx(${Y}. xx. xx.)」`, '관련 칸 안내');
@@ -91,7 +91,7 @@ await run('fix1117-purchase-short', [
     await page.click(`${P} [data-pc="resync"]`);
     await page.waitForTimeout(200);
     const r = await reason();
-    assert(r.split('\n')[0] === `1. 관련: 새싹초등학교-xxxxx(${Y}. xx. xx.)` && r.includes('구입 품목: 물품1 외 3개\n') && r.includes('기타:\n붙임'), r);
+    assert(r.split('\n')[0] === `1. 관련: 새싹초등학교-xxxxx(${Y}. xx. xx.)` && r.includes('구입 품목: 물품1 외 3종\n') && r.includes('기타:\n붙임'), r);
   }],
   ['예전(0.34)에 손대지 않은 초안은 열면 새 꼴로 다시 맞춤(첫 문장은 그대로)', async () => {
     const form = { ...emptyForm('goods'), purpose: '과학 실험', items: [1, 2, 3].map(i => ({ name: '물품' + i, spec: '', unit: '', qty: '1', price: '1000', vendor: '' })) };
@@ -100,7 +100,18 @@ await run('fix1117-purchase-short', [
     await reset({ 'purchase:current': { id: 'pc034b', form, draft: { title: '과학 실험 재료 구입', intro, reason: old, edited: false, tail: reasonTailV2(form), rel: relatedLineV1(form, 2026) } } });
     await page.waitForTimeout(300);
     const r = await reason();
-    assert(r.startsWith(`1. 관련: 새싹초등학교-xxxxx(${Y}. xx. xx.)\n2. ${intro}\n`) && r.includes('구입 품목: 물품1 외 2개\n') && r.includes('기타:\n붙임'), r);
+    assert(r.startsWith(`1. 관련: 새싹초등학교-xxxxx(${Y}. xx. xx.)\n2. ${intro}\n`) && r.includes('구입 품목: 물품1 외 2종\n') && r.includes('기타:\n붙임'), r);
+  }],
+  ['계획서 예산 표(항목 | 산출 근거 | 금액)를 넣으면 산출 근거 안의 품목이 품명 칸에(규격 칸이 아님), 사유는 「첫 품목 외 n종」', async () => {
+    await reset();
+    const cell = '사진 인화지(RP-108) 37,000원*8개=296,000원 전시판·집게줄 등 전시 용품 11,000원*31학급=341,000원 포토존 소품(피켓·머리띠 등) 45,000원*1식=45,000원';
+    await go(['2026학년도 친구사랑 주간 운영 계획', '3. 예산 계획', '항목\t산출 근거\t금액', `친구 사진전\t${cell}\t682,000원`, '평화 퍼즐\t학급용 빈 퍼즐 8,000원*31학급=248,000원\t248,000원'].join('\n'));
+    const s = await state();
+    assert(JSON.stringify(s.form.items.map(it => [it.name, it.spec, it.unit, it.qty, it.price])) === JSON.stringify([['사진 인화지(RP-108)', '', '개', '8', '37000'], ['전시판·집게줄 등 전시 용품', '', '학급', '31', '11000'], ['포토존 소품(피켓·머리띠 등)', '', '식', '1', '45000'], ['학급용 빈 퍼즐', '', '학급', '31', '8000']]), JSON.stringify(s.form.items));
+    const r = await reason();
+    assert(r.includes('구입 품목: 사진 인화지(RP-108) 외 3종\n') && r.includes('지출액: 금930,000원'), r);
+    assert(s.form.related === `새싹초등학교-xxxxx(${Y}. xx. xx.) 「2026학년도 친구사랑 주간 운영 계획」`, s.form.related);
+    assert(await page.inputValue(`${P} [data-item="0"][data-f="name"]`) === '사진 인화지(RP-108)' && await page.inputValue(`${P} [data-item="0"][data-f="spec"]`) === '', '화면 품명·규격 칸');
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
