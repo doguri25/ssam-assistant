@@ -35,7 +35,7 @@ const MADE = rows => ({ rows: [
   { name: '까닭 설명', points: 33, cells: { high: { text: `${rows ? '〔이름1〕 선생님 자료처럼 ' : ''}두 방법을 견주어 까닭을 씀`, pts: 33 }, mid: { text: '까닭을 한 가지 씀', pts: 23 }, low: { text: '까닭을 말로 함', pts: 13 } } }
 ] });
 const prompts = [], pyPrompts = [], grPrompts = [], calPrompts = [], wrPrompts = [];
-let gate = null, grGate = null, reviewLow = false;
+let gate = null, grGate = null, reviewLow = false, rbPartial = false;
 await mockClaude(page, async ({ prompt, body }) => {
   if (prompt.startsWith('[문장 검토]')) return '{"items":[]}';
   // 평가지 채점: 기준표가 있으면 99점(기준 점수 70 + 4를 넘음)·요소 모두 중(이름 「중」으로도). 검토 AI(Opus)는 99점·모두 하(기준 점수 40)
@@ -45,7 +45,8 @@ await mockClaude(page, async ({ prompt, body }) => {
     grPrompts.push(prompt);
     if (grGate) await grGate;
     return JSON.stringify({ score: 99, summary: '곱셈 원리를 한 가지 방법으로 설명함.', evidence: ['풀이식을 씀'], strengths: '꼼꼼함', improve: '검산', unreadable: false,
-      ...(prompt.includes('[수준별 채점 기준표]') ? { rubric: [{ name: '곱셈 원리 이해', level: 'mid' }, { name: '풀이 과정', level: '중' }, { name: '까닭 설명', level: 'mid' }] } : {}) });
+      ...(prompt.includes('[수준별 채점 기준표]') ? { rubric: rbPartial ? [{ name: '1. 곱셈 원리 이해 (34점)', level: 'mid' }, { name: '2) 풀이 과정', level: '중' }]
+        : [{ name: '곱셈 원리 이해', level: 'mid' }, { name: '풀이 과정', level: '중' }, { name: '까닭 설명', level: 'mid' }] } : {}) });
   }
   // 점수 맞추기: 모두 0점(기준표가 있으면 기준 점수 −4로 잘려야 함)
   if (prompt.startsWith('같은 수행평가를 본 학생')) { calPrompts.push(prompt); return JSON.stringify([...prompt.matchAll(/^- (\d+)번 \| (\d+)점/gm)].map(m => ({ no: +m[1], score: 0 }))); }
@@ -180,6 +181,14 @@ await run('rubric', [
     const snap = await RB('grLineHTML', U, { snapshot: it, locked: true });
     assert(snap.includes('수준별 기준표로 채점했어요 · 요소 3개') && snap.includes('data-rb="view"') && !snap.includes('고치기'), snap);
     assert(!(await RB('grLineHTML', U2, {})).includes('채점해요'), '다른 과목은 기준표 없음');
+    // 기준표 없이 채점한 기록(사본 없음): 지난 일로 알리고 [보기·고치기]/[만들기]는 남김(다음 채점용), 채점 중이면 줄 없음
+    const NO = '이 채점은 수준별 기준표 없이 했어요. 기준표는 [새 채점]부터 써요.';
+    const gd = await RB('grLineHTML', U, { graded: true });
+    assert(gd.includes(NO) && gd.includes('data-rb="open"') && gd.includes('보기·고치기') && !gd.includes('채점해요'), gd);
+    const gd2 = await RB('grLineHTML', U2, { graded: true });
+    assert(gd2.includes(NO) && gd2.includes('수준별 기준표 만들기') && !gd2.includes('채점해요'), gd2);
+    assert(await RB('grLineHTML', U, { graded: true, locked: true }) === '', '채점 중');
+    assert((await RB('grLineHTML', U, { graded: true, snapshot: it })).includes('수준별 기준표로 채점했어요'), '사본이 있으면 사본');
     await openRb();
     await page.waitForSelector(SH);
     assert(await page.inputValue(f('text', 1, 'mid')) === '풀이 과정 일부를 차례대로 씀' && await page.inputValue(f('pts', 0, 'high')) === '30', '다시 열면 그대로');
@@ -438,6 +447,7 @@ await run('rubric', [
     assert(p.indexOf('[평가 정보]') < p.indexOf('[수준별 채점 기준표]') && p.indexOf('[수준별 채점 기준표]') < p.indexOf('[할 일]'), '평가 정보 뒤');
     assert(p.includes('2. 요소마다 기준표의 수준 하나를 고릅니다(비웠거나 전혀 하지 않았으면 none). 점수는 고른 수준 점수의 합을 100점으로 바꾼 값에서 −4~+4 안에서, 같은 점수인 학생끼리 답안의 차이를 드러내게 매깁니다.'), '할 일 2번');
     assert(p.includes('"rubric": [{"name": "요소 이름", "level": "high|mid|low|none"}]'), '답 형식');
+    assert(p.includes('매깁니다. rubric에는 기준표의 모든 요소를 기준표에 적힌 이름 그대로(번호·배점 없이) 담고, 하지 않은 요소는 none으로 씁니다.'), '요소 이름 그대로·모든 요소');
     assert(!p.includes('90점 이상은'), '고정 구간 문장 없음');
     const c = calPrompts.at(-1) || '';
     assert(c.includes('[수준별 채점 기준표]') && !c.includes('90점 이상 최상') && c.includes('기준 점수 −4~+4 안에서만 고칩니다'), c.slice(0, 900));
@@ -452,7 +462,7 @@ await run('rubric', [
     const w = wrPrompts.join('\n');
     assert(w.includes('기준표 「곱셈 원리 이해」: 한 방법으로 원리를 설명함') && w.includes('기준표 「풀이 과정」: 풀이 과정 일부를 씀'), w.slice(0, 1500));
     assert(!/기준표 「[^」]*」\s*(최상|상|중|하)/.test(w), '근거 줄에 수준 이름 없음');
-    assert(w.includes('기준표 근거는 학생이 한 일이에요. 문장의 수준은 위 [수준]을 따라요.'), '쓰기 규칙 줄');
+    assert(w.includes('기준표 근거는 학생이 한 일입니다. 문장의 수준은 위 [수준]을 따릅니다.') && !w.includes('한 일이에요'), '쓰기 규칙 줄(합니다체)');
     assert((await page.textContent('#grResults .evd-src')).includes('기준표 「곱셈 원리 이해」: 한 방법으로 원리를 설명함'), '화면 근거');
   }],
   ['과학(같은 평가요소 이름)·직접 입력으로 채점하면 채점 글에 기준표 블록 없음·고정 구간 문장 있음, 결과 줄·기록에 기준표 없음', async () => {
@@ -477,7 +487,48 @@ await run('rubric', [
       const g = await cur();
       assert(!g.rubric && g.students.every(s => !s.rb && s.rbBase == null && s.score === 99), JSON.stringify(g.students[0]));
       assert(await page.locator('#grResults .gr-rb').count() === 0, '결과 줄 없음');
+      if (!unit) { assert(!(await page.textContent('#grSetup')).includes('평가요소를 고르면'), '채점한 기록에는 「평가요소를 고르면…」 없음'); continue; }
+      // 기준표 없이 채점한 기록: 1단계에서 기준표를 만들어도 「없이 했어요」(이 기록의 [다시 채점]·남은 학생은 기준표를 쓰지 않음)
+      const NO = '이 채점은 수준별 기준표 없이 했어요. 기준표는 [새 채점]부터 써요.';
+      await until(async () => (await page.textContent('#grSetup .rb-line')).includes(NO), '없이 했어요 줄');
+      assert((await page.textContent('#grSetup .rb-line')).includes('수준별 기준표 만들기'), '만들기 단추');
+      await page.click('#grSetup [data-rb="open"]');
+      await page.waitForSelector(SH);
+      await page.click(act('make'));
+      await until(async () => await cards() === 3 && await page.inputValue(f('name', 0)) === '곱셈 원리 이해', '과학 기준표 만들기');
+      await page.click(act('save'));
+      await gone();
+      await until(async () => (await page.textContent('#grSetup .rb-line')).includes('보기·고치기'), '저장 뒤 줄');
+      const l = await page.textContent('#grSetup .rb-line');
+      assert(l.includes(NO) && !l.includes('채점해요'), l);
+      // 지움(뒤 시험의 과학에는 기준표가 없음)
+      await page.click('#grSetup [data-rb="open"]');
+      await page.waitForSelector(SH);
+      await page.click(act('delete'));
+      await page.click(act('delOk'));
+      await gone();
+      await until(async () => (await page.textContent('#grSetup .rb-line')).includes('수준별 기준표 만들기'), '지운 뒤 줄');
+      assert(await RB('getFor', U2) === null, '과학 기준표 지움');
     }
+  }],
+  ['바뀐 것 없이 [저장]하면 고친 때가 그대로 → 지난 채점 기록(수학)에 「바뀐 기준표」 알림 없음', async () => {
+    await page.clock.setFixedTime(new Date('2026-11-16T10:30:00'));
+    const at0 = (await stored()).items['수학|곱셈원리설명하기'].at;
+    await enter(page, 'evaluate', 'pyeongeo');
+    await page.click('[data-subj="수학"]');
+    await page.click('[data-unit="m1"]');
+    await page.waitForSelector('#pane [data-rb="open"]');
+    await page.click('#pane [data-rb="open"]');
+    await page.waitForSelector(SH);
+    await page.click(act('save'));
+    await gone();
+    assert((await stored()).items['수학|곱셈원리설명하기'].at === at0, `고친 때: ${(await stored()).items['수학|곱셈원리설명하기'].at} ≠ ${at0}`);
+    await enter(page, 'evaluate', 'gr');
+    const id = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:grs')).find(x => (JSON.parse(localStorage.getItem('ssam:gr:' + x)) || {}).rubric));
+    await page.waitForSelector(`[data-grhist="${id}"]`);
+    await page.click(`[data-grhist="${id}"]`);
+    await until(async () => (await page.locator('#grSetup .rb-line [data-rb="view"]').count()) === 1, '기록 열기');
+    assert(!(await page.textContent('#grSetup')).includes('바뀐 기준표는 새 채점부터'), '알림 없음');
   }],
   ['교과 평어에서 기준표 칸 글을 고친 뒤 지난 채점 기록(수학)을 열면: 「수준별 기준표로 채점했어요」 [보기]는 고치기 전 글, 바뀐 기준표 알림 한 줄, 결과 줄·평어 근거·[평어 다시 쓰기]도 사본 그대로 → [새 채점]이면 지금 기준표', async () => {
     await page.clock.setFixedTime(new Date('2026-11-16T11:00:00'));
@@ -573,6 +624,16 @@ await run('rubric', [
     assert((await page.textContent('#grSetup .rb-line')).includes('수준별 기준표로 채점했어요'), await page.textContent('#grSetup .rb-line'));
     assert(await page.locator('#grResults .gr-rb').count() === ids.length - 2, '결과 줄 기준표(다시 채점 안 한 학생)');
     await until(async () => { const x = await cur(); return x.unitId === 'm1' && x.rubric && x.rubric.subject === '수학'; }, '기록(미뤄 둔 저장)');
+    // 요소를 빠뜨린 답(이름에 번호·배점을 붙임): 요소별 수준은 기준표 이름으로 남기고 기준 점수 없음 → 점수를 자르지 않음(99)
+    rbPartial = true;
+    const n = grPrompts.length;
+    await page.click(`#grResults [data-grregrade="${ids[2]}"]`);
+    await until(async () => grPrompts.length > n && (await cur()).students.find(s => s.id === ids[2]).score === 99 && !(await page.locator('#grResults .chip.run').count()), '빠뜨린 답 다시 채점', 20000);
+    rbPartial = false;
+    assert(grPrompts.at(-1).includes('[수준별 채점 기준표]'), '기준표로 다시 채점');
+    const st = (await cur()).students.find(s => s.id === ids[2]);
+    assert(st.score === 99 && st.rbBase == null && JSON.stringify(st.rb) === JSON.stringify([{ name: '곱셈 원리 이해', level: 'mid' }, { name: '풀이 과정', level: 'mid' }]), JSON.stringify([st.score, st.rbBase, st.rb]));
+    await until(async () => ((await page.textContent(`#grResults [data-grrow="${ids[2]}"] .gr-rb`).catch(() => '')) || '').trim() === '기준표 · 곱셈 원리 이해 중 · 풀이 과정 중', '결과 줄(빠진 요소 없이)');
   }],
   ['페이지 오류 없음', async () => { assert(!errors.length, errors.join(' | ')); }]
 ]);

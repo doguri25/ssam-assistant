@@ -17,6 +17,13 @@ const bare = t => str(t).replace(/[\s.,·ㆍ'"‘’“”~()!?;:\-]/g, '');
 const num = v => (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '') ? Number(v) : NaN);
 const nrows = n => Math.max(ROWS_MIN, Math.min(ROWS_MAX, Math.round(Number(n)) || ROWS_DEF));
 const rowName = (r, i) => str(r && r.name).trim() || `요소 ${i + 1}`;
+/* 요소 이름 맞추기 글: AI가 채점 블록(「1. 곱셈 원리 이해 (34점)」)을 따라 붙인 앞 번호(「1.」「2)」)·뒤 배점(「(34점)」)을 떼고 열쇠 글로 */
+const nameKey = t => bare(str(t).replace(/^\s*\d+\s*[.)]\s*/, '').replace(/\(\s*\d+\s*점\s*\)\s*$/, ''));
+/* 채점에 쓰는 요소: 칸 글이 하나라도 있는 요소. 칸 글이 하나도 없는 요소([요소 더하기]로 넣고 비워 둔 것)는
+   AI로 보내지 않고 요소별 수준·기준 점수·「모든 요소」 셈에도 넣지 않음 */
+const gradable = (r, lvs) => !!r && lvs.some(lv => { const c = r.cells && r.cells[lv]; return !!(c && str(c.text).trim()); });
+// 학교 수준 낱말(띄어쓰기 뺀 글) → 수준 키: 3단계 잘함·보통·노력 요함, 4단계 매우 잘함·잘함·보통·노력 요함
+const WORDS = { 3: { 잘함: 'high', 보통: 'mid', 노력요함: 'low' }, 4: { 매우잘함: 'top', 잘함: 'high', 보통: 'mid', 노력요함: 'low' } };
 
 /* ---------- 열쇠·수준·배점 ---------- */
 
@@ -199,30 +206,33 @@ export function removeFor(u) {
 
 export const sumPoints = rb => ((rb && rb.rows) || []).reduce((a, r) => a + (Number(r.points) || 0), 0);
 
-/* 평가지 채점 요청에 더할 글 */
+/* 평가지 채점 요청에 더할 글. 칸 글이 하나도 없는 요소는 빼고(번호는 이어서, 배점 합에도 넣지 않음), 빈 칸 글도 뺌 */
 export function gradeBlock(rb) {
-  const rows = (rb && rb.rows) || [], lvs = (rb && rb.levels) || L3;
-  return [`[수준별 채점 기준표] (배점 합 ${sumPoints(rb)}점)`, ...rows.map((r, i) => {
+  const lvs = (rb && rb.levels) || L3, rows = ((rb && rb.rows) || []).map((r, i) => [r, i]).filter(([r]) => gradable(r, lvs));
+  const sum = rows.reduce((a, [r]) => a + (Number(r.points) || 0), 0);
+  return [`[수준별 채점 기준표] (배점 합 ${sum}점)`, ...rows.map(([r, i], k) => {
     const cells = lvs.map(lv => { const c = r.cells && r.cells[lv]; return c && str(c.text).trim() ? `${LV_NAME[lv]}(${Number(c.pts) || 0}점): ${str(c.text).trim()}` : ''; }).filter(Boolean);
-    return `${i + 1}. ${rowName(r, i)} (${Number(r.points) || 0}점)${cells.length ? ` — ${cells.join(' / ')}` : ''}`;
+    return `${k + 1}. ${rowName(r, i)} (${Number(r.points) || 0}점) — ${cells.join(' / ')}`;
   })].join('\n');
 }
 
 /* AI가 준 요소별 수준 → [{ name(기준표의 이름), level(키 또는 'none') }].
-   수준은 키(high)나 이름(상·안 함)으로 받음. 모르는 요소·수준은 버리고 같은 요소는 처음 것만 */
+   이름은 앞 번호·뒤 배점을 떼고 맞춤(nameKey). 수준은 키(high)·이름(상·안 함)·학교 수준 낱말(잘함·보통·노력 요함, 4단계는 매우 잘함도)로 받음.
+   모르는 요소·수준·칸 글이 없는 요소는 버리고 같은 요소는 처음 것만 */
 export function normRb(list, rb) {
   const rows = (rb && rb.rows) || [], lvs = (rb && rb.levels) || L3, out = [], seen = new Set();
   if (!Array.isArray(list)) return out;
-  const byName = new Map(rows.map((r, i) => [bare(rowName(r, i)), rowName(r, i)]));
+  const byName = new Map(rows.map((r, i) => [r, i]).filter(([r]) => gradable(r, lvs)).map(([r, i]) => [nameKey(rowName(r, i)), rowName(r, i)]));
+  const words = WORDS[lvs.length] || {};
   for (const it of list) {
     if (!it || typeof it !== 'object') continue;
-    const k = bare(it.name), name = byName.get(k);
+    const k = nameKey(it.name), name = byName.get(k);
     if (!name || seen.has(k)) continue;
     const raw = str(it.level).trim(), b = bare(raw).toLowerCase();
     let lv = null;
     if (b === 'none' || b === bare(LV_NAME.none)) lv = 'none';
     else if (lvs.includes(raw) || lvs.includes(b)) lv = lvs.includes(raw) ? raw : b;
-    else lv = lvs.find(x => bare(LV_NAME[x]) === b) || null;
+    else lv = lvs.find(x => bare(LV_NAME[x]) === b) || (lvs.includes(words[b]) ? words[b] : null);
     if (!lv) continue;
     seen.add(k);
     out.push({ name, level: lv });
@@ -230,21 +240,23 @@ export function normRb(list, rb) {
   return out;
 }
 
-/* 기준 점수 = 고른 수준 점수 합 ÷ 배점 합 × 100 (반올림). 목록에 없는 요소는 버림(분자·분모 모두), 「안 함」은 0점으로 배점은 분모에 남김.
-   남은 요소가 없거나 그 배점 합이 0이면 null */
+/* 기준 점수 = 고른 수준 점수 합 ÷ 배점 합 × 100 (반올림). 「안 함」은 0점으로 배점은 분모에 남김.
+   채점에 쓰는 요소(칸 글이 있는 요소) 하나라도 수준이 없으면(AI가 요소를 빠뜨림·모르는 수준) null — 점수를 자르지 않음
+   (빠진 요소를 버리고 셈하면 남은 요소만으로 점수가 부풀 수 있어서). 칸 글이 없는 요소는 셈하지 않음. 배점 합이 0이어도 null */
 export function baseScore(rbList, rb) {
   if (!Array.isArray(rbList) || !rbList.length || !rb) return null;
-  const rows = rb.rows || [], seen = new Set();
+  const rows = rb.rows || [], lvs = rb.levels || L3, seen = new Set();
   let got = 0, total = 0;
   for (const it of rbList) {
-    if (!it) continue;
-    const i = rows.findIndex((r, j) => bare(rowName(r, j)) === bare(it.name));
+    if (!it || (it.level !== 'none' && !lvs.includes(it.level))) continue;
+    const i = rows.findIndex((r, j) => gradable(r, lvs) && nameKey(rowName(r, j)) === nameKey(it.name));
     if (i < 0 || seen.has(i)) continue;
     seen.add(i);
     total += Number(rows[i].points) || 0;
     const c = it.level === 'none' ? null : rows[i].cells && rows[i].cells[it.level];
     got += c ? Number(c.pts) || 0 : 0;
   }
+  if (rows.some((r, j) => gradable(r, lvs) && !seen.has(j))) return null;
   return total > 0 ? Math.round(got / total * 100) : null;
 }
 
@@ -264,7 +276,7 @@ export function evidenceLines(rbList, rb) {
   const rows = (rb && rb.rows) || [], out = [];
   for (const it of Array.isArray(rbList) ? rbList : []) {
     if (!it || it.level === 'none') continue;
-    const i = rows.findIndex((r, j) => bare(rowName(r, j)) === bare(it.name));
+    const i = rows.findIndex((r, j) => nameKey(rowName(r, j)) === nameKey(it.name));
     const c = i < 0 ? null : rows[i].cells && rows[i].cells[it.level], t = c ? str(c.text).trim() : '';
     if (t) out.push(`기준표 「${rowName(rows[i], i)}」: ${t}`);
   }

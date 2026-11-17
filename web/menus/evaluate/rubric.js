@@ -242,7 +242,9 @@ function save({ closing = false } = {}) {
   if (!me || me.ro || me.busy) return false;
   const rb = clean(me.rb);
   if (!rowsHaveText(rb)) { me.ask = null; me.saveMsg = '기준표가 비어 있어요. [기준표 만들기]를 누르거나 칸을 써 주세요.'; draw(); return false; }
-  if (!saveFor(me.u, copy(rb))) { me.ask = null; me.saveMsg = FULL_MSG; draw(); return false; }
+  // 바뀐 것이 없으면 다시 쓰지 않음 — 고친 때(at)가 그대로여야 지난 채점 기록에 「바뀐 기준표」 알림이 잘못 뜨지 않음
+  const same = me.saved != null && sig(rb) === me.saved && !!getFor(me.u);
+  if (!same && !saveFor(me.u, copy(rb))) { me.ask = null; me.saveMsg = FULL_MSG; draw(); return false; }
   const got = shape(getFor(me.u), me.u);
   me.rb = copy(got); me.saved = sig(got); me.ask = null; me.msg = '';
   try { if (me.onSave) me.onSave(copy(got)); } catch (e) {}
@@ -379,13 +381,16 @@ export function paneLineHTML(u, { same = 1 } = {}) {
   return `<div class="rb-line"><span class="rb-line-t">수준별 기준표 · 요소 ${(rb.rows || []).length}개 · ${(rb.levels || L3).length}단계</span><button class="btn text" type="button" data-rb="open">보기·고치기</button>${more}</div>`;
 }
 /* 평가지 채점 1단계 한 줄: 채점 기록 사본이 있으면 [보기]만, 아니면 기준표가 있으면 [보기·고치기], 없으면 [수준별 기준표 만들기].
-   직접 입력(u 없음)·열쇠 없음·사본 없이 채점 중(locked)이면 '' */
-export function grLineHTML(u, { snapshot = null, locked = false } = {}) {
+   graded(사본 없이 채점한 학생이 있음 — 이 기록의 [다시 채점]·남은 학생은 기준표를 쓰지 않음)면 「이 채점은 … 없이 했어요」를 앞에 두고
+   단추는 그대로(지금 기준표를 고쳐 두면 [새 채점]부터 씀). 직접 입력(u 없음)·열쇠 없음·사본 없이 채점 중(locked)이면 '' */
+export function grLineHTML(u, { snapshot = null, locked = false, graded = false } = {}) {
   if (!u || !unitKey(u)) return '';
   if (snapshot) return `<div class="rb-line"><span class="rb-line-t">수준별 기준표로 채점했어요 · 요소 ${(snapshot.rows || []).length}개</span><button class="btn text" type="button" data-rb="view">보기</button></div>`;
   if (locked) return '';
   const rb = getFor(u);
-  if (!rb) return '<div class="rb-line"><button class="btn tonal" type="button" data-rb="open">수준별 기준표 만들기</button></div>';
+  const make = '<button class="btn tonal" type="button" data-rb="open">수준별 기준표 만들기</button>';
+  if (graded) return `<div class="rb-line"><span class="rb-line-t">이 채점은 수준별 기준표 없이 했어요. 기준표는 [새 채점]부터 써요.</span>${rb ? '<button class="btn text" type="button" data-rb="open">보기·고치기</button>' : make}</div>`;
+  if (!rb) return `<div class="rb-line">${make}</div>`;
   return `<div class="rb-line"><span class="rb-line-t">수준별 기준표로 채점해요 · 요소 ${(rb.rows || []).length}개</span><button class="btn text" type="button" data-rb="open">보기·고치기</button></div>`;
 }
 

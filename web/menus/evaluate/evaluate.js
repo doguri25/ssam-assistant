@@ -769,6 +769,8 @@ const S = {
    이 파일은 모듈보다 먼저 돌아서, 그릴 때마다 부품이 있는지 보고 없으면 예전처럼 그림. 부품이 준비되면(ssam:ui-ready) 지금 화면을 한 번 다시 그림.
    화면 설명(introHTML)은 화면을 연 횟수를 세므로, 평가 메뉴의 이 화면이 실제로 보일 때(창 틀의 menu:go)만 넣고 그 전에는 빈 자리만 둠 */
 const UIP = () => (window.SSAM && window.SSAM.ui) || null;
+// 수준별 기준표 규칙·시트(rubric.js → window.SSAM.rubric). 교과 평어·평가지 채점 그리기가 부르므로 맨 위 renderAll()보다 먼저 둠
+const RB = () => (window.SSAM && window.SSAM.rubric) || null;
 const UI_TABS = ['pyeongeo', 'cc', 'hk', 'gr'];
 const UI_INTRO = {};          // 화면 → 설명 글
 const UI_FOLD_KEEP = new Set(); // 꼭 정해야 해서 펼쳐 보인 설정 접기: 이번 실행 동안 펼친 채(입력하자마자 접히지 않게)
@@ -3230,7 +3232,6 @@ function hkMemoRows(text) {
 const hkMemoOut = s => (MEMO_NAMES() ? MEMO_NAMES().forAI(s.memo) : String(s.memo || '').trim());
 
 /* ---------- 근거가 보이는 평어 (core/evidence.js가 window.SSAM.evidence로 줌, 스펙 2026-11-13 §5) ---------- */
-const RB = () => (window.SSAM && window.SSAM.rubric) || null;
 const EV = () => (window.SSAM && window.SSAM.evidence) || null;
 // 행특 근거: 이름 칸을 뺀 메모(hkMemoOut)를 줄·쉼표로 나눈 조각 m1, m2 …
 const hkEvList = s => (EV() ? EV().memoEvidence(hkMemoOut(s)) : []);
@@ -4315,7 +4316,7 @@ function grGradeParts(st, nCrit) {
     ``,
     `[할 일]`,
     `1. 학생이 쓴 답, 그림, 풀이 과정을 빠짐없이 읽고 문항마다 맞고 틀림과 이해 정도를 판단합니다.`,
-    R ? `2. 요소마다 기준표의 수준 하나를 고릅니다(비웠거나 전혀 하지 않았으면 none). 점수는 고른 수준 점수의 합을 100점으로 바꾼 값에서 −4~+4 안에서, 같은 점수인 학생끼리 답안의 차이를 드러내게 매깁니다.`
+    R ? `2. 요소마다 기준표의 수준 하나를 고릅니다(비웠거나 전혀 하지 않았으면 none). 점수는 고른 수준 점수의 합을 100점으로 바꾼 값에서 −4~+4 안에서, 같은 점수인 학생끼리 답안의 차이를 드러내게 매깁니다. rubric에는 기준표의 모든 요소를 기준표에 적힌 이름 그대로(번호·배점 없이) 담고, 하지 않은 요소는 none으로 씁니다.`
       : `2. 100점 만점으로 점수를 매깁니다. 90점 이상은 평가기준 '상'을 넘어서는 수준, 70~89점은 '상', 40~69점은 '중', 39점 이하는 '하'입니다. 같은 수준 안에서도 차이가 드러나게 1점 단위로 매깁니다.`,
     `3. 글씨를 알아보기 어렵거나 비어 있는 곳이 많으면 그 점을 적고 점수에 반영합니다.`,
     `4. 가려진 부분은 무시하고, 학생 이름을 추측하거나 적지 않습니다.`,
@@ -4491,7 +4492,7 @@ function grWritePrompt(lv, group, avoid, lists) {
     `7. ${pronounRule()}`,
     ev ? `8. ${ev.EVIDENCE_RULE} 근거 번호는 그 학생 줄 아래 [근거 목록]의 번호입니다.` : '',
     // 기준표 근거 줄(「기준표 「요소」: 칸 글」)은 학생이 한 일 — 기준표의 수준(3단계 상 등)과 평어 수준을 섞지 않게
-    grRb() ? `${ev ? 9 : 8}. 기준표 근거는 학생이 한 일이에요. 문장의 수준은 위 [수준]을 따라요.` : '',
+    grRb() ? `${ev ? 9 : 8}. 기준표 근거는 학생이 한 일입니다. 문장의 수준은 위 [수준]을 따릅니다.` : '',
     ``, `[학생]`,
     ...(grActiveRefs().length ? ['', '[참고: 단원평가·활동지] 학생 줄 아래 「참고:」는 같은 평가 영역의 다른 평가 결과입니다. 그 학생다운 평어를 쓰는 데만 참고하고, 점수·평가 이름은 쓰지 않습니다.', ''] : []),
     ...group.map(s => who(s) + grRefLine(s.no)),
@@ -4866,16 +4867,18 @@ const grTyping = () => { const box = $('#grSetup'), a = document.activeElement; 
 const grHistHTML = () => (GR.history.length ? `<div class="gr-step"><div class="gr-h"><b>지난 채점</b></div><ul class="gr-hist">${GR.history.slice(0, 10).map(h => `<li><button type="button" data-grhist="${esc(h.id)}" ${h.id === GR.id ? 'aria-current="true"' : ''}><span>${esc(h.title || '(제목 없음)')}</span><small class="num">${h.createdAt ? new Date(h.createdAt).toLocaleDateString('ko-KR') : ''} · ${h.n}명</small></button><button class="icon-btn tiny" type="button" data-grhistdel="${esc(h.id)}" aria-label="지우기" title="지우기">${ICON.x}</button></li>`).join('')}</ul></div>` : '');
 /* 1단계 수준별 기준표 줄(스펙 2026-11-16-rubric-design 「화면 › 1」, rubric.js grLineHTML).
    채점 중이거나 채점한 학생이 있는 기록이면 그 기록의 사본(사본이 없으면 줄 없음) → [보기]만. 아니면 지금 기준표 [보기·고치기] / [수준별 기준표 만들기].
-   직접 입력이면 단추 없이 안내 글(평가계획이 있을 때만). 사본과 지금 기준표의 고친 때가 다르면 한 줄 알림(반 전체 다시 채점 단추는 없음 — 스캔은 저장하지 않음) */
+   채점한 학생이 있는데 쓸 사본이 없으면(예전 기록·기준표 없이 채점·채점 뒤 평가요소를 바꿈) grStart가 사본을 새로 뜨지 않으므로
+   「이 채점은 수준별 기준표 없이 했어요」 + [보기·고치기]/[만들기](다음 채점용).
+   직접 입력이면 단추 없이 안내 글(평가계획이 있고 아직 채점하지 않았을 때만). 사본과 지금 기준표의 고친 때가 다르면 한 줄 알림(반 전체 다시 채점 단추는 없음 — 스캔은 저장하지 않음) */
 const grRbSnap = locked => (grRb() && (locked || GR.students.some(s => s.status === 'done')) ? GR.rubric : null);
 // 사본이 있는데 지금 평가계획에서 그 평가요소를 못 찾으면 사본의 과목·평가요소로(보기·바뀐 기준표 찾기용)
 const grRbUnit = snap => grUnit() || (snap ? { subject: snap.subject, elem: snap.elem, unit: snap.unit, std: snap.std, crit: {} } : null);
 function grRbLineHTML(locked) {
   const R = RB(); if (!R) return '';
-  const snap = grRbSnap(locked), u = grRbUnit(snap);
-  if (!u) return S.plan && !locked ? '<p class="muted gr-rb-hint">평가요소를 고르면 수준별 기준표로 채점할 수 있어요</p>' : '';
+  const snap = grRbSnap(locked), u = grRbUnit(snap), graded = GR.students.some(s => s.status === 'done');
+  if (!u) return S.plan && !locked && !graded ? '<p class="muted gr-rb-hint">평가요소를 고르면 수준별 기준표로 채점할 수 있어요</p>' : '';
   const live = snap ? R.getFor(u) : null;
-  return R.grLineHTML(u, { snapshot: snap, locked }) + (live && live.at !== snap.at ? '<p class="muted gr-rb-note">이 채점은 채점할 때의 기준표로 했어요. 바뀐 기준표는 새 채점부터 써요.</p>' : '');
+  return R.grLineHTML(u, { snapshot: snap, locked, graded }) + (live && live.at !== snap.at ? '<p class="muted gr-rb-note">이 채점은 채점할 때의 기준표로 했어요. 바뀐 기준표는 새 채점부터 써요.</p>' : '');
 }
 function renderGRSetup() {
   const box = $('#grSetup'); if (!box) return;

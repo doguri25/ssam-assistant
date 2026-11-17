@@ -170,7 +170,8 @@ test('[rb-normrb] 학생 요소별 수준 정리: 키·이름 모두 받고, 모
   const out = R.normRb([{ name: '곱셈 원리 이해', level: '상' }, { name: ' 풀이 과정', level: 'mid' }, { name: '없는 요소', level: 'high' },
     { name: '설명하기', level: '안 함' }, { name: '곱셈 원리 이해', level: 'low' }], rb);
   assert.deepEqual(out, [{ name: '곱셈 원리 이해', level: 'high' }, { name: '풀이 과정', level: 'mid' }, { name: '설명하기', level: 'none' }]);
-  assert.deepEqual(R.normRb([{ name: '풀이 과정', level: '잘함' }, { name: '설명하기', level: '최상' }, { name: '곱셈원리이해', level: 'none' }], rb), [{ name: '곱셈 원리 이해', level: 'none' }]);
+  // 「잘함」은 학교 수준 낱말(3단계 상), 3단계 기준표의 「최상」은 버림
+  assert.deepEqual(R.normRb([{ name: '풀이 과정', level: '잘함' }, { name: '설명하기', level: '최상' }, { name: '곱셈원리이해', level: 'none' }], rb), [{ name: '풀이 과정', level: 'high' }, { name: '곱셈 원리 이해', level: 'none' }]);
   assert.deepEqual(R.normRb(null, rb), []);
   assert.deepEqual(R.normRb([{ name: '풀이 과정', level: 'high' }], null), []);
 });
@@ -179,9 +180,10 @@ test('[rb-base] 기준 점수 셈과 ±4 자르기', () => {
   const rb = sample();
   const lst = [{ name: '곱셈 원리 이해', level: 'high' }, { name: '풀이 과정', level: 'mid' }, { name: '설명하기', level: 'none' }];
   assert.equal(R.baseScore(lst, rb), Math.round((34 + 23 + 0) / 100 * 100));
-  // 빠진 요소는 버림(분자·분모 모두): 3번째 요소가 없으면 57/67, 안 함이면 57/100
-  assert.equal(R.baseScore([lst[0], lst[1]], rb), Math.round(57 / 67 * 100));
+  // 칸 글이 있는 요소 하나라도 수준이 빠지면 기준 점수 없음(자르지 않음). 「안 함」은 0점으로 셈(57/100)
+  assert.equal(R.baseScore([lst[0], lst[1]], rb), null);
   assert.equal(R.baseScore(lst, rb), 57);
+  assert.equal(R.baseScore([lst[0], lst[1], { name: '설명하기', level: 'xyz' }], rb), null); // 모르는 수준도 빠진 것
   assert.equal(R.baseScore([{ name: '없는 요소', level: 'high' }], rb), null);
   // 배점 합 90 → 100점으로 환산
   const r90 = sample(); r90.rows.forEach(r => { r.points = 30; L3.forEach((lv, i) => { r.cells[lv].pts = [30, 21, 12][i]; }); });
@@ -196,6 +198,84 @@ test('[rb-base] 기준 점수 셈과 ±4 자르기', () => {
   assert.equal(R.clampScore(99, 70), 74); assert.equal(R.clampScore(60, 70), 66);
   assert.equal(R.clampScore(50, null), 50); assert.equal(R.clampScore(103, 100), 100);
   assert.equal(R.clampScore(-3, 2), 0);
+});
+
+test('[rb-levelwords] 학교 수준 낱말: 3단계 잘함·보통·노력 요함, 4단계 매우 잘함·잘함·보통·노력 요함(띄어쓰기 상관없음)', () => {
+  const rb = sample();
+  assert.deepEqual(R.normRb([{ name: '곱셈 원리 이해', level: '잘함' }, { name: '풀이 과정', level: '보통' }, { name: '설명하기', level: '노력 요함' }], rb),
+    [{ name: '곱셈 원리 이해', level: 'high' }, { name: '풀이 과정', level: 'mid' }, { name: '설명하기', level: 'low' }]);
+  assert.deepEqual(R.normRb([{ name: '설명하기', level: '노력요함' }, { name: '풀이 과정', level: ' 보 통 ' }], rb), [{ name: '설명하기', level: 'low' }, { name: '풀이 과정', level: 'mid' }]);
+  assert.deepEqual(R.normRb([{ name: '설명하기', level: '매우 잘함' }], rb), []); // 3단계에는 매우 잘함이 없음
+  const r4 = R.setLevels(sample(), L4);
+  r4.rows.forEach(r => { r.cells.top.text = '새 상황에 적용함'; });
+  assert.deepEqual(R.normRb([{ name: '곱셈 원리 이해', level: '매우 잘함' }, { name: '풀이 과정', level: '잘함' }, { name: '설명하기', level: '노력 요함' }], r4),
+    [{ name: '곱셈 원리 이해', level: 'top' }, { name: '풀이 과정', level: 'high' }, { name: '설명하기', level: 'low' }]);
+  assert.deepEqual(R.normRb([{ name: '곱셈 원리 이해', level: '매우잘함' }, { name: '풀이 과정', level: '보통' }], r4), [{ name: '곱셈 원리 이해', level: 'top' }, { name: '풀이 과정', level: 'mid' }]);
+});
+
+test('[rb-names] AI가 기준표 블록을 따라 붙인 앞 번호·뒤 배점은 떼고 맞춤(요소별 수준·기준 점수·평어 근거 모두)', () => {
+  const rb = sample();
+  const ai = [{ name: '1. 곱셈 원리 이해', level: 'high' }, { name: '풀이 과정 (34점)', level: 'mid' }, { name: '3) 설명하기 ( 33 점 )', level: 'none' }];
+  const out = R.normRb(ai, rb);
+  assert.deepEqual(out, [{ name: '곱셈 원리 이해', level: 'high' }, { name: '풀이 과정', level: 'mid' }, { name: '설명하기', level: 'none' }]);
+  // normRb를 거치지 않은 이름도 같은 규칙으로 맞춤
+  assert.equal(R.baseScore(ai, rb), 57);
+  assert.equal(R.baseScore([{ name: '1. 곱셈 원리 이해 (34점)', level: 'high' }, { name: '2. 풀이 과정', level: 'mid' }, { name: '설명하기 (33점)', level: 'none' }], rb), 57);
+  assert.deepEqual(R.evidenceLines([{ name: '1. 곱셈 원리 이해', level: 'high' }, { name: '곱셈 원리 이해 (34점)', level: 'mid' }], rb),
+    ['기준표 「곱셈 원리 이해」: 두 방법 모두 원리를 바르게 설명함', '기준표 「곱셈 원리 이해」: 한 방법으로 원리를 설명함']);
+  // 이름 안의 숫자(「2가지 방법」)는 그대로
+  const r2 = sample(); r2.rows[0].name = '2가지 방법';
+  assert.deepEqual(R.normRb([{ name: '2가지 방법', level: 'high' }, { name: '가지 방법', level: 'mid' }], r2), [{ name: '2가지 방법', level: 'high' }]);
+});
+
+test('[rb-partial] 요소가 빠진 답: 요소별 수준은 남기고(보기·근거) 기준 점수 없음 → 점수를 자르지 않음', () => {
+  const rb = sample();
+  const lst = R.normRb([{ name: '1. 곱셈 원리 이해 (34점)', level: '중' }, { name: '2) 풀이 과정', level: 'mid' }], rb);
+  assert.deepEqual(lst, [{ name: '곱셈 원리 이해', level: 'mid' }, { name: '풀이 과정', level: 'mid' }]);
+  const base = R.baseScore(lst, rb);
+  assert.equal(base, null);
+  assert.equal(R.clampScore(99, base), 99);
+  assert.equal(R.evidenceLines(lst, rb).length, 2);
+  // 모두 있으면 자름
+  const all = R.normRb([...lst, { name: '설명하기', level: 'mid' }], rb);
+  assert.equal(R.baseScore(all, rb), 70);
+  assert.equal(R.clampScore(99, R.baseScore(all, rb)), 74);
+});
+
+test('[rb-blankrow] 칸 글이 하나도 없는 요소(요소 더하기로 넣고 비움)는 AI로 보내지 않고 기준 점수·「모든 요소」 셈에서 뺌', () => {
+  const rb = R.addRow(sample()); // 4번째 요소: 이름·칸 글 없음
+  rb.rows[3].name = '발표하기'; // 이름만 있고 칸 글이 없어도 뺌
+  const lines = R.gradeBlock(rb).split('\n');
+  assert.equal(lines.length, 4, lines.join('\n'));
+  assert.equal(lines[0], '[수준별 채점 기준표] (배점 합 100점)');
+  assert.ok(!lines.some(l => l.includes('발표하기')), lines.join('\n'));
+  assert.equal(lines[3].startsWith('3. 설명하기 (33점) — '), true, lines[3]);
+  assert.ok(!R.levelLines(rb, 'high').includes('발표하기'));
+  const lst = [{ name: '곱셈 원리 이해', level: 'high' }, { name: '풀이 과정', level: 'mid' }, { name: '설명하기', level: 'none' }];
+  assert.equal(R.baseScore(lst, rb), 57); // 빈 요소가 없어도 「모든 요소」
+  assert.equal(R.baseScore([...lst, { name: '발표하기', level: 'high' }], rb), 57); // 빈 요소의 수준은 셈하지 않음
+  assert.deepEqual(R.normRb([...lst, { name: '발표하기', level: 'high' }], rb), lst);
+  // 가운데 요소가 비면 번호는 이어서
+  const mid = sample(); L3.forEach(lv => { mid.rows[1].cells[lv].text = ''; });
+  const ml = R.gradeBlock(mid).split('\n');
+  assert.deepEqual(ml.slice(1).map(l => l.split(' — ')[0]), ['1. 곱셈 원리 이해 (34점)', '2. 설명하기 (33점)']);
+  assert.equal(ml[0], '[수준별 채점 기준표] (배점 합 67점)');
+  assert.equal(R.baseScore([lst[0], lst[2]], mid), Math.round(34 / 67 * 100));
+});
+
+test('[rb-prompt-phone] 요청 글: 과제 설명의 전화번호는 가림', () => {
+  const p = R.makePrompt(U, { task: '두 방법으로 풀기. 문의 010-1234-5678', rows: 3, levels: L3 });
+  assert.ok(p.includes('[과제 설명]'), p);
+  assert.ok(!/010-1234-5678|1234-5678/.test(p), p);
+  assert.ok(p.includes('두 방법으로 풀기'), p);
+});
+
+test('[rb-tdz] evaluate.js: RB()는 처음 그리기(맨 위 renderAll()) 전에 선언(선언 전에 부르면 멈춤)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../../web/menus/evaluate/evaluate.js', import.meta.url), 'utf8');
+  const decl = src.indexOf('\nconst RB = '), first = src.search(/\nrenderAll\(\);/);
+  assert.ok(decl > 0 && first > 0, `${decl} ${first}`);
+  assert.ok(decl < first, `const RB(${decl})가 맨 위 renderAll()(${first})보다 뒤에 있음`);
 });
 
 test('[rb-evidence] 평어 근거 줄: 수준 이름 없음, 안 함·빈 칸 글은 뺌', () => {
@@ -265,4 +345,8 @@ test('[rb-chat] 채팅 안내: 「루브릭 어떻게 만들어?」→ rubric, �
   assert.equal(searchGuide('수준별 기준표 만드는 법')[0]?.id, 'rubric');
   assert.equal(searchGuide('평가지 채점 어떻게 해?')[0]?.id, 'gr');
   assert.ok(!GUIDE.find(g => g.id === 'gr').keys.includes('루브릭'));
+  // 1단계 줄은 그 과목·평가요소의 기준표가 있을 때만 「…채점해요」, 없으면 [만들기] 단추
+  const t = GUIDE.find(g => g.id === 'rubric').text;
+  assert.ok(t.includes('기준표가 있으면 「수준별 기준표로 채점해요」') && t.includes('[수준별 기준표 만들기]'), t);
+  assert.ok(t.includes('[새 채점]부터'), t);
 });
