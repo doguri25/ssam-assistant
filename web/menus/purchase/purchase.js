@@ -13,7 +13,7 @@ import { TYPES, emptyForm, emptyItem, itemAmount, cleanItems, sumItems, checkPur
   defaultUnit, quoteNote, withholding, INCOME, meetingItem, budgetHints, ATTACH, basisLine, draftMemo } from './rules.js';
 import { aiRowHTML, pick } from '../../core/ai-roles.js';
 import { reviewJSON, purchaseReviewPrompt, normPurchaseReview, opinionHTML, REVIEW_FAIL } from '../../core/ai-review.js';
-import { readIntake, fillEmpty, mergeItems, vendorsOf, splitByVendor, parseLines, maskNames } from './intake.js';
+import { readIntake, fillEmpty, replaceForm, mergeItems, vendorsOf, splitByVendor, parseLines, maskNames } from './intake.js';
 import { oneshotPrompt, normOneshot, confirmChips, askNeeds, GUESS_KEYS } from './oneshot.js';
 import { pushRecent, newId, listRecent, deleteRecent, listTemplates, saveTemplate, renameTemplate, deleteTemplate, templateForm } from './library.js';
 import { fileMessage, isFileCode } from '../../core/files.js';
@@ -742,7 +742,7 @@ const setIntakeMsg = m => { const el = box && box.querySelector('#pcIntakeMsg');
 /* 품목이 있으면 더할지 바꿀지 물어봄 → 'add' | 'replace' | null */
 function askMerge(n) {
   return new Promise(res => {
-    SS().openSheet(`<h3>품목 ${n}개가 있어요</h3><p class="muted" style="margin:0">읽은 품목을 지금 품목 아래에 더할까요, 지금 품목을 바꿀까요?</p>
+    SS().openSheet(`<h3>품목 ${n}개가 있어요</h3><p class="muted" style="margin:0">읽은 품목을 지금 품목 아래에 더할까요, 넣은 것으로 바꿀까요? 바꾸면 지금 품목과 사업명·목적 같은 칸, 쓴 초안은 지워요.</p>
       <div class="row" style="justify-content:flex-end"><button class="btn" type="button" id="pcMergeCancel">그만두기</button><button class="btn" type="button" id="pcMergeReplace">바꾸기</button><button class="btn primary" type="button" id="pcMergeAdd">더하기</button></div>`, sh => {
       const done = v => { SS().closeSheet(); res(v); };
       sh.querySelector('#pcMergeAdd').addEventListener('click', () => done('add'));
@@ -805,7 +805,9 @@ async function runIntake(input, mine = st) {
   if (away(mine)) { if (input.text != null && !input.keepBox) { const ta = box && box.querySelector('#pcIntake'); if (ta && ta.value === input.text) ta.value = ''; } keepAside(mine, r); return -1; }
   let how = 'add';
   if (r.items.length && hasItems()) { how = await askMerge(cleanItems(st.form.items).length); if (!how) return -1; }
-  st.form = fillEmpty(st.form, r.fields);
+  // [바꾸기]: 예전 품의(칸·초안·구입처 고른 것)는 지우고 넣은 것만 — [더하기]는 빈 칸만 채움
+  if (how === 'replace') { st.form = replaceForm(st.form, r.fields); st.draft = null; st.vendorsOk = []; }
+  else st.form = fillEmpty(st.form, r.fields);
   st.form.items = mergeItems(st.form.items, r.items, how);
   fresh = new Set(r.items);
   // 읽은 글만 넣기 칸에서 뗌(읽는 동안 더 친 줄은 남김)
@@ -814,7 +816,9 @@ async function runIntake(input, mine = st) {
     if (ta && ta.value.startsWith(input.text)) { const rest = ta.value.slice(input.text.length), cut = input.text.length + (rest.length - rest.replace(/^\s+/, '').length); ta.setRangeText('', 0, cut); }
   }
   save();
-  showRead();
+  // 바꾸기는 초안·칸이 모두 바뀌어 화면을 다시 그림(치던 칸에 예전 글이 남지 않게)
+  if (how === 'replace') { if (curTab === 'new' && box && box.isConnected) render(); }
+  else showRead();
   setTimeout(() => { fresh = new Set(); if (box) box.querySelectorAll('.pc-irow.new').forEach(el => el.classList.remove('new')); }, 3000);
   const ship = r.items.filter(it => it.name === '배송비').length;
   toast(`품목 ${r.items.length}개${ship ? '(배송비 포함)' : ''}를 넣었어요${r.missed && r.missed.length ? ` · 못 읽은 줄 ${r.missed.length}개` : ''}${r.by === 'ai' ? ' · AI가 읽었어요. 금액을 확인해 주세요' : ''}${note}`, 6000);

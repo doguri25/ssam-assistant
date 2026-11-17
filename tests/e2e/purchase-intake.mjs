@@ -54,7 +54,7 @@ await run('purchase-intake', [
     assert(calls.length === 0, 'AI를 부름');
     assert((await page.inputValue(`${P} #pcIntake`)) === '', '넣기 칸이 비지 않음');
   }],
-  ['못 읽는 줄이 있는 줄글 → AI 한 번, 품목이 있으니 묻기 → [바꾸기], 빈 목적·대상만 채움(쓴 사업명 그대로)', async () => {
+  ['못 읽는 줄이 있는 줄글 → AI 한 번, 품목이 있으니 묻기 → [바꾸기], 예전 칸(쓴 사업명)은 지우고 읽은 목적·대상으로', async () => {
     await page.fill(`${P} #pcProject`, '내가 쓴 사업명');
     await page.fill(`${P} #pcIntake`, '칭찬 스티커 좀 사고\n도장도 하나');
     await page.click(`${P} [data-pc="intake"]`);
@@ -63,7 +63,8 @@ await run('purchase-intake', [
     await page.click('#sheetRoot #pcMergeReplace');
     await until(async () => (await names()).join() === '스티커,칭찬 도장');
     const f = await form();
-    assert(f.purpose === '학급 칭찬 활동' && f.target === '3학년 1반' && f.project === '내가 쓴 사업명', JSON.stringify(f));
+    assert(f.purpose === '학급 칭찬 활동' && f.target === '3학년 1반' && f.project === '', JSON.stringify(f));
+    assert(await page.inputValue(`${P} #pcProject`) === '', '화면의 사업명 칸에 예전 글이 남음');
     assert(calls.filter(c => c.head === '[품의 넣기]').length === 1 && calls[0].prompt.includes('칭찬 스티커 좀 사고'), '프롬프트');
   }],
   ['장바구니 캡처 붙여넣기 → AI(그림 1장) → [더하기] → 품목·배송비 줄·구입처 열, 주문자·주소는 어디에도 없음', async () => {
@@ -104,6 +105,31 @@ await run('purchase-intake', [
     await page.click('#sheetRoot #pcMergeReplace');
     await until(async () => (await names()).join() === '비커,유리 막대');
     assert(calls.length === n, 'AI를 부름');
+  }],
+  ['초안까지 쓴 품의에 다른 파일 → [바꾸기]: 예전 제목·사유·칸은 지우고 넣은 파일로(다시 [초안 쓰기])', async () => {
+    await page.evaluate(() => {
+      const cur = JSON.parse(localStorage.getItem('ssam:purchase:current'));
+      cur.form = { ...cur.form, project: '2026 가을 운동회', purpose: '학생 체력 증진', date: '2026-10-07', place: '운동장', related: '2026학년도 운동회 운영 계획' };
+      cur.draft = { title: '가을 운동회 물품 구입', intro: '가을 운동회 운영을 위하여 물품을 다음과 같이 구입하고자 합니다.', reason: '1. 관련: 2026학년도 운동회 운영 계획\n2. 가을 운동회 운영을 위하여 물품을 다음과 같이 구입하고자 합니다.', edited: false };
+      localStorage.setItem('ssam:purchase:current', JSON.stringify(cur));
+    });
+    await page.reload();
+    await page.click('nav.app-side [data-menu-go="purchase"]');
+    await page.waitForSelector(`${P} #pcTitle`);
+    await page.evaluate(() => {
+      const dt = new DataTransfer();
+      dt.items.add(new File(['품명,규격,수량,단가\n현수막,3m,1,50000'], '캠페인 견적서.csv', { type: 'text/csv' }));
+      document.querySelector('#pcIntake').dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    });
+    await page.waitForSelector('#sheetRoot #pcMergeReplace');
+    assert((await page.textContent('#sheetRoot')).includes('지워요'), await page.textContent('#sheetRoot'));
+    await page.click('#sheetRoot #pcMergeReplace');
+    await until(async () => (await names()).join() === '현수막');
+    const cur = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:purchase:current')));
+    assert(!cur.draft, JSON.stringify(cur.draft));
+    for (const k of ['project', 'purpose', 'date', 'place', 'related']) assert(cur.form[k] === '', `${k}: ${cur.form[k]}`);
+    assert(await page.locator(`${P} #pcTitle`).count() === 0, '예전 제목 칸이 남음');
+    assert(!(await page.textContent(`${P}`)).includes('가을 운동회 물품 구입'), '예전 제목이 보임');
   }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);

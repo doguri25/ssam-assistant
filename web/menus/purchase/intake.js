@@ -217,6 +217,14 @@ export function fillEmpty(form, fields) {
   for (const k of [...FIELDS, 'total']) if (fields && !blank(fields[k]) && blank(out[k])) out[k] = fields[k];
   return out;
 }
+/* [바꾸기]: 예전 품의의 글 칸(관련·사업명·목적·일시·대상·장소·예산 과목·총액·메모)과 「AI가 채움」 표시는 지우고 새로 읽은 칸만 넣음.
+   종류·부가세·소득 구분·붙임 같은 설정은 그대로(품목은 mergeItems 'replace') */
+const CONTENT = ['related', ...FIELDS, 'total', 'memo'];
+export function replaceForm(form, fields) {
+  const out = { ...form, budgetUnknown: false, guessed: [] };
+  for (const k of CONTENT) out[k] = '';
+  return fillEmpty(out, fields);
+}
 
 const emptyRow = x => !x || ['name', 'spec', 'qty', 'price'].every(k => blank(x[k]));
 export function mergeItems(items, add, how) {
