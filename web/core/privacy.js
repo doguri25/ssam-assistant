@@ -47,9 +47,14 @@ const RO_END = /[체어식본용순말표글판법색청팀직층대형목값역
 const RO_GIVEN = new Set(('재용 병용 태용 영순 정순 미순 옥순 금순 복순 말순 '
   + '영식 정식 동식 태식 재식 경식 진식 성식 기식 명식 봉식 만식 덕식 용식 창식 원식 효식 병식 승식 광식 규식 근식 길식 남식 범식 순식 윤식 준식 춘식 충식 '
   + '택식 필식 혁식 현식 호식 홍식 환식 희식 관식 상식 종식 형식 '
-  + '종대 영대 성대 진대 용대 석대 덕대 만대 봉대 춘대 진표 영표 태표 동표 재표 성표 '
+  + '종대 영대 성대 진대 용대 석대 덕대 만대 봉대 춘대 정대 진표 영표 태표 동표 재표 성표 '
   + '태형 준형 민형 지형 승형 재형 상형 동형 진형 주형 우형 현형 영형 석형 용형 혁형 윤형 경형 호형 명형 범형 병형 은형').split(' '));
-export const roNoun = n => RO_END.test(n) && !RO_GIVEN.has(n.slice(-2));
+// 「~대로」로 흔히 쓰는 낱말(예정대로·지정대로·규정대로·정반대로) — 이름 「김정대」와 끝 두 글자가 같아 앞 글자로 가름
+const DAERO = new Set('예정 지정 설정 규정 결정 확정 인정 약정 측정 책정 고정 선정 판정 조정 수정 배정 산정 개정 추정 협정 내정 특정 가정 정반'.split(' '));
+const daeroNoun = n => /대$/.test(n) && DAERO.has(n.slice(0, -1));
+export const roNoun = n => daeroNoun(n) || (RO_END.test(n) && !RO_GIVEN.has(n.slice(-2)));
+/* 끝 글자가 낱말 끝과 같아도 흔한 이름인 것(박정식·김정대·이영표) — chat-names(「로」 자리)도 씀 */
+export const roGivenName = n => RO_GIVEN.has(String(n).slice(-2)) && !daeroNoun(n);
 // 바꾸기·고르기·적기 말(「김하늘을 이바다로 바꿔 줘」「학생회장은 김하늘로 정함」「담당자는 이바다로 적어 줘」)
 const RO_VERB = '바꾸|바꿔|바꿈|바꿨|바꾼|바뀌|바뀜|바뀐|고쳐|고치|고침|고쳤|고친|정함|정했|정하|정해|정한|뽑|선출|변경|교체|임명|위촉|지정|추천|선정|선발|결정|'
   + '수정|대체|넣어|넣고|넣음|넣기|적어|적고|적음|적기|써\\s*(?:줘|주|넣)|올려|올림|기재|입력';
@@ -246,7 +251,7 @@ const THING_END = /[락문약료비금권증품물판표실관장소당번처넷
 // 「~서·~지·~구·~형·~하·~리·~일·~효」는 가운데가 이름에 흔한 글자일 때만 이름(김민서·이은지·김준형 — 신청서·설문지·서술형·소통하는·이메일은 아님)
 const NAME_MID = /[나도동리미민보서세소수승시아연영예우유윤은재정주준지채태하현혜효희성경상진용혁인선건]/;
 /* ro: 바꾸는 말 앞 「로·으로」(josaOk가 이름 자리로 본 것) — 끝 글자가 낱말 끝과 같아도 흔한 이름(박정식·김영식·이영표, privacy RO_GIVEN)은 이름 */
-const josaName = (n, ro = false) => (ro && RO_GIVEN.has(n.slice(-2)) && cellName(n))
+const josaName = (n, ro = false) => (ro && roGivenName(n) && cellName(n))
   || (plainOk(n, ro) && !THING_END.test(n) && (!/[서지구형하리일효]$/.test(n) || NAME_MID.test(n[1])));
 /* 흔한 성으로 시작하는 세 글자 낱말 + 조사(빈 조사는 아님)만 ○○○로 → { text, masked } */
 export function maskJosaNames(text) {

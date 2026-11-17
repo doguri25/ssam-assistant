@@ -2,7 +2,7 @@
    흔한 성 + 흔한 이름(두 글자) 목록으로 봄: 「김민수가」「박지훈 결석계」「이서연이」「김민수네」, 성 없이 「민준이가」(받침 있는 이름 + 이 + 조사).
    이름 목록에 없어도 앞뒤에 「학생·어머니·선생님·님·결석·상담」이나 「담임·회장·이름:」이 붙으면 이름 글자로만 된 낱말은 가림.
    「구구단을」「모둠원과」「마무리를」「한국사를」「고무줄을」「조각품을」처럼 흔한 성 글자로 시작하는 낱말은 그대로 */
-import { SURNAME, MASK, nameCell, roName, roSpot } from './privacy.js';
+import { SURNAME, MASK, nameCell, roName, roSpot, roGivenName } from './privacy.js';
 
 /* 흔한 이름(성을 뺀 두 글자): 요즘 학생 이름과 선생님·보호자 나이대 이름. 흔한 낱말과 겹치는 것(정한·해진·어진·하진·대한·성원·정원·연수·진주·나라)은 뺌 */
 const NAMES = (
@@ -104,6 +104,8 @@ function hit(tok, prev, next, { memo = false, first = false, before = '', after 
       // 「지도하는」「이동하는」「공유하는」「구별하는」: 이름(도하·동하·유하·별하) + 는과 같아 보이는 동사로 봄(「지도하는 교사」처럼 뒤에 사람 말이 와도)
       const verb = s === '는' && g[1] === '하';
       if (GIVEN.has(g) && (!topic || cue) && !verb) return 3;
+      // 「로·으로」 이름 자리에서 끝 글자가 낱말 끝과 같은 흔한 이름(「담당자를 김정대로 바꿔 줘」 — privacy roGivenName)
+      if (/^으?로/.test(s) && roOk && roGivenName(n)) return 3;
       if (roOk && !LOOSE_END.test(n) && !(s === '는' && VERB_NEUN.test(n))) {
         const syl = SYL.has(g[0]) && SYL.has(g[1]);
         if (syl && (cue || GLUED.test(s) || PERSON.test(s) || (!s && MEMO_NEXT.test(next || '')) || memo)) return 3;
