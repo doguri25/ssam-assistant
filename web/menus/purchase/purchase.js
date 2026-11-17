@@ -8,7 +8,7 @@ import { copyText, toast } from '../../core/ui.js';
 import { keepFiles } from '../../core/keep-files.js';
 import { getPurchaseLimit, getMeetCap, getPurchaseFlow } from '../../core/settings.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
-import { TYPES, emptyForm, emptyItem, itemAmount, cleanItems, sumItems, checkPurchase, itemsTSV, purchaseQueueItems, composeReason, reasonTail, purchaseDoc, toNumber, findPersonal,
+import { TYPES, emptyForm, emptyItem, itemAmount, cleanItems, sumItems, checkPurchase, itemsTSV, purchaseQueueItems, reasonTailV1, composeReason, reasonTail, purchaseDoc, toNumber, findPersonal,
   introOf, withIntro, relatedLine, relatedOf, withRelated, ownHead,
   defaultUnit, quoteNote, withholding, INCOME, meetingItem, budgetHints, ATTACH, basisLine, draftMemo } from './rules.js';
 import { aiRowHTML, pick } from '../../core/ai-roles.js';
@@ -379,7 +379,8 @@ function putResync() { const rb = box && box.querySelector('#pcResyncBox'), h = 
 function resyncHTML() {
   const d = st.draft;
   if (!d || !d.edited) return '';
-  const tail = flat(d.tail) !== flat(reasonTail(st.form)), rel = d.rel !== relatedLine(st.form, curYear()) && keptHead() == null;
+  // 0.33 까지 맞춘 초안은 그때 차례(reasonTailV1)와도 견줌 — 차례만 바뀐 것을 「품목·붙임이 바뀌었어요」로 보지 않게
+  const tail = flat(d.tail) !== flat(reasonTail(st.form)) && flat(d.tail) !== flat(reasonTailV1(st.form)), rel = d.rel !== relatedLine(st.form, curYear()) && keptHead() == null;
   return tail || rel ? `<p class="muted pc-resync">${tail ? '품목·붙임' : '관련'}이 바뀌었어요 <button class="btn text tiny" type="button" data-pc="resync">사유 다시 맞추기</button></p>` : '';
 }
 /* 앱이 다시 맞춘 사유를 칸에: 커서가 사유 칸에 있어도 바꿈(화면과 저장이 같게). 커서는 같은 글자 뒤에.

@@ -236,6 +236,17 @@ export function reasonTail(form) {
   rows.push(`  ${KO[rows.length]}. 기타:`);
   return `${rows.join('\n')}\n\n${attachText(attachLines(f))}`;
 }
+/* 0.33 까지의 가~ 줄 차례(목적·일시·대상·장소·소요 예산·예산 과목·산출 근거) — 그때 맞춘 초안을 열 때 「품목·붙임이 바뀌었어요」로 잘못 보지 않게 견줄 때만 씀 */
+export function reasonTailV1(form) {
+  const f = form || {}, type = f.type || 'goods', items = cleanItems(f.items);
+  const total = sumItems(f.items);
+  const basis = items.slice(0, items.length > 3 ? 1 : 3).map(it => basisLine(it, type)).join(', ') + (items.length > 3 ? ` 외 ${items.length - 1}건` : '');
+  const budget = f.budgetUnknown || blank(f.budget) ? '' : f.budget;
+  const rows = [['목적', f.purpose], ['일시', f.date], ['대상', f.target], ['장소', f.place],
+    ['소요 예산', items.length ? `금${won(total)}원(${koreanWon(total)})` : ''], ['예산 과목', budget], ['산출 근거', items.length ? basis : '']]
+    .filter(([, v]) => !blank(v)).map(([l, v], i) => `  ${KO[i]}. ${l}: ${String(v).trim()}`);
+  return `${rows.join('\n')}\n\n${attachText(attachLines(f))}`;
+}
 /* 「1. 관련:」 줄: 선생님(또는 AI)이 적은 것 → 물품 외에는 「(학년도) 사업명 운영 계획」 → 「(학년도) 학교 교육과정 운영 계획」 */
 export function relatedLine(form, year) {
   const f = form || {}, own = String(f.related || '').trim();

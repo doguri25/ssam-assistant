@@ -47,7 +47,7 @@ await run('purchase-more', [
     await page.click(`${P} [data-budget-hint="교육운영비"]`);
     assert(await page.inputValue(`${P} #pcBudget`) === '교육운영비', await page.inputValue(`${P} #pcBudget`));
   }],
-  ['붙임: 지출품의서 1부 먼저 · 견적서(기본) · 사업자등록증 · 직접 더한 것 → 사유 끝, 소요 예산·산출 근거 줄', async () => {
+  ['붙임: 지출품의서 1부 먼저 · 견적서(기본) · 사업자등록증 · 직접 더한 것 → 사유 끝, 구입 품목·지출액·기타 줄', async () => {
     assert(await page.isChecked(`${P} [data-attach="quote"]`), '견적서 기본 체크');
     await page.check(`${P} [data-attach="bizreg"]`);
     await page.fill(`${P} #pcAttachMore`, '참고 자료');
@@ -56,7 +56,7 @@ await run('purchase-more', [
     const r = await page.inputValue(`${P} #pcReason`);
     assert(r.startsWith('1. 관련: ') && r.split('\n')[1] === '2. 교실 물품을 다음과 같이 구입하고자 합니다.', r.slice(0, 80));
     assert(r.endsWith('붙임  1. 지출품의서 1부.\n      2. 견적서 1부.\n      3. 사업자등록증 사본 1부.\n      4. 참고 자료 1부.  끝.'), r);
-    assert(r.includes('소요 예산: 금30,000원(금삼만원)') && r.includes('산출 근거: 실험 재료 3,000원 × 10개 = 30,000원') && r.includes('예산 과목: 교육운영비'), r);
+    assert(r.includes('구입 품목: 실험 재료 3,000원 × 10개 = 30,000원') && r.includes('지출액: 금30,000원(금삼만원)') && r.includes('예산 과목: 교육운영비') && /  [가-하]\. 기타:\n\n붙임/.test(r), r);
   }],
   ['초안 뒤 붙임을 끄면 사유가 다시 맞춰짐(첫 문장 그대로) · 손으로 고친 사유는 그대로 + [사유 다시 맞추기]', async () => {
     await page.uncheck(`${P} [data-attach="bizreg"]`);
@@ -74,12 +74,12 @@ await run('purchase-more', [
     // 다시 맞추면 고친 첫 문장을 살려 새 꼴(1. 관련 / 2. 첫 문장 / 가~)로
     assert(r.startsWith('1. 관련: ') && r.includes('\n2. 선생님이 고친 첫 문장입니다.\n  가. 목적: 수업 준비\n  나. 일시') && r.includes('금60,000원'), r);
   }],
-  ['내려받기 ▾ 워드 → .docx, 본문에 산출 근거·붙임', async () => {
+  ['내려받기 ▾ 워드 → .docx, 본문에 구입 품목·붙임', async () => {
     await page.click(`${P} .exp-split:has([data-pc="export"]) [data-exp-menu]`);
     const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#expMenu [data-exp-fmt="docx"]')]);
     assert(dl.suggestedFilename().endsWith('.docx'), dl.suggestedFilename());
     const d = new TextDecoder().decode((await unzip(new Uint8Array(readFileSync(await dl.path())))).get('word/document.xml'));
-    assert(d.includes('산출 근거') && d.includes('지출품의서 1부') && d.includes('단위'), '문서 본문');
+    assert(d.includes('구입 품목') && d.includes('지출품의서 1부') && d.includes('단위'), '문서 본문');
   }],
   ['강사 수당: 머리 「강사(역할)·시간·시간당 단가」, 원천징수(참고), 프롬프트에 강사 칸 글 없음', async () => {
     await fresh('lecturer'); await go();

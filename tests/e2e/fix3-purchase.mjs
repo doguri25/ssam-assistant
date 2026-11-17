@@ -25,7 +25,7 @@ const V = 'section[data-menu="plan"]';
 const cur = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:purchase:current') || 'null'));
 const recent = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:purchase:recent') || '[]'));
 const reason = () => page.inputValue(`${P} #pcReason`);
-const budget = s => (String(s).match(/소요 예산: [^\n]*/) || [''])[0];
+const budget = s => (String(s).match(/지출액: [^\n]*/) || [''])[0];
 // 앞 시험의 늦은 저장이 덮지 않게 지금 페이지의 저장을 멈추고 씀(다시 열면 풀림)
 const fresh = (form = {}, extra = {}) => page.evaluate(async ([form, extra]) => {
   (await import('./core/store.js')).freeze();
