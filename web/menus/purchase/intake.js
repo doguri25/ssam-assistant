@@ -61,6 +61,9 @@ function parseLine(raw) {
   let s = dropContext(String(raw).replace(/^\s*(?:[-•·*▪◦]|\d+[).]|\(\d+\)|[가-하][.)](?=\s)|\([가-하]\)|[①-⑳])\s*/, '').trim());
   if (!s) return null;
   let price = null, total = null;
+  // 「볼펜 총 30자루 15,000원」: 수량 앞 「총」은 모두 합한 수량(총액이 아님) — 그 줄에 금액이 하나면 그 금액이 총액(단가 = 금액 ÷ 수량)
+  const all = new RegExp(`(?:^|\\s)총\\s*(?=(?:\\d{1,3}(?:,\\d{3})+|\\d+(?:\\.\\d+)?)\\s*(?:${UNITS})(?![가-힣A-Za-z]))`).exec(s);
+  if (all) s = `${s.slice(0, all.index)} ${s.slice(all.index + all[0].length)}`;
   const tot = /(?:총|합계|전체)\s*(?:금액)?\s*:?\s*([\d,]+(?:\.\d+)?)\s*(만)?\s*원?/.exec(s);
   if (tot) { total = money(tot[1], tot[2]); s = s.replace(tot[0], ' '); }
   let amounts = null;
@@ -88,6 +91,7 @@ function parseLine(raw) {
     const bare = /(?:^|\s)([\d,]{2,})\s*$/.exec(s);
     if (bare) { price = money(bare[1]); s = s.slice(0, bare.index); }
   }
+  if (all && total == null && amounts && amounts.length === 1) total = amounts[0];
   if (total != null) price = Math.round(total / (qty || 1));
   // 「1,200원 = 12,000원」처럼 단가와 금액이 같이 있으면 단가
   if (amounts && amounts.length >= 2 && qty > 1) {
