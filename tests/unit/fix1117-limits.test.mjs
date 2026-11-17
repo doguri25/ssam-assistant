@@ -39,3 +39,22 @@ test('[limit-jeongdae] 「김정대로 바꿔 줘」의 이름(정대)은 가리
     }
   }
 });
+
+import { payloadOf, startItems } from '../../web/menus/etc/docedit-model.js';
+
+test('[limit-thing-head] 「준비물:」 같은 물건 머리 줄의 이름(흔한 이름 목록에 없는 이바다·박솔빛)도, 다른 줄에서 사람으로 쓰이면(「이바다 기록 담당」) 배워 가림 — 물건 낱말은 그대로', () => {
+  const doc = ['가. 준비물: 도시락, 우비, 이바다, 박솔빛', '나. 이바다 기록 담당, 박솔빛은 사진 촬영', '다. 도시락은 각자 준비하고 우비는 미리 챙겨요.'];
+  const r = makeRedactor(), out = r.lines(doc);
+  assert.equal(out[0], null, '명단 줄은 보내지 않음');
+  assert.ok(!/이바다|박솔빛/.test(out[1].text), out[1].text);
+  assert.equal(out[2].text, doc[2], '물건 낱말은 배우지 않음');
+  assert.equal(r.back(out[1].text), doc[1]);
+  // 문서 다듬기도: 맨 이름(조사 없음)이 다른 줄에 나오면 가림, 「김치전 담당」의 김치전·사람으로 쓰이지 않은 오미자는 그대로
+  const p = payloadOf(startItems(['메뉴: 김치전, 고구마, 이바다, 오미자', '이바다 배식 도우미, 이바다는 김치전 담당', '오미자 차를 준비합니다.'].map(text => ({ text }))), '공문체로 다듬어 줘');
+  const s = p.sent.map(x => x.text);
+  assert.ok(!s.some(t => t.includes('이바다')), JSON.stringify(s));
+  assert.ok(s.some(t => t.includes('김치전 담당')) && s.includes('오미자 차를 준비합니다.'), '사람으로 쓰이지 않은 낱말은 배우지 않음: ' + JSON.stringify(s));
+  // 사람이 아닌 목록만 있으면 아무것도 배우지 않음(예전 그대로)
+  const z = makeRedactor(); z.lines(['가. 준비물: 도시락, 우비, 안내문, 신분증', '나. 도시락은 각자 담당 선생님께 냅니다.']);
+  assert.deepEqual(z.names, []);
+});

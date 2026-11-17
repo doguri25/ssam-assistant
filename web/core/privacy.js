@@ -136,13 +136,22 @@ const BULLET = /^\s*(?:[-–—·•○◦▪■□*※>]+|\(?\d{1,2}[.)]|[가-�
    머리 말이 사람 무리면(「참석: …」「신청자: …」「(1모둠) …」) 두 글자 이름도.
    머리 말이 사람이 아닌 것의 목록이면(「준비물: 도시락, 우비, 안내문, 신분증」「[준비물] …」「메뉴: …」) 그 마디는 배우지 않음.
    머리 말 없는 목록(「김하늘, 이바다, 한가람」「1. 김하늘 2. 이바다 …」)·상 이름(「최우수상: …」)·「6-1: …」은 배움 */
-export function peopleNames(line) {
+/* 물건 머리 줄(「준비물: 도시락, 이바다, …」)의 이름 모양 낱말이 다른 줄에서 사람으로 쓰이는지(「이바다 기록 담당」「박솔빛은 사진 촬영」) — 그때만 이름으로 배움 */
+// 바로 뒤 사람·맡은 일 말(「이바다 기록 담당」「박솔빛 학생」), 또는 주어(은·는·이·가) 뒤 같은 마디의 맡은 일 말(「이바다는 김치전 담당」 — 이때 「김치전 담당」의 김치전은 사람 아님)
+const ROLE_NEXT = '학생|선생님|님|씨|군|양|반장|회장|부장|대표|모둠장|도우미|기록|촬영|발표|사회|인솔|결석|지각|조퇴|발언|제안';
+const ROLE_LATER = '담당|맡|기록|촬영|발표|사회|인솔';
+export const personUse = (w, text) => new RegExp(`(?<![가-힣])${w}(?:\\s*(?:${ROLE_NEXT})|(?:은|는|이|가)\\s*[^.,;\\n]{0,12}?(?:${ROLE_LATER}))`).test(String(text || ''));
+/* weak: 물건 머리 마디의 이름 모양 낱말을 담을 배열(부르는 쪽이 personUse로 다른 줄에서 확인한 것만 배움) */
+export function peopleNames(line, { weak = null } = {}) {
   const s = String(line == null ? '' : line), out = [];
   const seg = (head, body) => {
     const toks = head.replace(BULLET, '').match(/[가-힣]+/g) || [];
     const people = toks.some(t => PEOPLE_HEAD.test(t));
     // 사람이 아닌 것의 목록이라도 몸에 사람 말이 있으면(「내용: 김하늘, 이바다, 한가람 학생 표창」) 배움
-    if (!people && toks.some(t => THING_HEAD.test(t)) && !PEOPLE_WORD.test(body)) return;
+    if (!people && toks.some(t => THING_HEAD.test(t)) && !PEOPLE_WORD.test(body)) {
+      if (weak) for (const w of words(body)) if (cellName(w) && personWord(w) && !THING_END.test(w)) weak.push(w);
+      return;
+    }
     for (const w of words(body)) if (people ? personWord(w) : cellName(w) && personWord(w)) out.push(w);
   };
   // 쌍점이 없는 마디: 첫 이름 모양 낱말 앞이 머리 말

@@ -7,7 +7,7 @@
    「준비물: 도시락, 우비, 안내문」처럼 머리 말이 사람이 아닌 것의 목록이면 배우지 않음), learnList로 받은 칸(회의록 참석 칸 — 사람만 적음)은 두~세 글자 이름도(privacy.js personNames).
    자리 표시가 사라진 값은 끝에 붙이지 않음. bad(t): 없는 번호·깨진 자리 표시(괄호를 바꾼 【이름1】·{1}도)가 남았는지(되돌린 글에 섞이지 않게 — 부르는 쪽이 그 줄을 버림).
    가정통신문 번역(letter-translate guard)은 따로 그대로 둠 */
-import { MASK, maskStaff, maskJosaNames, maskList, personNames, peopleNames, nameHead, nameUnderHead, stripNames, RRN_RE, INTL_RE } from './privacy.js';
+import { MASK, maskStaff, maskJosaNames, maskList, personNames, peopleNames, personUse, nameHead, nameUnderHead, stripNames, RRN_RE, INTL_RE } from './privacy.js';
 import { maskPersons } from './chat-names.js';
 
 const PHONE = /(?<!\d)\(?0\d{1,2}\)?[-.\s)]{0,2}\d{3,4}[-.\s]?\d{4}(?!\d)/;
@@ -67,8 +67,11 @@ export function makeRedactor() {
     flat.forEach(f => {
       const s = f.p && !f.p.blank ? f.p.s : '', cells = s.includes('|') ? s.split('|').map(c => c.trim()) : null;
       if (!cells) head = null; else if (cells.some(nameHead)) head = cells.map(nameHead);
-      if (s && stripNames(s).dropped) { f.list = cells && head ? cells.filter((c, j) => head[j] && nameUnderHead(c)) : peopleNames(s); f.p = null; }
+      f.raw = s;
+      if (s && stripNames(s).dropped) { f.weak = []; f.list = cells && head ? cells.filter((c, j) => head[j] && nameUnderHead(c)) : peopleNames(s, { weak: f.weak }); f.p = null; }
     });
+    // 물건 머리 줄의 이름 모양 낱말은 다른 줄에서 사람으로 쓰일 때만(「이바다 기록 담당」) 배움 — 「고구마는 삶아요」의 고구마는 아님
+    flat.forEach(f => { if (f.weak && f.weak.length) f.list.push(...f.weak.filter(w => flat.some(g => g !== f && personUse(w, g.raw)))); });
     const keep = flat.filter(f => f.p && !f.p.blank);
     const st = stripNames(keep.map(f => f.p.s).join('\n'));
     const stLines = st.text.split('\n');

@@ -4,7 +4,7 @@
    함수는 목록을 바꾸지 않고 새 목록을 돌려줌(한 단계 되돌리기가 앞 목록을 그대로 씀).
    보낼 글: 이름·전화번호·이메일은 core/redact.js로 가리고(돌아온 글에 되돌림), 명단·주민번호 줄과 이름만 든 칸은 보내지 않음(그대로 둠) */
 import { makeRedactor } from '../../core/redact.js';
-import { nameCell, nameHead, nameUnderHead, peopleNames, stripNames, maskContacts } from '../../core/privacy.js';
+import { nameCell, nameHead, nameUnderHead, peopleNames, personUse, stripNames, maskContacts } from '../../core/privacy.js';
 import { levelOf } from '../../core/hwpx-form.js';
 import { finalLines } from '../../core/hwpx-edit.js';
 
@@ -55,12 +55,17 @@ const BR_BACK = new RegExp(`[ \\t]*${BR}`, 'g'); // 돌아온 ⏎(앞에 AI가 �
 /* 보내지 않는 줄(명단·주민번호·계좌 줄, 이름만 든 칸)의 이름 모양 낱말 — 다른 줄에서도 가리게.
    이름이 늘어선 명단 줄은 core/privacy.js peopleNames(머리 말이 사람이 아닌 것의 목록 — 「준비물: 도시락, 우비, 안내문, 신분증」이면 배우지 않음) */
 function heldNames(texts) {
-  const out = makeRedactor().lines(texts);
-  return texts.flatMap((t, k) => {
+  const out = makeRedactor().lines(texts), weak = [];
+  const got = texts.flatMap((t, k) => {
     if (nameCell(t.trim())) return [t.trim()];
     if (out[k]) return [];
-    return stripNames(maskContacts(t)).dropped ? peopleNames(t) : (t.match(/[가-힣]+/g) || []).filter(nameCell);
+    if (!stripNames(maskContacts(t)).dropped) return (t.match(/[가-힣]+/g) || []).filter(nameCell);
+    const w = [], names = peopleNames(t, { weak: w });
+    w.forEach(x => weak.push([x, k]));
+    return names;
   });
+  // 물건 머리 줄(「메뉴: 김치전, 이바다, …」)의 이름 모양 낱말은 다른 줄에서 사람으로 쓰일 때만(「이바다는 김치전 담당」)
+  return [...got, ...weak.filter(([x, k]) => texts.some((t, j) => j !== k && personUse(x, t))).map(([x]) => x)];
 }
 /* 줄 목록 + 선생님이 적은 요청 → { sent: [{ id, text, box }], held(보내지 않은 줄 수), ask(가린 요청 — 명단·주민번호 같은 요청이면 null),
    back(돌아온 글의 자리 표시 → 원래 이름·연락처), bad(돌아온 글에 없는 번호·깨진 자리 표시가 있는지) }.
