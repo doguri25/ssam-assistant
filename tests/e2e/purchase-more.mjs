@@ -16,7 +16,7 @@ await page.route('https://api.anthropic.com/**', async route => {
   const c = body.messages[0].content;
   const prompt = typeof c === 'string' ? c : c.filter(x => x.type === 'text').map(x => x.text).join('\n');
   prompts.push(prompt);
-  const out = JSON.stringify({ title: '교실 물품 구입', intro: '교실 물품을 다음과 같이 구입하고자 합니다.' });
+  const out = JSON.stringify({ title: '교실 물품 구입', intro: '교실 물품을 구입하고자 합니다.' });
   await route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body: [{ type: 'content_block_delta', delta: { type: 'text_delta', text: out } }, { type: 'message_delta', delta: { stop_reason: 'end_turn' } }].map(e => 'data: ' + JSON.stringify(e) + '\n\n').join('') }).catch(() => {});
 });
 const P = 'section[data-menu="purchase"]';
@@ -54,9 +54,9 @@ await run('purchase-more', [
     await page.click(`${P} [data-pc="attachAdd"]`);
     await draft();
     const r = await page.inputValue(`${P} #pcReason`);
-    assert(r.startsWith('1. 관련: ') && r.split('\n')[1] === '2. 교실 물품을 다음과 같이 구입하고자 합니다.', r.slice(0, 80));
+    assert(r.startsWith('1. 관련: ') && r.split('\n')[1] === '2. 교실 물품을 구입하고자 합니다.', r.slice(0, 80));
     assert(r.endsWith('붙임  1. 지출품의서 1부.\n      2. 견적서 1부.\n      3. 사업자등록증 사본 1부.\n      4. 참고 자료 1부.  끝.'), r);
-    assert(r.includes('구입 품목: 실험 재료 3,000원 × 10개 = 30,000원') && r.includes('지출액: 금30,000원(금삼만원)') && r.includes('예산 과목: 교육운영비') && /  [가-하]\. 기타:\n\n붙임/.test(r), r);
+    assert(r.includes('구입 품목: 실험 재료 3,000원 × 10개 = 30,000원') && r.includes('지출액: 금30,000원(금삼만원)') && r.includes('예산 과목: 교육운영비') && /  [가-하]\. 기타:\n붙임/.test(r), r);
   }],
   ['초안 뒤 붙임을 끄면 사유가 다시 맞춰짐(첫 문장 그대로) · 손으로 고친 사유는 그대로 + [사유 다시 맞추기]', async () => {
     await page.uncheck(`${P} [data-attach="bizreg"]`);

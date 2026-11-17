@@ -72,5 +72,5 @@ test('[fix1117-plan-prompts] 넣기 AI는 계획서 제목을 관련에, 목적�
   assert.ok(/계획서·공문이면 그 문서 제목/.test(ip), ip);
   assert.ok(/purpose\(목적\)는 .*「목적」/.test(ip), ip);
   const op = oneshotPrompt({ ...emptyForm('event'), related: '2026 학교폭력 예방 캠페인 운영 계획', purpose: '학생들의 학교폭력 예방 의식을 높인다', items: [{ name: '현수막', qty: '1', price: '50000' }] });
-  assert.ok(op.includes('계획서·공문 제목(관련·사업명)을 첫 문장에 그대로 옮기지 않습니다'), op);
+  assert.ok(op.includes('계획서·공문 제목을 그대로 옮기지 않고'), op);
 });

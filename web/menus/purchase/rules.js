@@ -222,37 +222,70 @@ export function draftMemo(form) {
 
 /* 품의 사유의 앱이 만드는 부분: 가~ 줄(빈 칸 빼고 다시 매김) + 붙임 (스펙 4.5).
    기본 차례는 「구입 품목 → 지출액 → 기타」(2026-11-17 선생님): 목적·일시·대상·장소는 칸에 글이 있을 때만 맨 앞에,
-   예산 과목은 있을 때만 지출액 뒤에, 「기타:」 줄은 비어 있어도 늘 마지막에(선생님이 채움). 강사 수당은 「지급 내역」 */
+   예산 과목은 있을 때만 지출액 뒤에, 「기타:」 줄은 비어 있어도 늘 마지막에(선생님이 채움). 강사 수당은 「지급 내역」.
+   구입 품목이 3개 이상이면 「비커(500ml) 외 2개」(강사는 「외 2명」), 붙임은 「기타:」 바로 다음 줄(빈 줄 없음 — 2026-11-17 선생님) */
 const KO = '가나다라마바사아자차카타파하';
 export const ITEMS_LABEL = type => (type === 'lecturer' ? '지급 내역' : '구입 품목');
+const tailRows = rows => rows.filter(([, v]) => !blank(v)).map(([l, v], i) => `  ${KO[i]}. ${l}: ${String(v).trim()}`);
+const budgetOf = f => (f.budgetUnknown || blank(f.budget) ? '' : f.budget);
+const spentOf = (items, total) => (items.length ? `금${won(total)}원(${koreanWon(total)})` : '');
+/* 가~ 줄의 품목: 1~2개는 산출 근거(단가 × 수량 = 금액), 3개 이상은 첫 품목 외 n개 */
+export function itemsSummary(list, type = 'goods') {
+  const items = cleanItems(list);
+  if (items.length < 3) return items.map(it => basisLine(it, type)).join(', ');
+  const first = items[0].name + (blank(items[0].spec) ? '' : `(${items[0].spec})`);
+  return `${first} 외 ${items.length - 1}${type === 'lecturer' ? '명' : '개'}`;
+}
 export function reasonTail(form) {
   const f = form || {}, type = f.type || 'goods', items = cleanItems(f.items);
-  const total = sumItems(f.items);
-  const basis = items.slice(0, items.length > 3 ? 1 : 3).map(it => basisLine(it, type)).join(', ') + (items.length > 3 ? ` 외 ${items.length - 1}건` : '');
-  const budget = f.budgetUnknown || blank(f.budget) ? '' : f.budget;
-  const rows = [['목적', f.purpose], ['일시', f.date], ['대상', f.target], ['장소', f.place],
-    [ITEMS_LABEL(type), items.length ? basis : ''], ['지출액', items.length ? `금${won(total)}원(${koreanWon(total)})` : ''], ['예산 과목', budget]]
-    .filter(([, v]) => !blank(v)).map(([l, v], i) => `  ${KO[i]}. ${l}: ${String(v).trim()}`);
+  const rows = tailRows([['목적', f.purpose], ['일시', f.date], ['대상', f.target], ['장소', f.place],
+    [ITEMS_LABEL(type), itemsSummary(items, type)], ['지출액', spentOf(items, sumItems(f.items))], ['예산 과목', budgetOf(f)]]);
+  rows.push(`  ${KO[rows.length]}. 기타:`);
+  return `${rows.join('\n')}\n${attachText(attachLines(f))}`;
+}
+/* 예전 가~ 줄 — 그때 맞춘 초안을 열 때 「품목·붙임이 바뀌었어요」로 잘못 보지 않게 견줄 때만 씀 */
+const oldBasis = (items, type) => items.slice(0, items.length > 3 ? 1 : 3).map(it => basisLine(it, type)).join(', ') + (items.length > 3 ? ` 외 ${items.length - 1}건` : '');
+/* 0.34: 구입 품목(4개부터 「외 n건」)·지출액·예산 과목·기타, 붙임 앞 빈 줄 */
+export function reasonTailV2(form) {
+  const f = form || {}, type = f.type || 'goods', items = cleanItems(f.items);
+  const rows = tailRows([['목적', f.purpose], ['일시', f.date], ['대상', f.target], ['장소', f.place],
+    [ITEMS_LABEL(type), items.length ? oldBasis(items, type) : ''], ['지출액', spentOf(items, sumItems(f.items))], ['예산 과목', budgetOf(f)]]);
   rows.push(`  ${KO[rows.length]}. 기타:`);
   return `${rows.join('\n')}\n\n${attachText(attachLines(f))}`;
 }
-/* 0.33 까지의 가~ 줄 차례(목적·일시·대상·장소·소요 예산·예산 과목·산출 근거) — 그때 맞춘 초안을 열 때 「품목·붙임이 바뀌었어요」로 잘못 보지 않게 견줄 때만 씀 */
+/* 0.33 까지: 목적·일시·대상·장소·소요 예산·예산 과목·산출 근거 */
 export function reasonTailV1(form) {
   const f = form || {}, type = f.type || 'goods', items = cleanItems(f.items);
-  const total = sumItems(f.items);
-  const basis = items.slice(0, items.length > 3 ? 1 : 3).map(it => basisLine(it, type)).join(', ') + (items.length > 3 ? ` 외 ${items.length - 1}건` : '');
-  const budget = f.budgetUnknown || blank(f.budget) ? '' : f.budget;
-  const rows = [['목적', f.purpose], ['일시', f.date], ['대상', f.target], ['장소', f.place],
-    ['소요 예산', items.length ? `금${won(total)}원(${koreanWon(total)})` : ''], ['예산 과목', budget], ['산출 근거', items.length ? basis : '']]
-    .filter(([, v]) => !blank(v)).map(([l, v], i) => `  ${KO[i]}. ${l}: ${String(v).trim()}`);
+  const rows = tailRows([['목적', f.purpose], ['일시', f.date], ['대상', f.target], ['장소', f.place],
+    ['소요 예산', spentOf(items, sumItems(f.items))], ['예산 과목', budgetOf(f)], ['산출 근거', items.length ? oldBasis(items, type) : '']]);
   return `${rows.join('\n')}\n\n${attachText(attachLines(f))}`;
 }
-/* 「1. 관련:」 줄: 선생님(또는 AI)이 적은 것 → 물품 외에는 「(학년도) 사업명 운영 계획」 → 「(학년도) 학교 교육과정 운영 계획」 */
-export function relatedLine(form, year) {
+export const oldTails = form => [reasonTailV2(form), reasonTailV1(form)];
+
+/* 「1. 관련:」 줄(2026-11-17 선생님): 선생님(또는 AI)이 적은 것 그대로 → 비었으면 「(설정 › 학교 정보의 학교 이름)-xxxxx(올해. xx. xx.)」.
+   xxxxx·xx는 선생님이 문서 번호·날짜로 바꿈. 학교 이름을 저장하지 않았으면 「xx초등학교」 */
+export const docNoBase = (year, school) => `${String(school || '').trim() || 'xx초등학교'}-xxxxx(${Number.isInteger(year) ? year : new Date().getFullYear()}. xx. xx.)`;
+export function relatedLine(form, year, school) {
+  const own = String((form || {}).related || '').trim();
+  return own || docNoBase(year, school);
+}
+/* 문서 번호(「과학과-1234」「새싹초등학교-xxxxx」)나 「(2026. 3. 5.)」 꼴 날짜가 든 관련. 이름 속 붙임표(「AI-디지털」「1-2학기」)는 아님 */
+const DOC_NO = /[가-힣A-Za-z)]\s*-\s*(?:\d{1,7}|[xX○]{2,})(?![\d가-힣])|\(\s*\d{4}\s*\.\s*(?:\d{1,2}|xx)\s*\./;
+export const hasDocNo = s => DOC_NO.test(String(s || ''));
+/* 계획서 제목·AI가 채운 관련을 관련 칸에 넣을 때: 문서 번호가 없으면 「학교-xxxxx(올해. xx. xx.) 「제목」」(선생님이 번호·날짜만 채우게).
+   선생님이 칸에 직접 친 관련은 이것을 거치지 않음(치는 중에 글이 바뀌지 않게) */
+// 다른 기관 공문(「○○교육지원청 …」)은 우리 학교 문서 번호가 아니라 그대로
+const OUTSIDE = /교육(?:지원)?청|교육부|교육원|연수원|위원회|(?:시|군|구|도)청/;
+export function relatedFill(text, { school, year } = {}) {
+  const t = String(text || '').trim();
+  if (!t || hasDocNo(t) || OUTSIDE.test(t)) return t;
+  return `${docNoBase(year, school)} 「${t.replace(/^「\s*|\s*」$/g, '')}」`;
+}
+/* 0.34 까지의 기본값: 물품 외에는 「(학년도) 사업명 운영 계획」 → 「(학년도) 학교 교육과정 운영 계획」 — 그때 맞춘 초안과 견줄 때만 씀 */
+export function relatedLineV1(form, year) {
   const f = form || {}, own = String(f.related || '').trim();
   if (own) return own;
   // 사업명 앞의 「2026학년도」·끝의 「운영(비)·계획」은 빼고 붙임(「운영 운영 계획」「2026학년도 2026학년도」가 되지 않게)
-  // 숫자는 「학년도·년(도)」가 붙어야 연도(「2050 탄소중립」은 이름), 사업명에 적은 연도가 지금 학년도보다 먼저(2월에 쓰는 「2027학년도 입학식」)
   const raw = String(f.project || '').trim(), py = /^(\d{4})\s*(?:학년도|년도|년)\s*/.exec(raw);
   const y = py ? `${py[1]}학년도 ` : Number.isInteger(year) ? `${year}학년도 ` : '';
   const p = (py ? raw.slice(py[0].length) : raw).replace(/\s*(?:운영\s*비|운영\s*계획|운영|계획)$/, '').trim();
@@ -260,11 +293,16 @@ export function relatedLine(form, year) {
 }
 /* 첫 문장 앞 번호(「2.」)만 뺌. 「2026. 11. 20.(금) …」처럼 날짜로 시작하면 그대로 */
 export const introText = s => String(s || '').trim().replace(/^\d\.(?!\s*\d)\s*/, '');
+/* 첫 문장을 짧게(2026-11-17 선생님: 한두 줄): 첫 문장만(「…니다.」 뒤는 버림), 「다음과 같이」는 뺌. 날짜(「2026. 11. 20.」)에서는 자르지 않음 */
+export function shortIntro(s) {
+  const t = introText(s), m = /^[\s\S]*?(?:니다|어요|해요)\.(?=\s|$)/.exec(t);
+  return (m ? m[0] : t).replace(/\s*다음과\s*같이\s+/g, ' ').replace(/\s+/g, ' ').trim();
+}
 /* 품의 사유(에듀파인 기안문 꼴): 1. 관련: … / 2. AI가 쓴 첫 문장 / 가. 나. 다.(앱이 만듦, 두 칸 들여 씀) / 붙임 … 끝.
    head: 손으로 쓴 머리(「1. 근거:」·여러 줄 관련·지운 관련 줄 — ownHead)가 있으면 「1. 관련:」 줄 대신 그대로 씀 */
-export function composeReason({ intro, form, year, head = null }) {
+export function composeReason({ intro, form, year, school, head = null }) {
   const tail = reasonTail(form);
-  const top = head == null ? `1. 관련: ${relatedLine(form, year)}\n` : head ? `${head}\n` : '';
+  const top = head == null ? `1. 관련: ${relatedLine(form, year, school)}\n` : head ? `${head}\n` : '';
   return `${top}2. ${introText(intro)}${tail.startsWith('\n') ? '' : '\n'}${tail}`;
 }
 /* 사유에서 첫 문장 자리: 붙임 앞의 「2.」 줄(붙임의 「2. 견적서」는 아님). 「1. 관련:」 줄을 지우거나 바꿔도 그 줄.

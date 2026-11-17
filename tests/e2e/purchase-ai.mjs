@@ -64,22 +64,22 @@ await run('purchase-ai', [
     assert(r.model === 'claude-opus-5-5' && r.prompt.includes('3학년 1반 교실 물품 구입 30,000원') && r.prompt.includes('실험 재료') && r.prompt.includes('교실 물품을 30,000원에'), r.prompt.slice(0, 500));
     assert(await page.locator(`${P} #pcRvTitle .rv-op`).count() === 1 && await page.locator(`${P} #pcRvIntro .rv-op`).count() === 1, '자리');
   }],
-  ['첫 문장 [검토 안 쓰기] → 사유 첫 문장만 고친 문장으로(가~붙임 그대로), 의견 사라짐', async () => {
+  ['첫 문장 [검토 안 쓰기] → 사유 첫 문장만 고친 문장으로(가~붙임 그대로, 고친 문장도 「다음과 같이」는 뺌), 의견 사라짐', async () => {
     const before = await page.inputValue(`${P} #pcReason`);
     await page.click(`${P} #pcRvIntro [data-rv-use="intro"]`);
     const after = await page.inputValue(`${P} #pcReason`);
     // 품의 사유는 「1. 관련 / 2. 첫 문장 / 가~ / 붙임」: 2. 줄만 바뀜
-    assert(after.split('\n')[1] === '2. 교실 물품을 다음과 같이 구입하고자 합니다.', JSON.stringify(after.split('\n').slice(0, 3)));
+    assert(after.split('\n')[1] === '2. 교실 물품을 구입하고자 합니다.', JSON.stringify(after.split('\n').slice(0, 3)));
     const others = t => t.split('\n').filter((_, i) => i !== 1).join('\n');
     assert(others(after) === others(before), '관련·가~붙임이 바뀜');
     assert(await page.locator(`${P} #pcRvIntro .rv-op`).count() === 0, '의견이 남음');
     const cur = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:purchase:current')).draft);
-    assert(cur.intro === '교실 물품을 다음과 같이 구입하고자 합니다.' && cur.edited === false, JSON.stringify(cur));
+    assert(cur.intro === '교실 물품을 구입하고자 합니다.' && cur.edited === false, JSON.stringify(cur));
     // 그 뒤 품목이 바뀌어도 가~붙임은 다시 맞춰지고 첫 문장은 고친 문장 그대로
     await page.fill(`${P} [data-item="0"][data-f="qty"]`, '20');
     await page.waitForTimeout(150);
     const r2 = await page.inputValue(`${P} #pcReason`);
-    assert(r2.split('\n')[1] === '2. 교실 물품을 다음과 같이 구입하고자 합니다.' && r2.includes('금60,000원'), r2);
+    assert(r2.split('\n')[1] === '2. 교실 물품을 구입하고자 합니다.' && r2.includes('금60,000원'), r2);
   }],
   ['제목 칸을 손으로 고치면 제목 의견 사라짐(새로고침 뒤에도)', async () => {
     await page.fill(`${P} #pcTitle`, '교실 물품 구입');

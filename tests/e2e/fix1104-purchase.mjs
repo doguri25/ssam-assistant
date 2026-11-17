@@ -106,12 +106,12 @@ await run('fix1104-purchase', [
     assert(lines[0] === '1. 관련: ○○교육청 과학과-1234(2026. 11. 2.)' && lines[2] === '  가. 목적: 실험(용해와 용액 단원)', JSON.stringify(lines.slice(0, 3)));
     const s = await state();
     assert(s.draft.reason.startsWith('1. 관련: ○○교육청 과학과-1234(2026. 11. 2.)\n') && s.draft.edited === true, '저장된 사유: ' + s.draft.reason.split('\n')[0]);
-    assert(!(await chips()).includes('관련 · 기본값'), '기본값 칩이 남음');
+    assert(!(await chips()).includes('관련 · 문서 번호'), '기본값 칩이 남음');
     assert((await page.textContent(`${P} #pcResyncBox`)).trim() === '', '다시 맞추기가 뜸');
     // 관련 칸을 비우면 기본값으로 돌아감
     await page.fill(`${P} #pcRelated`, '');
     await page.waitForTimeout(200);
-    assert((await reason()).split('\n')[0].endsWith('학교 교육과정 운영 계획') && (await reason()).includes('실험(용해와 용액 단원)'), (await reason()).split('\n')[0]);
+    assert(/-xxxxx\(\d{4}\. xx\. xx\.\)$/.test((await reason()).split('\n')[0]) && (await reason()).includes('실험(용해와 용액 단원)'), (await reason()).split('\n')[0]);
   }],
   ['[purchase-2] 사유의 관련 줄과 가. 줄을 한 번에 고치면 관련이 칸으로 옮겨지고, [사유 다시 맞추기] 뒤에도 손으로 쓴 관련이 남음', async () => {
     await reset();
@@ -121,7 +121,7 @@ await run('fix1104-purchase', [
     await page.waitForTimeout(200);
     const s = await state();
     assert(s.form.related === '○○교육청 과학과-1234(2026. 11. 2.)' && s.draft.edited === true, JSON.stringify([s.form.related, s.draft.edited]));
-    assert(!(await chips()).includes('관련 · 기본값'), '기본값 칩이 남음');
+    assert(!(await chips()).includes('관련 · 문서 번호'), '기본값 칩이 남음');
     await page.click(`${P} #pcMore summary`);
     assert((await page.inputValue(`${P} #pcRelated`)) === '○○교육청 과학과-1234(2026. 11. 2.)', '관련 칸');
     await page.fill(`${P} [data-item="0"][data-f="qty"]`, '10');
@@ -132,16 +132,16 @@ await run('fix1104-purchase', [
     const lines = (await reason()).split('\n');
     assert(lines[0] === '1. 관련: ○○교육청 과학과-1234(2026. 11. 2.)' && lines[1].startsWith('2. 실험을 위하여') && (await reason()).includes('금45,000원'), JSON.stringify(lines.slice(0, 2)));
   }],
-  ['[purchase-2] 사유의 관련 줄만 고쳐 칸으로 옮겨지면 「관련 · 기본값으로 넣음」 칩이 사라짐', async () => {
+  ['[purchase-2] 사유의 관련 줄만 고쳐 칸으로 옮겨지면 「관련 · 문서 번호·날짜 채우기」 칩이 사라짐', async () => {
     await reset();
     await makeDraft();
-    assert((await chips()).includes('관련 · 기본값으로 넣음'), '처음 칩');
+    assert((await chips()).includes('관련 · 문서 번호·날짜 채우기'), '처음 칩');
     const r0 = await reason();
     await page.fill(`${P} #pcReason`, r0.replace(/^1\. 관련: [^\n]*/, '1. 관련: ○○교육청 과학과-1234(2026. 11. 2.)'));
     await page.waitForTimeout(200);
     const s = await state();
     assert(s.form.related === '○○교육청 과학과-1234(2026. 11. 2.)' && s.draft.edited === false, JSON.stringify([s.form.related, s.draft.edited]));
-    assert(!(await chips()).includes('관련 · 기본값'), '기본값 칩이 남음: ' + await chips());
+    assert(!(await chips()).includes('관련 · 문서 번호'), '기본값 칩이 남음: ' + await chips());
   }],
   ['[purchase-7] AI 초안이 오는 동안 장소 칸에 치던 글자의 초점·한글 조합이 끊기지 않음', async () => {
     await reset({ 'purchase:view': 'full' });

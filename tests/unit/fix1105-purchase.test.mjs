@@ -2,13 +2,13 @@
 // 사업명의 숫자 4자리를 학년도로 잘못 읽지 않음, 이름 끝 「을」을 조사로 지우지 않음, 「우리가 원하는 …」 같은 이름을 자르지 않음
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyForm, composeReason, introOf, withIntro, relatedOf, withRelated, ownHead, relatedLine, plainItemName, plainOfficial } from '../../web/menus/purchase/rules.js';
+import { emptyForm, composeReason, introOf, withIntro, relatedOf, withRelated, ownHead, relatedLineV1, plainItemName, plainOfficial } from '../../web/menus/purchase/rules.js';
 import { parseLines, normIntake } from '../../web/menus/purchase/intake.js';
 import { normOneshot } from '../../web/menus/purchase/oneshot.js';
 
 const INTRO = '독서 교육을 위하여 도서를 다음과 같이 구입하고자 합니다.';
 const book = qty => ({ ...emptyForm('goods'), purpose: '독서 교육', items: [{ name: '동화책', spec: '', unit: '권', qty: String(qty), price: '12000', vendor: '' }] });
-const r0 = composeReason({ intro: INTRO, form: book(10), year: 2026 });
+const r0 = composeReason({ intro: INTRO, form: book(10), year: 2026, school: '새싹초등학교' });
 const withHead = head => r0.replace(/^1\. 관련: [^\n]*/, head);
 const count = (s, part) => s.split(part).length - 1;
 
@@ -35,13 +35,13 @@ test('[purchase2-1] 「1. 관련:」 줄을 지우거나 「1. 근거:」·쌍�
   // 늘 쓰던 꼴은 그대로
   assert.equal(introOf(r0), INTRO);
   assert.equal(ownHead(r0), null);
-  assert.equal(composeReason({ intro: INTRO, form: book(10), year: 2026, head: null }), r0);
+  assert.equal(composeReason({ intro: INTRO, form: book(10), year: 2026, school: '새싹초등학교', head: null }), r0);
 });
 
 test('[purchase2-2] 관련 글을 비우거나 여러 줄(가. 나.)로 쓰면 다음 줄을 관련으로 읽지 않고, 다시 맞추면 나. 줄까지 그대로', () => {
   assert.equal(relatedOf(withHead('1. 관련: ')), '');
   assert.equal(relatedOf(withHead('1. 관련:')), '');
-  assert.equal(relatedOf(r0), '2026학년도 학교 교육과정 운영 계획');
+  assert.equal(relatedOf(r0), '새싹초등학교-xxxxx(2026. xx. xx.)');
   for (const head of ['1. 관련: 가. ○○교육청 과학과-1234(2026. 11. 2.)\n          나. 2026학년도 과학과 교육과정 운영 계획',
     '1. 관련:\n  가. ○○교육청 과학과-1234(2026. 11. 2.)\n  나. 2026학년도 과학과 교육과정 운영 계획']) {
     const r = withHead(head);
@@ -59,8 +59,9 @@ test('[purchase2-2] 관련 글을 비우거나 여러 줄(가. 나.)로 쓰면 �
   assert.equal(relatedOf('실험 재료를 구입하고자 합니다.\n\n가. 목적: 실험'), null);
 });
 
+// 0.34 까지의 관련 기본값(예전 초안과 견줄 때만 씀)
 test('[purchase2-3] 사업명 앞 숫자는 「학년도·년」이 붙을 때만 연도로 보고, 그 연도를 지금 학년도보다 먼저 씀', () => {
-  const rel = (type, project) => relatedLine({ ...emptyForm(type), project }, 2026);
+  const rel = (type, project) => relatedLineV1({ ...emptyForm(type), project }, 2026);
   assert.equal(rel('event', '2050 탄소중립 실천 캠페인'), '2026학년도 2050 탄소중립 실천 캠페인 운영 계획');
   assert.equal(rel('meeting', '2030 미래교육 협의회'), '2026학년도 2030 미래교육 협의회 운영 계획');
   assert.equal(rel('event', '2027학년도 입학식'), '2027학년도 입학식 운영 계획');

@@ -8,7 +8,7 @@ const t = await open();
 const { page, ctx, url, errors } = t;
 await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: url.replace(/\/$/, '') });
 const JPG = { name: '견적.jpg', mimeType: 'image/jpeg', buffer: readFileSync(join(FIXTURES, 'photo-1.jpg')) };
-const INTRO = '교실 물품을 다음과 같이 구입하고자 합니다.';
+const INTRO = '교실 물품을 구입하고자 합니다.';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let readDelay = 0, readReply = null;
 await page.addInitScript(() => {
@@ -131,33 +131,33 @@ await run('fix3-purchase', [
     const clip = await page.evaluate(() => navigator.clipboard.readText());
     assert(clip === s.draft.reason, '복사: ' + budget(clip));
   }],
-  ['[purchase3-1] 손으로 고친 사유: 사유 칸에 커서를 둔 채 견적서가 사업명을 채워 관련이 바뀌면 화면 첫 줄도 바뀌고(손으로 고친 줄은 그대로), 이어 쳐도 관련 칸에 옛 관련이 들어가지 않음', async () => {
+  ['[purchase3-1] 손으로 고친 사유: 사유 칸에 커서를 둔 채 견적서가 관련(계획서 제목)을 채워 관련이 바뀌면 화면 첫 줄도 바뀌고(손으로 고친 줄은 그대로), 이어 쳐도 관련 칸에 옛 관련이 들어가지 않음', async () => {
     await fresh({ type: 'event', typeSet: true, project: '', purpose: '협동심' }); await go(); await draft();
     const r0 = await reason();
     await page.fill(`${P} #pcReason`, r0.replace('  가. 목적: 협동심', '  가. 목적: 협동심 기르기(손으로)'));
     await page.waitForTimeout(150);
     assert((await cur()).draft.edited, '손으로 고친 사유가 아님');
     readDelay = 1500;
-    readReply = { items: [{ name: '칭찬 스티커', unit: '장', qty: 10, price: 500 }], shipping: [], fields: { project: '가을 운동회' } };
+    readReply = { items: [{ name: '칭찬 스티커', unit: '장', qty: 10, price: 500 }], shipping: [], fields: { related: '2026학년도 가을 운동회 운영 계획' } };
     await inboxAdd();
     const n = await caret('intro'), v0 = await reason();
     await has('칭찬 스티커')();
     await page.waitForTimeout(250);
     const s = await cur(), v = await reason(), c = await sel();
-    assert(s.form.project === '가을 운동회', '사업명: ' + s.form.project);
+    assert(s.form.related === 'xx초등학교-xxxxx(' + new Date().getFullYear() + '. xx. xx.) 「2026학년도 가을 운동회 운영 계획」', '관련 칸: ' + s.form.related);
     assert(v === s.draft.reason && v.split('\n')[0].includes('가을 운동회 운영 계획') && v.includes('협동심 기르기(손으로)'), '화면: ' + v.split('\n')[0] + ' / 저장: ' + s.draft.reason.split('\n')[0]);
     // 바뀐 첫 줄 뒤(「2.」 줄 끝)에 있던 커서는 같은 글자 뒤에
     assert(c.focus && c.a === n + v.length - v0.length && c.b === c.a, '커서: ' + JSON.stringify({ n, ...c }));
     await page.keyboard.type('요');
     await page.waitForTimeout(200);
     const s2 = await cur();
-    assert(s2.form.related === '', '관련 칸에 옛 관련: ' + s2.form.related);
+    assert(s2.form.related === s.form.related, '관련 칸에 옛 관련: ' + s2.form.related);
     assert(s2.draft.reason === (await reason()) && s2.draft.reason.split('\n')[0].includes('가을 운동회 운영 계획'), '친 뒤: ' + s2.draft.reason.split('\n')[0]);
   }],
-  ['[purchase3-1] 관련 줄과 가~ 줄이 함께 바뀌어도(사업명·품목이 들어옴) 「2.」 줄 끝의 커서는 그 줄 끝에', async () => {
+  ['[purchase3-1] 관련 줄과 가~ 줄이 함께 바뀌어도(관련·품목이 들어옴) 「2.」 줄 끝의 커서는 그 줄 끝에', async () => {
     await fresh({ type: 'event', typeSet: true, project: '', purpose: '협동심' }); await go(); await draft();
     readDelay = 1500;
-    readReply = { items: [{ name: '칭찬 스티커', unit: '장', qty: 10, price: 500 }], shipping: [], fields: { project: '가을 운동회' } };
+    readReply = { items: [{ name: '칭찬 스티커', unit: '장', qty: 10, price: 500 }], shipping: [], fields: { related: '2026학년도 가을 운동회 운영 계획' } };
     await inboxAdd();
     await caret('intro');
     await has('칭찬 스티커')();
@@ -212,7 +212,7 @@ await run('fix3-purchase', [
     await page.fill(`${P} #pcReason`, (await reason()).replace('  가. 목적: 협동심', '  가. 목적: 협동심 기르기(손으로)'));
     await page.waitForTimeout(150);
     readDelay = 1500;
-    readReply = { items: [{ name: '칭찬 스티커', unit: '장', qty: 10, price: 500 }], shipping: [], fields: { project: '가을 운동회' } };
+    readReply = { items: [{ name: '칭찬 스티커', unit: '장', qty: 10, price: 500 }], shipping: [], fields: { related: '2026학년도 가을 운동회 운영 계획' } };
     await inboxAdd();
     await caret('intro');
     const cdp = await page.context().newCDPSession(page);
@@ -227,7 +227,7 @@ await run('fix3-purchase', [
     await cdp.detach();
     const v = await reason(), s = await cur();
     assert(v.includes(`${INTRO} 미술 수업\n`) && v.includes('협동심 기르기(손으로)'), '조합: ' + JSON.stringify(v.split('\n').slice(1, 3)));
-    assert(v === s.draft.reason && v.split('\n')[0].includes('가을 운동회 운영 계획') && s.form.related === '' && s.draft.edited, '화면: ' + v.split('\n')[0] + ' / 저장: ' + s.draft.reason.split('\n')[0] + ' / 관련 칸: ' + s.form.related);
+    assert(v === s.draft.reason && v.split('\n')[0].includes('가을 운동회 운영 계획') && s.form.related.endsWith('「2026학년도 가을 운동회 운영 계획」') && s.draft.edited, '화면: ' + v.split('\n')[0] + ' / 저장: ' + s.draft.reason.split('\n')[0] + ' / 관련 칸: ' + s.form.related);
     await human(`${P} [data-pc="resync"]`);
     await page.waitForTimeout(200);
     const s2 = await cur();
@@ -239,7 +239,7 @@ await run('fix3-purchase', [
     await page.fill(`${P} #pcReason`, (await reason()).replace('  가. 목적: 협동심', '  가. 목적: 협동심 기르기(손으로)'));
     await page.waitForTimeout(150);
     readDelay = 1200;
-    readReply = { items: [{ name: '칭찬 스티커', unit: '장', qty: 10, price: 500 }], shipping: [], fields: { project: '가을 운동회' } };
+    readReply = { items: [{ name: '칭찬 스티커', unit: '장', qty: 10, price: 500 }], shipping: [], fields: { related: '2026학년도 가을 운동회 운영 계획' } };
     await caret('intro');
     await page.setInputFiles('#inboxFile', JPG);
     await page.waitForTimeout(100);

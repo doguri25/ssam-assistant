@@ -1,7 +1,7 @@
 // 2026-11-04 버그 찾기에서 고친 것(품의): 날짜로 시작하는 첫 문장, 1인칭·구어 빼기가 맞는 말까지 지우던 것, 관련 기본값 말 겹침
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyForm, composeReason, introOf, withIntro, relatedLine, plainItemName, plainOfficial } from '../../web/menus/purchase/rules.js';
+import { emptyForm, composeReason, introOf, withIntro, relatedLine, relatedLineV1, plainItemName, plainOfficial } from '../../web/menus/purchase/rules.js';
 import { parseLines, normIntake } from '../../web/menus/purchase/intake.js';
 import { normOneshot } from '../../web/menus/purchase/oneshot.js';
 
@@ -19,9 +19,9 @@ test('[purchase-3] 2. 첫 문장이 「2026. 11. 20.(금)」처럼 날짜로 시
   // 번호는 여전히 뺌(「2. 2.」가 되지 않음)
   assert.equal(composeReason({ intro: '2. 비커를 다음과 같이 구입하고자 합니다.', form: ev, year: 2026 }).split('\n')[1], '2. 비커를 다음과 같이 구입하고자 합니다.');
   assert.equal(composeReason({ intro: '2.비커를 구입하고자 합니다.', form: ev, year: 2026 }).split('\n')[1], '2. 비커를 구입하고자 합니다.');
-  // AI 답(normOneshot)도 같은 규칙
-  assert.equal(normOneshot({ title: '축제 물품 구입', intro: DATED }, ev).intro, DATED);
-  assert.equal(normOneshot({ title: '비커 구입', intro: '2. 비커를 다음과 같이 구입하고자 합니다.' }, ev).intro, '비커를 다음과 같이 구입하고자 합니다.');
+  // AI 답(normOneshot)도 같은 규칙(2026-11-17부터 「다음과 같이」는 뺌 — 첫 문장을 짧게)
+  assert.equal(normOneshot({ title: '축제 물품 구입', intro: DATED }, ev).intro, DATED.replace('다음과 같이 ', ''));
+  assert.equal(normOneshot({ title: '비커 구입', intro: '2. 비커를 다음과 같이 구입하고자 합니다.' }, ev).intro, '비커를 구입하고자 합니다.');
 });
 
 test('[purchase-4] 품명: 주어 바로 뒤에 「필요한·쓸」이 올 때만 지움, 진짜 책 이름·「공동구매」는 그대로', () => {
@@ -52,8 +52,9 @@ test('[purchase-4] 제목·목적·첫 문장: 「소리 나는」「하늘을 �
   assert.equal(normIntake({ items: [], fields: { purpose: '하늘을 나는 드론 수업' } }).fields.purpose, '하늘을 나는 드론 수업');
 });
 
+// 0.34 까지의 관련 기본값(예전 초안과 견줄 때만 씀 — 2026-11-17부터 기본값은 「학교-xxxxx(올해. xx. xx.)」)
 test('[purchase-5] 관련 기본값: 「운영 운영 계획」「2026학년도 2026학년도」처럼 겹치지 않음', () => {
-  const rel = (type, project) => relatedLine({ ...emptyForm(type), project }, 2026);
+  const rel = (type, project) => relatedLineV1({ ...emptyForm(type), project }, 2026);
   assert.equal(rel('event', '가을 학교 축제 운영'), '2026학년도 가을 학교 축제 운영 계획');
   assert.equal(rel('lecturer', '방과후학교 운영'), '2026학년도 방과후학교 운영 계획');
   assert.equal(rel('meeting', '학년 교육과정 협의회 운영'), '2026학년도 학년 교육과정 협의회 운영 계획');
@@ -63,8 +64,10 @@ test('[purchase-5] 관련 기본값: 「운영 운영 계획」「2026학년도 
   assert.equal(rel('event', '가을 학교 축제 운영 계획'), '2026학년도 가을 학교 축제 운영 계획');
   assert.equal(rel('event', '가을 학교 축제'), '2026학년도 가을 학교 축제 운영 계획');
   // 학년도를 모르면 사업명에 적은 학년도를 씀
-  assert.equal(relatedLine({ ...emptyForm('event'), project: '2026학년도 학생 자치회 운영' }), '2026학년도 학생 자치회 운영 계획');
-  assert.equal(composeReason({ intro: '방과후학교 운영을 위하여 강사 수당을 다음과 같이 지급하고자 합니다.', form: { ...emptyForm('lecturer'), project: '방과후학교 운영' }, year: 2026 }).split('\n')[0], '1. 관련: 2026학년도 방과후학교 운영 계획');
+  assert.equal(relatedLineV1({ ...emptyForm('event'), project: '2026학년도 학생 자치회 운영' }), '2026학년도 학생 자치회 운영 계획');
+  // 지금 기본값은 사업명과 상관없음
+  assert.equal(relatedLine({ ...emptyForm('event'), project: '2026학년도 학생 자치회 운영' }, 2026, '새싹초등학교'), '새싹초등학교-xxxxx(2026. xx. xx.)');
+  assert.equal(composeReason({ intro: '방과후학교 강사 수당을 지급하고자 합니다.', form: { ...emptyForm('lecturer'), project: '방과후학교 운영' }, year: 2026, school: '새싹초등학교' }).split('\n')[0], '1. 관련: 새싹초등학교-xxxxx(2026. xx. xx.)');
 });
 
 test('[purchase-2] 손으로 고친 사유의 「1. 관련:」 줄만 바꿈(나머지는 그대로), 예전 꼴은 그대로', async () => {

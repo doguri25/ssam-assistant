@@ -9,7 +9,7 @@ import { open, run, assert, mockClaude, FIXTURES } from './helpers.mjs';
 const t = await open();
 const { page, url, errors } = t;
 const JPG = { name: '장바구니.jpg', mimeType: 'image/jpeg', buffer: readFileSync(join(FIXTURES, 'photo-1.jpg')) };
-const INTRO = '독서 교육을 위하여 도서를 다음과 같이 구입하고자 합니다.';
+const INTRO = '독서 교육을 위하여 도서를 구입하고자 합니다.';
 let readDelay = 0, draftDelay = 0;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 await mockClaude(page, async ({ prompt }) => {
@@ -108,7 +108,7 @@ await run('fix1105-purchase', [
     await page.waitForTimeout(150);
     const s = await state();
     assert(s.form.related === '' && (await page.inputValue(`${P} #pcRelated`)) === '', '관련 칸: ' + JSON.stringify(s.form.related));
-    assert(!(await page.textContent(`${P} #pcChips`)).includes('관련 · 기본값'), '비운 관련에 기본값 칩');
+    assert(!(await page.textContent(`${P} #pcChips`)).includes('관련 · 문서 번호'), '비운 관련에 기본값 칩');
     // 다른 칸(수량)을 고쳐도 관련 줄은 비운 채
     await page.fill(`${P} [data-item="0"][data-f="qty"]`, '7');
     await page.waitForTimeout(200);
@@ -173,13 +173,17 @@ await run('fix1105-purchase', [
     await page.waitForTimeout(150);
     assert((await page.inputValue(`${P} #pcIntake`)) === '도화지 20장 4000원', '넣기 칸: ' + JSON.stringify(await page.inputValue(`${P} #pcIntake`)));
   }],
-  ['[purchase2-8] 행사 운영에서 사업명을 치면 관련 칸 안내(비우면 「…」)가 실제 기본값을 따라 바뀜', async () => {
-    await reset({ 'purchase:view': 'full' });
+  // 2026-11-17: 관련 기본값은 설정 › 학교 정보의 학교 이름과 올해(「새싹초등학교-xxxxx(2026. xx. xx.)」) — 사업명을 따르지 않음
+  ['[purchase2-8] 관련 칸 안내(비우면 「…」)는 저장한 학교 이름과 올해, 행사 사업명을 쳐도 그대로', async () => {
+    await reset({ 'purchase:view': 'full', school: { name: '새싹초등학교' } });
+    const want = `비우면 「새싹초등학교-xxxxx(${new Date().getFullYear()}. xx. xx.)」`;
+    assert((await page.getAttribute(`${P} #pcRelated`, 'placeholder')) === want, await page.getAttribute(`${P} #pcRelated`, 'placeholder'));
     await page.click(`${P} [data-pctype="event"]`);
     await page.fill(`${P} #pcProject`, '가을 학교 축제');
     await page.waitForTimeout(100);
     const ph = await page.getAttribute(`${P} #pcRelated`, 'placeholder');
-    assert(ph === '비우면 「2026학년도 가을 학교 축제 운영 계획」', ph);
+    assert(ph === want, ph);
+    await page.evaluate(() => localStorage.removeItem('ssam:school'));
   }],
   ['[기능] 새 품의 AI 줄은 쪽지 작성처럼 머리(「새 품의」 제목 줄 오른쪽)에 있고, 초안 카드 안에는 없음', async () => {
     await reset();

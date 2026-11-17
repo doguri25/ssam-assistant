@@ -6,7 +6,7 @@ import { open, run, assert, mockClaude } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
-const INTRO = '독서 교육을 위하여 도서를 다음과 같이 구입하고자 합니다.';
+const INTRO = '독서 교육을 위하여 도서를 구입하고자 합니다.';
 await mockClaude(page, async ({ prompt }) => {
   if (prompt.startsWith('[품의 초안]')) return JSON.stringify({ title: '학급 문고 도서 구입', intro: INTRO, fields: {} });
   return '[]';
@@ -241,7 +241,7 @@ await run('fix1117-purchase-ime', [
     await page.fill(`${P} #pcProject`, '가을 학교 축제');
     await page.waitForTimeout(100);
     const ph0 = await page.getAttribute(`${P} #pcRelated`, 'placeholder');
-    assert(ph0 === '비우면 「2026학년도 가을 학교 축제 운영 계획」', ph0);
+    assert(/^비우면 「xx초등학교-xxxxx\(\d{4}\. xx\. xx\.\)」$/.test(ph0), ph0);
     await page.click(`${P} #pcRelated`);
     await page.keyboard.insertText('○○교육청 공문');
     await page.waitForTimeout(100);
