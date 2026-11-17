@@ -204,6 +204,15 @@ export function removeFor(u) {
 
 /* ---------- 채점 ---------- */
 
+/* AI로 보낼 칸 글: 사람 이름·전화번호·이메일은 ○○○로(과제 설명에서 되돌린 교직원 이름이 칸에 남아도 채점·평어 AI로 가지 않게 — 화면 글은 그대로).
+   주민번호·계좌가 든 글은 보내지 않음('') */
+const TOKEN_ANY = /〔\s*이름\s*\d+\s*〕|\{\{\s*\d+\s*\}\}/g;
+export function aiCell(text) {
+  const t = str(text);
+  if (!t.trim()) return t;
+  const out = makeRedactor().line(t);
+  return out ? out.text.replace(TOKEN_ANY, '○○○') : '';
+}
 export const sumPoints = rb => ((rb && rb.rows) || []).reduce((a, r) => a + (Number(r.points) || 0), 0);
 
 /* 평가지 채점 요청에 더할 글. 칸 글이 하나도 없는 요소는 빼고(번호는 이어서, 배점 합에도 넣지 않음), 빈 칸 글도 뺌 */
@@ -211,7 +220,7 @@ export function gradeBlock(rb) {
   const lvs = (rb && rb.levels) || L3, rows = ((rb && rb.rows) || []).map((r, i) => [r, i]).filter(([r]) => gradable(r, lvs));
   const sum = rows.reduce((a, [r]) => a + (Number(r.points) || 0), 0);
   return [`[수준별 채점 기준표] (배점 합 ${sum}점)`, ...rows.map(([r, i], k) => {
-    const cells = lvs.map(lv => { const c = r.cells && r.cells[lv]; return c && str(c.text).trim() ? `${LV_NAME[lv]}(${Number(c.pts) || 0}점): ${str(c.text).trim()}` : ''; }).filter(Boolean);
+    const cells = lvs.map(lv => { const c = r.cells && r.cells[lv]; return c && str(c.text).trim() ? `${LV_NAME[lv]}(${Number(c.pts) || 0}점): ${aiCell(str(c.text).trim())}` : ''; }).filter(Boolean);
     return `${k + 1}. ${rowName(r, i)} (${Number(r.points) || 0}점) — ${cells.join(' / ')}`;
   })].join('\n');
 }
@@ -289,7 +298,7 @@ export function levelLines(rb, lv) {
   if (!rb || !Array.isArray(rb.rows)) return '';
   const lvs = rb.levels || L3, over = lv === 'top' && !lvs.includes('top'), use = over ? 'high' : lv;
   if (!lvs.includes(use)) return '';
-  const parts = rb.rows.map((r, i) => { const c = r.cells && r.cells[use], t = c ? str(c.text).trim() : ''; return t ? `${rowName(r, i)}: ${t}` : ''; }).filter(Boolean);
+  const parts = rb.rows.map((r, i) => { const c = r.cells && r.cells[use], t = c ? str(c.text).trim() : ''; return t ? `${rowName(r, i)}: ${aiCell(t)}` : ''; }).filter(Boolean);
   if (!parts.length) return '';
   const line = `[수준별 기준표 — ${LV_NAME[use]}] ${parts.join(' / ')}`;
   return over ? `${line}\n이보다 한 걸음 더 나아간 모습을 바탕으로 써요.` : line;

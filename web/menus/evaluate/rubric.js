@@ -13,7 +13,7 @@ import { aiNoteHTML } from '../../core/ui-parts.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
 import {
   LV_NAME, unitKey, levelsFor, blankRubric, setLevels, levelPts, addRow, makePrompt, normMade, getFor, saveFor, removeFor,
-  sumPoints, gradeBlock, normRb, baseScore, clampScore, evidenceLines, levelLines, rubricDoc, docName
+  sumPoints, gradeBlock, normRb, baseScore, clampScore, evidenceLines, aiCell, levelLines, rubricDoc, docName
 } from './rubric-model.js';
 
 const L3 = ['high', 'mid', 'low'], L4 = ['top', 'high', 'mid', 'low'];
@@ -396,5 +396,5 @@ export function grLineHTML(u, { snapshot = null, locked = false, graded = false 
 
 if (typeof window !== 'undefined') {
   window.SSAM = window.SSAM || {};
-  window.SSAM.rubric = { getFor, unitKey, levelLines, gradeBlock, normRb, baseScore, clampScore, evidenceLines, sumPoints, LV_NAME, paneLineHTML, grLineHTML, open };
+  window.SSAM.rubric = { getFor, unitKey, levelLines, gradeBlock, normRb, baseScore, clampScore, evidenceLines, aiCell, sumPoints, LV_NAME, paneLineHTML, grLineHTML, open };
 }

@@ -4442,7 +4442,8 @@ function grEvList(s) {
   if (s.level) items.push({ kind: 'gr', label: `수준 「${LVNAME[s.level]}」${c[s.level] ? ` 기준: ${c[s.level]}` : '으로 판정'}` });
   // 기준표 요소마다 학생이 한 일(고른 수준의 사본 칸 글, 수준 이름 없음·「안 함」 뺌)
   const B = grRb();
-  if (B && s.rb) for (const x of B.evidenceLines(s.rb, GR.rubric)) items.push({ kind: 'gr', label: x });
+  // 화면 근거 줄은 칸 글 그대로, AI로 가는 글은 이름·연락처를 ○○○로(rubric aiCell)
+  if (B && s.rb) for (const x of B.evidenceLines(s.rb, GR.rubric)) items.push({ kind: 'gr', label: x, ai: B.aiCell ? B.aiCell(x) : x });
   if (mode !== 'plan') for (const x of String(s.summary || '').split(/(?<=[.!?。])\s+/)) if (x.trim()) items.push({ kind: 'gr', label: '요약: ' + x.trim() });
   if (mode === 'sheet') for (const x of s.evidence || []) items.push({ kind: 'gr', label: x });
   if (s.strengths && s.strengths !== '-') items.push({ kind: 'gr', label: '잘한 점: ' + s.strengths });

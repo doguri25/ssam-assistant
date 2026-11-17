@@ -58,3 +58,20 @@ test('[limit-thing-head] 「준비물:」 같은 물건 머리 줄의 이름(흔
   const z = makeRedactor(); z.lines(['가. 준비물: 도시락, 우비, 안내문, 신분증', '나. 도시락은 각자 담당 선생님께 냅니다.']);
   assert.deepEqual(z.names, []);
 });
+
+import { gradeBlock, levelLines, evidenceLines, aiCell } from '../../web/menus/evaluate/rubric-model.js';
+
+test('[limit-rubric-names] 기준표 칸에 들어간 교직원 이름·전화번호는 채점·평어 AI로 갈 때 ○○○로(화면 글은 그대로)', () => {
+  const rb = { v: 1, subject: '과학', elem: '날씨 관찰', levels: ['high', 'mid', 'low'], rows: [
+    { id: 'r1', name: '관찰 기록', points: 50, cells: { high: { text: '한가람 선생님 자료처럼 날씨를 세 가지 넘게 기록함', pts: 50 }, mid: { text: '날씨를 두 가지 기록함(문의 010-1234-5678)', pts: 35 }, low: { text: '날씨를 한 가지 기록함', pts: 20 } } },
+    { id: 'r2', name: '까닭 쓰기', points: 50, cells: { high: { text: '교무부장 이바다 선생님이 안내한 대로 까닭을 씀', pts: 50 }, mid: { text: '까닭을 짧게 씀', pts: 35 }, low: { text: '까닭을 쓰지 못함', pts: 20 } } }] };
+  const leak = t => /한가람|이바다|010-1234-5678/.test(t);
+  const g = gradeBlock(rb), l = levelLines(rb, 'high'), m = levelLines(rb, 'mid');
+  for (const t of [g, l, m]) assert.ok(!leak(t), t);
+  assert.ok(g.includes('○○○ 선생님 자료처럼 날씨를 세 가지 넘게 기록함') && g.includes('까닭을 짧게 씀'), g);
+  // 평어 근거: 화면 글(label)은 원래 글, AI로 가는 글(ai)은 가린 글
+  const ev = evidenceLines([{ name: '관찰 기록', level: 'high' }, { name: '까닭 쓰기', level: 'high' }], rb);
+  assert.ok(ev.some(x => x.includes('한가람')), '화면 근거 줄은 원래 글');
+  assert.ok(ev.map(aiCell).every(x => !leak(x)), JSON.stringify(ev.map(aiCell)));
+  assert.equal(aiCell('날씨를 한 가지 기록함'), '날씨를 한 가지 기록함', '가릴 것 없으면 그대로');
+});
