@@ -4,7 +4,7 @@
 
 ## 지금 상태 (2026-11-17)
 
-- 최신 릴리즈는 **v0.34.2**. main과 작업 브랜치 `claude/wonderful-johnson-lqb8em`이 같은 커밋에 있다.
+- 최신 릴리즈는 **v0.34.3**. main과 작업 브랜치 `claude/wonderful-johnson-lqb8em`이 같은 커밋에 있다.
   - 0.34.1: 남은 한계 고침 — 기준표 칸 글은 AI로 갈 때 이름을 ○○○로(`rubric-model.js aiCell`), 「김정대로 바꿔 줘」(privacy `DAERO`·`roGivenName`),
     물건 머리 줄의 이름은 다른 줄에서 사람으로 쓰일 때 배움(privacy `personUse`), 품의 「총 30자루 15,000원」(`tests/unit/fix1117-limits.test.mjs`).
   - 수준별 기준표(루브릭): 설계 `docs/superpowers/specs/2026-11-16-rubric-design.md`, 계획 `docs/superpowers/plans/2026-11-16-rubric.md`.
@@ -17,7 +17,7 @@
     첫 문장은 한두 줄의 한 문장(`shortIntro` — 첫 문장만, 「다음과 같이」 뺌), 관련 기본값은 「학교 이름-xxxxx(올해. xx. xx.)」(`docNoBase`, 설정 › 학교 정보),
     계획서·AI가 채운 관련은 문서 번호가 없으면(다른 기관 공문 제목은 빼고) 앞에 그 꼴을 붙이고 「제목」(`relatedFill`), 선생님이 친 관련은 그대로. 예전 꼴은 `reasonTailV2`·`relatedLineV1`로만 견줌
     (`tests/unit/fix1117-purchase-short.test.mjs`).
-  - 품의 계획서 산출 근거(2026-11-17 세 번째 요청, 아직 릴리즈 안 함): 3개 이상은 「외 n종」, 예산 표 「항목 | 산출 근거 | 금액」의 산출 근거
+  - 0.34.3 품의 계획서 산출 근거(2026-11-17 세 번째 요청): 3개 이상은 「외 n종」, 예산 표 「항목 | 산출 근거 | 금액」의 산출 근거
     「품명 단가원*수량단위(*수량)=금액원」을 품목마다 나눠 품명 칸에(`intake.js basisItems·splitBasis`, `sheet.js` HEAD.basis), 금액 없는 줄은 「못 읽은 줄」로 안 셈
     (`tests/unit/fix1117-plan-basis.test.mjs`).
   - 0.33.2 몫(릴리즈하지 않고 0.34.0에 합침): 미뤄 둔 작은 문제 2개, 0.31.1 뒤 버그 찾기 23개 중 22개(`tests/unit/fix1116-*.test.mjs`).
