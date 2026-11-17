@@ -258,3 +258,11 @@ test('[rb-addrow] 요소 더하기: 새 기준표, 빈 칸·n+1개 기본 배점
   assert.equal(R.addRow(five).rows.length, 5);
   assert.deepEqual(Object.keys(R.addRow(R.setLevels(sample(), L4)).rows[3].cells), L4);
 });
+
+test('[rb-chat] 채팅 안내: 「루브릭 어떻게 만들어?」→ rubric, 「평가지 채점 어떻게 해?」→ gr', async () => {
+  const { searchGuide, GUIDE } = await import('../../web/core/chat-knowledge.js');
+  assert.equal(searchGuide('루브릭 어떻게 만들어?')[0]?.id, 'rubric');
+  assert.equal(searchGuide('수준별 기준표 만드는 법')[0]?.id, 'rubric');
+  assert.equal(searchGuide('평가지 채점 어떻게 해?')[0]?.id, 'gr');
+  assert.ok(!GUIDE.find(g => g.id === 'gr').keys.includes('루브릭'));
+});
