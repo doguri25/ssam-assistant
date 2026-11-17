@@ -14,7 +14,7 @@ test('품의 사유: 1. 관련 / 2. 첫 문장 / 가. 나. 다.는 두 칸 들�
   assert.equal(lines[0], '1. 관련: 2026학년도 학교 교육과정 운영 계획');
   assert.equal(lines[1], '2. 실험 재료를 다음과 같이 구입하고자 합니다.');
   assert.equal(lines[2], '  가. 목적: 실험');
-  assert.ok(r.includes('\n  라. 소요 예산: 금6,000원(금육천원)\n  마. 산출 근거: 비커(500ml) 3,000원 × 2개 = 6,000원'), r);
+  assert.ok(r.includes('\n  라. 구입 품목: 비커(500ml) 3,000원 × 2개 = 6,000원\n  마. 지출액: 금6,000원(금육천원)\n  바. 기타:'), r);
   assert.ok(r.endsWith('\n\n붙임  1. 지출품의서 1부.\n      2. 견적서 1부.  끝.'), r);
   assert.ok(r.endsWith(reasonTail(goods)), '끝부분은 reasonTail 그대로');
 });

@@ -220,9 +220,24 @@ export function draftMemo(form) {
     + line('품목', items) + `- 합계: ${won(sumItems(f.items))}원\n` + line('그 밖의 메모', f.memo);
 }
 
-/* 품의 사유의 앱이 만드는 부분: 가~ 줄(빈 칸 빼고 다시 매김) + 붙임 (스펙 4.5) */
+/* 품의 사유의 앱이 만드는 부분: 가~ 줄(빈 칸 빼고 다시 매김) + 붙임 (스펙 4.5).
+   기본 차례는 「구입 품목 → 지출액 → 기타」(2026-11-17 선생님): 목적·일시·대상·장소는 칸에 글이 있을 때만 맨 앞에,
+   예산 과목은 있을 때만 지출액 뒤에, 「기타:」 줄은 비어 있어도 늘 마지막에(선생님이 채움). 강사 수당은 「지급 내역」 */
 const KO = '가나다라마바사아자차카타파하';
+export const ITEMS_LABEL = type => (type === 'lecturer' ? '지급 내역' : '구입 품목');
 export function reasonTail(form) {
+  const f = form || {}, type = f.type || 'goods', items = cleanItems(f.items);
+  const total = sumItems(f.items);
+  const basis = items.slice(0, items.length > 3 ? 1 : 3).map(it => basisLine(it, type)).join(', ') + (items.length > 3 ? ` 외 ${items.length - 1}건` : '');
+  const budget = f.budgetUnknown || blank(f.budget) ? '' : f.budget;
+  const rows = [['목적', f.purpose], ['일시', f.date], ['대상', f.target], ['장소', f.place],
+    [ITEMS_LABEL(type), items.length ? basis : ''], ['지출액', items.length ? `금${won(total)}원(${koreanWon(total)})` : ''], ['예산 과목', budget]]
+    .filter(([, v]) => !blank(v)).map(([l, v], i) => `  ${KO[i]}. ${l}: ${String(v).trim()}`);
+  rows.push(`  ${KO[rows.length]}. 기타:`);
+  return `${rows.join('\n')}\n\n${attachText(attachLines(f))}`;
+}
+/* 0.33 까지의 가~ 줄 차례(목적·일시·대상·장소·소요 예산·예산 과목·산출 근거) — 그때 맞춘 초안을 열 때 「품목·붙임이 바뀌었어요」로 잘못 보지 않게 견줄 때만 씀 */
+export function reasonTailV1(form) {
   const f = form || {}, type = f.type || 'goods', items = cleanItems(f.items);
   const total = sumItems(f.items);
   const basis = items.slice(0, items.length > 3 ? 1 : 3).map(it => basisLine(it, type)).join(', ') + (items.length > 3 ? ` 외 ${items.length - 1}건` : '');
@@ -348,7 +363,7 @@ export function purchaseDoc(form, draft) {
       { type: 'h', text: '품의 사유' }, { type: 'p', text: d.reason || '' },
       { type: 'h', text: '산출 내역' }, { type: 'table', head: true, rows },
       // 사유에 이미 있으면(앱이 만든 사유) 다시 쓰지 않음, 손으로 고쳐 빠졌으면 씀
-      ...(reason.includes('산출 근거') ? [] : [{ type: 'p', text: `산출 근거: ${items.map(it => basisLine(it, type)).join(' / ')}` }]),
+      ...(/산출 근거|구입 품목|지급 내역/.test(reason) ? [] : [{ type: 'p', text: `산출 근거: ${items.map(it => basisLine(it, type)).join(' / ')}` }]),
       ...(reason.includes('예산 과목') ? [] : [{ type: 'p', text: `예산 과목: ${budget}` }]),
       ...(/(^|\n)\s*붙임/.test(reason) ? [] : [{ type: 'p', text: attachText(attachLines(f)) }])
     ]

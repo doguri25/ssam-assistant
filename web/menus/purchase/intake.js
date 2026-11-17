@@ -3,7 +3,7 @@
 import * as ai from '../../core/ai.js';
 import { emptyItem, findPersonal, toNumber, plainItemName, plainOfficial, PER_UNIT } from './rules.js';
 import { readQuote } from './quote.js';
-import { findItems } from '../../core/sheet.js';
+import { findItems, isTotalName, totalKey } from '../../core/sheet.js';
 import { readText } from '../../core/files.js';
 import { nameCell, staffName, MASK, maskContacts } from '../../core/privacy.js';
 
@@ -112,16 +112,29 @@ function itemClauses(line) {
   const nums = clauses(line).filter(hasNumber);
   return nums.length >= 2 && nums.every(p => parseLine(p)) ? nums : [line];
 }
-/* 합계만 적은 줄(「합계 36,000원」·「총액 3만원」) → 총액 칸 */
-const TOTAL_LINE = /^\s*(?:[-•·*]\s*)?(?:합\s*계|총\s*합\s*계|총\s*액|총\s*금\s*액|총)\s*:?\s*([\d,]+(?:\.\d+)?)\s*(만)?\s*원?\s*$/;
+/* 합계·소계·세액·할인만 적은 줄(「합계 36,000원」「총 결제금액: 78,000원」「계 1,140,000원」「합계 36,000원(VAT 포함)」「총액은 3만원 정도」):
+   품목으로 읽으면 소요 예산에 합계가 한 번 더 들어갔음. 이름은 core/sheet.js isTotalName(견적서 표와 같은 말)으로 봄.
+   합계·총액 → 총액 칸(total), 소계·공급가액·세액 → 버림(품목 금액에 이미 들어 있음, part), 할인·빼는 금액 → 못 읽은 줄(off — AI가 되면 할인 뒤 단가로 다시 읽음) */
+const SUM_LINE = /^\s*(?:[-•·*▪◦]\s*|\d+[).]\s*|\(\d+\)\s*|[가-하][.)]\s+|\([가-하]\)\s*|[①-⑳]\s*)?((?:[^\d\n(（]|[(（][^)）\n]*[)）])*?)\s*(?:[:：=]|[-–](?!\d))?\s*([-−－](?=\d))?\s*([\d,]+(?:\.\d+)?)\s*(만)?\s*원?\s*(?:[(（][^)）\n]*[)）])?\s*(?:정도|쯤|가량|내외|이내|입니다|이에요|예요|임)?\s*[.。]?\s*$/;
+function sumLine(line) {
+  const m = SUM_LINE.exec(line);
+  if (!m) return null;
+  // 빼는 금액(「배송비 할인 -3,000원」「쿠폰 -2,000원」)은 사는 물품이 아님
+  if (m[2]) return { kind: 'off' };
+  if (!isTotalName(m[1])) return null;
+  const k = totalKey(m[1]);
+  const kind = /할인|쿠폰|적립|포인트/.test(k) ? 'off'
+    : /공급|세액|부가세|부가가치세|VAT|소계/i.test(k) && !/포함|총계|총액|결제|합계금액/.test(k) ? 'part' : 'total';
+  return { kind, amount: money(m[3], m[4]) };
+}
 export function parseLines(text) {
   const items = [], missed = [];
   let said = null, sum = 0, inexact = false;
   for (const raw of String(text || '').split(/\r?\n/)) {
     if (!raw.trim()) continue;
     // 「₩3,000」「￦3,000」은 「3,000원」으로
-    const line = koWon(raw.replace(/[₩￦]\s*(\d[\d,]*(?:\.\d+)?)/g, '$1원')), t = TOTAL_LINE.exec(line);
-    if (t) { said = money(t[1], t[2]); continue; }
+    const line = koWon(raw.replace(/[₩￦]\s*(\d[\d,]*(?:\.\d+)?)/g, '$1원')), t = sumLine(line);
+    if (t) { if (t.kind === 'total') said = t.amount; else if (t.kind === 'off') missed.push(raw.trim()); continue; }
     const parts = itemClauses(line);
     for (const part of parts) {
       const p = parseLine(part);
@@ -156,7 +169,7 @@ export function tableItems(text) {
   const items = [], missed = [];
   for (const cells of rows) {
     const it = rowItem(cells);
-    if (it && TOTAL.test(it.name)) continue;
+    if (it && (TOTAL.test(it.name) || isTotalName(it.name))) continue;
     if (it) items.push(it); else missed.push(cells.filter(Boolean).join(' '));
   }
   return { items, fields: {}, missed };
@@ -170,15 +183,39 @@ export function intakePrompt(kind, text = '') {
     '- vendor: 판매처(쇼핑몰·업체 이름). 모르면 빈 글.',
     '- 배송비는 품목에 넣지 말고 shipping에 판매처별로 넣습니다(무료면 0).',
     '- 합계·소계·부가세·공급가액·할인 줄은 품목이 아닙니다.',
-    '- fields: 글에 있을 때만 project(사업명)·purpose(목적)·target(대상)·date(일시)·place(장소)·budget(예산 과목). 없으면 빼고, 지어내지 않습니다.',
+    '- fields: 글에 있을 때만 related(관련)·project(사업명)·purpose(목적)·target(대상)·date(일시)·place(장소)·budget(예산 과목). 없으면 빼고, 지어내지 않습니다.',
+    '- related(관련): 넣은 것이 계획서·공문이면 그 문서 제목을 그대로(예: 2026학년도 학교폭력 예방 캠페인 운영 계획). purpose(목적)는 계획서면 그 「목적」 항목의 내용을 짧게 쓰고, 계획서 제목을 옮기지 않습니다.',
     '- 주문자·받는 사람 이름, 주소, 전화번호, 이메일, 결제 수단, 주민번호·계좌번호는 절대 쓰지 않습니다.',
     ...(kind === 'text' ? ['', '[메모]', String(text).slice(0, 8000)] : []),
     '', '[출력] JSON 하나만 출력합니다.',
     '{"items":[{"name":"…","spec":"","unit":"개","qty":1,"price":0,"vendor":""}],"shipping":[{"vendor":"","fee":0}],"fields":{"purpose":"…"}}'].join('\n');
 }
 
-const FIELDS = ['project', 'purpose', 'target', 'date', 'place', 'budget'];
+const FIELDS = ['related', 'project', 'purpose', 'target', 'date', 'place', 'budget'];
 const TOTAL = /^(합\s*계|소\s*계|부\s*가\s*세|공급\s*가|할인|총\s*(결제|금액))/;
+
+/* 넣은 글이 계획서면 → { related(계획서 제목), purpose(「목적」 항목의 첫 내용) }, 아니면 {}.
+   품의 사유 첫 문장이 계획서 제목을 그대로 따라 쓰지 않게: 제목은 「1. 관련:」 줄로, 계획서의 목적은 목적 칸으로(초안 AI가 첫 문장에 씀).
+   제목: 앞 네 줄 안에서 「… 계획(서)(안)」으로 끝나는 짧은 줄(금액·수량이 든 줄은 아님 — 「수업 계획에 쓸 색종이 3000원」) */
+const PLAN_TITLE = /계획\s*서?\s*(?:\(\s*안\s*\))?$/;
+const HEAD_NO = /^(?:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+\.?|\d+\s*[.)]|\(\d+\)|[가-하]\s*[.)]|\([가-하]\)|[○●◦▪■□◆◇※·•\-–*])\s*/;
+const PURPOSE = /^목\s*적\s*(?:[:：]\s*(.*))?$/;
+const tidyLine = s => String(s || '').replace(HEAD_NO, '').replace(/[.。]\s*$/, '').trim().slice(0, 120);
+export function planHead(text) {
+  const lines = String(text || '').split(/\r?\n/).map(l => l.replace(/\s*\|\s*/g, ' ').trim()).filter(Boolean);
+  const ti = lines.slice(0, 4).findIndex(l => l.length <= 60 && PLAN_TITLE.test(l.replace(/^[<「『【\[]+|[>」』】\]]+$/g, '').trim()) && !/\d\s*(?:원|개)/.test(l));
+  if (ti < 0) return {};
+  const out = { related: lines[ti].replace(/^[<「『【\[]+|[>」』】\]]+$/g, '').trim() };
+  for (let i = ti + 1; i < lines.length; i++) {
+    const m = PURPOSE.exec(lines[i].replace(HEAD_NO, ''));
+    if (!m) continue;
+    // 「1. 목적: …」 한 줄, 아니면 바로 다음 줄(「가. …」「- …」) — 다음 줄이 다른 큰 항목(「2. 일시: …」)이면 목적 없음
+    const body = m[1] && m[1].trim() ? m[1] : (lines[i + 1] && !/^(?:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+\.?|\d+\s*[.)])\s*\S/.test(lines[i + 1]) ? lines[i + 1] : '');
+    if (tidyLine(body)) out.purpose = tidyLine(body);
+    break;
+  }
+  return out;
+}
 const str = (v, n = 200) => String(v == null ? '' : v).trim().slice(0, n);
 const listOf = (v, k) => (v && Array.isArray(v[k]) ? v[k] : []);
 
@@ -189,13 +226,20 @@ export function normIntake(v, kind = 'text') {
   const bad = t => findPersonal(t) || hasContact(t);
   const items = [];
   for (const x of listOf(v, 'items')) {
-    if (!(x && typeof x === 'object') || blank(x.name) || TOTAL.test(str(x.name))) continue;
+    if (!(x && typeof x === 'object') || blank(x.name) || TOTAL.test(str(x.name)) || isTotalName(x.name)) continue;
     const it = { name: plainItemName(str(x.name, 120)), spec: str(x.spec, 80), unit: str(x.unit, 10), qty: String(toNumber(x.qty) > 0 ? toNumber(x.qty) : 1), price: String(Math.max(0, Math.round(toNumber(x.price)))), vendor: str(x.vendor, 40) };
     if (bad(it.name) || ['spec', 'unit', 'vendor'].some(k => findPersonal(it[k]))) { dropped++; continue; }
     for (const k of ['spec', 'unit', 'vendor']) if (hasContact(it[k])) { it[k] = ''; dropped++; }
     items.push(it);
   }
   const shipping = listOf(v, 'shipping').filter(x => x && typeof x === 'object').map(x => ({ vendor: hasContact(x.vendor) ? '' : str(x.vendor, 40), fee: Math.max(0, Math.round(toNumber(x.fee))) }));
+  // AI가 배송비를 품목(items)에도 넣고 배송비(shipping)에도 넣으면 두 번 더해졌음: 같은 판매처(한쪽이 비어도)·같은 금액인 배송비 품목은 뺌(배송비 줄 하나만)
+  for (const s of shipping) {
+    if (!(s.fee > 0)) continue;
+    const i = items.findIndex(it => SHIP.test(it.name.replace(/\s/g, '')) && Math.round(toNumber(it.qty) * toNumber(it.price)) === s.fee
+      && (!(it.vendor || it.spec) || !s.vendor || (it.vendor || it.spec) === s.vendor));
+    if (i >= 0) items.splice(i, 1);
+  }
   const fields = {};
   const f = v && v.fields && typeof v.fields === 'object' ? v.fields : {};
   for (const k of FIELDS) {
@@ -216,6 +260,14 @@ export function fillEmpty(form, fields) {
   const out = { ...form };
   for (const k of [...FIELDS, 'total']) if (fields && !blank(fields[k]) && blank(out[k])) out[k] = fields[k];
   return out;
+}
+/* [바꾸기]: 예전 품의의 글 칸(관련·사업명·목적·일시·대상·장소·예산 과목·총액·메모)과 「AI가 채움」 표시는 지우고 새로 읽은 칸만 넣음.
+   종류·부가세·소득 구분·붙임 같은 설정은 그대로(품목은 mergeItems 'replace') */
+const CONTENT = [...FIELDS, 'total', 'memo'];
+export function replaceForm(form, fields) {
+  const out = { ...form, budgetUnknown: false, guessed: [] };
+  for (const k of CONTENT) out[k] = '';
+  return fillEmpty(out, fields);
 }
 
 const emptyRow = x => !x || ['name', 'spec', 'qty', 'price'].every(k => blank(x[k]));
@@ -282,21 +334,25 @@ export async function readIntake({ text, file, noAI = false } = {}) {
     // 품명·단가 머리줄이 없는(「물품·가격」처럼 다른 이름인) 엑셀·CSV 표, 한글 파일의 표(칸은 「 | 」)·줄글 목록: 칸 모양·줄글 규칙으로 읽음.
     // 견적서가 아닌 파일(명단 등)을 잘못 넣어도 이름이 가지 않게 AI로는 보내지 않음
     if (!q.items.length && /\.(hwpx?|xlsx|csv)$/i.test(String(file.name || ''))) return readIntake({ text: (await readText(file)).replace(/[ \t]*\|[ \t]*/g, '\t'), noAI: true });
-    return { items: q.items.map(it => ({ ...emptyItem(), name: it.name, spec: it.spec || '', unit: it.unit || '', qty: String(it.qty), price: String(it.price), vendor: it.vendor || '' })), fields: q.fields || {}, by: q.by, missed: [] };
+    // 한글·PDF 계획서를 넣으면 표의 품목과 함께 계획서 제목(관련)·목적(planHead)
+    const head = /\.(hwpx?|pdf)$/i.test(String(file.name || '')) ? await readText(file).then(planHead, () => ({})) : {};
+    return { items: q.items.map(it => ({ ...emptyItem(), name: it.name, spec: it.spec || '', unit: it.unit || '', qty: String(it.qty), price: String(it.price), vendor: it.vendor || '' })), fields: { ...(q.fields || {}), ...head }, by: q.by, missed: [] };
   }
   // 주민번호·계좌 모양이 있는 줄은 읽지 않고(AI로도 보내지 않음) 수만 알려 줌
   const lines = String(text || '').split(/\r?\n/);
   const personal = lines.filter(l => findPersonal(l)).length;
   const safe = lines.filter(l => !findPersonal(l)).join('\n');
+  // 계획서 글이면 제목(관련)·목적은 글에 적힌 그대로(AI가 읽은 칸보다 앞섬 — AI는 제목을 목적에 옮기곤 함)
+  const head = planHead(safe), withHead = r => ({ ...r, fields: { ...(r.fields || {}), ...head } });
   if (safe.includes('\t')) {
     const t = tableItems(safe);
-    if (t.items.length) return { ...t, by: 'table', personal };
+    if (t.items.length) return withHead({ ...t, by: 'table', personal });
   }
   const r = parseLines(safe);
-  if (r.missed.length && ai.ready() && !noAI) {
+  if (r.missed.length && !noAI && ai.ready()) {
     // 전화번호·이메일은 그 자리만 가려 보냄(업체 담당·문의 줄의 다른 글은 남김 — 초안 AI와 같게 연락처는 보내지 않음)
-    try { return { ...(await aiRead('text', { text: maskContacts(maskNames(safe)) })), personal }; }
+    try { return withHead({ ...(await aiRead('text', { text: maskContacts(maskNames(safe)) })), personal }); }
     catch (e) { if (!r.items.length) throw e; }
   }
-  return { ...r, by: 'rule', personal };
+  return withHead({ ...r, by: 'rule', personal });
 }
