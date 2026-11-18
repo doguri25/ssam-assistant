@@ -39,6 +39,10 @@
     체크하지 않은 지난 칸도 진도표대로(`lessonAt` ctx.assume — 주간학습안내만), 이름 가리기에 맡은 일 말 앞 이름(`privacy roleNames`)·「인솔:」 뒤
     (`tests/unit/fix1118-class-weekly.test.mjs`, e2e `fix1118-class-weekly.mjs`).
   - 기초학력(C): `tests/unit/fix1118-camp.test.mjs`, e2e `fix1118-camp.mjs`.
+- 연수 메뉴(2026-11-18, 릴리즈 전): 스펙 `docs/superpowers/specs/2026-11-18-training-design.md`. 규칙·저장 `web/menus/training/training-model.js`(`training:mine`·`training:board`, AI 안 부름),
+  화면 `training.js`(공문 처리 [내 필수연수에 넣기]는 `addFromGongmun`), 학사일정 출처 `training`(브리핑 학사일정 줄·인수인계서·학부모 안내에서는 뺌 — 주간학습안내 `forParents`는 `event:`·직접 넣은 일정만),
+  오늘 할 일 `briefLines → briefing({ trainings })`, 채팅 intent `training`·`dataQuestion` kind `training`, 인수인계서 `handover-model` trainings, 새 학년도 `years.js carryTraining`
+  (`tests/unit/fix1118-training.test.mjs`, e2e `fix1118-training.mjs`).
 
 ## 꼭 지킬 것
 
@@ -55,7 +59,7 @@
 
 ## 시험
 
-- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1542개 통과)
+- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1589개 통과)
 - e2e 한 파일: `node tests/e2e/<이름>.mjs`
 - e2e 전체: `node tests/e2e/run-all.mjs` (약 170개 파일, 45~50분). 파일마다 다른 포트를 써서 나눠 돌려도 된다. 전체가 도는 동안에는 작업 폴더를 고치지 말고 `.claude/worktrees/` 아래 worktree에서 일한다(그 안에서는 저장소의 node_modules를 그대로 찾는다).
 

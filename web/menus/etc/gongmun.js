@@ -17,6 +17,7 @@ import { putMessageFiles } from './message.js';
 import { putLetterSources } from './letter.js';
 import { putReportSources } from '../plan/report.js';
 import { putPurchaseText } from '../purchase/purchase.js';
+import { trainingLike, listMine, getBoard } from '../training/training-model.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const today = () => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
@@ -119,9 +120,17 @@ function docHTML(d, t) {
     <ul class="gm-tasks">${d.tasks.map((x, i) => `<li class="${x.done ? 'done' : ''}"><label><input type="checkbox" data-gm-task="${i}"${x.done ? ' checked' : ''}><span>${esc(x.text)}</span></label>
       ${x.due ? `<span class="muted">${esc(ddayText(dday(x.due, t)))}</span>` : ''}<button class="icon-btn tiny" type="button" data-gm-tdel="${i}" aria-label="할 일 빼기">✕</button></li>`).join('')}</ul>
     <div class="row gm-add"><input class="field" data-gm-tadd value="${esc(S.tadd[d.id] || '')}" placeholder="할 일 더하기(Enter)" aria-label="할 일 더하기" autocomplete="off"></div>
-    <div class="row gm-go">${KINDS.map(([k, l]) => `<button class="btn${d.kinds.includes(k) ? ' primary' : ''}" type="button" data-gm-go="${k}">${l}</button>`).join('')}
+    ${d.done ? '' : trainHTML(d)}<div class="row gm-go">${KINDS.map(([k, l]) => `<button class="btn${d.kinds.includes(k) ? ' primary' : ''}" type="button" data-gm-go="${k}">${l}</button>`).join('')}
       <span class="grow"></span>${d.read || reading || !d.text.trim() ? '' : '<button class="btn text" type="button" data-gm-read>AI로 읽기</button>'}
       <button class="btn text" type="button" data-gm-done>${d.done ? '다시 열기' : '다 했어요'}</button><button class="btn text" type="button" data-gm-del>지우기</button></div></li>`;
+}
+/* 연수 공문(이수·수료 말이 있는 연수·교육 공문) → 연수 메뉴로 넣기(스펙 2026-11-18-training-design §3) */
+function trainHTML(d) {
+  if (!trainingLike(d)) return '';
+  const k = `gongmun:${d.id}`, inMine = listMine().some(x => x.from === k), inBoard = getBoard().courses.some(c => c.from === k);
+  return `<div class="row gm-train"><span class="muted">연수 공문이에요</span>
+    <button class="btn tonal tiny" type="button" data-gm-train="mine">${inMine ? '내 필수연수에서 보기' : '내 필수연수에 넣기'}</button>
+    <button class="btn text tiny" type="button" data-gm-train="board">${inBoard ? '연수 현황판에서 보기' : '연수 현황판에 넣기'}</button></div>`;
 }
 const pickHTML = () => (S.adding ? '<span class="spin"></span>읽는 중…' : '파일 고르기');
 function listHTML() {
@@ -201,6 +210,8 @@ document.addEventListener('click', e => {
   const d = docOf(e.target);
   const g = e.target.closest('[data-gm-go]');
   if (g && d) { handOff(d, g.dataset.gmGo); return; }
+  const tr = e.target.closest('[data-gm-train]');
+  if (tr && d) { import('../training/training.js').then(m => m.addFromGongmun(d, tr.dataset.gmTrain)); return; }
   if (e.target.closest('[data-gm-read]') && d) { readDoc(d.id); return; }
   if (e.target.closest('[data-gm-done]') && d) { putDoc({ ...d, done: !d.done }); render(); return; }
   if (e.target.closest('[data-gm-del]') && d) { if (confirm(`「${docTitle(d)}」을 목록에서 지울까요?`)) { removeDoc(d.id); S.files.delete(d.id); render(); } return; }

@@ -22,7 +22,7 @@ function eventRoute(source) {
 
 /* data: { today('YYYY-MM-DD'), docs(공문), meetings(회의록 { id, todos: [{ task, due, done }] }), events(학사일정), plans(행사계획),
    units·activities({ id, title, date, done, sample, students }), grs({ id, title, students }), weekly({ started }) } */
-export function briefing({ today, docs = [], meetings = [], events = [], plans = [], units = [], activities = [], grs = [], weekly = null, budgets = [] } = {}) {
+export function briefing({ today, docs = [], meetings = [], events = [], plans = [], units = [], activities = [], grs = [], weekly = null, budgets = [], trainings = [] } = {}) {
   if (!isDate(today)) return [];
   const out = [];
   // 1. 공문 제출 기한(다 한 공문 빼고)과 회의 할 일(회의록에서 끝내지 않은 할 일, 누르면 그 회의록): 지났거나 7일 안,
@@ -36,9 +36,11 @@ export function briefing({ today, docs = [], meetings = [], events = [], plans =
     .forEach(({ n, kind, text, route }) => out.push({ kind, text, when: dWhen(n), hot: n <= 1, route }));
   // 1-2. 예산 집행 마감 30일 안·올리지 않은 돈이 남은 사업(purchase/budget-model.js briefLines — 이미 만든 줄)
   for (const b of Array.isArray(budgets) ? budgets : []) if (b && b.text) out.push({ kind: 'budget', text: b.text, when: b.when || '', hot: !!b.hot, route: b.route || { to: 'budget' } });
+  // 1-3. 필수연수 이수 기한(지남·14일 안)·연수 현황판 미제출(7일 안) — training-model.js briefLines가 만든 줄(학사일정의 연수 일정은 아래에서 뺌)
+  for (const b of Array.isArray(trainings) ? trainings : []) if (b && b.text) out.push({ kind: 'training', text: b.text, when: b.when || '', hot: !!b.hot, route: b.route || { to: 'training' } });
   // 2. 학사일정: 오늘~7일(행사계획 날짜 포함, 공문 일정은 위에서). 같은 날 같은 일정은 한 번
   const seen = new Set(), end7 = addDays(today, 7);
-  events.filter(e => e && isDate(e.date) && e.source !== 'gongmun' && e.date >= today && e.date <= end7)
+  events.filter(e => e && isDate(e.date) && e.source !== 'gongmun' && e.source !== 'training' && e.date >= today && e.date <= end7)
     .sort((a, b) => a.date.localeCompare(b.date))
     .forEach(e => { const k = e.date + '|' + e.title; if (seen.has(k)) return; seen.add(k); out.push({ kind: 'schedule', text: e.title, when: dayWhen(e.date, today), hot: e.date === today, route: eventRoute(e.source) }); });
   // 3. 날짜가 14일 안인데 확정하지 않은 행사계획

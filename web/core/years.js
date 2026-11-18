@@ -3,6 +3,7 @@
 import { schoolYearOf, HOLIDAYS, weekday, addDays } from './calendar.js';
 import { dueEvents } from '../menus/etc/gongmun-ai.js';
 import { carryMinutes } from '../menus/etc/minutes-model.js';
+import { carry as carryTraining } from '../menus/training/training-model.js';
 import { periodStart } from '../menus/class/class-import.js';
 
 const PREFIX = 'ssam:';
@@ -85,6 +86,8 @@ export function carryOver(snap, newYear, { classSetup = false } = {}) {
   if (Array.isArray(cal) || openDocs.length) out.calendar = JSON.stringify([...(Array.isArray(cal) ? cal : []).filter(e => e && typeof e.date === 'string' && e.date >= `${newYear}-03-01` && e.source !== 'gongmun'),
     ...dueEvents(openDocs).map(e => ({ ...e, source: 'gongmun' }))]);
   // 끝내지 않은 할 일이 있는 회의록도 가져감(2월 회의의 3월 할 일이 「오늘」에 남게), 다 끝낸 회의록은 지난 학년도에
+  // 연수: 내 필수연수·현황판 연수는 이름만(기한·상태는 새로), 현황판 교직원 명단은 그대로(스펙 2026-11-18-training-design)
+  for (const [k, v] of Object.entries(carryTraining(parse(snap['training:mine']), parse(snap['training:board'])))) out[k] = JSON.stringify(v);
   const openMeets = carryMinutes(parse(snap['minutes:list']));
   if (openMeets.length) out['minutes:list'] = JSON.stringify(openMeets);
   const sc = parse(snap.school);
@@ -101,7 +104,7 @@ export function carryOver(snap, newYear, { classSetup = false } = {}) {
     const first = firstSchoolDay(newYear), keep = d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= first && d < `${newYear + 1}-03-01`;
     // 2월에 지난 학년도 날짜로 읽은 차시도 새 학년도 날짜로 (기간이 없는 차시는 그대로)
     const redate = list => list.map(l => { const f = isObj(l) && periodStart(l.period, newYear); return f ? { ...l, from: f } : l; });
-    if (Array.isArray(subs)) out['class:subjects'] = JSON.stringify(subs.filter(isObj).map(({ since, ...x }) => ({ ...x, offset: 0, hours0: 0, start: keep(x.start) ? x.start : first,
+    if (Array.isArray(subs)) out['class:subjects'] = JSON.stringify(subs.filter(isObj).map(({ since, posAt, ...x }) => ({ ...x, offset: 0, hours0: 0, start: keep(x.start) ? x.start : first,
       ...(Array.isArray(x.lessons) ? { lessons: redate(x.lessons) } : {}) })));
   }
   return out;

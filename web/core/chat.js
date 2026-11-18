@@ -322,6 +322,7 @@ const NAV = {
   check: ['evaluate', 'check', '평가 › 기재 점검으로 왔어요. 고칠 곳을 확인해 주세요.'],
   weekly: ['class', 'weekly', '학급 › 주간학습안내로 왔어요.'], today: ['class', 'today', '학급 › 오늘 수업으로 왔어요.'], progress: ['class', 'progress', '학급 › 진도표·시수로 왔어요.'],
   camp: ['class', 'camp', '학급 › 기초학력으로 왔어요. 출석 체크·관찰 기록·문서 내보내기를 여기서 해요.'],
+  training: ['training', 'mine', '연수 › 내 필수연수로 왔어요. 연수 담당이면 위의 「연수 현황판」 탭에서 교직원 이수증을 체크해요.'],
   aikey: ['settings', 'ai', '설정 › AI로 왔어요. 키를 넣어 주세요.']
 };
 const NO_AI = 'AI가 준비되지 않아 시작하지 못했어요. 설정 › AI에서 키를 넣거나 시험용 AI를 써 주세요.';

@@ -7,8 +7,9 @@ const WD = '월화수목금';
 const md = d => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
 export const AI_KEYS = ['prep', 'safety', 'homework', 'notice'];
 
-/* 학부모께 보내는 학사일정: 공문(선생님 일)·연간계획 일정(source 'year:…' — 「정보통신윤리교육 계획: 교직원 연수」 같은 업무)은 뺌 */
-export const forParents = e => !!e && e.source !== 'gongmun' && !String(e.source || '').startsWith('year:');
+/* 학부모께 보내는 학사일정: 행사계획(source 'event:…')과 직접 넣은 일정('')만 — 공문(선생님 일)·연간계획(「정보통신윤리교육 계획: 교직원 연수」 같은 업무)·
+   필수연수 기한(training) 같은 선생님 일정은 넣지 않음(앞으로 생기는 출처도 넣지 않게 정해진 것만) */
+export const forParents = e => !!e && (!e.source || String(e.source).startsWith('event:'));
 export const autoEvents = (events, date) => (events || []).filter(e => e && e.date === date && forParents(e)).map(e => e.title).join(', ');
 
 /* days: weekView, notes: 요일별 알림(학사일정 포함), cellAt(d, p): 화면 칸 글, periods: 시간표 교시 수 → { prompt, back(답 글 되돌리기) } */
