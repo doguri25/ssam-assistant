@@ -11,7 +11,8 @@ await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: url.
 await page.clock.install({ time: new Date('2026-10-30T09:00:00') }); // 금요일
 const V = 'section[data-menu="class"]';
 const tmp = mkdtempSync(join(tmpdir(), 'fix1110-class-'));
-const tab = async id => { await page.click('nav.app-side [data-menu-go="class"]'); await page.click(`#menuTabs [data-tab="${id}"]`); };
+// 시간표·진도표가 있으면 준비가 접혀 있음(2026-11-18 class-fix A10) → [시간표·진도표 고치기]로 엶
+const tab = async id => { await page.click('nav.app-side [data-menu-go="class"]'); await page.click(`#menuTabs [data-tab="${id}"]`); if (id === 'progress' && await page.isVisible('section[data-menu="class"] [data-pg="setup"]')) await page.click('section[data-menu="class"] [data-pg="setup"]'); };
 const week = () => page.textContent(`${V} .cls-week-nav b`);
 await page.addInitScript(() => {
   if (!localStorage.getItem('ssam:engine')) localStorage.setItem('ssam:engine', JSON.stringify({ engine: 'claude', keys: { claude: 'sk-test' }, remember: true }));

@@ -1,4 +1,6 @@
-/* 학급 › 진도표·시수 아래 「준비」: 학급, 시간표, 교과 진도표 목록·고치기, 예시 (스펙 2장).
+/* 학급 › 진도표·시수 아래 「준비」: 학급, 시간표, 교과 진도표 목록·고치기, 진도표 없는 교과(시수만·전담), 예시 (스펙 2장, 2026-11-18 class-fix A).
+   시간표·진도표가 있으면 탭에 들어올 때 접어 두고 진도표·시수 맨 위 [시간표·진도표 고치기]로 엶('class:setup' { open } → 'class:setup-state').
+   시간표 칸을 고칠 때 지난 체크 기록이 있으면 한 번 물음: [오늘부터 바꾸기](지난날은 그때 시간표 그대로) / [처음부터 고치기].
    저장하면 'class:changed'를 보내고, 다른 학급 화면은 그것을 듣고 다시 그림 */
 import { onEnter, go } from '../../core/shell.js';
 import { introHTML } from '../../core/ui-parts.js';
@@ -12,7 +14,8 @@ import { getSchool } from '../../core/settings.js';
 import { normName, periodStart, lessonYear, parseJindo, parseTimetable, jindoYear } from './class-import.js';
 import {
   getInfo, setInfo, getTimetable, setTimetable, listSubjects, saveSubject, removeSubject, setSubjects, resetRecords,
-  makeCtx, progressOf, setNext, today, normLessons, normTimetableAI, hasTimetable, importSubjects, termStart, replaceLessons, addSubject
+  makeCtx, progressOf, setNext, today, normLessons, normTimetableAI, hasTimetable, importSubjects, termStart, replaceLessons, addSubject,
+  editCell, replaceTimetable, hasPastRecords, getLog, unitPos, extraSummary, setExtra, clearExtra
 } from './class-model.js';
 import { sampleData } from './class-sample.js';
 
@@ -28,11 +31,25 @@ let lastTt = ''; // 우리 반을 못 찾은 시간표 파일 글(AI로 읽기�
 let lastFile = null; // 방금 읽은 진도표 파일 { name, text } — 이 화면에서만 기억(저장 안 함)
 let addToken = 0; // 「교과 추가」 시트마다 번호(AI가 끝났을 때 그 시트가 아직 열려 있는지 봄)
 let stale = false; // 칸에 치는 중이라 다시 그리지 못한 교과 목록이 있음
+let open = true; // 준비를 펼쳤는지(시간표·진도표가 있으면 탭에 들어올 때 접음)
+let entered = false; // 학급 › 진도표·시수에 머무는 중(다른 탭·메뉴에 갔다 오면 false)
+let ttMode = null; // 이번에 머무는 동안 고른 시간표 칸 고치기: 'today'(오늘부터) · 'all'(처음부터), 아직 안 물었으면 null
 const MAX_SRC = 60000;
+const ACCEPT = '.hwp,.hwpx,.pdf,.csv,.xlsx,.txt';
+const FILES = `<input type="file" id="clsTtFile" accept="${ACCEPT}" hidden><input type="file" id="clsJindoFile" accept="${ACCEPT}" hidden>`;
 const AI_KEY = '설정 › AI에서 키를 넣어 주세요';
 
 const visible = () => curTab === 'progress' && box && box.isConnected && !box.closest('[hidden]');
 const changed = from => document.dispatchEvent(new CustomEvent('class:changed', { detail: { from } }));
+const ready = () => hasTimetable(getTimetable()) && listSubjects().length > 0;
+/* 준비를 펼쳤는지(진도표·시수의 [시간표·진도표 고치기] 단추가 봄) */
+export const setupOpen = () => open || !ready();
+function setOpen(v, { focus = false } = {}) {
+  open = !!v;
+  if (visible()) render();
+  document.dispatchEvent(new CustomEvent('class:setup-state', { detail: { open: setupOpen() } }));
+  if (focus && open && box && box.firstElementChild) { box.scrollIntoView({ block: 'start' }); const h = box.querySelector('.cls-h2'); if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); } }
+}
 const saved = ok => { if (!ok) toast(FULL, 6000); return ok; };
 
 /* ---------- 그리기 ---------- */
@@ -42,12 +59,18 @@ function ttHTML(tt) {
     `<td><input class="field" data-cell="${d}-${p + 1}" list="clsNames" value="${esc(day[p])}" aria-label="${DAYS[d]}요일 ${p + 1}교시"></td>`).join('')}</tr>`).join('');
   return `<div class="cls-tt-wrap"><table class="cls-tt"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
 }
+/* 다음 차시 고르기: 「단원 n/N차시 · 학습 주제」(줄 번호가 아니라 단원 안 차시로), 끝에 「끝(모두 마침)」 */
+function nextHTML(s, p) {
+  const opts = s.lessons.map((l, i) => { const u = unitPos(s, i); return `<option value="${i + 1}"${p.next === i + 1 ? ' selected' : ''}>${esc(l.unit ? `${l.unit} ` : '')}${u.n}/${u.of}차시 · ${esc(l.title)}</option>`; }).join('');
+  return `<label class="cls-next-l">다음 차시 <select class="field cls-next" data-next="${esc(s.id)}">${opts}<option value="${s.lessons.length + 1}"${p.next > s.lessons.length ? ' selected' : ''}>끝(모두 마침)</option></select></label>`;
+}
 function subHTML(ctx, s) {
   const p = progressOf(ctx, s);
   const more = s.total != null && s.total !== s.lessons.length ? ` · 파일에는 ${s.total}시간` : '';
   return `<li class="cls-sub" data-sub="${esc(s.id)}">
     <b>${esc(s.name)}</b><span class="muted">${s.lessons.length}차시${more}</span>
-    <label>다음 차시 <input type="number" class="field num" data-next="${esc(s.id)}" min="1" max="${s.lessons.length + 1}" value="${p.next}"></label>
+    ${nextHTML(s, p)}
+    <label title="이 앱에서 체크하기 전에 이미 한 시간이에요(다음 차시를 고쳐도 그대로)">체크 전 실시 <input type="number" class="field num" data-h0="${esc(s.id)}" min="0" max="999" value="${s.hours0}"></label>
     ${s.lessons.some(l => l.from) ? '' : `<label title="${p.mode === 'week' ? '진도표 1주(가장 작은 주)가 시작한 날' : '이 날부터 시간표대로 진도를 셈해요'}">${p.mode === 'week' ? '1주 시작일' : '시작일'} <input type="date" class="field" data-start="${esc(s.id)}" value="${esc(s.start)}"></label>`}
     <span class="grow"></span>
     <button class="btn text" type="button" data-c="editSub" data-id="${esc(s.id)}">진도표 고치기</button>
@@ -61,14 +84,25 @@ function prepNote() {
   const next = prepYear(today(), cur);
   return next ? `<div class="banner warn"><span class="grow">${next}학년도 준비라면 설정 › 학년도에서 새 학년도를 먼저 시작해 주세요. 지금 넣으면 ${cur}학년도 자료에 들어가요. (새 학년도를 시작할 때 학급 준비를 가져갈 수도 있어요)</span><button class="btn" type="button" data-c="toYears">학년도로 가기</button></div>` : '';
 }
-const subsHTML = (subs, ctx) => (subs.length ? `<ul class="cls-subs">${subs.map(s => subHTML(ctx, s)).join('')}</ul>` : '<p class="muted" style="margin:0">아직 넣은 진도표가 없어요. 학교의 「교과 연간지도계획」 한글 파일을 올리면 교과를 한 번에 넣어요.</p>');
+const subsHTML = (subs, ctx) => (subs.length ? `<ul class="cls-subs">${subs.map(s => subHTML(ctx, s)).join('')}</ul>` : '<p class="muted" style="margin:0">아직 넣은 진도표가 없어요. 학교의 「교과 연간지도계획」 한글 파일을 올리면 교과를 한 번에 넣어요.</p>') + extraListHTML(ctx);
+/* 시간표에 있는데 진도표가 없는 교과: 오늘 수업에서 체크한 시간만 세요(시수만). 계획 시수를 적거나 「전담」(체크하지 않음)으로 */
+function extraListHTML(ctx) {
+  const list = extraSummary(ctx);
+  if (!list.length) return '';
+  return `<div class="cls-xlist"><h4>진도표 없는 교과 <span class="muted">오늘 수업에서 체크한 시간만 세요</span></h4><ul class="cls-subs">${list.map(e => `<li class="cls-sub" data-x="${esc(e.name)}">
+    <b>${esc(e.name)}</b><span class="muted">실시 ${e.done}시간</span>
+    <label>계획 <input type="number" class="field num" data-xplan="${esc(e.name)}" min="0" max="999" value="${e.plan == null ? '' : e.plan}" placeholder="—" aria-label="${esc(e.name)} 계획 시수"> 시간</label>
+    <label class="cls-check"><input type="checkbox" data-xstaff="${esc(e.name)}"${e.staff ? ' checked' : ''}> 전담(체크하지 않음)</label></li>`).join('')}</ul></div>`;
+}
 const namesHTML = subs => [...new Set([...subs.map(s => s.name), ...NAMES])].map(n => `<option value="${esc(n)}">`).join('');
 function render() {
   if (!box) return;
   stale = false;
+  // 접혀 있어도 파일 칸은 둠(떠 있는 버튼·끌어 놓기로 받은 파일, 고르기 창이 열린 채 접혀도 들어가게)
+  if (!setupOpen()) { keepFiles(box, () => { box.innerHTML = FILES; }); return; }
   const info = getInfo(), tt = getTimetable(), subs = listSubjects(), ctx = makeCtx();
   const html = `<div class="m-page cls-page cls-setup-page">
-    <div class="m-head"><h2 class="cls-h2">준비</h2>${introHTML('class-setup', '학급·시간표·교과 진도표를 넣어요. 학교 한글 파일을 그대로 올려도 돼요.')}</div>
+    <div class="m-head m-head-row"><div><h2 class="cls-h2">준비</h2>${introHTML('class-setup', '학급·시간표·교과 진도표를 넣어요. 학교 한글 파일을 그대로 올려도 돼요.')}</div>${ready() ? '<div class="m-head-act"><button class="btn text" type="button" data-c="fold">준비 접기</button></div>' : ''}</div>
     ${prepNote()}
     <div class="yp-card">
       <h3>학급</h3>
@@ -85,7 +119,7 @@ function render() {
       <div id="clsTtMsg">${ttMsgHTML()}</div>
       ${ttHTML(tt)}
       <datalist id="clsNames">${namesHTML(subs)}</datalist>
-      <p class="muted cls-note">「국어(자)」, 「창체(동)」처럼 괄호를 붙여도 같은 교과로 봐요.</p>
+      <p class="muted cls-note">「국어(자)」, 「창체(동)」처럼 괄호를 붙여도 같은 교과로 봐요. 시간표를 바꾸면 지난 체크 기록은 그대로예요(그날만 바꾼 교체·보강은 오늘 수업의 [교과 바꾸기]).</p>
       <input type="file" id="clsTtFile" accept=".hwp,.hwpx,.pdf,.csv,.xlsx,.txt" hidden>
     </div>
     <div class="yp-card">
@@ -116,12 +150,12 @@ async function importTt(file) {
   const t = parseTimetable(text, info);
   if (t) {
     ttMsg = null;
-    if (saved(setTimetable(t))) { render(); changed('setup'); toast('시간표를 가져왔어요'); }
+    putTimetable(t, '새 시간표 파일로 바꿔요.', () => { open = true; render(); changed('setup'); toast('시간표를 가져왔어요'); });
     return;
   }
   lastTt = text;
   ttMsg = { text: `시간표 파일에서 ${info.grade}-${info.room}반을 찾지 못했어요.${ai.ready() ? '' : ' AI 키가 있으면 AI로 읽을 수 있어요(설정 › AI).'}`, ai: ai.ready() };
-  drawTtMsg();
+  if (!setupOpen()) setOpen(true); else drawTtMsg();
 }
 function ttPrompt(info, text) {
   return `[시간표 읽기]\n아래는 학교 시간표 파일의 글이에요. ${info.grade}학년 ${info.room}반의 시간표만 읽어 주세요.\n\n`
@@ -137,11 +171,46 @@ async function runTtAi() {
   try {
     const v = await ai.generateJSON(ttPrompt(info, lastTt), { valid: x => !!normTimetableAI(x) });
     ttMsg = null;
-    if (saved(setTimetable(normTimetableAI(v)))) { changed('ttAi'); if (visible()) render(); toast('AI가 읽은 시간표를 넣었어요. 칸을 확인해 주세요', 5000); }
+    putTimetable(normTimetableAI(v), 'AI가 읽은 시간표로 바꿔요.', () => { changed('ttAi'); if (visible()) render(); toast('AI가 읽은 시간표를 넣었어요. 칸을 확인해 주세요', 5000); });
   } catch (err) {
     ttMsg = { text: ai.errorMessage(err && err.code, err), ai: true, err: true };
     drawTtMsg();
   }
+}
+
+/* 시간표를 언제부터 바꿀지 물음(지난 체크 기록이 있을 때): run('today' | 'all') */
+function askWhen(what, run) {
+  S().openSheet(`<h3>시간표를 언제부터 바꿀까요?</h3>
+    <p class="muted" style="margin:0">${esc(what)} 지난 체크 기록이 있어요.</p>
+    <div class="cls-when">
+      <button class="btn primary" type="button" id="clsWhenToday">오늘부터 바꾸기</button><span class="muted">지난날은 그때 시간표와 체크 기록 그대로예요.</span>
+      <button class="btn" type="button" id="clsWhenAll">처음부터 고치기</button><span class="muted">잘못 넣었을 때 — 지난날 시간표도 바꿔요. 체크한 칸은 기록된 교과 그대로예요.</span>
+    </div>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button></div>`,
+  sh => {
+    sh.querySelector('#clsWhenToday').addEventListener('click', () => { S().closeSheet(); run('today'); });
+    sh.querySelector('#clsWhenAll').addEventListener('click', () => { S().closeSheet(); run('all'); });
+  });
+}
+const fromOf = mode => (mode === 'today' ? today() : '');
+/* 시간표 통째로 바꾸기(파일·AI): 지난 기록이 있으면 언제부터인지 물음 */
+function putTimetable(t, what, done) {
+  const apply = mode => { if (saved(setTimetable(replaceTimetable(getTimetable(), t, fromOf(mode))))) done(); };
+  if (hasTimetable(getTimetable()) && hasPastRecords(getLog(), today())) askWhen(what, apply); else apply('all');
+}
+/* 시간표 칸 하나: 처음 한 번 물은 것을 이번에 머무는 동안 기억 */
+function putCell(el, d, p) {
+  const name = normName(el.value), cur = getTimetable();
+  el.value = cur.cells[d][p - 1];
+  if (name === cur.cells[d][p - 1]) return;
+  const apply = mode => {
+    if (!saved(setTimetable(editCell(getTimetable(), d, p - 1, name, fromOf(mode))))) return;
+    const f = box && box.querySelector(`[data-cell="${d}-${p}"]`); if (f) f.value = name;
+    changed('setup');
+  };
+  if (ttMode) apply(ttMode);
+  else if (!hasPastRecords(getLog(), today())) apply('all');
+  else askWhen(`${DAYS[d]}요일 ${p}교시를 「${name || '빈 칸'}」(으)로 바꿔요.`, mode => { ttMode = mode; apply(mode); });
 }
 
 /* ---------- 진도표 파일: 교과 고르기 ---------- */
@@ -177,7 +246,7 @@ function openPick(r, fileName) {
     if (!picked.length) { toast('교과를 하나 이상 골라 주세요'); return; }
     const ok = importSubjects(picked);
     S().closeSheet();
-    if (saved(ok)) { changed('import'); toast(`교과 ${picked.length}개를 넣었어요. 「다음 차시」를 실제 위치로 고쳐 주세요`, 6000); }
+    if (saved(ok)) { open = true; changed('import'); setOpen(true); toast(`교과 ${picked.length}개를 넣었어요. 「다음 차시」와 「체크 전 실시」를 실제대로 고쳐 주세요`, 6000); }
   }));
 }
 
@@ -257,6 +326,7 @@ function applySample() {
   const d = sampleData(today(), getSchool().breaks);
   const ok = setInfo(d.info) && setTimetable(d.timetable) && setSubjects(d.subjects);
   resetRecords();
+  clearExtra();
   if (!saved(ok)) return;
   changed('sample');
   toast('예시 자료를 채웠어요');
@@ -339,11 +409,7 @@ function onChange(el) {
     changed('setup');
   } else if (el.dataset.cell) {
     const [d, p] = el.dataset.cell.split('-').map(Number);
-    const tt = getTimetable();
-    tt.cells[d][p - 1] = el.value;
-    el.value = normName(el.value);
-    saved(setTimetable(tt));
-    changed('setup');
+    putCell(el, d, p);
   } else if (el.id === 'clsPeriods') {
     const tt = getTimetable();
     saved(setTimetable({ ...tt, periods: +el.value }));
@@ -362,15 +428,35 @@ function onChange(el) {
   } else if (el.dataset.start) {
     const s = listSubjects().find(x => x.id === el.dataset.start);
     if (s) { saved(!!saveSubject({ ...s, start: el.value })); changed('setup'); }
+  } else if (el.dataset.h0) {
+    const s = listSubjects().find(x => x.id === el.dataset.h0);
+    if (!s) return;
+    const n = Math.max(0, Math.round(+el.value) || 0);
+    el.value = n;
+    saved(!!saveSubject({ ...s, hours0: n }));
+    changed('setup');
+  } else if (el.dataset.xplan != null) {
+    const v = el.value.trim(), n = v === '' ? null : Math.max(0, Math.round(+v) || 0);
+    el.value = n == null ? '' : n;
+    saved(setExtra(el.dataset.xplan, { plan: n }));
+    changed('setup');
+  } else if (el.dataset.xstaff != null) {
+    saved(setExtra(el.dataset.xstaff, { staff: el.checked }));
+    changed('setup');
   }
 }
 
 onEnter('class', (tab, section) => {
   if (!box || !section.contains(box)) { box = document.createElement('div'); box.className = 'cls-setup'; section.append(box); }
+  // 탭에 새로 들어오면: 시간표·진도표가 있으면 접어 두고, 시간표 칸을 언제부터 바꿀지는 다시 물음
+  if (tab === 'progress' && (!entered || curTab !== 'progress')) { open = !ready(); ttMode = null; }
+  entered = tab === 'progress';
   curTab = tab;
   box.hidden = tab !== 'progress';
-  if (tab === 'progress') render();
+  if (tab === 'progress') { render(); document.dispatchEvent(new CustomEvent('class:setup-state', { detail: { open: setupOpen() } })); }
 });
+document.addEventListener('menu:go', e => { if (e.detail.menu !== 'class') entered = false; });
+document.addEventListener('class:setup', e => setOpen(!!(e.detail && e.detail.open), { focus: !!(e.detail && e.detail.focus) }));
 /* 다른 일(「교과 추가」 AI 등)이 학급 자료를 바꿈: 이 화면 칸에 글을 치는 중이면 칸을 다시 만들지 않고(포커스·한글 조합이 끊기지 않게)
    교과 목록만 바꾸고, 치는 칸이 교과 목록 안이면 칸을 벗어날 때 바꿈 */
 const typing = () => { const a = document.activeElement; return a && box && box.contains(a) && a.matches('input, textarea, select') ? a : null; };
@@ -398,6 +484,7 @@ document.addEventListener('click', e => {
   if (!b) return;
   const c = b.dataset.c;
   if (c === 'toYears') go('settings', 'years');
+  else if (c === 'fold') setOpen(false);
   else if (c === 'sample') askSample();
   else if (c === 'delSub') askDelete(b.dataset.id);
   else if (c === 'editSub') { const s = listSubjects().find(x => x.id === b.dataset.id); if (s) openEditor(s); }

@@ -32,6 +32,18 @@
 .cls-sub label{display:flex;align-items:center;gap:6px;font-size:14px}
 .cls-sub .field{min-width:0;flex:none}
 .cls-sub .num{width:76px}
+.cls-sub .cls-next{max-width:min(100%,340px);text-overflow:ellipsis}
+.cls-next-l{min-width:0;max-width:100%}
+.cls-check input{width:18px;height:18px}
+.cls-xlist{display:flex;flex-direction:column;gap:2px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.cls-xlist h4{margin:0;font:700 14.5px/1.4 var(--f-display);display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}
+.cls-xlist h4 .muted{font:400 13px/1.4 var(--f-body, inherit)}
+.cls-when{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px 12px;align-items:center}
+.cls-when .muted{font-size:13.5px}
+@media (max-width:480px){.cls-when{grid-template-columns:1fr}}
+.cls-sum .cls-align{min-height:28px;padding:2px 6px;font-size:12.5px;margin-left:4px}
+.cls-area,.cls-year{display:block;font-size:12px;font-weight:400}
+.cls-sum tr.cls-x th{font-weight:600}
 /* 진도표 고치기 시트 */
 .cls-ed{border-collapse:collapse;min-width:720px;width:100%}
 .cls-ed th{font-size:12.5px;color:var(--ink3);font-weight:600;text-align:left;padding:4px}
@@ -71,6 +83,19 @@
 .cls-l-t{flex-basis:100%;font-size:15px;overflow-wrap:anywhere}
 .cls-off{flex-direction:row;align-items:center;gap:10px}
 .cls-marks button{min-height:40px}
+.cls-marks button[disabled]{opacity:.45;cursor:not-allowed}
+.cls-swap{background:var(--accent-soft);color:var(--accent-ink)}
+.cls-last,.cls-memo{flex-basis:100%;font-size:13.5px;color:var(--ink2);overflow-wrap:anywhere}
+.cls-last{color:var(--accent-ink)}
+.cls-memo-f{flex-basis:100%;display:block}
+.cls-memo-f .field{width:100%;min-width:0;box-sizing:border-box;padding:7px 10px;font-size:14px}
+.cls-l-tools{flex-basis:100%;display:flex;flex-wrap:wrap;gap:2px 4px;margin-left:-8px}
+.cls-l-tools .btn{min-height:30px;padding:2px 8px;font-size:13px;color:var(--ink3)}
+.cls-lesson[data-kind="staff"] .cls-l-s{color:var(--ink3)}
+.cls-day-acts{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px 8px}
+.cls-events .btn{padding:4px 12px;min-height:32px}
+#clsEvents:empty{display:none}
+.cls-ahead-note{text-align:right}
 @media (max-width:640px){.cls-lessons{padding:4px 14px}.cls-lesson{grid-template-columns:44px minmax(0,1fr)}.cls-marks{grid-column:1/-1}}
 /* 주간학습안내 */
 .cls-week-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}

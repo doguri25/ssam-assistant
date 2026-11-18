@@ -70,7 +70,9 @@ await run('class-import', [
     assert(JSON.stringify(picks) === JSON.stringify([['국어', true], ['수학', true], ['사회', true], ['과학', true], ['창체', true], ['동아리활동', false]]), JSON.stringify(picks));
     await page.click('#sheetRoot [data-c="pickOk"]');
     await page.waitForSelector(`${V} .cls-sum tbody tr`);
-    assert(await page.locator(`${V} .cls-sum tbody tr`).count() === 5, '요약 줄 수');
+    assert(await page.locator(`${V} .cls-sum tbody tr:not(.cls-x)`).count() === 5, '요약 줄 수');
+    // 진도표 없는 시간표 교과(영어·음악·미술·체육·도덕)는 「시수만」 줄(2026-11-18 class-fix A8)
+    assert(await page.locator(`${V} .cls-sum tbody tr.cls-x`).count() === 5, '시수만 줄 수');
     const subs = await stored('class:subjects');
     assert(subs.find(s => s.name === '국어').lessons.length === 85 && subs.find(s => s.name === '창체').lessons.length === 5, '차시 수');
     assert(calls === 0, 'AI 호출 ' + calls);

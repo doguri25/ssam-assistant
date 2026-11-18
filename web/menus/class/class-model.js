@@ -121,6 +121,7 @@ export function setExtra(name, patch) {
   if (e.plan != null || e.staff) all[k] = e; else delete all[k];
   return set('class:extra', all);
 }
+export const clearExtra = () => remove('class:extra');
 /* 체크 기록과 주간학습안내를 모두 지움(예시로 바꿀 때) */
 export function resetRecords() {
   remove('class:log');
