@@ -54,10 +54,11 @@ await run('class-today', [
     assert(await n(3) === a + 1, '완료인데 같은 차시');
     assert(await line(2).locator('[data-mark="part"]').getAttribute('aria-pressed') === 'false', '버튼 하나만 눌림');
   }],
-  ['진도표 없는 교과는 「진도표 없음」, 버튼 없음', async () => {
+  // 2026-11-18(class-fix A8): 진도표 없는 교과도 체크해 시수만 셈 — 예전 「버튼 없음」을 바꿈
+  ['진도표 없는 교과는 「진도표 없음 · 시수만」, 체크 버튼', async () => {
     const en = line(4);
     assert((await en.textContent()).includes('영어') && (await en.textContent()).includes('진도표 없음'), '영어 줄');
-    assert(await en.locator('[data-mark]').count() === 0, '버튼이 있음');
+    assert(await en.locator('[data-mark]').count() === 3, '버튼이 없음');
   }],
   ['학사일정 칩', async () => {
     await page.evaluate(() => localStorage.setItem('ssam:calendar', JSON.stringify([{ date: '2026-10-29', title: '학예회 예행연습', source: 'event:x' }])));
@@ -79,8 +80,10 @@ await run('class-today', [
   ['체크하지 않은 날 → 누르면 그날로', async () => {
     await page.evaluate(() => localStorage.setItem('ssam:class:log', JSON.stringify({ '2026-10-26': { 1: { subject: '국어', status: 'done' } }, '2026-10-29': { 2: { subject: '국어(자)', status: 'done' } } })));
     await tab('progress'); await tab('today');
+    // 반만 체크한 날(10/26 — 1교시만)도 「체크하지 않은 날」(class-fix A5)
     const days = await page.$$eval(`${V} [data-go-day]`, bs => bs.map(b => b.dataset.goDay));
-    assert(days.join(',') === '2026-10-27,2026-10-28', '날: ' + days);
+    assert(days.join(',') === '2026-10-26,2026-10-27,2026-10-28', '날: ' + days);
+    assert((await page.textContent(`${V} [data-go-day="2026-10-26"]`)).includes('2·3·4교시 남음'), await page.textContent(`${V} [data-go-day="2026-10-26"]`));
     await page.click(`${V} [data-go-day="2026-10-27"]`);
     assert((await page.textContent(`${V} .cls-today .cls-day`)).includes('10월 27일'), '그날로');
   }],

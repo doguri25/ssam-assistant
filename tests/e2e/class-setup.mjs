@@ -49,7 +49,10 @@ await run('class-setup', [
     assert((await stored('class:timetable')).periods === 7, '저장된 교시 수');
   }],
   ['다음 차시를 고치면 요약에 반영', async () => {
-    await page.fill(`${V} input[data-next="smp-ko"]`, '5'); await page.press(`${V} input[data-next="smp-ko"]`, 'Tab');
+    // 다음 차시는 「단원 n/N차시」로 고름(class-fix A10)
+    const opt = await page.textContent(`${V} select[data-next="smp-ko"] option[value="5"]`);
+    assert(/\d+\/\d+차시 · /.test(opt), '고르기 글: ' + opt);
+    await page.selectOption(`${V} select[data-next="smp-ko"]`, '5');
     await page.waitForTimeout(100);
     assert((await row('국어').textContent()).includes('5차시'), '요약: ' + await row('국어').textContent());
   }],
@@ -74,14 +77,19 @@ await run('class-setup', [
     await page.waitForTimeout(100);
     assert(!(await stored('class:subjects')).some(s => s.id === 'smp-sc'), '안 지워짐');
     assert((await stored('class:log'))['2026-10-28'], '기록이 지워짐');
-    assert(await page.locator(`${V} .cls-sum tbody tr`, { hasText: '과학' }).count() === 0, '요약에 남음');
+    // 시간표에 남은 과학은 「시수만」 줄(class-fix A8), 진도표 줄은 없음
+    const sc = await page.locator(`${V} .cls-sum tbody tr`, { hasText: '과학' }).allTextContents();
+    assert(sc.length === 1 && sc[0].includes('시수만'), '요약: ' + sc.join(' / '));
   }],
   ['저장 공간이 모자라면 알림', async () => {
     await page.evaluate(() => { const f = Storage.prototype.setItem; window.__set = f; Storage.prototype.setItem = function (k, v) { if (String(k).startsWith('ssam:class:')) throw new Error('quota'); return f.call(this, k, v); }; });
-    await page.fill(`${V} input[data-cell="1-1"]`, '체육'); await page.press(`${V} input[data-cell="1-1"]`, 'Tab');
-    await page.waitForTimeout(100);
-    assert((await page.textContent('#toast')).includes('저장 공간이 모자라 저장하지 못했어요'), '알림: ' + await page.textContent('#toast'));
-    await page.evaluate(() => { Storage.prototype.setItem = window.__set; });
+    try {
+      await page.fill(`${V} input[data-cell="1-1"]`, '체육'); await page.press(`${V} input[data-cell="1-1"]`, 'Tab');
+      // 지난 체크 기록이 있어 언제부터 바꿀지 물음(class-fix A1)
+      await page.click('#sheetRoot #clsWhenToday');
+      await page.waitForTimeout(100);
+      assert((await page.textContent('#toast')).includes('저장 공간이 모자라 저장하지 못했어요'), '알림: ' + await page.textContent('#toast'));
+    } finally { await page.evaluate(() => { Storage.prototype.setItem = window.__set; }); }
   }],
   ['좁은 화면(360px)에서 가로 스크롤 없음', async () => {
     await page.setViewportSize({ width: 360, height: 800 });
@@ -98,6 +106,9 @@ await run('class-setup', [
       localStorage.setItem('ssam:class:subjects', JSON.stringify(subs));
     });
     await page.click('#menuTabs [data-tab="today"]'); await page.click('#menuTabs [data-tab="progress"]');
+    // 시간표·진도표가 있으면 준비는 접혀 있음(class-fix A10) → [시간표·진도표 고치기]
+    assert(!(await page.isVisible(`${V} .cls-setup #clsPeriods`)), '준비가 펼쳐져 있음');
+    await page.click(`${V} [data-pg="setup"]`);
     const f = page.locator(`${V} input[data-start="wk1"]`);
     assert(await f.count() === 1, '시작일 칸이 없음');
     assert((await f.locator('xpath=..').textContent()).includes('1주 시작일'), '이름');

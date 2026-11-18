@@ -38,7 +38,7 @@ export function periodNow(time, periods = []) {
 const STATUS = { done: ['완료', '✓'], part: ['일부', '◐'], skip: ['못 함', '✕'], left: ['남음', '○'], none: ['', ''] };
 /* 오늘 수업 카드. view: class-model dayView 결과, time: 'HH:MM'.
    state: none(시간표 없음) · off(쉬는 날, off에 까닭) · empty(그 요일 수업 없음) · list. left: 진도표가 있어 체크할 수 있는데 아직 안 한 교시 수.
-   줄 status: done·part·skip·left(남음), 진도표 없는 교과는 none(오늘 수업에서 체크하지 않음) */
+   줄 status: done·part·skip·left(남음), 진도표 없는 교과는 체크했으면 그 상태, 안 했으면 none(남은 수에 세지 않음), 전담은 「전담」 */
 export function lessonCard(view, time, { hasTimetable = true } = {}) {
   if (!hasTimetable) return { state: 'none', rows: [], left: 0, off: '' };
   const v = isObj(view) ? view : { off: '', slots: [] };
@@ -47,10 +47,11 @@ export function lessonCard(view, time, { hasTimetable = true } = {}) {
   if (!slots.length) return { state: 'empty', rows: [], left: 0, off: '' };
   const at = periodNow(time, slots.map(s => s.period));
   const rows = slots.map(s => {
-    let text = '진도표 없음';
+    let text = s.kind === 'staff' ? '전담' : '진도표 없음';
     if (s.sub && s.lesson) { const p = unitPos(s.sub, s.index); text = `${p.n}/${p.of}차시 · ${s.lesson.title}`; }
     else if (s.sub) text = '진도표를 다 마쳤어요';
-    const status = !s.sub ? 'none' : ['done', 'part', 'skip'].includes(s.status) ? s.status : 'left';
+    const marked = ['done', 'part', 'skip'].includes(s.status);
+    const status = !s.sub ? (marked && s.kind !== 'staff' ? s.status : 'none') : marked ? s.status : 'left';
     return { period: s.period, subject: s.subject, text, status, label: STATUS[status][0], sym: STATUS[status][1], now: at && at.period === s.period ? at.kind : '' };
   });
   return { state: 'list', rows, left: rows.filter(r => r.status === 'left').length, off: '' };
@@ -71,6 +72,11 @@ export const dueOrder = (a, b) => late(a) - late(b) || (a.n < 0 ? b.n - a.n : a.
 export function gongmunCard(docs, today) {
   return dueSoon(Array.isArray(docs) ? docs : [], today, { max: Infinity }).sort(dueOrder).slice(0, 3)
     .map(d => ({ id: d.id, title: d.title || d.name || '공문', n: d.n, ...dueBadge(d.n) }));
+}
+/* 학급 › 오늘 수업 위 공문 기한 띠: 카드와 같은 공문·차례(dueOrder)로 max개, 나머지는 more(「외 n건」) */
+export function dueBand(docs, today, max = 3) {
+  const all = dueSoon(Array.isArray(docs) ? docs : [], today, { max: Infinity }).sort(dueOrder);
+  return { items: all.slice(0, max), more: Math.max(0, all.length - max) };
 }
 /* 같은 카드의 「회의 할 일」(스펙 2026-11-15 2장): 회의록에서 끝내지 않은 할 일 가운데 기한이 7일 안(지남 포함), dueOrder 차례로 3개까지, 공문 기한과 같은 배지.
    id: 그 회의록(누르면 그 회의록), meeting: 회의 이름 */

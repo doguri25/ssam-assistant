@@ -116,7 +116,7 @@ export function sampleData(today, breaks = []) {
   return {
     info: { grade: 3, room: 1 },
     timetable,
-    subjects: subjects.map(s => { const a = alignToPlan(ctx, s); return { ...a, offset: Math.max(0, a.offset + DIFF[s.name]) }; })
+    subjects: subjects.map(s => { const a = alignToPlan(ctx, s), offset = Math.max(0, a.offset + DIFF[s.name]); return { ...a, offset, hours0: offset }; })
   };
 }
 

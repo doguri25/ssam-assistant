@@ -42,7 +42,9 @@ const fresh = async (time, init = {}) => {
   prompts.length = 0;
 };
 const stored = k => page.evaluate(k => JSON.parse(localStorage.getItem('ssam:' + k) || 'null'), k);
-const goProgress = async () => { await page.click('nav.app-side [data-menu-go="class"]'); await page.click('#menuTabs [data-tab="progress"]'); await page.waitForSelector(`${C} #clsSubs`); };
+// 시간표·진도표가 있으면 준비가 접혀 있음(2026-11-18 class-fix A10) → [시간표·진도표 고치기]로 엶
+const openSetup = async () => { if (await page.isVisible('section[data-menu="class"] [data-pg="setup"]')) await page.click('section[data-menu="class"] [data-pg="setup"]'); };
+const goProgress = async () => { await page.click('nav.app-side [data-menu-go="class"]'); await page.click('#menuTabs [data-tab="progress"]'); await openSetup(); await page.waitForSelector(`${C} #clsSubs`); };
 const upload = async (sel, file) => { const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click(sel)]); await fc.setFiles(file); };
 const todayText = async () => { await page.click('#menuTabs [data-tab="today"]'); await page.waitForTimeout(200); const v = (await page.textContent(`${C} #clsLessons`)).replace(/\s+/g, ' '); await page.click('#menuTabs [data-tab="progress"]'); return v; };
 const progress = () => page.evaluate(async () => { const m = await import('./menus/class/class-model.js'); const ctx = m.makeCtx(); return m.progressOf(ctx, ctx.subjects[0]); });
@@ -135,7 +137,7 @@ await run('fix3-planclass', [
     await page.waitForFunction(() => JSON.parse(localStorage.getItem('ssam:class:subjects'))[0].lessons[0].from === '2026-08-20');
     p = await progress();
     assert(p.sub.since === '2026-08-24' && p.sub.offset === 0 && p.next === 7 && p.actual === 6 && p.done === 6, J({ ...p, sub: [p.sub.since, p.sub.offset] }));
-    assert(await page.inputValue(`${C} input[data-next="ko"]`) === '7', '다음 차시 칸 ' + await page.inputValue(`${C} input[data-next="ko"]`));
+    assert(await page.inputValue(`${C} [data-next="ko"]`) === '7', '다음 차시 칸 ' + await page.inputValue(`${C} [data-next="ko"]`));
   }],
   ['[class-readd-5] 국어를 지웠다가 같은 진도표 파일을 다시 넣으면 체크 기록대로 다음 차시 11, 실시 10', async () => {
     await fresh('2026-03-02T08:30:00', { 'ssam:years': J({ current: 2026 }), 'ssam:class:info': J({ grade: 3, room: 1 }), 'ssam:class:timetable': ttTue('국어') });

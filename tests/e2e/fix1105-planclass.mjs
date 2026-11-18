@@ -29,7 +29,9 @@ const toast = () => page.textContent('#toast');
 const promptOf = async tag => { for (let i = 0; i < 80; i++) { const p = prompts.find(x => x.includes(tag)); if (p) return p; await page.waitForTimeout(100); } return ''; };
 const subjects = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:class:subjects') || '[]'));
 const goYear = async () => { await page.click('nav.app-side [data-menu-go="plan"]'); await page.click('#menuTabs [data-tab="year"]'); };
-const goProgress = async () => { await page.click('nav.app-side [data-menu-go="class"]'); await page.click('#menuTabs [data-tab="progress"]'); };
+// 시간표·진도표가 있으면 준비가 접혀 있음(2026-11-18 class-fix A10) → [시간표·진도표 고치기]로 엶
+const openSetup = async () => { if (await page.isVisible('section[data-menu="class"] [data-pg="setup"]')) await page.click('section[data-menu="class"] [data-pg="setup"]'); };
+const goProgress = async () => { await page.click('nav.app-side [data-menu-go="class"]'); await page.click('#menuTabs [data-tab="progress"]'); await openSetup(); };
 const SRC = k => `${P} textarea[data-src="${k}"]`;
 
 // 실적 표 (7자리 금액은 전화번호 규칙 몫이라 넣지 않음)
