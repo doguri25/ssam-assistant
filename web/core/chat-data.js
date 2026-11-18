@@ -189,7 +189,7 @@ export async function answerFor(q, { today }) {
     const camp = P.getCamp(P.currentCampId()) || P.listCamps()[0] || null;
     if (!camp) return answerAttendance(q, null);
     return answerAttendance(q, {
-      name: camp.name || '기초학력', sessions: camp.sessions.length,
+      name: camp.name || '기초학력', sessions: P.attStats(camp, '').total, // 날마다 출석은 수업 날 수(같은 날 줄이 여럿이어도 한 번)
       students: camp.students.map((s, i) => { const a = P.attStats(camp, s.id); return { label: s.no ? `${s.grade && s.cls ? `${s.grade}-${s.cls} ` : ''}${s.no}번` : P.aliasOf(i), no: s.no, present: a.present, absent: a.absent, marked: a.marked }; })
     });
   }

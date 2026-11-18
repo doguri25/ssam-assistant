@@ -157,6 +157,23 @@ test('3. 지도 시간: 앱 예시(1/11~1/22, 09:00~12:40, 하루 5교시)는 �
   assert.equal(M.newSession({ periods: '3' }).periods, 3); assert.equal(M.newSession({ periods: 0 }).periods, null); assert.equal(M.newSession({}).periods, null);
 });
 
+test('3. 출석 단위를 바꿔도 지도 시간 그대로(교시 수를 적지 않은 줄은 바꾸기 전 셈을 적어 둠), 합쳐도 그대로', () => {
+  const day = M.newCamp({ unit: 'day', sessions: M.expandDates('2027-01-11', '2027-01-22').map(d => ({ id: d, date: d, start: '09:00', end: '12:40' })) });
+  assert.equal(M.hoursTotal(day), 50);
+  const per = M.withUnit(day, 'period');
+  assert.equal(per.unit, 'period'); assert.equal(M.hoursTotal(per), 50, '날마다 → 교시마다');
+  assert.ok(per.sessions.every(s => s.periods === 5));
+  assert.equal(M.hoursTotal(M.withUnit(per, 'day')), 50, '다시 날마다');
+  // 교시마다 90분 줄(한 교시로 셈)은 날마다로 바꿔도 한 교시
+  const p = M.newCamp({ sessions: [{ id: 'a', date: '2027-01-11', start: '09:00', end: '10:30' }, { id: 'b', date: '2027-01-12', start: '09:00', end: '09:40' }] });
+  const d = M.withUnit(p, 'day');
+  assert.equal(M.hoursTotal(d), 2); assert.equal(d.sessions[0].periods, 1); assert.equal(d.sessions[1].periods, null, '같으면 그대로 둠');
+  // 교시마다 하루 5교시 × 2일을 합쳐 날마다로
+  const five = M.newCamp({ sessions: ['2027-01-11', '2027-01-12'].flatMap(x => M.periodSlots('09:00', 5, 40, 5).map((sl, i) => ({ id: `${x}-${i}`, date: x, ...sl }))) });
+  const m = M.withUnit(M.mergeSameDate(five), 'day');
+  assert.equal(m.sessions.length, 2); assert.equal(M.hoursTotal(m), 10);
+});
+
 test('3. 계획서 지도 계획 표의 같은 날 차시를 날마다 한 줄로 합치면 그 차시 수가 교시 수', () => {
   const t = { kind: 'rows', dated: 3, rows: [{ no: 1, date: '2026-09-02', start: '09:00', end: '09:40', subject: '국어', content: '읽기' }, { no: 2, date: '2026-09-02', start: '09:50', end: '10:30', subject: '수학', content: '덧셈' },
     { no: 3, date: '2026-09-03', start: '09:00', end: '09:40', subject: '국어', content: '쓰기' }] };

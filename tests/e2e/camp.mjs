@@ -294,6 +294,8 @@ await run('camp', [
     await secGo('info');
     await openFold('camp-info');
     await page.click(`${P} [data-unit="day"]`);
+    // 같은 날 줄(하루 5교시)이 있어 합칠지 물음(스펙 2026-11-18 §C5) — 다시 교시마다로 돌아오므로 합치지 않음
+    await page.click('#sheetRoot [data-ask="keep"]');
     await secGo('docs');
     await page.selectOption(`${P} [data-form-pick="attend"]`, '');
     const x = await hwpxText(await download('attend'));

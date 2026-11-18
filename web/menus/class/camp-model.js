@@ -201,6 +201,11 @@ export function mergeSameDate(camp) {
   }
   return { ...camp, sessions: out, att };
 }
+/* 출석 단위 바꾸기: 교시 수를 적지 않은 줄은 바꾸기 전 셈을 적어 둠(같은 일정이면 지도 시간이 그대로 — 09:00~12:40 날마다 줄은 교시마다로 바꿔도 5시간) */
+export function withUnit(camp, unit) {
+  const next = { ...camp, unit: unit === 'day' ? 'day' : 'period' };
+  return { ...next, sessions: camp.sessions.map(s => { if (s.periods) return s; const a = rowHours(camp, s); return a !== rowHours(next, s) ? { ...s, periods: a } : s; }) };
+}
 /* 줄들의 출석 체크 지우기 */
 export function clearMarks(camp, ids) {
   const att = { ...camp.att };

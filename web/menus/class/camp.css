@@ -36,7 +36,8 @@
 .cp-sched{min-width:760px}
 .cp-sched input[type="date"]{width:150px}
 .cp-sched input[type="time"]{width:104px}
-.cp-sched td:nth-child(5) .field{width:96px}
+.cp-sched .field[data-k="subject"]{width:96px}
+.cp-sched .field.cp-per{width:52px;padding:7px 4px;text-align:center}
 .cp-sched .field.wide{min-width:240px}
 /* 출석 체크: 왼쪽 출석, 오른쪽(좁으면 아래) 문서 준비 */
 .cp-att-wrap{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:16px;align-items:start}
@@ -84,6 +85,11 @@
 .cp-rd.ready .cp-rd-s{color:var(--ok);font-weight:600}
 .cp-rd.todo .cp-rd-s{color:var(--warn);font-weight:600}
 .cp-rd-go{min-height:44px;padding:6px 8px}
+/* 문서 내보내기 카드의 준비 줄(같은 점·글 꼴) */
+.cp-rd.cp-doc-state{border-top:0;padding:0}
+/* 날짜 없는 줄·같은 날 줄 안내(단추가 좁으면 아래로) */
+.cp-undated,.cp-same{flex-wrap:wrap;align-items:center}
+.cp-undated .grow,.cp-same .grow{flex:1 1 220px}
 .cp-stats th,.cp-stats td{border-bottom:1px solid var(--line);padding:8px 6px;white-space:nowrap}
 .cp-stats tbody th{font-weight:600}
 /* 관찰 기록 */
