@@ -38,7 +38,7 @@ await run('shell', [
   ['품의로 가면 제목·가로 메뉴·섹션이 바뀌고, 새로고침하면 오늘(품의는 저장만)', async () => {
     await page.click('nav.app-side [data-menu-go="purchase"]');
     assert(await title() === '품의', '제목: ' + await title());
-    assert((await tabs()).join('|') === '새 품의|저장한 템플릿|최근 작성', '가로 메뉴');
+    assert((await tabs()).join('|') === '새 품의|예산|저장한 템플릿|최근 작성', '가로 메뉴');
     assert(await page.isVisible('section[data-menu="purchase"]') && !(await page.isVisible('section[data-menu="evaluate"]')), '섹션 표시');
     assert((await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:nav')))).menu === 'purchase', '마지막 메뉴 저장');
     await page.reload(); await page.waitForTimeout(400);
