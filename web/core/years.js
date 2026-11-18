@@ -10,7 +10,7 @@ const PREFIX = 'ssam:';
 // chat(「쌤」 채팅 기록 30개)·chat:open(바탕화면 버튼이 채팅을 열라고 적은 때)·nav:tabs(메뉴마다 마지막으로 연 탭)도 학년도와 상관없음
 // demo: 3분 둘러보기 중 { from: 원래 학년도, at, ... } (core/tour.js) — 학년도를 옮겨도 남아야 끝낼 때 돌아갈 곳을 앎
 // font(설정 › 화면 › 글꼴, core/font.js)는 테마처럼 모든 학년도가 같이 씀
-export const GLOBAL = ['engine', 'theme', 'font', 'nav', 'nav:tabs', 'mode', 'updSkip', 'years', 't', 'backupAt', 'inbox', 'bubble', 'export', 'ai-roles', 'purchase:view', 'purchase:flow', 'camp:attView', 'ui:intro', 'msg:sender', 'testkey:told', 'queue', 'queueCalc', 'slips', 'chat', 'chat:open', 'demo'];
+export const GLOBAL = ['engine', 'theme', 'font', 'nav', 'nav:tabs', 'mode', 'updSkip', 'years', 't', 'backupAt', 'inbox', 'bubble', 'export', 'ai-roles', 'purchase:view', 'purchase:flow', 'camp:attView', 'ui:intro', 'msg:sender', 'testkey:told', 'queue', 'queueCalc', 'slips', 'chat', 'chat:open', 'demo', 'budget:alerts'];
 export const isYearKey = k => !!k && !GLOBAL.includes(k) && !k.startsWith('mig:');
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const pad = n => String(n).padStart(2, '0');
