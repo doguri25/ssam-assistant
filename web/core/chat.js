@@ -14,7 +14,7 @@ import { go, MENUS } from './shell.js';
 import * as ai from './ai.js';
 import { maskContacts } from './privacy.js';
 import { weekday } from './calendar.js';
-import { routeText, payloadFor, isSure, INTENT_IDS, intentLabel, LANGS, langLabel, parseMemo, maskMemo, memoLine, appendMemo, nosText, safeText, handoffText } from './chat-route.js';
+import { routeText, payloadFor, isSure, INTENT_IDS, intentLabel, LANGS, langLabel, parseMemo, maskMemo, memoLine, appendMemo, nosText, safeText, handoffText, policyAsk, TOKTOK_NOTE } from './chat-route.js';
 import { assistPrompt, parseAssist, replyHTML, mentionedNos, planActions, offlineWay } from './chat-assist.js';
 import { offlineAnswer } from './chat-knowledge.js';
 import { dataQuestion, answerFor } from './chat-data.js';
@@ -269,6 +269,8 @@ async function appState() {
 }
 const isObj = o => !!o && typeof o === 'object' && !Array.isArray(o);
 async function assist({ raw, said, r, me }) {
+  // 규정 질문(복무·수당·여비·민원 …): 답보다 먼저 마주온 톡톡 안내(AI가 없어도 — 스펙 2026-11-18-toktok-design)
+  if (policyAsk(said)) say(TOKTOK_NOTE, { md: true, src: me.id });
   if (!ai.ready()) { await offline({ raw, r, me }); return; }
   const job = { ctl: new AbortController(), user: false };
   pending = job;
