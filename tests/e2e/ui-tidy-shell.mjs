@@ -26,10 +26,10 @@ const underFab = sel => page.evaluate(sel => {
 const toBottom = () => page.evaluate(() => { const a = document.querySelector('#app'); a.scrollTop = a.scrollHeight; });
 
 await run('ui-tidy-shell', [
-  ['평가 탭 6칸(스펙 2026-11-14-eval-redesign §1): 한눈에·단원평가·활동지·평가지 채점·생활기록부(교과 평어·창체·행특 한 칸)·기재 점검 — 묶음 이름·구분선 없음', async () => {
+  ['평가 탭 5칸(2026-11-18): 한눈에·단원평가·활동지·생활기록부(교과 평어·평가지 채점·창체·행특 한 칸)·기재 점검 — 묶음 이름·구분선 없음', async () => {
     await page.click('nav.app-side [data-menu-go="evaluate"]');
     const seq = await page.$$eval('#menuTabs > button:not(.ev-turn-pill)', els => els.map(e => e.dataset.fold ? 'rec' : e.dataset.tab));
-    assert(seq.join(' ') === 'board unit activity gr rec check', seq.join(' '));
+    assert(seq.join(' ') === 'board unit activity rec check', seq.join(' '));
     assert(await page.$$eval('#menuTabs .tab-grp, #menuTabs .tab-sep', e => e.length) === 0, '묶음 이름·구분선이 남음');
     // 처음엔 한눈에, 마지막 탭 기억은 그대로
     assert(await page.textContent('#menuTabs [aria-current="page"]') === '한눈에', await page.textContent('#menuTabs [aria-current="page"]'));

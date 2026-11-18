@@ -33,11 +33,11 @@ await page.goto(url);
 await page.waitForSelector('nav.app-side [data-menu-go="evaluate"]');
 
 await run('eval-board', [
-  ['평가를 처음 열면 한눈에: 탭 6칸(생활기록부 한 칸), 평가가 없으면 시작 안내', async () => {
+  ['평가를 처음 열면 한눈에: 탭 5칸(생활기록부 한 칸 — 평가지 채점도 그 안), 평가가 없으면 시작 안내', async () => {
     await page.evaluate(() => localStorage.removeItem('ssam:grs'));
     await page.click('nav.app-side [data-menu-go="evaluate"]');
     await page.waitForSelector(`${B}:not([hidden])`);
-    assert(await tabs() === '한눈에* | 단원평가 | 활동지 | 평가지 채점 | 생활기록부 | 기재 점검', await tabs());
+    assert(await tabs() === '한눈에* | 단원평가 | 활동지 | 생활기록부 | 기재 점검', await tabs());
     assert((await page.textContent(B)).includes('아직 평가가 없어요'), await page.textContent(B));
     await page.click(`${B} [data-eb-go="unit"]`);
     assert(await page.getAttribute('#menuTabs [data-tab="unit"]', 'aria-current') === 'page', await tabs());
@@ -66,7 +66,7 @@ await run('eval-board', [
     await page.click('#menuTabs .ev-turn-pill');
     await page.waitForSelector(`${B}:not([hidden]) .eb-cols`);
   }],
-  ['생활기록부: 누르면 교과 평어, 칸 안 전환으로 창체·행특(가로 메뉴는 생활기록부 그대로), 다른 탭에서는 전환이 숨음', async () => {
+  ['생활기록부: 누르면 교과 평어, 칸 안 전환으로 평가지 채점·창체·행특(가로 메뉴는 생활기록부 그대로), 다른 탭에서는 전환이 숨음', async () => {
     await page.click('#menuTabs [data-fold="rec"]');
     await page.waitForSelector('.rec-switch:not([hidden])');
     assert(await page.textContent('.rec-switch [aria-pressed="true"]') === '교과 평어', await page.textContent('.rec-switch'));
@@ -80,7 +80,9 @@ await run('eval-board', [
     await page.click('#menuTabs [data-fold="rec"]');
     await page.waitForFunction(() => document.querySelector('.rec-switch [aria-pressed="true"]').textContent === '행동특성');
     await recTab(page, 'gr');
-    assert(await page.$eval('.rec-switch', e => e.hidden), '평가지 채점에서 전환이 보임');
+    // 평가지 채점도 생활기록부 안: 전환이 보이고 평가지 채점이 눌림, 가로 메뉴는 생활기록부
+    assert(!(await page.$eval('.rec-switch', e => e.hidden)) && await page.textContent('.rec-switch [aria-pressed="true"]') === '평가지 채점', '평가지 채점에서 전환');
+    assert(await page.textContent('#menuTabs [aria-current="page"]') === '생활기록부', await tabs());
   }],
   ['수행평가 카드의 [선생님 차례]를 누르면 평가지 채점에서 그 기록이 열림', async () => {
     await page.click('#menuTabs [data-tab="board"]');
