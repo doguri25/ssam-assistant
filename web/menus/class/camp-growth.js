@@ -5,7 +5,7 @@
      직접 넣은 사후(source 'manual')는 덮지 않음. 다른 반 학생과 번호가 헷갈리지 않게 결손 찾기에서 넣은 학생이나 학급 학년·반이 같은 학생만
    - setGrowth: 칸 직접 고치기(사전·사후 숫자는 'manual', 사후를 비우면 다시 자동)
    - growthLines(보고서 AI 줄, 학생A) · growthRows(결과 보고서 표, 이름 그대로) */
-import { newStudent, normCamp, aliasMap, campDates, studentLabel, pctIn } from './camp-model.js';
+import { newStudent, normCamp, aliasMap, aliasFull, campDates, studentLabel, pctIn } from './camp-model.js';
 import { areaPct } from '../evaluate/unit/unit-gap.js';
 import { makeTitle } from '../evaluate/unit/unit-model.js';
 
@@ -110,8 +110,8 @@ export function growthLines(camp) {
   return camp.students.map(st => {
     const e = camp.growth[st.id];
     if (!has(e)) return '';
-    // 교과·영역 글은 이름 짐작(「도형」→ 학생A)을 하지 않고, 성까지 쓴 학생 이름만 학생A로
-    const what = camp.students.reduce((w, s) => { const n = String(s.name || '').trim(); return n.length >= 2 ? w.split(n).join(al[s.id]) : w; }, whatOf(e)), d = growthChange(e);
+    // 교과·영역 글은 이름 짐작(「도형」→ 학생A)을 하지 않고, 성까지 쓴 학생 이름만 학생A로(띄어 쓴 이름도 — camp-model aliasFull)
+    const what = aliasFull(whatOf(e), camp), d = growthChange(e);
     return `${al[st.id]} · ${what ? `${what} ` : ''}${e.pre.pct != null ? fmtPct(e.pre.pct) : '사전 점수 없음'} → ${e.post ? fmtPct(e.post.pct) : '사후 점수 없음'}${d == null ? '' : `(${d > 0 ? '+' : ''}${num(d)})`}`;
   }).filter(Boolean);
 }

@@ -217,7 +217,7 @@ export function tableSessions(t, p, camp) {
       if (g.length === 1) return g[0];
       const subs = [...new Set(g.map(s => s.subject).filter(Boolean))];
       return newSession({ date: x, start: g.map(s => s.start).filter(Boolean).sort()[0] || '', end: g.map(s => s.end).filter(Boolean).sort().at(-1) || '',
-        subject: subs.join('·'), content: g.map(s => (s.subject && s.content ? `${s.subject}: ${s.content}` : s.content)).filter(Boolean).join(' / ') });
+        subject: subs.join('·'), content: g.map(s => (s.subject && s.content ? `${s.subject}: ${s.content}` : s.content)).filter(Boolean).join(' / '), periods: g.length }); // 그날 차시 수 = 지도 시간
     });
   }
   return { sessions, undated: sessions.filter(s => !s.date).length };

@@ -70,7 +70,9 @@ test('망가진 값은 고치거나 버림: 날짜·시간·출석 표시·학�
   assert.deepEqual(c.att, { q: { s: 'O' } });
   assert.deepEqual(c.memo, {}); assert.deepEqual(c.obs, { s: '좋음' }); assert.deepEqual(c.obsEdited, { s: true });
   assert.equal(c.report.kind, 'select');
-  assert.deepEqual(c.report.sections, [{ head: '목적', text: '글' }]);
+  // 빈 칸도 남김(내보낼 때만 뺌, 칸마다 id — 스펙 2026-11-18-class-fix-design §C2)
+  assert.deepEqual(c.report.sections.map(({ head, text }) => ({ head, text })), [{ head: '목적', text: '글' }, { head: '', text: '' }]);
+  assert.ok(c.report.sections.every(s => s.id));
   assert.deepEqual(c.forms, { confirm: 'fm1', attend: '', observe: '', report: '' });
 });
 

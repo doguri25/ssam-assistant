@@ -2,7 +2,7 @@
    시작 날부터 고른 요일(공휴일은 뺌)에 차시 수만큼 수업 날을 셈. 요일마다 시간이 다를 수 있고(수 13:40~14:20, 목 14:30~15:10),
    하루에 여러 차시면 그 요일 시간(한 차시 길이)으로 쉬는 시간을 두고 이어 붙임. 끝 날을 주면 거기까지만 */
 import { isDate, addDays, weekday, HOLIDAYS } from '../../core/calendar.js';
-import { normTime } from './camp-model.js';
+import { normTime, newSession } from './camp-model.js';
 
 const toMin = t => { const n = normTime(t); return n ? +n.slice(0, 2) * 60 + +n.slice(3) : NaN; };
 const fromMin = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
@@ -41,4 +41,15 @@ export function sessionsByCount({ from, to = '', days = {}, n = 0, perDay = 1, r
     }
   }
   return { specs, short: want - specs.length };
+}
+
+/* 「지금 줄에 날짜 넣기」: 지금 줄(위에서부터 차례대로)에 만든 날짜·시간만 넣음(지도 내용 그대로, 교과는 비었을 때만), 남는 차시는 새 줄.
+   → { camp(새 캠프 — 원래 캠프는 그대로), moved(체크가 있는데 날짜가 바뀐 줄 id — 그 체크는 바뀐 날의 출석이 되므로 부르는 쪽이 물음), added(새 줄 수), kept(그대로 둔 뒤 줄 수) } */
+export function applyDates(camp, specs) {
+  const list = Array.isArray(specs) ? specs : [], n = Math.min(camp.sessions.length, list.length);
+  const marked = id => !!camp.att[id] && Object.keys(camp.att[id]).length > 0;
+  const moved = camp.sessions.slice(0, n).filter((s, i) => s.date !== list[i].date && marked(s.id)).map(s => s.id);
+  const sessions = camp.sessions.map((s, i) => (i < n ? { ...s, date: list[i].date, start: list[i].start, end: list[i].end, subject: s.subject || list[i].subject || '', ...(list[i].periods ? { periods: list[i].periods } : {}) } : s));
+  const extra = list.slice(n).map(s => newSession(s));
+  return { camp: { ...camp, sessions: [...sessions, ...extra] }, moved, added: extra.length, kept: Math.max(0, camp.sessions.length - list.length) };
 }

@@ -2,7 +2,7 @@
    표는 단순 표(합친 칸 없음): 같은 날짜는 그날 첫 줄에만 적고 나머지 날짜 칸은 비움. 확인(서명) 칸은 늘 비움(지도 교사가 날인).
    layout(넣은 PDF·사진·.hwp 양식을 AI가 읽은 모양 { title, columns, notes, heads })이 있으면 제목·칸 이름·차례·안내 글을 그것으로.
    표 조각(confirmTable·attendTable·observePages)은 학교 한글 양식 채우기(camp-form.js)도 같이 씀 */
-import { sortSessions, campDates, attCount, hoursTotal, fmtDate, fmtShort, fmtTime } from './camp-model.js';
+import { sortSessions, campDates, attCount, hoursTotal, fmtDate, fmtShort, fmtTime, shownName, reportSections } from './camp-model.js';
 import { growthRows } from './camp-growth.js';
 
 export const DOC_LABEL = { confirm: '수업 확인서', attend: '학생 출석 및 관찰 기록부', observe: '관찰 기록부', report: '결과 보고서' };
@@ -80,6 +80,8 @@ export function dayMark(camp, date, sid) {
   return ms.includes('O') ? '○' : ms.includes('X') ? '/' : '';
 }
 export const gradeClass = st => (st.grade && st.cls ? `${st.grade}-${st.cls}` : st.grade ? String(st.grade) : '');
+/* 문서의 학생 이름 칸: 이름, 없으면 「3-2 5번」(단원평가 「도달하지 못한 학생」에서 넣은 학생), 그것도 없으면 빈칸 */
+export const docName = st => shownName(st, '');
 /* 교시형 { head, rows, footer }: 수업 줄 × 학생, 끝 줄 「계」 학생별 출석 수. 날짜형 { head, rows, footer: null }: 학생 × 날짜, 끝 칸 「계」 */
 export function attendTable(camp, layout) {
   const cols = colsOf(layout);
@@ -97,7 +99,7 @@ export function attendTable(camp, layout) {
     const rows = camp.students.map((st, n) => {
       let di = 0;
       const present = dates.filter(d => dayMark(camp, d, st.id) === '○').length;
-      return k.map(f => (f === 'seq' ? String(n + 1) : f === 'gradeClass' ? gradeClass(st) : f === 'name' ? st.name : f === 'date' ? dayMark(camp, dates[di++], st.id) : f === 'total' ? String(present) : ''));
+      return k.map(f => (f === 'seq' ? String(n + 1) : f === 'gradeClass' ? gradeClass(st) : f === 'name' ? docName(st) : f === 'date' ? dayMark(camp, dates[di++], st.id) : f === 'total' ? String(present) : ''));
     });
     return { head, rows, footer: null, widths: k.map(f => (f === 'date' ? 0.8 : WEIGHT[f] || 1.3)) };
   }
@@ -106,9 +108,9 @@ export function attendTable(camp, layout) {
   let head, k;
   if (use) {
     const i = keys.indexOf('student'), j = keys.lastIndexOf('student');
-    head = [...cols.slice(0, i), ...camp.students.map(s => s.name), ...cols.slice(j + 1)];
+    head = [...cols.slice(0, i), ...camp.students.map(docName), ...cols.slice(j + 1)];
     k = [...keys.slice(0, i), ...camp.students.map(() => 'student'), ...keys.slice(j + 1)];
-  } else { head = ['순', '일시', '시간', ...camp.students.map(s => s.name)]; k = ['seq', 'date', 'time', ...camp.students.map(() => 'student')]; }
+  } else { head = ['순', '일시', '시간', ...camp.students.map(docName)]; k = ['seq', 'date', 'time', ...camp.students.map(() => 'student')]; }
   const cells = confirmCells(camp), sorted = sortSessions(camp.sessions);
   const rows = sorted.map((s, r) => { let si = 0; return k.map(f => (f === 'student' ? markOf(camp, s.id, camp.students[si++].id) : f ? cells[r][f] || '' : '')); });
   const at = Math.max(0, k.indexOf('seq'));
@@ -134,7 +136,7 @@ export function attendDoc(camp, layout) {
 /* ---------- 관찰 기록부 ---------- */
 /* [[{ id, name, text }] × 5명씩] */
 export function observePages(camp, per = OBSERVE_PER_PAGE) {
-  const list = camp.students.map(s => ({ id: s.id, name: s.name, text: String(camp.obs[s.id] || '').trim() }));
+  const list = camp.students.map(s => ({ id: s.id, name: docName(s), text: String(camp.obs[s.id] || '').trim() }));
   const out = [];
   for (let i = 0; i < list.length; i += per) out.push(list.slice(i, i + per));
   return out;
@@ -159,11 +161,12 @@ export function observeDoc(camp, layout) {
 }
 
 /* ---------- 결과 보고서 ---------- */
-/* 사전·사후 점수(camp-growth.js)가 있으면 끝에 「사전·사후 성취」 표(학생 | 교과·영역 | 사전 | 사후 | 변화) */
+/* 사전·사후 점수(camp-growth.js)가 있으면 끝에 「사전·사후 성취」 표(학생 | 교과·영역 | 사전 | 사후 | 변화).
+   글 머리도 글도 없는 칸(비워 둔 [+ 칸])은 빼고 번호를 셈 */
 export function reportDoc(camp, layout) {
   const r = camp.report;
   const blocks = [];
-  r.sections.forEach((s, i) => {
+  reportSections(camp).forEach((s, i) => {
     if (s.head) blocks.push({ type: 'h', text: `${i + 1}. ${s.head}` });
     if (s.text.trim()) blocks.push({ type: 'p', text: s.text.trim() });
   });
