@@ -22,6 +22,10 @@
     (`tests/unit/fix1117-plan-basis.test.mjs`).
   - 「쌤」 채팅 규정 질문 → 마주온 톡톡 안내(2026-11-18, 아직 릴리즈 안 함): `chat-route.js policyAsk·TOKTOK_NOTE`, `chat.js assist` 첫 줄,
     AI 공통 안내에 금액·날짜·조항을 지어내지 않는 규칙(스펙 `docs/superpowers/specs/2026-11-18-toktok-design.md`, `tests/unit/fix1118-toktok.test.mjs`).
+  - 수업 아이디어(2026-11-18, 아직 릴리즈 안 함): 평가 › 활동지 [수업 아이디어] — `activity/idea-make.js`(규칙)·`idea.js`(화면, 저장 `activity:ideas` 5묶음),
+    [이 아이디어로 활동지 만들기]는 `activity-maker.js startFromIdea`(범위 끝에 「수업 활동: …」 줄), 고르기 칸 `make-pick.js newPick({ kinds: [], countLabel })`
+    (스펙 `docs/superpowers/specs/2026-11-18-lesson-idea-design.md`, `tests/unit/fix1118-idea.test.mjs`, e2e `fix1118-idea.mjs`).
+  - 예산 집행 현황: 설계 승인(2026-11-18, `docs/superpowers/specs/2026-11-18-budget-design.md`) — 만드는 중.
   - 0.33.2 몫(릴리즈하지 않고 0.34.0에 합침): 미뤄 둔 작은 문제 2개, 0.31.1 뒤 버그 찾기 23개 중 22개(`tests/unit/fix1116-*.test.mjs`).
 - 이름 가리기 원칙(2026-11-16 선생님과 정함): 이름이 새는 것이 낱말을 지나치게 가리는 것보다 나쁨. 고칠 때마다 원래 코드와 견줘 새로 새는 이름이 없는지 확인.
   남은 한계: 흔한 이름 목록에 없는 이름이 「준비물:」 같은 물건 머리 줄에만 나오고 다른 줄에서 사람으로 쓰이지 않으면 배우지 않음(그 줄은 보내지 않음).
@@ -43,7 +47,7 @@
 
 ## 시험
 
-- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1525개 통과)
+- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1529개 통과)
 - e2e 한 파일: `node tests/e2e/<이름>.mjs`
 - e2e 전체: `node tests/e2e/run-all.mjs` (약 170개 파일, 45~50분). 파일마다 다른 포트를 써서 나눠 돌려도 된다. 전체가 도는 동안에는 작업 폴더를 고치지 말고 `.claude/worktrees/` 아래 worktree에서 일한다(그 안에서는 저장소의 node_modules를 그대로 찾는다).
 

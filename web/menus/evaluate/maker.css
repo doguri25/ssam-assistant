@@ -48,3 +48,15 @@
   .mk-ihead .grow{flex-basis:100%;height:0}
   .mk-ans{max-width:none}
 }
+/* 수업 아이디어(idea.js) */
+.idea-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;min-width:0}
+.idea-card{display:flex;flex-direction:column;gap:8px;min-width:0}
+.idea-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.idea-title{font-size:16px;overflow-wrap:anywhere}
+.idea-sum,.idea-more{margin:0;overflow-wrap:anywhere}
+.idea-flow{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:4px;overflow-wrap:anywhere}
+.idea-where{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.idea-where .exp-split{max-width:100%}
+.idea-recent{flex-wrap:wrap;align-items:center;gap:6px}
+#ixBusy{display:inline-flex;align-items:center;gap:8px}
+.mk-extra{margin:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px;overflow-wrap:anywhere}

@@ -15,7 +15,8 @@ import { termOf } from './activity-read.js';
 import { registerView, A, render, refresh, getBox, visible, openActivity, curAct, esc, SS } from './activity.js';
 
 // titleAi: AI가 지은 활동 이름 [되돌린 이름, AI가 지은 그대로(가린 글)] — 선생님이 고쳐 쓰지 않았으면 만든 활동지에 남겨 AI로 보낼 때 씀
-const M = { pick: null, tasks: [], scope: null, opts: null, title: '', titleAi: null, busy: '', msg: '', note: '' };
+// extra: 수업 아이디어에서 넘어왔을 때 범위 끝에 더하는 줄(「수업 활동: …」 — idea.js startFromIdea)
+const M = { pick: null, tasks: [], scope: null, opts: null, title: '', titleAi: null, busy: '', msg: '', note: '', extra: '' };
 const AI_KEY = '설정 › AI에서 키를 넣어 주세요';
 const pick = () => M.pick || (M.pick = newPick({ kinds: KINDS, count: { min: 1, max: 10, d: 3 } }));
 const inMaker = () => visible() && A.view === 'make';
@@ -58,7 +59,8 @@ function html() {
     <div class="row"><button class="btn primary" type="button" data-mk="make"${M.busy ? ' disabled' : ''}>${n ? '처음부터 다시 만들기' : '만들기'}</button>
       ${M.busy === 'make' ? '<span class="muted" id="mkBusy" role="status"><span class="spin"></span> AI가 활동지를 만들고 있어요…</span>' : ''}</div>
     ${M.msg ? `<div class="banner err" role="alert" id="mkMsg"><span class="grow">${esc(M.msg)}</span></div>` : ''}
-    ${M.note ? `<div class="banner info" id="mkNote"><span class="grow">${esc(M.note)}</span></div>` : ''}</div>`;
+    ${M.note ? `<div class="banner info" id="mkNote"><span class="grow">${esc(M.note)}</span></div>` : ''}
+    ${M.extra ? `<p class="muted mk-extra" id="mkExtra">${esc(M.extra)}(으)로 만들어요 <button class="btn text tiny" type="button" data-mk="noExtra">빼기</button></p>` : ''}</div>`;
   const list = n ? `<div class="yp-card mk-titlecard"><label class="yp-f mk-title"><span class="lab">활동 이름</span><input class="field" id="mkTitle" data-mf="title" value="${esc(M.title)}" autocomplete="off"></label></div>
     <ol class="mk-items" id="mkItems">${M.tasks.map(taskHTML).join('')}</ol>` : '';
   const probs = taskProblems(M.tasks);
@@ -77,6 +79,8 @@ async function makeAll() {
   const v = pickValue(pick());
   if (v.error) { M.msg = v.error; render(); return; }
   if (!ai.ready()) { M.msg = `AI 키가 없어 만들 수 없어요. ${AI_KEY}. [문항 더하기]로 직접 써도 돼요.`; render(); return; }
+  // 수업 아이디어에서 넘어왔으면 그 활동을 범위 끝 줄로(가리개는 범위와 같음)
+  if (M.extra) { const x = v.scope.mask ? v.scope.mask(M.extra) : M.extra; if (x.trim()) v.scope.lines = [...(v.scope.lines || []), x]; }
   M.busy = 'make'; M.msg = ''; M.note = ''; render();
   try {
     const out = await ai.generateJSON(actPrompt({ scope: v.scope, grade: v.grade, count: v.count, kinds: v.kinds, level: v.level }), { task: 'plan', valid: x => normTasks(x).length > 0 });
@@ -128,7 +132,7 @@ function create() {
   const ai = { ...((v.scope && v.scope.ai) || {}), title: M.titleAi && M.titleAi[0] === M.title ? M.titleAi[1] : '' };
   const a = activityFrom({ meta: metaNow(v), tasks: M.tasks, ai });
   if (!saveActivity(a)) { toast('저장 공간이 모자라 저장하지 못했어요. 설정 › 학년도에서 백업하고 지난 자료를 정리해 주세요.', 7000); return; }
-  Object.assign(M, { tasks: [], scope: null, opts: null, title: '', titleAi: null, busy: '', msg: '', note: '' });
+  Object.assign(M, { tasks: [], scope: null, opts: null, title: '', titleAi: null, busy: '', msg: '', note: '', extra: '' });
   openActivity(a.id);
   getBox().scrollIntoView({ block: 'start' });
   toast('활동지를 만들었어요. 기준이 정해져 있어요 — 학생 활동지 스캔을 넣으면 채점해요(학생 활동지는 1단계에서 다시 내려받아요).', 6000);
@@ -167,7 +171,18 @@ function edit(el, type) {
   t[f] = el.value;
   setWarn(no);
 }
-const open = () => { M.msg = ''; if (M.pick && !M.tasks.length) M.pick = null; };
+const open = () => { M.msg = ''; M.extra = ''; if (M.pick && !M.tasks.length) M.pick = null; };
+/* 수업 아이디어 → 활동지 만들기(스펙 2026-11-18-lesson-idea-design): 고른 차시·직접 쓴 범위·학년·수준을 옮기고 그 아이디어 줄을 더해 바로 만듦 */
+export function startFromIdea({ pick: from, line }) {
+  Object.assign(M, { pick: null, tasks: [], scope: null, opts: null, title: '', titleAi: null, busy: '', msg: '', note: '', extra: String(line || '').trim() });
+  const S = pick();
+  if (from) Object.assign(S, { mode: from.mode, subId: from.subId, unit: from.unit, picked: [...(from.picked || [])], next: from.next, subject: from.subject, free: from.free, grade: from.grade, level: from.level });
+  A.view = 'make';
+  render();
+  const box = getBox();
+  if (box) box.scrollIntoView({ block: 'start' });
+  makeAll();
+}
 
 document.addEventListener('click', async e => {
   const box = getBox();
@@ -184,6 +199,7 @@ document.addEventListener('click', async e => {
     M.tasks.push(blank(M.tasks.length + 1)); render();
     const q = getBox().querySelector(`[data-mk-item="${M.tasks.length}"] [data-mf="ask"]`); if (q) { q.focus(); q.scrollIntoView({ block: 'center' }); }
   } else if (a === 'create') create();
+  else if (a === 'noExtra') { M.extra = ''; render(); }
   else if (a === 'sheet') download();
 });
 const onField = type => e => {

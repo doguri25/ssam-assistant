@@ -17,11 +17,11 @@ function progress(sub) {
   try { const p = progressOf(makeCtx(), sub); return { next: p.actual, expected: p.started ? p.expected : null }; } catch (e) { return { next: null, expected: null }; }
 }
 
-/* kinds: [[id, 이름]], count: { min, max, d }, unitAll: 단원을 바꾸면 그 단원 차시를 다 고름(단원평가) */
-export function newPick({ kinds, count = { min: 3, max: 20, d: 5 }, unitAll = false } = {}) {
+/* kinds: [[id, 이름]](빈 배열이면 「유형」 묶음 없음 — 수업 아이디어), count: { min, max, d }, countLabel: 수 칸 이름, unitAll: 단원을 바꾸면 그 단원 차시를 다 고름(단원평가) */
+export function newPick({ kinds = [], count = { min: 3, max: 20, d: 5 }, unitAll = false, countLabel = '문항 수' } = {}) {
   let grade = null;
   try { grade = getInfo().grade; } catch (e) {}
-  const S = { kinds, countRange: count, unitAll, subs: subjects(), mode: 'free', subId: '', unit: 0, picked: [], next: null, subject: '', free: '', grade, count: count.d, level: 'normal', chosen: kinds.map(k => k[0]) };
+  const S = { kinds, countRange: count, countLabel, unitAll, subs: subjects(), mode: 'free', subId: '', unit: 0, picked: [], next: null, subject: '', free: '', grade, count: count.d, level: 'normal', chosen: kinds.map(k => k[0]) };
   if (S.subs.length) selectSub(S, S.subs[0].id);
   return S;
 }
@@ -69,12 +69,12 @@ export function pickHTML(S) {
     <div class="mk-scope">${subSel}${scope}</div>
     <div class="mk-opts">
       <label class="yp-f"><span class="lab">학년</span><input class="field" id="mkGrade" data-mp="grade" type="number" min="1" max="6" value="${esc(S.grade == null ? '' : S.grade)}"></label>
-      <label class="yp-f"><span class="lab">문항 수 (${r.min}~${r.max})</span><input class="field" id="mkCount" data-mp="count" type="number" min="${r.min}" max="${r.max}" value="${esc(S.count)}"></label>
+      <label class="yp-f"><span class="lab">${esc(S.countLabel || '문항 수')} (${r.min}~${r.max})</span><input class="field" id="mkCount" data-mp="count" type="number" min="${r.min}" max="${r.max}" value="${esc(S.count)}"></label>
       <label class="yp-f"><span class="lab">수준</span><select class="field" id="mkLevel" data-mp="level">${LEVELS.map(([k, l]) => `<option value="${k}"${k === S.level ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
     </div>
-    <fieldset class="mk-kinds"><legend class="lab">유형 (섞어 만들어요)</legend>
+    ${S.kinds.length ? `<fieldset class="mk-kinds"><legend class="lab">유형 (섞어 만들어요)</legend>
       ${S.kinds.map(([k, l]) => `<label class="mk-chk"><input type="checkbox" data-mp="kind" value="${k}"${S.chosen.includes(k) ? ' checked' : ''}><span>${l}</span></label>`).join('')}
-    </fieldset>
+    </fieldset>` : ''}
   </div>`;
 }
 
@@ -134,6 +134,6 @@ export function pickValue(S) {
       scope = { ...fs, unit: rd.back(fs.unit), unitName: rd.back(fs.unitName), ai: { unit: fs.unit, unitName: fs.unitName }, titles: [], mask, back: rd.back };
     }
   }
-  if (!error && !base.kinds.length) error = '유형을 하나 넘게 골라 주세요.';
+  if (!error && S.kinds.length && !base.kinds.length) error = '유형을 하나 넘게 골라 주세요.';
   return { ...base, scope, error };
 }
