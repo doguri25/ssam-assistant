@@ -4,10 +4,10 @@ import { onEnter } from '../../core/shell.js';
 import { toast } from '../../core/ui.js';
 import { makeCtx, summary, extraSummary, areaHours, yearHours, alignToPlan, saveSubject, listSubjects, progressOf, hasTimetable } from './class-model.js';
 import { introHTML } from '../../core/ui-parts.js';
-import { setupOpen } from './setup.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 let box = null, curTab = null;
+let setupOpen = true; // 아래 준비가 펼쳐졌는지(setup.js가 'class:setup-state'로 알림 — 여기서 setup.js를 부르면 화면 차례가 바뀜)
 const visible = () => curTab === 'progress' && box && box.isConnected && !box.closest('[hidden]');
 const bar = (done, plan) => `<span class="cls-bar" aria-hidden="true"><i style="width:${plan ? Math.min(100, Math.round(done / plan * 100)) : 0}%"></i></span>`;
 const areaHTML = (ctx, name) => { const a = areaHours(ctx, name); return a.length ? `<span class="muted cls-area">${a.map(([l, n]) => `${esc(l)} ${n}`).join(' · ')}</span>` : ''; };
@@ -46,7 +46,7 @@ function render() {
   if (!box) return;
   const ctx = makeCtx(), rows = summary(ctx), extra = extraSummary(ctx);
   const ready = hasTimetable(ctx.tt) && ctx.subjects.length > 0;
-  const edit = ready && !setupOpen() ? '<button class="btn" type="button" data-pg="setup">시간표·진도표 고치기</button>' : '';
+  const edit = ready && !setupOpen ? '<button class="btn" type="button" data-pg="setup">시간표·진도표 고치기</button>' : '';
   const table = rows.length || extra.length ? `<div class="cls-tbl-wrap"><table class="cls-sum">
       <thead><tr><th scope="col">교과</th><th scope="col">계획</th><th scope="col">실시</th><th scope="col">남은</th><th scope="col">진도 차이</th><th scope="col">다음 차시</th><th scope="col">기준</th></tr></thead>
       <tbody>${rows.map(r => rowHTML(ctx, r)).join('')}${extra.map(e => extraHTML(ctx, e)).join('')}</tbody></table></div>` : '';
@@ -65,7 +65,7 @@ onEnter('class', (tab, section) => {
   if (tab === 'progress') render();
 });
 document.addEventListener('class:changed', () => { if (visible()) render(); });
-document.addEventListener('class:setup-state', () => { if (visible()) render(); });
+document.addEventListener('class:setup-state', e => { setupOpen = !!(e.detail && e.detail.open); if (visible()) render(); });
 document.addEventListener('click', e => {
   if (!box || !box.contains(e.target) || !visible()) return;
   if (e.target.closest('[data-pg="setup"]')) { document.dispatchEvent(new CustomEvent('class:setup', { detail: { open: true, focus: true } })); return; }

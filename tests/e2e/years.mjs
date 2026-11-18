@@ -83,7 +83,8 @@ await run('years', [
     assert(await ls('class:subjects') === subjects, '학급 자료');
     assert((await ls('hk')).includes('메모'), '행특');
     await page.click('nav.app-side [data-menu-go="class"]'); await page.click('#menuTabs [data-tab="progress"]');
-    assert(await page.locator('section[data-menu="class"] .cls-sum tbody tr').count() === 4, '학급 요약');
+    // 진도표 교과 4줄(진도표 없는 시간표 교과는 「시수만」 줄 — 2026-11-18 class-fix A8)
+    assert(await page.locator('section[data-menu="class"] .cls-sum tbody tr:not(.cls-x)').count() === 4, '학급 요약');
   }],
   ['보관한 2027학년도 지우기', async () => {
     await yearsTab();

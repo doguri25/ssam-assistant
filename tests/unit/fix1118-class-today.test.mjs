@@ -8,7 +8,7 @@ import { addDays } from '../../web/core/calendar.js';
 import * as M from '../../web/menus/class/class-model.js';
 import { parseJindo } from '../../web/menus/class/class-import.js';
 import { sampleData } from '../../web/menus/class/class-sample.js';
-import { dueBand } from '../../web/menus/home/home-model.js';
+import { dueBand, lessonCard } from '../../web/menus/home/home-model.js';
 import { carryOver } from '../../web/core/years.js';
 
 function mem() {
@@ -314,4 +314,14 @@ test('[12] 창체 영역(자·동·봉·진) 시수, 2학기 진도표로 바꿔
   assert.equal(M.hours(x, ko).done, 3);
   assert.equal(M.yearHours(x, ko), 4);
   assert.equal(M.yearHours(x, { ...ko, since: undefined }), M.hours(x, { ...ko, since: undefined }).done);
+});
+
+test('[8] 「오늘」 오늘 수업 카드: 전담은 「전담」, 체크한 시수만 교과는 그 상태(남은 수는 진도표 교과만)', () => {
+  seed();
+  const c = M.getTimetable(); c.cells[2][1] = '영어'; c.cells[2][2] = '음악'; c.cells[2][3] = '체육'; M.setTimetable(c);
+  M.setExtra('음악', { staff: true });
+  M.setMark(TODAY, 2, '영어', 'done');
+  const card = lessonCard(M.dayView(ctx(), TODAY), '08:30');
+  assert.deepEqual(card.rows.map(r => [r.subject, r.status, r.text.startsWith('1/') ? '차시' : r.text]), [['국어', 'left', '차시'], ['영어', 'done', '진도표 없음'], ['음악', 'none', '전담'], ['체육', 'none', '진도표 없음']]);
+  assert.equal(card.left, 1);
 });
