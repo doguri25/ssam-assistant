@@ -42,6 +42,8 @@ export function dataQuestion(text, { today = '', subjects = [] } = {}) {
   const base = { subject, nos };
   if (/출석|결석|출결/.test(t) && ask) return { kind: 'attendance', ...base };
   if (/공문/.test(t) && /기한|마감|남|밀린|급한|언제|몇|뭐/.test(t) && ask) return { kind: 'gongmun', ...base };
+  // 예산 남은 돈(「예산 얼마 남았어?」「사업 예산 집행률은?」) — 「예산 과목」은 아님
+  if (/예산|집행률/.test(t) && /얼마|남|집행률|현황|몇|어때|어떻게\s*돼/.test(t) && ask && !/과목|품의\s*(?:써|만들)/.test(t)) return { kind: 'budget', ...base };
   // 필수연수 남은 것(「연수 몇 개 남았어?」「필수연수 뭐 남았지?」) — 「연수 안내 쪽지 뭐라고 써?」는 아님
   if (/필수\s*연수|의무\s*연수|연수.{0,6}(?:남았|남은|몇\s*개|이수\s*(?:했|안|못))|이수\s*(?:안|못)\s*한\s*연수/.test(t) && ask && !/쪽지|안내문|공문/.test(t)) return { kind: 'training', ...base };
   if ((/시간표|\d\s*교시/.test(t) && (ask || short)) || (/(?:오늘|내일|모레|글피|[월화수목금]요일)\s*수업/.test(t) && ask)) {
@@ -198,6 +200,10 @@ export async function answerFor(q, { today }) {
   if (q.kind === 'gongmun') {
     const G = await import('../menus/etc/gongmun-model.js');
     return answerGongmun(q, G.listDocs(), today);
+  }
+  if (q.kind === 'budget') {
+    const [B, Y] = await Promise.all([import('../menus/purchase/budget-model.js'), import('./years.js')]);
+    return out(B.chatAnswer(B.summary(Y.currentYear(today), today)), 'budget');
   }
   if (q.kind === 'training') {
     const M = await import('../menus/training/training-model.js');

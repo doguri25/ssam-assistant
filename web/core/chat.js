@@ -322,6 +322,7 @@ const NAV = {
   check: ['evaluate', 'check', '평가 › 기재 점검으로 왔어요. 고칠 곳을 확인해 주세요.'],
   weekly: ['class', 'weekly', '학급 › 주간학습안내로 왔어요.'], today: ['class', 'today', '학급 › 오늘 수업으로 왔어요.'], progress: ['class', 'progress', '학급 › 진도표·시수로 왔어요.'],
   camp: ['class', 'camp', '학급 › 기초학력으로 왔어요. 출석 체크·관찰 기록·문서 내보내기를 여기서 해요.'],
+  budget: ['purchase', 'budget', '품의 › 예산으로 왔어요. 사업마다 예산·집행·예정·남은 돈을 봐요.'],
   training: ['training', 'mine', '연수 › 내 필수연수로 왔어요. 연수 담당이면 위의 「연수 현황판」 탭에서 교직원 이수증을 체크해요.'],
   aikey: ['settings', 'ai', '설정 › AI로 왔어요. 키를 넣어 주세요.']
 };
@@ -331,6 +332,14 @@ const tell = (st, words) => say(words[st] || words.error || '하지 못했어요
 /* 할 일 하기: 분명하면 그 메뉴로 가서 칸을 채우고 바로 시작(저장·결재·상신은 선생님이 직접) */
 async function run(intent, p = {}) {
   if (NAV[intent]) { const [m, t, msg] = NAV[intent]; go(m, t); say(msg); afterGo(); return; }
+  if (intent === 'idea') {
+    // 평가 › 활동지의 [수업 아이디어](activity.js data-ac="idea")까지
+    go('evaluate', 'activity');
+    const b = document.querySelector('section[data-menu="evaluate"] [data-ac="idea"]');
+    if (b) b.click();
+    say('평가 › 활동지 › 수업 아이디어로 왔어요. 진도표 다음 차시를 고르고 [아이디어 받기]를 눌러 주세요.');
+    afterGo(); return;
+  }
   if (intent === 'aiLog') {
     // 설정 › AI의 「AI로 보낸 글」 카드(menus/settings/settings.js)까지 내려 줌
     go('settings', 'ai');

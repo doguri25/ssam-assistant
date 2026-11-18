@@ -20,6 +20,7 @@ export const KINDS = [
   ['roster', '학급 명단', '학급 명단으로 넣기'],
   ['quote', '견적서', '새 품의에 넣기'],
   ['survey', '설문 응답', '행사 결과 보고서 쓰기'],
+  ['cert', '연수 이수증', '연수 › 내 필수연수에 넣기'],
   ['unknown', '모르는 파일', '']
 ];
 export const kindLabel = k => (KINDS.find(x => x[0] === k) || KINDS[KINDS.length - 1])[1];
@@ -54,6 +55,7 @@ export function classify({ name = '', text = '', scan = false } = {}) {
   if (scan) {
     if (keyName(n)) return { kind: 'unit-key', why: '파일 이름에 「정답」·「모범 답안」이 있어요. 사진 답안은 AI가 읽어요.', alts: ['unit-scan'] };
     if (/견적/.test(n)) return { kind: 'quote', why: '파일 이름에 「견적」이 있어요.', alts: ['unit-scan'] };
+    if (/이수증|수료증/.test(n)) return { kind: 'cert', why: '파일 이름에 「이수증」이 있어요.', alts: ['unit-scan'] };
     return { kind: 'unit-scan', why: '글자가 없는 사진·스캔이에요.', alts: ['unit-key', 'quote'] };
   }
   const t = String(text || '').slice(0, 30000), lines = t.split('\n'), head = lines.slice(0, 15).join('\n'), first = (lines.find(l => l.trim()) || '').replace(/^﻿/, '');
@@ -126,6 +128,10 @@ export function classify({ name = '', text = '', scan = false } = {}) {
   if (/견적/.test(n)) add('quote', 2, '파일 이름에 「견적」이 있어요.');
 
   if (/타임스탬프|timestamp/i.test(first)) add('survey', 9, '구글 폼 응답(타임스탬프)이에요.');
+
+  // 연수 이수증·수료증: 「성 명:」 칸·복사기 파일 이름(scan)이 있어도 학생 문제지가 아님(학생 이름 칸 12점 + 스캔 이름 12점보다 높게)
+  if (/이\s*수\s*증|수\s*료\s*증/.test(head) && /이\s*수|수\s*료/.test(t) && /연수|교육|과정/.test(t)) add('cert', 30, '연수 이수증이에요. 연수 메뉴에서 이수를 기록해요(AI로 보내지 않아요).');
+  else if (/이수증|수료증/.test(n)) add('cert', 4, '파일 이름에 「이수증」이 있어요.');
 
   const ranked = Object.keys(score).sort((a, b) => score[b] - score[a] || order(a) - order(b));
   const top = ranked[0];

@@ -4,7 +4,7 @@
    2026-11-18 손보기(스펙 2026-11-18-class-fix-design §C): 성 뺀 이름은 앞이 한글이 아니면 뒤에 무엇이 오든 가림(띄어 쓴 이름도), 지도 시간은 줄마다 교시 수,
    날마다 출석은 날짜마다 한 번(같은 날 줄이 여럿이어도), 결과 보고서 빈 칸도 저장(칸마다 id), 결재란은 비운 대로 */
 import { get, set } from '../../core/store.js';
-import { isDate, addDays, weekday, HOLIDAYS } from '../../core/calendar.js';
+import { isDate, addDays, weekday, HOLIDAYS, closedDays } from '../../core/calendar.js';
 import { maskPersons } from '../../core/chat-names.js';
 
 export const KEY = 'camp';
@@ -161,6 +161,14 @@ export function attStats(camp, sid) {
   return { present, absent, marked, total, rate: marked ? Math.round(present / marked * 100) : null };
 }
 export const attCount = (camp, sid) => attStats(camp, sid).present;
+/* 인수인계서 줄(학생 이름 없음): [프로그램, 기간, 학생 수, 지도 시간, 출석률(체크한 수업 기준)] */
+export function handoverRows(camps) {
+  const dot = d => (isDate(d) ? `${d.slice(0, 4)}. ${+d.slice(5, 7)}. ${+d.slice(8, 10)}.` : '');
+  return (camps || []).map(c => {
+    const ds = campDates(c), st = c.students.map(s => attStats(c, s.id)), p = st.reduce((n, x) => n + x.present, 0), m = st.reduce((n, x) => n + x.marked, 0);
+    return [c.name || '기초학력', ds.length ? `${dot(ds[0])} ~ ${dot(ds[ds.length - 1])}` : '', `${c.students.length}명`, `${hoursTotal(c)}시간`, m ? `${Math.round((p / m) * 100)}%` : '체크 전'];
+  });
+}
 /* 줄 하나의 지도 시간(교시 수): 적은 교시 수 → 날마다 줄은 시각으로(한 교시 40분 + 쉬는 10분, 09:00~12:40 → 5) → 1.
    교시마다 줄은 한 줄이 한 교시(스펙 2026-11-11 「지도 시간 = 수업 줄 수」 그대로) */
 export function rowHours(camp, s) {
@@ -298,13 +306,13 @@ export function toAlias(text, camp) {
 }
 
 /* ---------- 날짜·교시 ---------- */
-/* from~to(포함)에서 weekdays(0=일 … 6=토, 기본 월~금)인 날, skipHolidays면 공휴일은 뺌. 400일까지 */
+/* from~to(포함)에서 weekdays(0=일 … 6=토, 기본 월~금)인 날, skipHolidays면 공휴일·학교가 쉬는 날(재량휴업일 등 — calendar closedDays)은 뺌. 400일까지 */
 export function expandDates(from, to, { weekdays = [1, 2, 3, 4, 5], skipHolidays = true } = {}) {
   if (!isDate(from) || !isDate(to) || from > to) return [];
-  const out = [];
+  const out = [], closed = skipHolidays ? closedDays() : new Set();
   for (let d = from, n = 0; d <= to && n < 400; d = addDays(d, 1), n++) {
     if (!weekdays.includes(weekday(d))) continue;
-    if (skipHolidays && HOLIDAYS[d]) continue;
+    if (skipHolidays && (HOLIDAYS[d] || closed.has(d))) continue;
     out.push(d);
   }
   return out;

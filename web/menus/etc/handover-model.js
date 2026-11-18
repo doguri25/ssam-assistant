@@ -11,6 +11,7 @@ import { listEventPlans } from '../plan/event-model.js';
 import { listRecent } from '../purchase/library.js';
 import { listLedger, listProjects } from '../purchase/budget-model.js';
 import { getBoard, handoverRows as trainingRows } from '../training/training-model.js';
+import { listCamps, handoverRows as campRows } from '../class/camp-model.js';
 import { TYPES, sumItems, toNumber } from '../purchase/rules.js';
 import { listDocs } from './gongmun-model.js';
 import { listReports } from '../plan/report-model.js';
@@ -135,7 +136,10 @@ export function collectHandover({ year = currentYear(), school = '' } = {}) {
   // 연수 현황판(연수 담당): 연수마다 이름·기한·이수율 — 교직원 이름은 넣지 않음(스펙 2026-11-18-training-design §3)
   let trainings = [];
   try { trainings = trainingRows(getBoard()).map(([t, due, rate]) => [c(t), due, rate]); } catch (e) { trainings = []; }
-  return { year, school: c(school), names: [...names], duties, events: evs, purchases, docs, reports, calendar, trainings };
+  // 기초학력 프로그램(담당 업무): 프로그램·기간·학생 수·지도 시간·출석률 — 학생 이름은 넣지 않음
+  let camps = [];
+  try { camps = campRows(listCamps()).map(([n, ...r]) => [c(n), ...r]); } catch (e) { camps = []; }
+  return { year, school: c(school), names: [...names], duties, events: evs, purchases, docs, reports, calendar, trainings, camps };
 }
 
 /* ---------- 고르기 ---------- */
@@ -226,6 +230,7 @@ export function buildHandover(data, { note = '', today = '' } = {}) {
     rows: b.head ? [b.head, ...b.rows, ['합계', `집행 ${won(b.spent)} · 예정 ${won(b.planned)}`, won(b.sum), '', '']] : [['품의', '종류', '금액(원)', '작성일'], ...b.rows, ['합계', '', won(b.sum), '']] } : NONE('budget'));
   blocks.push(h('docs', '5. 주요 공문·제출'), table('docs', ['공문', '기한', '할 일', '처리'], docRows(d.docs)));
   if ((d.reports || []).length) blocks.push({ type: 'p', text: '결과 보고', part: 'reports' }, table('reports', ['결과 보고', '날짜', '주요 내용'], reportRows(d.reports)));
+  if ((d.camps || []).length) blocks.push({ type: 'p', text: '기초학력 지원 프로그램', part: 'camp' }, table('camp', ['프로그램', '기간', '학생', '지도 시간', '출석률'], d.camps));
   if ((d.trainings || []).length) blocks.push({ type: 'p', text: '연수 현황(이수증 제출)', part: 'training' }, table('training', ['연수', '기한', '제출·확인'], d.trainings.map(r => [r[0], dotDate(r[1]), r[2]])));
   blocks.push(h('note', '6. 다음 담당자에게'), { type: 'p', text: cleanText(note, d.names || []), part: 'note' });
   return { title: `${year}학년도 업무 인수인계서`, blocks };

@@ -118,6 +118,14 @@ export function matchProject(form, projects) {
   return hit.size === 1 ? [...hit][0] : '';
 }
 
+/* 「쌤」 채팅 「예산 얼마 남았어?」(AI 없이): 사업마다 예산·집행·예정·남음·마감. sum: summary(year, today) */
+export function chatAnswer(sum) {
+  const ps = (sum || []).filter(s => s && s.project);
+  if (!ps.length) return '품의 › 예산에 아직 사업이 없어요. [+ 사업 더하기]로 사업과 예산을 넣으면 품의마다 집행을 세어 드려요.';
+  return ['사업별 예산(품의 › 예산 기준 — 에듀파인과 다르면 에듀파인이 맞아요)', ...ps.map(s => `- 「${s.project.name}」 남음 ${won(Math.max(0, s.left))}원`
+    + ` (예산 ${won(s.budget)} · 집행 ${won(s.spent)}${s.planned ? ` · 예정 ${won(s.planned)}` : ''}${s.budget ? ` · 집행률 ${s.rate}%` : ''})${s.dday != null ? ` · 마감 ${s.dday < 0 ? '지남' : s.dday === 0 ? '오늘' : `D-${s.dday}`}` : ''}`)].join('\n');
+}
+
 /* ---------- 알림 ---------- */
 /* 마감 0~30일 안이고 올리지 않은 돈(예산 − 집행) > 0인 사업. others: 지난 학년도 요약(budget:alerts) */
 export function briefLines({ projects = [], ledger = [], year, today, others = [] } = {}) {

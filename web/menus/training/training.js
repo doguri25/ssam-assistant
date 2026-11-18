@@ -8,6 +8,7 @@ import { readText } from '../../core/files.js';
 import { readTable } from '../../core/sheet.js';
 import { currentYear } from '../../core/years.js';
 import * as T from './training-model.js';
+import { registerInbox } from '../../core/inbox.js';
 
 const SS = () => window.SSAM;
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -359,6 +360,14 @@ document.addEventListener('change', e => {
   else if (el.id === 'trStaffFile') { const f = el.files[0]; el.value = ''; if (f) staffFile(f); }
 });
 
+/* 떠 있는 버튼(inbox 'cert'): 이수증 여러 장이고 현황판에 명단이 있으면 현황판에 한꺼번에, 아니면 내 필수연수에 */
+export const certTarget = files => ((files || []).length > 1 && T.getBoard().staff.length && T.getBoard().courses.length ? 'board' : 'mine');
+export async function putCerts(files) {
+  const where = certTarget(files);
+  go('training', where);
+  if (where === 'board') await addBoardCerts([...files]); else await addMineCerts([...files]);
+}
+
 /* 공문 처리 [내 필수연수에 넣기]·[연수 현황판에 넣기] → 넣은 뒤 그 탭으로. 이미 넣은 공문이면 그대로 열기 */
 export function addFromGongmun(doc, where = 'mine') {
   const g = T.fromGongmun(doc);
@@ -391,6 +400,11 @@ export const fromDoc = doc => {
   const k = doc && doc.id ? `gongmun:${doc.id}` : '';
   return { mine: !!k && T.listMine().some(x => x.from === k), board: !!k && T.getBoard().courses.some(c => c.from === k) };
 };
+
+registerInbox('cert', {
+  act: files => (certTarget(files) === 'board' ? `연수 › 연수 현황판에 이수증 ${files.length}개 넣기(이름·연수 맞추기)` : `연수 › 내 필수연수에 이수증 넣기${files.length > 1 ? `(파일 ${files.length}개)` : ''}`),
+  async run(files) { await putCerts(files); return ''; }
+});
 
 onEnter('training', (t, section) => {
   tab = t === 'board' ? 'board' : 'mine';
