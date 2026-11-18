@@ -152,7 +152,8 @@ await run('unit-gap', [
     })));
     assert(rows.length === 2, '두 줄');
     assert(rows[0].who.startsWith('이바다') && rows[0].sub === '수학' && rows[0].area === '도형' && rows[0].pre === '52' && rows[0].post === '' && rows[0].notes.join('|') === '단원평가 2개|아직 없어요' && rows[0].chg === '—', JSON.stringify(rows[0]));
-    assert(rows[1].who.includes('이름 없음') && rows[1].who.includes('3-2 3번') && rows[1].area === '수와 연산' && rows[1].pre === '45' && rows[1].notes[0] === '단원평가 2개', JSON.stringify(rows[1]));
+    // 이름 없는 학생은 「이름 없음」 대신 「3-2 3번」(스펙 2026-11-18-class-fix-design §C8)
+    assert(rows[1].who === '3-2 3번' && rows[1].area === '수와 연산' && rows[1].pre === '45' && rows[1].notes[0] === '단원평가 2개', JSON.stringify(rows[1]));
     // 결과 보고서 단계 위(보고서 꼴 카드보다 앞)
     assert(await page.evaluate(() => { const s = document.querySelector('.cls-camp #cpSec'); return s.firstElementChild.classList.contains('cp-growth'); }), '맨 위 카드');
   }],
