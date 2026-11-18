@@ -150,7 +150,7 @@ async function importTt(file) {
   const t = parseTimetable(text, info);
   if (t) {
     ttMsg = null;
-    putTimetable(t, '새 시간표 파일로 바꿔요.', () => { open = true; render(); changed('setup'); toast('시간표를 가져왔어요'); });
+    putTimetable(t, '새 시간표 파일로 바꿔요.', () => { setOpen(true); changed('setup'); toast('시간표를 가져왔어요'); });
     return;
   }
   lastTt = text;
@@ -206,6 +206,7 @@ function putCell(el, d, p) {
   const apply = mode => {
     if (!saved(setTimetable(editCell(getTimetable(), d, p - 1, name, fromOf(mode))))) return;
     const f = box && box.querySelector(`[data-cell="${d}-${p}"]`); if (f) f.value = name;
+    if (box && box.querySelector('#clsSubs')) refreshSubs(typing()); // 진도표 없는 교과 목록이 시간표를 따름
     changed('setup');
   };
   if (ttMode) apply(ttMode);
@@ -246,7 +247,7 @@ function openPick(r, fileName) {
     if (!picked.length) { toast('교과를 하나 이상 골라 주세요'); return; }
     const ok = importSubjects(picked);
     S().closeSheet();
-    if (saved(ok)) { open = true; changed('import'); setOpen(true); toast(`교과 ${picked.length}개를 넣었어요. 「다음 차시」와 「체크 전 실시」를 실제대로 고쳐 주세요`, 6000); }
+    if (saved(ok)) { changed('import'); setOpen(true); toast(`교과 ${picked.length}개를 넣었어요. 「다음 차시」와 「체크 전 실시」를 실제대로 고쳐 주세요`, 6000); }
   }));
 }
 
