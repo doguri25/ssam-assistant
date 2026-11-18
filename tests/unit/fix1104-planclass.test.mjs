@@ -131,9 +131,10 @@ test('[class-sem2-1] 같은 교과에 2학기 진도표를 넣으면 1학기 체
     assert.deepEqual(hours(ctx, subs[0]), { plan: 20, done: 0, left: 20 });
     const p = progressOf(ctx, subs[0]);
     assert.equal(p.next, 1); assert.equal(p.diff, 0);
-    // 「다음 차시」를 고쳐도 1학기 기록은 세지 않음
+    // 「다음 차시」를 고쳐도 1학기 기록은 세지 않음 — 2026-11-18부터 다음 차시는 진도 자리만 바꾸고 실시 시수는 그대로(스펙 class-fix A2)
     const s3 = setNext(ctx, subs[0], 3);
-    assert.equal(hours(ctx, s3).done, 2);
+    assert.equal(hours(ctx, s3).done, 0);
+    assert.equal(progressOf(ctx, s3).next, 3);
     // 같은 2학기 진도표를 다시 넣으면(이미 2학기) 그대로
     store.set('class:log', { ...log, '2026-08-25': { 1: { subject: '국어', status: 'done' } } });
     assert.ok(importSubjects([{ name: '국어', total: 20, lessons: sem2 }]));

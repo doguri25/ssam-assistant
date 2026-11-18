@@ -72,6 +72,11 @@ export function gongmunCard(docs, today) {
   return dueSoon(Array.isArray(docs) ? docs : [], today, { max: Infinity }).sort(dueOrder).slice(0, 3)
     .map(d => ({ id: d.id, title: d.title || d.name || '공문', n: d.n, ...dueBadge(d.n) }));
 }
+/* 학급 › 오늘 수업 위 공문 기한 띠: 카드와 같은 공문·차례(dueOrder)로 max개, 나머지는 more(「외 n건」) */
+export function dueBand(docs, today, max = 3) {
+  const all = dueSoon(Array.isArray(docs) ? docs : [], today, { max: Infinity }).sort(dueOrder);
+  return { items: all.slice(0, max), more: Math.max(0, all.length - max) };
+}
 /* 같은 카드의 「회의 할 일」(스펙 2026-11-15 2장): 회의록에서 끝내지 않은 할 일 가운데 기한이 7일 안(지남 포함), dueOrder 차례로 3개까지, 공문 기한과 같은 배지.
    id: 그 회의록(누르면 그 회의록), meeting: 회의 이름 */
 export function minutesCard(meetings, today) {

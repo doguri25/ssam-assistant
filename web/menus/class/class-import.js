@@ -7,7 +7,8 @@ export { schoolYearOf };
 export const normName = s => String(s == null ? '' : s).replace(/\s+/g, '');
 
 const PERIOD = /^(\d{1,2})\.(\d{1,2})\.?\s*~\s*(\d{1,2})\.(\d{1,2})\.?$/;
-const LESSON_NO = /^\d+\s*\/\s*\d+$/;
+// 차시 칸 「5/14」, 두 시간 줄 「2~3/4」
+const LESSON_NO = /^\d+(?:\s*[~∼〜-]\s*\d+)?\s*\/\s*\d+$/;
 const SUB_AREA = /^(자율.?자치활동|동아리활동|진로활동)$/;
 const pad = n => String(n).padStart(2, '0');
 
@@ -53,7 +54,22 @@ export function jindoYear(periods, { today, year } = {}) {
 const count = (s, ch) => s.split(ch).length - 1;
 const cells = line => (count(line, '\t') > count(line, '|') ? line.split('\t') : line.split(/\s*\|\s*/)).map(c => c.trim());
 
-/* 진도표 글 → 교과마다 차시 목록. 한 줄 = 1시간. 글에 학년도가 없으면 jindoYear(지금 자료의 학년도 year·오늘·기간 요일), year가 없으면 오늘이 든 학년도 */
+/* 표 머리줄 「국어 교육과정 연간지도계획」의 교과 이름: 앞의 학년도·학기·학년과 끝의 「과」(국어과 → 국어)를 뺌.
+   「연간 지도 계획」처럼 띄어 써도, 교육과정이 없어도(그때는 줄이 그 제목으로 끝나고 이름이 짧을 때만 — 「※ 각 교과 연간지도계획에 따라…」는 아님) */
+const HEAD_CUR = /^(.+?)\s*교육\s*과정\s*연간\s*지도\s*계획/;
+const HEAD_BARE = /^(.+?)\s*연간\s*지도\s*계획\s*(?:\(.*\))?\s*$/;
+const KNOWN = ['국어', '수학', '사회', '과학', '영어', '음악', '미술', '체육', '도덕', '실과', '바른생활', '슬기로운생활', '즐거운생활', '통합', '정보'];
+function headName(line) {
+  const cur = HEAD_CUR.exec(line), m = cur || (line.includes('|') ? null : HEAD_BARE.exec(line));
+  if (!m) return null;
+  const source = m[1].trim();
+  let n = normName(source).replace(/\d{4}학년도/g, '').replace(/[1-6]학년/g, '').replace(/[12]학기/g, '').replace(/^[\d.)·-]+/, '');
+  if (/과$/.test(n) && KNOWN.includes(n.slice(0, -1))) n = n.slice(0, -1);
+  if (!n || (!cur && (!/^[가-힣A-Za-z()·⋅]+$/.test(n) || n.length > 12 || /교과|각/.test(n)))) return null;
+  return { source, name: n === '창의적체험활동' ? '창체' : n, n };
+}
+
+/* 진도표 글 → 교과마다 차시 목록. 한 줄 = 1시간(「2~3/4」 두 시간 줄은 한 시간씩). 글에 학년도가 없으면 jindoYear(지금 자료의 학년도 year·오늘·기간 요일), year가 없으면 오늘이 든 학년도 */
 export function parseJindo(text, { today, year: dataYear } = {}) {
   const src = String(text || '');
   const ym = /(\d{4})\s*학년도/.exec(src);
@@ -62,10 +78,9 @@ export function parseJindo(text, { today, year: dataYear } = {}) {
   let cur = null, sec = null, week = null, period = '', unit = '';
   for (const raw of src.split(/\r?\n/)) {
     const line = raw.trim();
-    const head = /^(.+?)\s*교육과정\s*연간지도계획/.exec(line);
+    const head = headName(line);
     if (head) {
-      const source = head[1].trim();
-      const n = normName(source), name = n === '창의적체험활동' ? '창체' : n;
+      const { source, name, n } = head;
       // 같은 교과 머리줄이 다시 나오면(1·2학기 표가 한 파일에 따로) 한 교과로 이어 붙임 — 따로 두면 둘 다 넣을 때 뒤 표가 앞 표를 지움
       cur = subjects.find(s => s.name === name);
       if (!cur) { cur = { name, source, total: null, pick: !SUB_AREA.test(n), lessons: [] }; subjects.push(cur); secs.set(cur, []); }
@@ -88,8 +103,10 @@ export function parseJindo(text, { today, year: dataYear } = {}) {
       else if (PERIOD.test(x)) period = x;
       else unit = x;
     }
-    cur.lessons.push({ week, period, from: periodStart(period, year), unit, title, no: c[k].replace(/\s+/g, ''), pages: c[k + 1] || '', memo: c[k + 2] || '' });
-    sec.n++;
+    const no = c[k].replace(/\s+/g, ''), two = /^(\d+)[~∼〜-](\d+)\/(\d+)$/.exec(no);
+    const nos = two && +two[2] >= +two[1] && +two[2] - +two[1] < 10 ? Array.from({ length: +two[2] - +two[1] + 1 }, (_, i) => `${+two[1] + i}/${two[3]}`) : [no];
+    for (const x of nos) cur.lessons.push({ week, period, from: periodStart(period, year), unit, title, no: x, pages: c[k + 1] || '', memo: c[k + 2] || '' });
+    sec.n += nos.length;
   }
   // 총 시수: 차시가 있는 표마다 적힌 총 시수의 합(한 표라도 없으면 모름)
   for (const s of subjects) {
