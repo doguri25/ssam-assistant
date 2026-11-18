@@ -99,7 +99,8 @@ function sync(part, t) {
   if (t.label) t.label.drop = false;
   const rows = [...t.detail];
   if (t.dropped.length) {
-    if (part === 'budget') rows.push([`외 ${t.dropped.length}건 합계`, '', won(t.dropped.reduce((s, r) => s + amountOf(r[2]), 0)), '']);
+    // 예산 집행 표는 4칸(품의·종류·금액·작성일) 또는 장부 5칸(사업·품의·금액·작성일·상태) — 금액은 늘 셋째 칸
+    if (part === 'budget') { const row = Array(t.head.length).fill(''); row[0] = `외 ${t.dropped.length}건 합계`; row[2] = won(t.dropped.reduce((s, r) => s + amountOf(r[2]), 0)); rows.push(row); }
     else {
       const row = Array(t.head.length).fill('');
       row[0] = `외 ${t.dropped.length}건`;

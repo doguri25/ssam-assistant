@@ -558,6 +558,7 @@ function toPurchase() {
   openPurchase({
     project: ev.name, purpose: ev.purpose, date: ev.date, target: ev.grades, place: ev.place,
     memo: ev.budget ? `행사 예산: ${ev.budget}` : '',
+    budgetText: ev.budget || '', // 예산 사업 등록 카드의 예산(고른 안의 예산 줄이 없을 때 — purchase.js openPurchase)
     items: o && o.budget.length ? o.budget.map(b => ({ name: b.name, spec: '', qty: '1', price: String(b.amount) })) : undefined
   });
 }

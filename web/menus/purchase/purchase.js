@@ -16,6 +16,8 @@ import { reviewJSON, purchaseReviewPrompt, normPurchaseReview, opinionHTML, REVI
 import { readIntake, fillEmpty, replaceForm, mergeItems, vendorsOf, splitByVendor, parseLines, maskNames } from './intake.js';
 import { oneshotPrompt, normOneshot, confirmChips, askNeeds, GUESS_KEYS } from './oneshot.js';
 import { pushRecent, newId, listRecent, deleteRecent, listTemplates, saveTemplate, renameTemplate, deleteTemplate, templateForm } from './library.js';
+import { renderBudget, projectSheet, today as dayToday } from './budget.js';
+import * as BM from './budget-model.js';
 import { fileMessage, isFileCode } from '../../core/files.js';
 import { registerInbox } from '../../core/inbox.js';
 import { currentYear } from '../../core/years.js';
@@ -46,6 +48,9 @@ function normForm(v) {
   f.typeSet = v && typeof v === 'object' && 'typeSet' in v ? !!v.typeSet : !!(v && v.type && v.type !== 'goods');
   f.typeGuessed = !!(v && v.typeGuessed);
   f.guessed = v && Array.isArray(v.guessed) ? v.guessed.filter(k => GUESS_KEYS.includes(k)) : [];
+  // 예산 집행(스펙 2026-11-18-budget-design): 고른 사업(''=사업 없음), projectSet: 선생님이 골랐음(미리 골라 두기가 덮지 않음)
+  f.projectId = v && typeof v.projectId === 'string' ? v.projectId : '';
+  f.projectSet = !!(v && v.projectSet);
   return f;
 }
 /* 초안: 제목, AI가 쓴 첫 문장(intro), 사유 전체, 선생님이 사유를 손으로 고쳤는지(edited), 검토 의견(rv) */
@@ -76,13 +81,72 @@ function normDraft(d, form) {
 function load() {
   const v = get(CUR_KEY, null), form = normForm(v && v.form);
   return { id: v && typeof v.id === 'string' ? v.id : newId(), form, draft: normDraft(v && v.draft, form),
-    ...(v && Array.isArray(v.vendorsOk) ? { vendorsOk: v.vendorsOk.map(String) } : {}) };
+    ...(v && Array.isArray(v.vendorsOk) ? { vendorsOk: v.vendorsOk.map(String) } : {}),
+    ...(v && v.regAsk && typeof v.regAsk.name === 'string' ? { regAsk: { name: v.regAsk.name, amount: Number(v.regAsk.amount) || 0, key: String(v.regAsk.key || '') } } : {}) };
 }
 
 let st = load();
 let box = null, curTab = 'new', busy = false, msg = '', tried = false;
 let rvBusy = null, rvFail = null; // 지금 검토 중인·검토하지 못한 초안
-const save = () => set(CUR_KEY, st);
+const save = () => { syncProject(); set(CUR_KEY, st); syncLedger(); };
+/* ---------- 예산 집행(스펙 2026-11-18-budget-design) ---------- */
+// 사업: 선생님이 고르지 않았으면 관련 칸 「계획서 제목」·사업명으로 미리 골라 둠(지운 사업이면 비움)
+function syncProject() {
+  const ps = BM.listProjects();
+  if (!st.form.projectSet) st.form.projectId = BM.matchProject(st.form, ps);
+  else if (st.form.projectId && !ps.some(p => p.id === st.form.projectId)) { st.form.projectId = ''; st.form.projectSet = false; }
+}
+// 초안이 있는 품의는 장부에 한 줄(같은 품의 id로 덮어씀 — 올린 줄은 금액을 굳혀 둠)
+function syncLedger() {
+  if (st.draft) BM.upsertDraft({ id: st.id, project: st.form.projectId || '', title: st.draft.title, kind: st.form.type, amount: sumItems(st.form.items), date: dayToday() });
+}
+const mdDay = d => (/^\d{4}-\d{2}-\d{2}$/.test(d || '') ? `${+d.slice(5, 7)}. ${+d.slice(8, 10)}.` : '');
+/* 고른 사업의 남은 예산(이 품의 줄은 빼고 셈)과 이 품의 뒤 남는 돈 */
+function leftInfo() {
+  const p = BM.listProjects().find(x => x.id === st.form.projectId);
+  if (!p) return null;
+  const all = BM.listLedger(), mine = all.find(l => l.id === st.id);
+  const before = BM.totals(p, all.filter(l => l.id !== st.id)).left;
+  return { p, before, after: before - (mine && mine.posted ? mine.amount : sumItems(st.form.items)) };
+}
+const leftHTML = () => {
+  const x = leftInfo();
+  if (!x) return '';
+  return x.after < 0 ? `<p class="pc-left over">남은 예산 ${won(x.before)}원 → 예산보다 ${won(-x.after)}원 많아요</p>` : `<p class="pc-left muted">남은 예산 ${won(x.before)}원 → 이 품의 뒤 ${won(x.after)}원</p>`;
+};
+function projectHTML() {
+  const opts = [['', '사업 없음'], ...BM.listProjects().map(p => [p.id, p.name]), ['__new', '+ 새 사업 더하기…']];
+  return `<div class="pc-f wide pc-project"><label class="lab" for="pcProjectSel">사업 <span class="muted">(예산 집행 현황 — 품의 › 예산)</span></label>
+    <select class="field" id="pcProjectSel" data-pj="sel">${opts.map(([v, n]) => `<option value="${esc(v)}"${v === (st.form.projectId || '') ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>
+    <div id="pcLeftBox">${leftHTML()}</div></div>`;
+}
+/* 초안 카드: [에듀파인에 올렸어요] — 누르면 예산 탭에서 집행 */
+function postHTML() {
+  if (!st.draft) return '';
+  const l = BM.listLedger().find(x => x.id === st.id), p = BM.listProjects().find(x => x.id === st.form.projectId);
+  const pj = p ? `<span class="muted">사업 「${esc(p.name)}」</span>` : '';
+  if (l && l.posted) return `<p class="pc-posted" id="pcPosted"><b>✓ 에듀파인에 올림</b> · ${esc(mdDay(l.postedAt))} · ${won(l.amount)}원 ${pj}<button class="btn text tiny" type="button" data-pc="unpost">풀기</button></p>`
+    + (l.now != null ? `<p class="pc-posted muted" id="pcPostedNow">올린 뒤 금액이 바뀌었어요(${won(l.amount)} → ${won(l.now)}) <button class="btn text tiny" type="button" data-pc="repost">다시 올림 표시</button></p>` : '') + leftHTML();
+  return `<p class="pc-posted"><button class="btn" type="button" data-pc="post">에듀파인에 올렸어요</button>${pj}<span class="muted">누르면 품의 › 예산에서 집행으로 셈해요</span></p>${leftHTML()}`;
+}
+/* 계획서·행사계획에서 온 사업을 예산 사업으로 등록할지 묻는 카드 */
+const regHTML = () => (st.regAsk ? `<div class="banner info pc-regcard" id="pcReg"><span class="grow">이 계획서를 예산 사업으로 등록할까요? 「${esc(st.regAsk.name)}」${st.regAsk.amount ? ` 예산 ${won(st.regAsk.amount)}원` : ''}</span>
+  <button class="btn primary tiny" type="button" data-pc="regYes">등록</button><button class="btn text tiny" type="button" data-pc="regNo">아니요</button></div>` : '');
+const planTitleOf = rel => { const q = /「([^」]+)」/.exec(String(rel || '')); return q ? q[1].trim() : ''; };
+/* 읽은 관련(계획서 제목)·사업명에 맞는 사업이 없으면 등록 카드 */
+function askRegister(name, amount) {
+  const n = String(name || '').trim(), key = BM.planKey(n);
+  if (!n || key.length < 2 || BM.listProjects().some(p => p.planKey === key || BM.planKey(p.name) === key)) return;
+  st.regAsk = { name: n, amount: Math.max(0, Math.round(amount || 0)), key };
+}
+/* 「150만 원」「1,500,000원」 → 숫자 */
+const wonOf = s => { const t = String(s || ''), m = /(\d[\d,]*(?:\.\d+)?)\s*만/.exec(t); if (m) return Math.round(Number(m[1].replace(/,/g, '')) * 10000); const d = /\d[\d,]{2,}/.exec(t); return d ? Number(d[0].replace(/,/g, '')) : 0; };
+function newProject(pre = {}) {
+  projectSheet({ name: pre.name || planTitleOf(st.form.related) || st.form.project || '', amount: pre.amount != null ? pre.amount : sumItems(st.form.items), ...(pre.key ? { planKey: pre.key } : {}) }, p => {
+    st.regAsk = null; st.form.projectId = p.id; st.form.projectSet = true; save();
+    if (curTab === 'new' && box && box.isConnected) render();
+  });
+}
 /* [자세히 고치기] 열림(학년도와 상관없이 기억) */
 const VIEW_KEY = 'purchase:view';
 let moreOnce = false; // 템플릿·최근 작성(초안 없음)을 불러올 때 그 그리기에서만 펼침(기억하지 않음)
@@ -98,7 +162,11 @@ export function setForm(form) { st.form = normForm(form); save(); if (curTab ===
 /* 행사계획에서 [품의로 이어 가기] (P-10): 종류 「행사 운영」으로 칸을 채우고 품의 › 새 품의로 감.
    초안 없이 쓰던 품의가 있으면 [새로 쓰기]처럼 먼저 물어봄(초안이 있으면 최근 작성에 남기고 바로) */
 export function openPurchase(prefill) {
-  swapTo({ id: newId(), form: normForm({ ...emptyForm('event'), ...(prefill || {}), type: 'event', typeSet: true }), draft: null }, { onlyIfLost: true });
+  const pre = prefill || {}, form = normForm({ ...emptyForm('event'), ...pre, type: 'event', typeSet: true });
+  swapTo({ id: newId(), form, draft: null }, { onlyIfLost: true, done: () => {
+    // 행사계획에서 넘어오면: 맞는 예산 사업이 없을 때 등록할지 물음(예산 = 고른 안 합계, 없으면 행사 예산 칸의 숫자)
+    if (st.form === form && pre.project) { askRegister(pre.project, sumItems(form.items) || wonOf(pre.budgetText)); save(); if (curTab === 'new' && box && box.isConnected) put(box.querySelector('#pcRegBox'), regHTML()); }
+  } });
 }
 export function setDraft(draft) { st.draft = normDraft(draft, st.form); save(); if (curTab === 'new' && box && box.isConnected) renderDraft(); }
 
@@ -194,6 +262,7 @@ function render() {
     <div class="pc-type-row"><div class="seg pc-types" role="radiogroup" aria-label="품의 종류">${TYPES.map(x => `<button type="button" role="radio" data-pctype="${x.id}" aria-pressed="${x.id === t.id}" aria-checked="${x.id === t.id}">${x.label}</button>`).join('')}</div>
       <div class="row pc-head-act"><button class="btn" type="button" data-pc="saveTpl">템플릿으로 저장</button><button class="btn text" type="button" data-pc="fresh">새로 쓰기</button></div></div>
     <p class="muted pc-hint" id="pcHint">${esc(t.hint)}</p>
+    <div id="pcRegBox">${regHTML()}</div>
     <div class="pc-grid">
       <section class="pc-card" aria-labelledby="pcMemoH">
         <h3 id="pcMemoH">메모</h3>
@@ -208,6 +277,7 @@ function render() {
         </div>
         <details class="pc-more" id="pcMore"${viewFull() ? ' open' : ''}><summary>자세히 고치기 <span class="muted">관련·사업명·목적·일시·대상·장소·예산 과목·품목·붙임</span></summary>
         <div class="pc-fields">
+          ${projectHTML()}
           ${field('related', '관련 (계획·공문)', { ph: relatedPh(), wide: true })}
           ${field('project', '사업명', { ph: '예) ' + ex.project, wide: true })}
           ${field('purpose', '목적', { req: true, ph: '예) ' + ex.purpose, wide: true })}
@@ -258,13 +328,17 @@ function checksHTML() {
   if (r.missing.length) out.push(li('err', `${viewFull() ? '빨간색 칸을' : '[자세히 고치기]에서'} 채워 주세요: ${r.missing.map(k => LABEL[k]).join('·')}`));
   if (r.personal.length) out.push(li('err', `개인정보는 넣지 말아 주세요 (${r.personal.map(k => LABEL[k]).join('·')})`));
   r.warnings.forEach(w => out.push(li('warn', w)));
+  const lf = leftInfo();
+  if (lf && lf.after < 0) out.push(li('warn', `사업 「${lf.p.name}」 남은 예산보다 ${won(-lf.after)}원 많아요`));
   r.oks.forEach(o => out.push(li('ok', o)));
   return `<h4 class="pc-checks-h">확인 목록</h4><ul class="pc-checks" id="pcChecks">${out.join('')}</ul>`;
 }
 
 /* 초안 위 「확인할 것」: 누르면 [자세히 고치기]의 그 칸으로 */
 // 사유의 관련을 일부러 비웠으면 「관련 · 기본값으로 넣음」은 맞지 않으니 보이지 않음
-const chipsHTML = () => confirmChips(st.form, checks(), st.form.guessed)
+const chipsHTML = () => [...confirmChips(st.form, checks(), st.form.guessed),
+  // 예산 사업이 있는데 이 품의의 사업을 고르지 않았음
+  ...(!st.form.projectId && !st.form.projectSet && BM.listProjects().length ? [{ key: 'budgetProject', text: '사업 · 골라 주세요', level: 'info' }] : [])]
   .filter(c => !(c.key === 'related' && st.draft && relatedOf(st.draft.reason) === ''))
   .map(c => `<button type="button" class="chip pc-chip ${c.level}" data-chip="${c.key}">${esc(c.text)}</button>`).join('');
 function openMore() {
@@ -278,7 +352,8 @@ function goChip(key) {
   if (key === 'items') {
     const i = st.form.items.findIndex(it => String(it.name || '').trim() && !(toNumber(it.qty) > 0 && toNumber(it.price) > 0));
     el = box.querySelector(`[data-item="${Math.max(0, i)}"][data-f="${i >= 0 && !(toNumber(st.form.items[i].qty) > 0) ? 'qty' : 'price'}"]`);
-  } else if (key) el = box.querySelector(`[data-k="${key}"]`);
+  } else if (key === 'budgetProject') el = box.querySelector('#pcProjectSel');
+  else if (key) el = box.querySelector(`[data-k="${key}"]`);
   if (el) { el.scrollIntoView({ block: 'center' }); el.focus(); }
 }
 /* 에듀파인에 차례로 붙여넣기 (Windows 앱, 스펙 2026-11-03 3장): 산출 내역은 칸마다(기본) 또는 표 한 번에 */
@@ -304,7 +379,7 @@ function renderDraft() {
         <div id="pcResyncBox">${resyncHTML()}</div></div>
       <div class="pc-out"><div class="pc-out-h"><span class="lab">산출 내역</span>${copyBtn('calc', '표 복사')}</div>
         <div class="pc-calc-wrap" id="pcCalcWrap">${calcHTML()}</div></div>
-      <div class="row">${exportButton('data-pc="export"')}</div>${queueHTML()}`
+      <div class="row">${exportButton('data-pc="export"')}</div><div id="pcPostBox">${postHTML()}</div>${queueHTML()}`
     : `<p class="muted pc-empty">${busy ? '<span class="spin"></span> AI가 제목과 품의 사유를 쓰고 있어요…' : '사려는 것·견적서를 넣고 [초안 만들기]를 누르면 제목·품의 사유·산출 내역을 써요. 금액과 합계는 앱이 계산해요.'}</p>`}
     <div id="pcChecksBox">${checksHTML()}</div>`;
 }
@@ -366,6 +441,11 @@ function live() {
   put(box.querySelector('#pcWh'), whHTML());
   put(box.querySelector('#pcBudgetHints'), hintsHTML());
   put(box.querySelector('#pcChips'), chipsHTML());
+  put(box.querySelector('#pcLeftBox'), leftHTML());
+  put(box.querySelector('#pcPostBox'), postHTML());
+  put(box.querySelector('#pcRegBox'), regHTML());
+  const ps = box.querySelector('#pcProjectSel');
+  if (ps && document.activeElement !== ps && ps.value !== (st.form.projectId || '')) ps.value = st.form.projectId || '';
   // 관련 칸 안내(비우면 「…」)도 사업명·종류를 따라
   const rf = box.querySelector('#pcRelated'), ph = relatedPh();
   if (rf && rf.placeholder !== ph) rf.placeholder = ph;
@@ -733,6 +813,12 @@ document.addEventListener('click', e => {
     if (!(people > 0) || !(price > 0)) { toast('인원과 1인 단가를 넣어 주세요'); return; }
     st.form.items = mergeItems(st.form.items, [meetingItem({ people, price, times })], 'add');
     save(); renderItems();
+  } else if ((a === 'post' || a === 'repost' || a === 'unpost') && st.draft) {
+    syncLedger(); BM.setPosted(st.id, a !== 'unpost', dayToday()); BM.refreshAlerts(curYear(), dayToday());
+    put(box.querySelector('#pcPostBox'), postHTML()); live();
+    if (a !== 'unpost') toast('에듀파인에 올린 것으로 표시했어요. 품의 › 예산에서 집행으로 셈해요', 5000);
+  } else if (a === 'regYes' && st.regAsk) newProject(st.regAsk);
+  else if (a === 'regNo') { st.regAsk = null; save(); put(box.querySelector('#pcRegBox'), ''); live();
   } else if (a === 'resync' && st.draft) {
     // 첫 문장과 손으로 쓴 관련 줄은 살림(관련은 칸으로 옮김)
     const rel = relatedOf(st.draft.reason);
@@ -745,6 +831,13 @@ document.addEventListener('click', e => {
   }
   else if (a === 'intake') { const t = box.querySelector('#pcIntake').value; if (!t.trim()) { toast('넣을 글을 쓰거나 붙여넣어 주세요. 파일·캡처는 끌어 놓거나 붙여넣으면 바로 읽어요.'); return; } runIntake({ text: t }); }
   else if (a === 'intakeFile') box.querySelector('#pcIntakeFile').click();
+});
+/* 사업 칸: 고르면 선생님이 고른 것(미리 골라 두기가 덮지 않음), 「+ 새 사업 더하기…」는 등록 시트 */
+document.addEventListener('change', e => {
+  const sel = e.target && e.target.closest && e.target.closest('#pcProjectSel');
+  if (!sel || !box || !box.contains(sel)) return;
+  if (sel.value === '__new') { sel.value = st.form.projectId || ''; newProject(); return; }
+  st.form.projectId = sel.value; st.form.projectSet = true; save(); live();
 });
 document.addEventListener('change', e => {
   if (!box || e.target.id !== 'pcIntakeFile' || !box.contains(e.target)) return;
@@ -864,6 +957,8 @@ async function runIntake(input, mine = st) {
   if (how === 'replace') { st.form = replaceForm(st.form, r.fields); st.draft = null; st.vendorsOk = []; }
   else st.form = fillEmpty(st.form, r.fields);
   st.form.items = mergeItems(st.form.items, r.items, how);
+  // 계획서를 읽어 관련에 계획서 제목이 들어오면, 맞는 예산 사업이 없을 때 등록할지 물음(예산은 읽은 품목 합계)
+  if (planTitleOf(r.fields.related)) askRegister(planTitleOf(r.fields.related), sumItems(r.items));
   fresh = new Set(r.items);
   // 읽은 글만 넣기 칸에서 뗌(읽는 동안 더 친 줄은 남김)
   if (input.text != null && !input.keepBox) {
@@ -947,7 +1042,7 @@ function askSaveTemplate() {
     const ok = () => {
       const name = sh.querySelector('#pcTplName').value.trim();
       if (findPersonal(name)) { toast('개인정보는 넣지 말아 주세요'); return; }
-      const t = saveTemplate(name, getForm());
+      const t = saveTemplate(name, { ...getForm(), projectId: '', projectSet: false });
       SS().closeSheet();
       toast(t ? `「${t.name}」 템플릿을 저장했어요` : '저장 공간이 모자라 저장하지 못했어요', 5000);
     };
@@ -999,11 +1094,11 @@ document.addEventListener('click', e => {
     // 지금 쓰고 있는 품의면 고치던 것 그대로 새 품의 탭으로(저장해 둔 옛 모습으로 바꾸지 않음)
     if (r.id === st.id) { go('purchase', 'new'); toast('지금 쓰고 있는 품의예요'); return; }
     const f = normForm({ ...r.form, typeSet: true }); swapTo({ id: r.id, form: f, draft: normDraft(r.draft, f) }, { more: !r.draft }); }
-  else if (d.recentDel) { deleteRecent(d.recentDel); renderOther(curTab); toast('최근 작성에서 지웠어요'); }
+  else if (d.recentDel) { deleteRecent(d.recentDel); BM.onRecentDeleted(d.recentDel); renderOther(curTab); toast('최근 작성에서 지웠어요'); }
 });
 
 onEnter('purchase', (tab, section) => {
   if (!box || !section.contains(box)) { box = document.createElement('div'); box.className = 'pc-box'; section.prepend(box); }
   curTab = tab;
-  if (tab === 'new') render(); else renderOther(tab);
+  if (tab === 'new') render(); else if (tab === 'budget') renderBudget(box); else renderOther(tab);
 });

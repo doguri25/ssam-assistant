@@ -9,6 +9,7 @@ import { stripNames, nameCell, looksLikeName, maskStaff, staffName, MASK } from 
 import { listPlans } from '../plan/year-model.js';
 import { listEventPlans } from '../plan/event-model.js';
 import { listRecent } from '../purchase/library.js';
+import { listLedger, listProjects } from '../purchase/budget-model.js';
 import { TYPES, sumItems, toNumber } from '../purchase/rules.js';
 import { listDocs } from './gongmun-model.js';
 import { listReports } from '../plan/report-model.js';
@@ -110,10 +111,15 @@ export function collectHandover({ year = currentYear(), school = '' } = {}) {
     // 내년 개선 메모 속 교직원 이름(「이나래 방송 장비 점검」): 참여 교직원 명단(역할 분담표)을 뺀 뒤로 아는 이름이 없어 이름 모양으로 가림
     memo: maskPersons(c(e.survey && e.survey.nextMemo)).text, on: !e.date || inSchoolYear(e.date, year)
   }));
-  const purchases = recent.map(r => ({
-    id: r.id, title: c((r.draft && r.draft.title) || r.form.project) || '제목 없는 품의', kind: typeLabel(r.form.type),
-    amount: purchaseAmount(r.form), date: r.at ? isoOf(r.at) : '', on: true
-  })).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  // 예산 집행 장부(스펙 2026-11-18-budget-design)가 있으면 장부(사업·집행·예정, 「최근 작성」 20개 밖도) + 장부에 없는 최근 작성(예정)
+  const ledger = listLedger(), pname = new Map(listProjects().map(p => [p.id, p.name])), inLedger = new Set(ledger.map(l => l.id));
+  const fromRecent = r => ({ id: r.id, title: c((r.draft && r.draft.title) || r.form.project) || '제목 없는 품의', kind: typeLabel(r.form.type),
+    amount: purchaseAmount(r.form), date: r.at ? isoOf(r.at) : '', on: true, ...(ledger.length ? { project: '사업 없음', status: '예정' } : {}) });
+  const purchases = [
+    ...ledger.map(l => ({ id: l.id, title: c(l.title) || '품의', kind: typeLabel(l.kind) || (l.manual ? '직접 더함' : ''), amount: l.amount, date: l.date, on: true,
+      project: c(pname.get(l.project) || '') || '사업 없음', status: l.posted ? '집행' : '예정' })),
+    ...recent.filter(r => !inLedger.has(r.id) && (!ledger.length || r.draft)).map(fromRecent)
+  ].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   const docs = listDocs().map(d => ({
     id: d.id, title: c(d.title || d.name) || '공문', due: d.due, date: d.date, done: d.done, dueNote: c(d.dueNote),
     tasks: (d.tasks || []).map(t => ({ text: c(t.text), due: t.due, done: t.done })).filter(t => t.text), on: true
@@ -179,6 +185,11 @@ export const eventRows = events => (events || []).map(e => [e.name, dotDate(e.da
 export function budgetRows(purchases) {
   const list = purchases || [];
   const sum = list.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  // 장부(상태가 있음): 사업·품의·금액·작성일·상태, 집행·예정 합계
+  if (list.some(p => p.status)) {
+    const by = st => list.filter(p => p.status === st).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    return { head: ['사업', '품의', '금액(원)', '작성일', '상태'], rows: list.map(p => [p.project || '사업 없음', p.title, won(p.amount), dotDate(p.date), p.status || '']), sum, spent: by('집행'), planned: by('예정') };
+  }
   return { rows: list.map(p => [p.title, p.kind, won(p.amount), dotDate(p.date)]), sum };
 }
 export function docRows(docs) {
@@ -206,7 +217,8 @@ export function buildHandover(data, { note = '', today = '' } = {}) {
     ? { type: 'table', head: true, rows: [['월', '할 일'], ...months.map(m => [`${m.month}월`, m.items.join('\n')])], part: 'months' } : NONE('months'));
   blocks.push(h('events', '3. 행사와 개선 메모'), table('events', ['행사', '날짜', '상태', '내년에 고칠 점'], eventRows(d.events)));
   const b = budgetRows(d.purchases);
-  blocks.push(h('budget', '4. 예산 집행'), b.rows.length ? { type: 'table', head: true, rows: [['품의', '종류', '금액(원)', '작성일'], ...b.rows, ['합계', '', won(b.sum), '']], part: 'budget' } : NONE('budget'));
+  blocks.push(h('budget', '4. 예산 집행'), b.rows.length ? { type: 'table', head: true, part: 'budget',
+    rows: b.head ? [b.head, ...b.rows, ['합계', `집행 ${won(b.spent)} · 예정 ${won(b.planned)}`, won(b.sum), '', '']] : [['품의', '종류', '금액(원)', '작성일'], ...b.rows, ['합계', '', won(b.sum), '']] } : NONE('budget'));
   blocks.push(h('docs', '5. 주요 공문·제출'), table('docs', ['공문', '기한', '할 일', '처리'], docRows(d.docs)));
   if ((d.reports || []).length) blocks.push({ type: 'p', text: '결과 보고', part: 'reports' }, table('reports', ['결과 보고', '날짜', '주요 내용'], reportRows(d.reports)));
   blocks.push(h('note', '6. 다음 담당자에게'), { type: 'p', text: cleanText(note, d.names || []), part: 'note' });

@@ -110,3 +110,34 @@ test('인수인계서 표: 사업마다 품의·금액·작성일·상태, 집�
   assert.deepEqual(h.rows, [['어깨동무', '사진 인화지 외 3종', '682,000', '2026. 11. 17.', '집행'], ['사업 없음', '공책', '5,000', '2026. 10. 2.', '예정']]);
   assert.deepEqual([h.spent, h.planned], [682000, 5000]);
 });
+
+test('「오늘」·아침 브리핑: 예산 줄은 공문 기한 다음 차례, 누르면 품의 › 예산', async () => {
+  const { briefing } = await import('../../web/core/briefing.js');
+  const budgets = B.briefLines({ projects: [{ id: 'p1', name: '어깨동무', amount: 1000, due: '2026-11-20' }], ledger: [], year: 2026, today: '2026-11-18' });
+  const out = briefing({ today: '2026-11-18', docs: [{ id: 'd1', title: '과학의 날', due: '2026-11-19' }], events: [{ date: '2026-11-18', title: '교직원 회의' }], budgets });
+  assert.deepEqual(out.map(l => l.kind), ['gongmun', 'budget', 'schedule']);
+  assert.deepEqual(out[1], { kind: 'budget', text: '예산 「어깨동무」 1,000원 남음', when: 'D-2', hot: true, route: { to: 'budget' } });
+});
+
+test('인수인계서 「4. 예산 집행」: 장부가 있으면 사업·상태 칸과 집행·예정 합계', async () => {
+  const { budgetRows, buildHandover } = await import('../../web/menus/etc/handover-model.js');
+  const purchases = [{ title: '사진 인화지 외 3종', kind: '물품 구입', amount: 682000, date: '2026-11-17', project: '어깨동무', status: '집행' }, { title: '공책', kind: '물품 구입', amount: 5000, date: '2026-10-02', project: '사업 없음', status: '예정' }];
+  const b = budgetRows(purchases);
+  assert.deepEqual(b.head, ['사업', '품의', '금액(원)', '작성일', '상태']);
+  assert.deepEqual([b.spent, b.planned, b.sum], [682000, 5000, 687000]);
+  const doc = buildHandover({ year: 2026, purchases, duties: [], events: [], docs: [], reports: [] });
+  const t = doc.blocks.find(x => x.part === 'budget' && x.type === 'table');
+  assert.deepEqual(t.rows.at(-1), ['합계', '집행 682,000 · 예정 5,000', '687,000', '', '']);
+  // 장부가 없으면 예전 표
+  assert.equal(budgetRows([{ title: 'a', kind: '협의회', amount: 1000, date: '' }]).head, undefined);
+});
+
+test('인수인계서 자료: 장부 줄(최근 작성 20개 밖도)·직접 더한 줄이 들어감', async () => {
+  const { collectHandover } = await import('../../web/menus/etc/handover-model.js');
+  const p = B.saveProject({ name: '어깨동무', amount: 1500000 });
+  B.upsertDraft({ id: 'pcGone', project: p.id, title: '밀려난 품의', kind: 'goods', amount: 1000, date: '2026-05-01' });
+  B.setPosted('pcGone', true, '2026-05-02');
+  B.addManual({ project: p.id, title: '11월 전에 쓴 돈', amount: 2300000, date: '2026-10-31' });
+  const d = collectHandover({ year: 2026 });
+  assert.deepEqual(d.purchases.map(x => [x.title, x.project, x.status]), [['밀려난 품의', '어깨동무', '집행'], ['11월 전에 쓴 돈', '어깨동무', '집행']]);
+});

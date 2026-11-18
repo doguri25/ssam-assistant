@@ -22,7 +22,7 @@ function eventRoute(source) {
 
 /* data: { today('YYYY-MM-DD'), docs(공문), meetings(회의록 { id, todos: [{ task, due, done }] }), events(학사일정), plans(행사계획),
    units·activities({ id, title, date, done, sample, students }), grs({ id, title, students }), weekly({ started }) } */
-export function briefing({ today, docs = [], meetings = [], events = [], plans = [], units = [], activities = [], grs = [], weekly = null } = {}) {
+export function briefing({ today, docs = [], meetings = [], events = [], plans = [], units = [], activities = [], grs = [], weekly = null, budgets = [] } = {}) {
   if (!isDate(today)) return [];
   const out = [];
   // 1. 공문 제출 기한(다 한 공문 빼고)과 회의 할 일(회의록에서 끝내지 않은 할 일, 누르면 그 회의록): 지났거나 7일 안,
@@ -34,6 +34,8 @@ export function briefing({ today, docs = [], meetings = [], events = [], plans =
     .map(({ m, t }) => ({ n: diff(t.due, today), kind: 'minutes', text: `회의 할 일 「${String(t.task).trim()}」`, route: { to: 'minutes', id: m.id } }));
   [...gm, ...mn].filter(x => x.n <= 7).sort((a, b) => a.n - b.n)
     .forEach(({ n, kind, text, route }) => out.push({ kind, text, when: dWhen(n), hot: n <= 1, route }));
+  // 1-2. 예산 집행 마감 30일 안·올리지 않은 돈이 남은 사업(purchase/budget-model.js briefLines — 이미 만든 줄)
+  for (const b of Array.isArray(budgets) ? budgets : []) if (b && b.text) out.push({ kind: 'budget', text: b.text, when: b.when || '', hot: !!b.hot, route: b.route || { to: 'budget' } });
   // 2. 학사일정: 오늘~7일(행사계획 날짜 포함, 공문 일정은 위에서). 같은 날 같은 일정은 한 번
   const seen = new Set(), end7 = addDays(today, 7);
   events.filter(e => e && isDate(e.date) && e.source !== 'gongmun' && e.date >= today && e.date <= end7)

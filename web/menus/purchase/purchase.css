@@ -95,3 +95,28 @@
 /* 종류(물품 구입 …)와 [템플릿으로 저장]·[새로 쓰기]를 한 줄로 */
 .pc-type-row{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap}
 .pc-type-row .pc-head-act{margin-left:auto}
+/* 예산 탭(budget.js) */
+.bd-page .bd-card{margin-top:12px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.bd-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}
+.bd-head h3{margin:0;overflow-wrap:anywhere}
+.bd-head .bd-pact{margin-left:auto}
+.bd-due .hot,.bd-nums .over{color:var(--err)}
+.bd-nums{margin:0;display:flex;flex-wrap:wrap;gap:2px 6px}
+.bd-bar{position:relative;display:flex;height:10px;border-radius:6px;background:var(--line);overflow:hidden}
+.bd-bar .bd-spent{background:var(--accent,#3b6ef5)}
+.bd-bar .bd-plan{background:var(--accent,#3b6ef5);opacity:.4}
+.bd-rate,.bd-none{margin:0}
+.bd-lines{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.bd-line{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:4px 10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.bd-line .bd-lt{overflow-wrap:anywhere}
+.bd-line .bd-lact,.bd-line .bd-now{grid-column:1 / -1;flex-wrap:wrap;margin:0}
+.bd-line .bd-move{width:auto;max-width:100%;min-width:0}
+.bd-line.posted .bd-ls{color:var(--ok,#1a7f37);font-weight:600}
+@media (max-width:600px){.bd-line{grid-template-columns:auto minmax(0,1fr) auto}.bd-line .bd-ls{grid-column:3}}
+/* 새 품의의 사업 칸 */
+.pc-project{display:flex;flex-direction:column;gap:4px}
+.pc-project .row{flex-wrap:wrap;gap:6px 10px;align-items:center}
+.pc-left{margin:0}
+.pc-left.over{color:var(--err);font-weight:600}
+.pc-posted{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0}
+.pc-regcard{margin:0 0 12px}
