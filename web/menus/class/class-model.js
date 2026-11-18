@@ -87,6 +87,8 @@ export function normSubject(v) {
     id: v.id, name: normName(v.name), start: isDate(v.start) ? v.start : '',
     // since: 이 날 앞의 체크 기록은 이 진도표에 세지 않음(다음 학기 진도표로 바꾼 교과)
     ...(isDate(v.since) ? { since: v.since } : {}),
+    // posAt: 진도 자리(offset)를 마지막으로 정한 날(다음 차시 고르기·진도표대로 맞추기·가져오기) — 주간학습안내가 체크하지 않은 날을 셀 때의 시작
+    ...(isDate(v.posAt) ? { posAt: v.posAt } : {}),
     offset, hours0: h0Of({ hours0: v.hours0, offset }),
     total: Number.isInteger(v.total) && v.total >= 0 ? v.total : null,
     lessons: (Array.isArray(v.lessons) ? v.lessons : []).map(normLesson).filter(Boolean)
@@ -291,9 +293,26 @@ const logged = (ctx, date, period) => !!statusAt(ctx, date, period);
 export const canMark = (ctx, date) => isDate(date) && date <= ctx.today;
 const MAX_AHEAD = 200;
 
-/* 그 시간의 차시 순번(0부터): 보정값 + 앞선 「완료」 수 + 오늘부터 그 시간 전까지 기록 없는 이 교과 시간 수(매시간 한 차시로 예상) */
+/* 주간학습안내(ctx.assume)에서 체크하지 않은 지난 칸을 진도표대로 한 것으로 셀 첫날: 진도 자리를 정한 다음 날(posAt), 없으면 처음 체크한 날.
+   다음 학기 진도표로 바꾼 교과는 기준일(since) 앞은 세지 않음. 셀 날이 없으면 '' */
+export function assumeFrom(ctx, sub) {
+  let from = sub.posAt ? addDays(sub.posAt, 1) : Object.keys(ctx.log || {}).filter(d => d < ctx.today && Object.values(ctx.log[d]).some(r => r.status)).sort()[0] || '';
+  if (from && sub.since && from < sub.since) from = sub.since;
+  return from && from < ctx.today ? from : '';
+}
+/* 그 시간의 차시 순번(0부터): 보정값 + 앞선 「완료」 수 + 오늘부터 그 시간 전까지 기록 없는 이 교과 시간 수(매시간 한 차시로 예상).
+   ctx.assume(주간학습안내): 체크하지 않은 지난 칸도 한 차시로 셈(오늘 수업·시수에는 쓰지 않음) */
 export function lessonAt(ctx, sub, date, period) {
   let n = sub.offset + records(ctx, sub).filter(r => r.status === 'done' && before(r.date, r.period, date, period)).length;
+  if (ctx.assume) {
+    const from = assumeFrom(ctx, sub);
+    for (let d = from, i = 0; d && d < ctx.today && d <= date && i <= 400; d = addDays(d, 1), i++) {
+      for (const s of slotsOn(ctx, d)) {
+        if (d === date && s.period >= period) break;
+        if (!logged(ctx, d, s.period) && isOf(ctx, s.subject, sub)) n++;
+      }
+    }
+  }
   if (date >= ctx.today) {
     let d = ctx.today;
     for (let i = 0; i <= MAX_AHEAD && d <= date; i++, d = addDays(d, 1)) {
@@ -381,7 +400,7 @@ export function hours(ctx, sub) {
 export const yearHours = (ctx, sub) => hours(ctx, sub).done + (sub.since ? records(ctx, sub, { all: true }).filter(r => r.date < sub.since && r.status !== 'skip').length : 0);
 
 /* 다음에 할 차시를 n(1부터)으로: 기록·실시 시수는 두고 진도 자리(offset)만 */
-export const setNext = (ctx, sub, n) => ({ ...sub, hours0: h0Of(sub), offset: n - 1 - records(ctx, sub).filter(r => r.status === 'done').length });
+export const setNext = (ctx, sub, n) => ({ ...sub, hours0: h0Of(sub), offset: n - 1 - records(ctx, sub).filter(r => r.status === 'done').length, posAt: ctx.today });
 
 /* ---------- 진도표 없는 교과(시수만) ---------- */
 const ORDER = ['국어', '수학', '사회', '과학', '영어', '음악', '미술', '체육', '도덕', '실과', '창체'];

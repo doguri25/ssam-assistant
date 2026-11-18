@@ -8,7 +8,7 @@ import { toast, copyText } from '../../core/ui.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
 import { listEvents, addDays } from '../../core/calendar.js';
 import {
-  makeCtx, getInfo, getWeekly, saveWeekly, weekView, defaultWeek, weeklyTitle, weekCell, weeklyDoc, weekPeriods, normNotes, NOTE_ROWS, fmtDay, today, migrateWeeklyEvents, hasTimetable } from './class-model.js';
+  makeCtx, getInfo, getWeekly, saveWeekly, weekView, missingList, defaultWeek, weeklyTitle, weekCell, weeklyDoc, weekPeriods, normNotes, NOTE_ROWS, fmtDay, today, migrateWeeklyEvents, hasTimetable } from './class-model.js';
 import { askSample } from './setup.js';
 import { getSchool } from '../../core/settings.js';
 import { notesPrompt, notesToFill, autoEvents as eventsOn, AI_KEYS } from './weekly-ai.js';
@@ -53,8 +53,10 @@ function editedCount(days, w) {
   return cells + ev;
 }
 const isEdited = (days, w, d, p) => Object.prototype.hasOwnProperty.call(w.cells || {}, `${d}-${p}`) && w.cells[`${d}-${p}`] !== autoCell(days, d, p);
+/* 주간학습안내의 셈: 체크하지 않은 지난 칸도 진도표대로 한 것으로(class-model lessonAt assume) — 오늘 수업·시수는 그대로 */
+const wctx = () => ({ ...makeCtx(), assume: true });
 function sheet(mon) {
-  const days = weekView(makeCtx(), mon);
+  const days = weekView(wctx(), mon);
   const w = getWeekly(mon);
   const notes = {};
   days.forEach((d, i) => { notes[i] = { ...w.notes[i], events: w.notes[i].events == null ? autoEvents(d.date) : w.notes[i].events }; });
@@ -91,7 +93,7 @@ function render() {
       <button class="btn" type="button" data-w="print">인쇄</button>
       ${exportButton('data-w="hwpx"', { cls: 'primary' })}
     </div>
-    ${aiRowHTML('notes')}${aiNoteHTML('요일별 교과·차시 칸, 교과서 비고, 학사일정, 이미 쓴 알림을 보내요. 사람 이름·전화번호는 가려 보내요. 학생 자료는 보내지 않아요.')}<div id="clsRvBox">${rvBoxHTML(monday)}</div>
+    ${assumeHTML(ctx)}${aiRowHTML('notes')}${aiNoteHTML('요일별 교과·차시 칸, 교과서 비고, 학사일정, 이미 쓴 알림을 보내요. 사람 이름·전화번호는 가려 보내요. 학생 자료는 보내지 않아요.')}<div id="clsRvBox">${rvBoxHTML(monday)}</div>
     <div class="yp-card cls-sheet">
       <input class="field cls-w-title" id="clsWTitle" value="${esc(title)}" aria-label="제목">
       <p class="muted cls-w-range">${fmtDay(days[0].date)} ~ ${fmtDay(days[4].date)}</p>
@@ -103,6 +105,12 @@ function render() {
       <textarea class="field cls-w-announce" id="clsWAnnounce" rows="3" placeholder="한 주 전체에 알릴 말(예: 다음 주 화요일은 현장체험학습이에요. 도시락을 챙겨 주세요.)" aria-label="알려 드립니다">${esc(w.announce || '')}</textarea>
     </div>
   </div>`;
+}
+
+/* 체크하지 않은 지난 날 알림(주간학습안내는 그날도 진도표대로 했다고 보고 셈) */
+function assumeHTML(ctx) {
+  const n = missingList(ctx, 20).length;
+  return n ? `<p class="muted cls-w-assume">체크하지 않은 날 ${n}일은 진도표대로 했다고 보고 차시를 이어 셌어요. <button class="btn text tiny" type="button" data-w="today">오늘 수업에서 체크</button></p>` : '';
 }
 
 /* ---------- AI 알림 (지시·채우기 규칙은 weekly-ai.js — 이름·전화번호는 가려 보내고 답은 되돌림, 수업 없는 날은 채우지 않음) ---------- */
@@ -192,7 +200,7 @@ function plainText() {
 
 /* [다시 채우기]: 고친 칸이 있으면 몇 칸인지 알리고 물음 → 교과 칸은 진도표대로, 학사일정 칸은 그 주 학사일정대로(요일별 알림·알려 드립니다는 그대로) */
 function askRefill() {
-  const days = weekView(makeCtx(), monday), w = getWeekly(monday), n = editedCount(days, w);
+  const days = weekView(wctx(), monday), w = getWeekly(monday), n = editedCount(days, w);
   const doIt = () => {
     const x = getWeekly(monday); x.cells = {};
     for (let d = 0; d < 5; d++) x.notes[d].events = null;
@@ -213,14 +221,14 @@ function onInput(el) {
   else if (el.id === 'clsWAnnounce') w.announce = el.value;
   else if (el.dataset.wc) {
     // 진도표대로의 글과 같아지면 고친 칸에서 뺌(뒤의 진도를 다시 따라감)
-    const days = weekView(makeCtx(), monday), [d, p] = el.dataset.wc.split('-').map(Number);
+    const days = weekView(wctx(), monday), [d, p] = el.dataset.wc.split('-').map(Number);
     if (el.value === autoCell(days, d, p)) delete w.cells[el.dataset.wc]; else w.cells[el.dataset.wc] = el.value;
     el.classList.toggle('edited', Object.prototype.hasOwnProperty.call(w.cells, el.dataset.wc));
   }
   else if (el.dataset.wn) {
     const [d, k] = el.dataset.wn.split('-');
     // 학사일정 칸이 그 주 학사일정과 같아지면 다시 자동으로
-    if (k === 'events') { const days = weekView(makeCtx(), monday); w.notes[d][k] = el.value === autoEvents(days[d].date) ? null : el.value; }
+    if (k === 'events') { const days = weekView(wctx(), monday); w.notes[d][k] = el.value === autoEvents(days[d].date) ? null : el.value; }
     else w.notes[d][k] = el.value;
     // 손으로 고친 칸의 검토 의견은 사라짐
     if (rvAt(w, d, k)) { w.rv = w.rv.filter(r => r.done || !(r.key === d && r.field === k)); save(monday, w); updateRv(monday); return; }
@@ -275,5 +283,6 @@ document.addEventListener('click', e => {
   else if (a === 'copy') copyText(plainText()).then(ok => toast(ok ? '복사했어요' : '복사하지 못했어요'));
   else if (a === 'print') window.print();
   else if (a === 'setup') go('class', 'progress');
+  else if (a === 'today') go('class', 'today');
   else if (a === 'sample') askSample();
 });

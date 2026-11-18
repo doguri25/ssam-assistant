@@ -103,6 +103,27 @@ await run('fix1118-class-weekly', [
     const txt = await page.evaluate(() => navigator.clipboard.readText());
     assert(!txt.includes('숨은 칸 글') && !txt.includes('6교시'), txt.slice(0, 200));
   }],
+  ['체크하지 않은 지난 날: 알림, 주간학습안내는 진도표대로 한 것으로 이어 셈(오늘 수업 셈은 그대로)', async () => {
+    const r = await page.evaluate(async () => {
+      const m = await import('./menus/class/class-model.js');
+      const c = m.makeCtx('2026-10-29'), d = '2026-10-26', s = m.dayView(c, d).slots[0];
+      const log = JSON.parse(localStorage.getItem('ssam:class:log') || '{}');
+      for (const k of Object.keys(log)) delete log[k];
+      log[d] = { [s.period]: { subject: s.subject, status: 'done' } };
+      localStorage.setItem('ssam:class:log', JSON.stringify(log));
+      // 예시로 채운 날(오늘)에 정한 진도 자리는 지움 → 처음 체크한 날부터 셈
+      const subs = JSON.parse(localStorage.getItem('ssam:class:subjects')).map(({ posAt, ...x }) => x);
+      localStorage.setItem('ssam:class:subjects', JSON.stringify(subs));
+      const c2 = m.makeCtx('2026-10-29');
+      return { plain: m.cellText(m.weekView(c2, '2026-11-02')[0].slots[0]), assumed: m.cellText(m.weekView({ ...c2, assume: true }, '2026-11-02')[0].slots[0]), left: m.missingList(c2, 20).length };
+    });
+    await tab('today'); await tab('weekly');
+    assert(r.left > 0 && r.plain !== r.assumed, JSON.stringify(r));
+    assert((await page.textContent(`${V} .cls-w-assume`)).includes(`체크하지 않은 날 ${r.left}일`), '알림');
+    assert(await page.inputValue(`${V} textarea[data-wc="0-1"]`) === r.assumed, '칸은 이어 센 차시');
+    await page.click(`${V} .cls-w-assume [data-w="today"]`);
+    assert(await page.isVisible('#menuTabs [data-tab="today"][aria-current="page"]'), '오늘 수업으로');
+  }],
   ['페이지 오류 없음', async () => { assert(errors.length === 0, errors.join(' | ')); }]
 ]);
 await t.close();
