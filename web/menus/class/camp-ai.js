@@ -59,7 +59,8 @@ export function findWeekdays(text) {
 }
 
 /* ---------- 수업 일정 ---------- */
-const subjectsText = camp => (camp.subjects.length ? camp.subjects.join(', ') : '(정하지 않음)');
+// 교과 칸도 학생A로 바꿔 보냄(선생님이 적은 글이라 이름이 섞일 수 있음)
+const subjectsText = camp => (camp.subjects.length ? toAlias(camp.subjects.join(', '), camp) : '(정하지 않음)');
 /* → { prompt, range, weekdays } (range·weekdays: 앱이 글에서 읽은 것, 없으면 null) */
 /* plan: 운영 계획서 글(계획 파일 넣기) — 글을 더 길게 보내고, 기간·요일은 부르는 쪽이 「기간」 줄에서 읽은 것(range·weekdays)을 씀 */
 export function schedulePrompt(text, camp, { year, today, plan = false, range: r0, weekdays: w0 } = {}) {
@@ -134,7 +135,7 @@ export function buildSessions(spec, camp) {
     if (camp.unit === 'day') {
       const uniq = [...new Set(daySubs)];
       const parts = uniq.map(s => { const t = take(s); return t && uniq.length > 1 && s ? `${s}: ${t}` : t; }).filter(Boolean);
-      out.push(newSession({ date: d, start: spec.slots[0].start, end: spec.slots[spec.slots.length - 1].end, subject: uniq.filter(Boolean).join('·'), content: parts.join(' / ') }));
+      out.push(newSession({ date: d, start: spec.slots[0].start, end: spec.slots[spec.slots.length - 1].end, subject: uniq.filter(Boolean).join('·'), content: parts.join(' / '), periods: spec.slots.length }));
     } else spec.slots.forEach((sl, i) => out.push(newSession({ date: d, start: sl.start, end: sl.end, subject: daySubs[i], content: take(daySubs[i]) })));
   }
   const sessions = out.slice(0, 300);
@@ -148,7 +149,7 @@ function contentSummary(camp, n = 700) {
   for (const s of sortSessions(camp.sessions)) {
     const t = toAlias(s.content, camp).trim();
     if (!t) continue;
-    const k = s.subject || '기타';
+    const k = toAlias(s.subject, camp) || '기타';
     if (!by.has(k)) by.set(k, []);
     if (!by.get(k).includes(t)) by.get(k).push(t);
   }

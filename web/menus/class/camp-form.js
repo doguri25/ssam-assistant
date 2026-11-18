@@ -9,7 +9,7 @@
      - warn: 양식 칸이 모자라거나 합쳐져 다 못 적은 것(학생 칸·날짜 칸·지도 시간) — 화면이 알림
    Error code: 'NOT_HWPX'(깨진 파일) · 'NO_MATCH'(채울 표를 못 찾음) · 'REPORT_DEFAULT'(결과 보고서는 글 머리만 따라 기본 양식으로) */
 import { readTables, pickTable, fillTable, headRows } from '../../core/hwpx-table.js';
-import { mapColumns, confirmCells, markOf, dayMark, gradeClass, hoursText } from './camp-docs.js';
+import { mapColumns, confirmCells, markOf, dayMark, gradeClass, hoursText, docName } from './camp-docs.js';
 import { sortSessions, campDates, attCount, hoursTotal, fmtShort } from './camp-model.js';
 
 export const REPORT_DEFAULT_MSG = '결과 보고서는 쓴 글을 기본 양식으로 내려받았어요(학교 양식은 글 머리만 따라요).';
@@ -149,7 +149,7 @@ function planPeriod(camp, t, form, warn) {
   stu.forEach((c, j) => {
     const at = hs[c].at;
     if (!at) { if (j < n) lost = true; return; }
-    if (j < n) cells.push([at[0], at[1], S[j].name]);
+    if (j < n) cells.push([at[0], at[1], docName(S[j])]);
     else if (hs[c].low) cells.push([at[0], at[1], '']); // 남는 학생 칸(「학생4」·지난번 이름)은 지움
   });
   if (lost) warn.push('양식의 학생 칸 머리가 합쳐져 있어 학생 이름은 적지 못했어요. 이름은 직접 적어 주세요.');
@@ -204,7 +204,7 @@ function planDay(camp, t, form, warn) {
       const j = dc.indexOf(c);
       if (j >= 0) return j < n ? dayMark(camp, dates[j], st.id) : '';
       if (c === ti) return present;
-      if (c === ni) return st.name;
+      if (c === ni) return docName(st);
       if (k === 'seq') return sq[c] === '번호' && seqs.length > 1 ? String(st.no || '') : String(i + 1);
       if (k === 'gradeClass') return sq[c] === '학년' ? String(st.grade || '') : sq[c] === '반' ? String(st.cls || '') : gradeClass(st);
       return null;
@@ -243,7 +243,7 @@ function sidewaysPlans(camp, form, warn, skip = -1) {
     const cells = [];
     for (const s of sideways(t)) for (const [c] of s.cols) {
       const p = list[i++]; room++;
-      cells.push([s.nr, c, p ? p.st.name : ''], [s.rr, c, p ? p.text : '']); // 남는 칸(「학생3」·지난번 이름)은 지움
+      cells.push([s.nr, c, p ? docName(p.st) : ''], [s.rr, c, p ? p.text : '']); // 남는 칸(「학생3」·지난번 이름)은 지움
     }
     if (cells.length) plans.push({ table: t.index, cells });
   }
@@ -262,7 +262,7 @@ function planObserve(camp, form, warn) {
     const ni = sq.findIndex(x => /이름|성명/.test(x)), ri = sq.findIndex((x, c) => c !== ni && (RESULT.test(x) || RESULT_WEAK.test(x)));
     if (ni < 0 || ri < 0) continue;
     const seqs = sq.map((x, c) => (/^(순|순번|순서|연번|번호)$/.test(x) ? c : -1)).filter(c => c >= 0);
-    const rows = list.map((p, i) => sq.map((x, c) => (c === ni ? p.st.name : c === ri ? p.text
+    const rows = list.map((p, i) => sq.map((x, c) => (c === ni ? docName(p.st) : c === ri ? p.text
       : seqs.includes(c) ? (x === '번호' && seqs.length > 1 ? String(p.st.no || '') : String(i + 1))
         : /학년|반/.test(x) ? gradeClass(p.st) : null)));
     return [{ table: t.index, headRows: h, rows, footer: { cells: [] } }];

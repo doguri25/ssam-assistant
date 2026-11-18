@@ -20,7 +20,7 @@ import { campDoc, docTitle, docLabel } from './camp-docs.js';
 import { schedulePrompt, normSchedule, buildSessions, obsPrompt, normObs, reportHeads, reportPrompt, normCampReport, layoutPrompt, normLayout } from './camp-ai.js';
 import { fillCampForm, REPORT_DEFAULT_MSG, NO_MATCH_MSG } from './camp-form.js';
 import { readPlan, planSchedule, planPrompt, planDraft, fillCampInfo, planTable, tableSessions, applyDayTimes } from './camp-plan.js';
-import { sessionsByCount } from './camp-sched.js';
+import { sessionsByCount, applyDates } from './camp-sched.js';
 import { weekday } from '../../core/calendar.js';
 import { STEPS, campSteps, docReadiness } from './camp-steps.js';
 import { applyAutoPost, setGrowth, growthChange, changeText } from './camp-growth.js';
@@ -78,11 +78,15 @@ function paintBusy() {
 /* ---------- 그리기 ---------- */
 const btnBusy = (k, idle, doing) => (busy[k] ? `<span class="spin"></span>${doing}` : idle);
 const PLAN_ACCEPT = '.hwp,.hwpx,.pdf,.docx,.txt,.png,.jpg,.jpeg,.webp,.heic';
+// 사진·스캔 계획서는 그림 그대로 AI에 가서 이름을 가리지 못함(양식 넣기 안내와 같은 뜻) — 보내기 전에 물음
+const PLAN_IMG_NOTE = '사진·스캔 계획서는 이름을 가리지 못하고 그림 그대로 AI로 가요(보내기 전에 물어요).';
 /* 계획 파일 넣기 줄(캠프 정보·수업 일정에 하나씩) */
 const planRow = (c, where) => `<div class="row cp-plan"><button class="btn tonal" type="button" data-cp="planFile" data-drop-pick data-where="${where}"${busy[`${c.id}:plan`] ? ' disabled' : ''}>${btnBusy(`${c.id}:plan`, '계획 파일 넣기', '계획서 읽는 중…')}</button>
-  <span class="muted">운영 계획서(한글·PDF·워드)로 빈 칸과 수업 일정을 채워요.</span>
+  <span class="muted">운영 계획서(한글·PDF·워드)로 빈 칸과 수업 일정을 채워요. ${PLAN_IMG_NOTE}</span>
   <input type="file" id="cpPlanFile-${where}" hidden accept="${PLAN_ACCEPT}"></div>`;
+/* 프로그램 고르기 줄. 프로그램이 없으면 그리지 않음(빈 화면 카드의 [새 프로그램] 하나만) */
 function pickHTML(camps, c) {
+  if (!camps.length) return '';
   return `<div class="row cp-bar">
     ${camps.length ? `<label class="cp-pick"><span class="lab">프로그램</span><select class="field" id="cpPick" aria-label="프로그램 고르기">${camps.map(x => `<option value="${esc(x.id)}"${c && x.id === c.id ? ' selected' : ''}>${esc(x.name || '이름 없는 프로그램')}</option>`).join('')}</select></label>` : ''}
     <button class="btn" type="button" data-cp="new">새 프로그램</button>
@@ -111,12 +115,16 @@ function infoHTML(c) {
     : '<p class="muted" style="margin:0">[+ 학생]으로 학생을 넣어 주세요.</p>'}
     </section>`;
 }
+/* 「교시」 칸: 날마다(한 줄에 하루 여러 교시)이거나 교시 수를 적은 줄이 있을 때. 비우면 시각으로 셈(칸에 흐리게) */
+const showPeriods = c => c.unit === 'day' || c.sessions.some(s => s.periods > 1);
+const countText = c => `${c.sessions.length}줄 · 총 ${M.hoursTotal(c)}시간`;
 function schedHTML(c) {
-  const k = `${c.id}:sched`;
+  const k = `${c.id}:sched`, per = showPeriods(c), same = c.unit === 'day' ? M.sameDateCount(c) : 0;
   const rows = c.sessions.map((s, i) => `<tr><td class="muted num">${i + 1}</td>
     <td><input class="field" type="date" data-ss="${esc(s.id)}" data-k="date" value="${esc(s.date)}" aria-label="${i + 1}번째 줄 날짜"></td>
     <td><input class="field" type="time" data-ss="${esc(s.id)}" data-k="start" value="${esc(s.start)}" aria-label="${i + 1}번째 줄 시작"></td>
     <td><input class="field" type="time" data-ss="${esc(s.id)}" data-k="end" value="${esc(s.end)}" aria-label="${i + 1}번째 줄 끝"></td>
+    ${per ? `<td><input class="field num cp-per" data-ss="${esc(s.id)}" data-k="periods" value="${s.periods || ''}" placeholder="${M.rowHours(c, { ...s, periods: null })}" inputmode="numeric" aria-label="${i + 1}번째 줄 교시 수" autocomplete="off"></td>` : ''}
     <td><input class="field" data-ss="${esc(s.id)}" data-k="subject" value="${esc(s.subject)}" list="cpSubs" aria-label="${i + 1}번째 줄 교과" autocomplete="off"></td>
     <td><input class="field wide" data-ss="${esc(s.id)}" data-k="content" value="${esc(s.content)}" aria-label="${i + 1}번째 줄 지도 내용" autocomplete="off"></td>
     <td><button class="icon-btn" type="button" data-cp="delRow" data-id="${esc(s.id)}" aria-label="${i + 1}번째 줄 지우기">×</button></td></tr>`).join('');
@@ -125,13 +133,14 @@ function schedHTML(c) {
       <label class="yp-f"><span class="lab">AI로 만들기</span><textarea class="field" id="cpSchedPrompt" rows="3" placeholder="예) 1/8~1/23 평일, 9:00~12:40 하루 5교시(40분·쉬는 5분), 국어·수학, 3학년 2명, 아이스크림 홈런">${esc(drafts[c.id] || '')}</textarea></label>
       <div class="row"><button class="btn tonal" type="button" data-cp="schedAi"${busy[k] ? ' disabled' : ''}>${btnBusy(k, 'AI로 만들기', 'AI가 만드는 중…')}</button>
         <span class="muted">날짜는 앱이 세고 주말·공휴일은 빼요.</span></div>
-      ${aiRowHTML('plan')}${aiNoteHTML('적은 글(또는 운영 계획서)과 대상·교과만 보내요. 이름은 학생A·지도교사처럼 바꿔 보내요.')}
+      ${aiRowHTML('plan')}${aiNoteHTML('적은 글(또는 운영 계획서)과 대상·교과만 보내요. 이름은 학생A·지도교사처럼 바꿔 보내요. 사진·스캔 계획서는 그림이라 이름을 가리지 못해 보내기 전에 물어요.')}
     </section>
     <section class="yp-card">
-      <div class="cls-card-h"><h3>수업 일정 <span class="muted cp-count">${c.sessions.length}줄 · 총 ${M.hoursTotal(c)}시간</span></h3>
+      <div class="cls-card-h"><h3>수업 일정 <span class="muted cp-count">${countText(c)}</span></h3>
         <div class="row"><button class="btn" type="button" data-cp="addRow">+ 줄</button><button class="btn" type="button" data-cp="bulk">한 날 여러 교시 더하기</button><button class="btn" type="button" data-cp="byCount">차시 수로 날짜 만들기</button>${c.sessions.length > 1 ? '<button class="btn text" type="button" data-cp="sortRows">날짜 차례로</button>' : ''}</div></div>
-      ${c.unit === 'day' ? '<p class="muted" style="margin:0">날마다 출석이에요. 날짜마다 한 줄(그날 첫 교시 시작~끝 교시 끝)로 넣어 주세요.</p>' : ''}
-      ${c.sessions.length ? `<div class="cp-tbl-wrap"><table class="cp-tbl cp-sched"><thead><tr><th scope="col">#</th><th scope="col">날짜</th><th scope="col">시작</th><th scope="col">끝</th><th scope="col">교과</th><th scope="col">지도 내용</th><th scope="col"><span class="sr">지우기</span></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      ${c.unit === 'day' ? '<p class="muted" style="margin:0">날마다 출석이에요. 날짜마다 한 줄(그날 첫 교시 시작~끝 교시 끝)로 넣고, 「교시」에 그날 교시 수를 적어 주세요(비우면 시각으로 셈 — 지도 시간에 들어가요).</p>' : ''}
+      ${same ? `<p class="banner warn cp-same"><span class="grow">같은 날 줄이 여러 개인 날이 ${same}일 있어요. 날마다 출석은 하루 한 칸으로 체크해요.</span><button class="btn tonal" type="button" data-cp="mergeDays">같은 날 줄 합치기</button></p>` : ''}
+      ${c.sessions.length ? `<div class="cp-tbl-wrap"><table class="cp-tbl cp-sched"><thead><tr><th scope="col">#</th><th scope="col">날짜</th><th scope="col">시작</th><th scope="col">끝</th>${per ? '<th scope="col">교시</th>' : ''}<th scope="col">교과</th><th scope="col">지도 내용</th><th scope="col"><span class="sr">지우기</span></th></tr></thead><tbody>${rows}</tbody></table></div>`
     : '<p class="muted" style="margin:0">아직 수업이 없어요. [+ 줄]·[한 날 여러 교시 더하기]·[차시 수로 날짜 만들기]·[AI로 만들기]로 넣거나, 지도 계획 표가 있는 계획 파일을 넣어 주세요.</p>'}
       <datalist id="cpSubs">${c.subjects.map(s => `<option value="${esc(s)}">`).join('')}</datalist>
     </section>`;
@@ -143,19 +152,31 @@ function pickAttDate(c) {
   const t = today();
   return ds.includes(t) ? t : ds.find(d => d > t) || ds[ds.length - 1];
 }
+/* 출석 칸 줄: 교시마다는 수업 줄마다, 날마다는 그날 한 줄(같은 날 줄이 여럿이어도 — 칸을 누르면 그날 줄 모두에 같은 표시, 칸 키 「@날짜|학생」) */
+const dayRow = (c, d) => { const l = M.sessionsOn(c, d), st = l.map(s => s.start).filter(Boolean).sort()[0] || '', en = l.map(s => s.end).filter(Boolean).sort().at(-1) || '';
+  return { key: `@${d}`, date: d, time: M.fmtTime({ start: st, end: en }), subject: [...new Set(l.flatMap(s => s.subject.split('·')).filter(Boolean))].join('·') }; };
+const attRows = (c, d) => (c.unit === 'day' ? [dayRow(c, d)] : M.sessionsOn(c, d).map(s => ({ key: s.id, date: d, time: M.fmtTime(s), subject: s.subject })));
+const markIn = (c, r, sid) => (r.key[0] === '@' ? M.dayMarkOf(c, r.date, sid) : (c.att[r.key] || {})[sid] || '');
+/* 날짜 없는 줄 안내(출석 화면에 보이지 않음 — 수업 일정에서 날짜를 넣음) */
+const undatedHTML = n => (n ? `<p class="banner warn cp-undated"><span class="grow">날짜가 없는 수업 ${n}줄은 출석 화면에 보이지 않아요. 수업 일정에서 날짜를 넣어 주세요.</span><button class="btn tonal" type="button" data-sec="sched">수업 일정으로</button></p>` : '');
 function attHTML(c) {
   if (!c.students.length || !c.sessions.length) {
     return `<section class="yp-card"><p style="margin:0">${!c.students.length ? '먼저 기본 정보에서 학생을 넣어 주세요.' : '먼저 수업 일정을 넣어 주세요.'}</p>
       <div class="row"><button class="btn primary" type="button" data-sec="${!c.students.length ? 'info' : 'sched'}">${!c.students.length ? '기본 정보로' : '수업 일정으로'}</button></div></section>`;
   }
+  const undated = c.sessions.filter(s => !s.date).length;
+  if (!M.campDates(c).length) {
+    return `<section class="yp-card"><p style="margin:0">수업 일정 ${c.sessions.length}줄에 날짜가 없어요. 날짜가 있어야 출석을 체크할 수 있어요.</p>
+      <div class="row"><button class="btn primary" type="button" data-sec="sched">수업 일정으로</button></div></section>`;
+  }
   attDate = pickAttDate(c); attFor = c.id;
-  const ds = M.campDates(c), i = ds.indexOf(attDate), list = M.sessionsOn(c, attDate), rest = M.remainingOn(c, attDate);
+  const ds = M.campDates(c), i = ds.indexOf(attDate), list = attRows(c, attDate), rest = M.remainingOn(c, attDate);
   const all = viewOf() === 'all';
   const toggle = `<div class="cp-view" role="group" aria-label="출석 보기">${[['day', '하루씩'], ['all', '한눈에']].map(([k, l]) => `<button type="button" class="cp-view-b" data-att-view="${k}" aria-pressed="${viewOf() === k}">${l}</button>`).join('')}</div>`;
   // 칸: ○ 출석(진한 채움) · / 결석(주황) · — 체크 안 함(점선, 「—」는 CSS로 그려 글은 빈칸)
-  const cell = (s, st) => { const m = (c.att[s.id] || {})[st.id] || ''; return `<td><button type="button" class="cp-mark m-${m || 'none'}" data-att="${esc(s.id)}|${esc(st.id)}" aria-label="${esc(st.name || '학생')} ${esc(M.fmtTime(s) || '수업')} ${MARK_WORD[m] || '체크 안 함'}">${MARK_TEXT[m] || ''}</button></td>`; };
+  const cell = (r, st) => { const m = markIn(c, r, st.id); return `<td><button type="button" class="cp-mark m-${m || 'none'}" data-att="${esc(r.key)}|${esc(st.id)}" aria-label="${esc(M.shownName(st))} ${esc(r.time || '수업')} ${MARK_WORD[m] || '체크 안 함'}">${MARK_TEXT[m] || ''}</button></td>`; };
   const chip = d => { const ok = M.dayDone(c, d); return `<button type="button" class="cp-day${ok ? ' done' : ''}" data-att-date="${d}" aria-pressed="${d === attDate}">${esc(chipDate(d))}${ok ? '<span aria-hidden="true"> ✓</span><span class="sr"> 다 체크함</span>' : ''}</button>`; };
-  const stats = c.students.map(st => { const a = M.attStats(c, st.id); return `<tr><th scope="row">${esc(st.name || '이름 없음')}</th><td class="num">${a.present}/${a.total}</td><td class="num">${a.absent}</td><td class="num">${a.rate == null ? '—' : a.rate + '%'}</td></tr>`; }).join('');
+  const stats = c.students.map(st => { const a = M.attStats(c, st.id); return `<tr><th scope="row">${esc(M.shownName(st))}</th><td class="num">${a.present}/${a.total}</td><td class="num">${a.absent}</td><td class="num">${a.rate == null ? '—' : a.rate + '%'}</td></tr>`; }).join('');
   return `<div class="cp-att-wrap"><div class="cp-att-main">
     <section class="yp-card">
       ${toggle}
@@ -166,18 +187,20 @@ function attHTML(c) {
         <button class="btn text" type="button" data-cp="attToday">오늘</button>
         <button class="btn tonal" type="button" data-cp="attAll"${rest ? '' : ' disabled'}>남은 칸 모두 출석</button></div>
       <p class="muted cp-legend"><span class="cp-key-i"><span class="cp-key m-O" aria-hidden="true">○</span>출석</span><span class="cp-key-i"><span class="cp-key m-X" aria-hidden="true">/</span>결석</span><span class="cp-key-i"><span class="cp-key m-none" aria-hidden="true"></span>체크 안 함</span><span>칸을 누를 때마다 차례로 바뀌어요.</span></p>
-      <div class="cp-tbl-wrap"><table class="cp-tbl cp-att"><thead><tr><th scope="col">시간</th><th scope="col">교과</th>${c.students.map(st => `<th scope="col">${esc(st.name || '이름 없음')}</th>`).join('')}</tr></thead>
-        <tbody>${list.map(s => `<tr><th scope="row">${esc(M.fmtTime(s) || '—')}</th><td>${esc(s.subject)}</td>${c.students.map(st => cell(s, st)).join('')}</tr>`).join('')}</tbody></table></div>`}
+      <div class="cp-tbl-wrap"><table class="cp-tbl cp-att"><thead><tr><th scope="col">시간</th><th scope="col">교과</th>${c.students.map(st => `<th scope="col">${esc(M.shownName(st))}</th>`).join('')}</tr></thead>
+        <tbody>${list.map(r => `<tr><th scope="row">${esc(r.time || '—')}</th><td>${esc(r.subject)}</td>${c.students.map(st => cell(r, st)).join('')}</tr>`).join('')}</tbody></table></div>
+      ${c.unit === 'day' && M.sessionsOn(c, attDate).length > 1 ? `<p class="muted" style="margin:0">이날 수업 줄 ${M.sessionsOn(c, attDate).length}개를 한 칸으로 체크해요(날마다 출석).</p>` : ''}
+      ${undatedHTML(undated)}`}
     </section>
     <section class="yp-card"><h3>학생별 출석</h3>
       <div class="cp-tbl-wrap"><table class="cp-tbl cp-stats"><thead><tr><th scope="col">학생</th><th scope="col">출석</th><th scope="col">결석</th><th scope="col">출석률</th></tr></thead><tbody>${stats}</tbody></table></div>
-      <p class="muted" style="margin:0">출석은 전체 수업 ${c.sessions.length}번 가운데, 출석률은 ○·/를 표시한 수업으로 셈해요.</p></section>
+      <p class="muted" style="margin:0">${c.unit === 'day' ? `출석은 수업 날 ${M.attStats(c, '').total}일 가운데, 출석률은 ○·/를 표시한 날로 셈해요.` : `출석은 전체 수업 ${c.sessions.length}번 가운데, 출석률은 ○·/를 표시한 수업으로 셈해요.`}</p></section>
     </div>${readyHTML(c)}</div>`;
 }
 /* 출석 「한눈에」: 학생 × 수업 날 한 표(하루 여러 교시면 날짜 머리 아래 교시 줄). 칸은 하루씩과 같이 ○ → / → 빈칸,
    이름 칸은 왼쪽에 붙고, 오늘 열은 표시하고 처음 열 때 오늘(없으면 다음 수업 날)이 보이게 넘김(render). 끝 열은 학생별 출석 계 */
 function allHTML(c) {
-  const t = today(), by = M.campDates(c).map(d => [d, M.sessionsOn(c, d)]);
+  const t = today(), by = M.campDates(c).map(d => [d, attRows(c, d)]); // 날마다는 날짜마다 한 칸
   const multi = by.some(([, ss]) => ss.length > 1);
   const left = by.reduce((n, [d]) => n + M.remainingOn(c, d), 0), undated = c.sessions.filter(s => !s.date).length;
   const legend = `<p class="muted cp-legend"><span class="cp-key-i"><span class="cp-key m-O" aria-hidden="true">○</span>출석</span><span class="cp-key-i"><span class="cp-key m-X" aria-hidden="true">/</span>결석</span><span class="cp-key-i"><span class="cp-key m-none" aria-hidden="true"></span>체크 안 함</span><span>칸을 누를 때마다 차례로 바뀌어요.</span></p>`;
@@ -185,15 +208,15 @@ function allHTML(c) {
     const ok = M.dayDone(c, d), one = !multi && ss[0];
     return `<th scope="${multi ? 'colgroup' : 'col'}"${ss.length > 1 ? ` colspan="${ss.length}"` : ''} class="cp-all-d${d === t ? ' today' : ''}${ok ? ' done' : ''}" data-col-date="${d}">${esc(chipDate(d))}${ok ? '<span aria-hidden="true"> ✓</span><span class="sr"> 다 체크함</span>' : ''}${d === t ? '<span class="sr"> 오늘</span>' : ''}${one && one.subject ? `<small>${esc(one.subject)}</small>` : ''}</th>`;
   }).join('');
-  const sub = multi ? `<tr>${by.map(([d, ss]) => ss.map((s, i) => `<th scope="col" class="cp-all-t${d === t ? ' today' : ''}">${esc(s.start || `${i + 1}교시`)}${s.subject ? `<small>${esc(s.subject)}</small>` : ''}</th>`).join('')).join('')}</tr>` : '';
+  const sub = multi ? `<tr>${by.map(([d, ss]) => ss.map((s, i) => `<th scope="col" class="cp-all-t${d === t ? ' today' : ''}">${esc((s.time || '').split('~')[0] || `${i + 1}교시`)}${s.subject ? `<small>${esc(s.subject)}</small>` : ''}</th>`).join('')).join('')}</tr>` : '';
   const rs = multi ? ' rowspan="2"' : '';
-  const cell = (s, st, d) => { const m = (c.att[s.id] || {})[st.id] || ''; return `<td${d === t ? ' class="today"' : ''}><button type="button" class="cp-mark sm m-${m || 'none'}" data-att="${esc(s.id)}|${esc(st.id)}" aria-label="${esc(st.name || '학생')} ${esc(M.fmtDate(d))} ${esc(M.fmtTime(s) || '수업')} ${MARK_WORD[m] || '체크 안 함'}">${MARK_TEXT[m] || ''}</button></td>`; };
-  const rows = c.students.map(st => { const a = M.attStats(c, st.id); return `<tr><th scope="row" class="cp-all-name">${esc(st.name || '이름 없음')}</th>${by.map(([d, ss]) => ss.map(s => cell(s, st, d)).join('')).join('')}<td class="num cp-all-sum">${a.present}/${a.total}</td></tr>`; }).join('');
+  const cell = (r, st, d) => { const m = markIn(c, r, st.id); return `<td${d === t ? ' class="today"' : ''}><button type="button" class="cp-mark sm m-${m || 'none'}" data-att="${esc(r.key)}|${esc(st.id)}" aria-label="${esc(M.shownName(st))} ${esc(M.fmtDate(d))} ${esc(r.time || '수업')} ${MARK_WORD[m] || '체크 안 함'}">${MARK_TEXT[m] || ''}</button></td>`; };
+  const rows = c.students.map(st => { const a = M.attStats(c, st.id); return `<tr><th scope="row" class="cp-all-name">${esc(M.shownName(st))}</th>${by.map(([d, ss]) => ss.map(r => cell(r, st, d)).join('')).join('')}<td class="num cp-all-sum">${a.present}/${a.total}</td></tr>`; }).join('');
   return `<div class="row cp-att-bar"><b class="cp-att-day">수업 ${by.length}일${multi ? ` · ${c.sessions.length - undated}교시` : ''}</b><span class="muted cp-all-left">${left ? `남은 칸 ${left}개` : '다 체크했어요 ✓'}</span></div>
       ${legend}
       <div class="cp-tbl-wrap cp-all-wrap"><table class="cp-tbl cp-all"><thead><tr><th scope="col" class="cp-all-name"${rs}>학생</th>${head}<th scope="col" class="cp-all-sum"${rs}>출석</th></tr>${sub}</thead>
         <tbody>${rows}</tbody></table></div>
-      ${undated ? `<p class="muted" style="margin:0">날짜가 없는 수업 ${undated}줄은 여기 보이지 않아요. 수업 일정에서 날짜를 넣어 주세요.</p>` : ''}`;
+      ${undatedHTML(undated)}`;
 }
 /* 문서 준비 상자(출석 체크 옆, 좁으면 아래): 준비됨(✓ 초록 점)·할 일 남음(주황 점)·아직(빈 원) + 그 단계로 */
 const READY_SR = { ready: '', todo: '할 일 남음: ', none: '아직: ' };
@@ -215,8 +238,8 @@ function obsHTML(c) {
       ${aiRowHTML('writing')}
       ${aiNoteHTML('이름 대신 학생A·학생B와 출석 수·지도 내용·메모만 보내요.')}
       <p class="muted" style="margin:0">메모를 짧게 적으면 「관찰 및 지도 결과」를 2~4문장으로 써요. 고친 칸은 다시 쓰기 전에 물어요.</p>
-      <ol class="cp-obs">${c.students.map(st => { const a = M.attStats(c, st.id); return `<li class="cp-ob">
-        <div class="cp-ob-h"><b>${esc(st.name || '이름 없음')}</b><span class="muted">${esc(M.studentLabel({ ...st, name: '' }))}${st.grade || st.no ? ' · ' : ''}출석 ${a.present}/${a.total}</span>${c.obsEdited[st.id] ? '<span class="cls-tag">고친 칸</span>' : ''}</div>
+      <ol class="cp-obs">${c.students.map(st => { const a = M.attStats(c, st.id), lab = st.name.trim() ? M.studentLabel({ ...st, name: '' }) : ''; return `<li class="cp-ob">
+        <div class="cp-ob-h"><b>${esc(M.shownName(st))}</b><span class="muted">${esc(lab)}${lab ? ' · ' : ''}출석 ${a.present}/${a.total}</span>${c.obsEdited[st.id] ? '<span class="cls-tag">고친 칸</span>' : ''}</div>
         <label class="yp-f"><span class="lab">메모</span><textarea class="field" data-memo="${esc(st.id)}" rows="2" placeholder="예) 받침 있는 낱말 받아쓰기를 어려워함 → 3주 차에 80점">${esc(c.memo[st.id] || '')}</textarea></label>
         <label class="yp-f"><span class="lab">관찰 및 지도 결과</span><textarea class="field" data-obs="${esc(st.id)}" rows="3">${esc(c.obs[st.id] || '')}</textarea></label></li>`; }).join('')}</ol>
     </section>`;
@@ -238,7 +261,7 @@ function growthHTML(c) {
   if (!c.students.length) return '';
   const any = c.students.some(st => c.growth[st.id]);
   const rows = c.students.map(st => {
-    const e = c.growth[st.id] || null, sid = esc(st.id), who = st.name || '이름 없음', lab = M.studentLabel({ ...st, name: '' }), d = growthChange(e);
+    const e = c.growth[st.id] || null, sid = esc(st.id), who = M.shownName(st), lab = st.name.trim() ? M.studentLabel({ ...st, name: '' }) : '', d = growthChange(e);
     const inp = (k, v, label, cls, extra = '') => `<input class="field ${cls}" data-gr="${sid}" data-k="${k}" value="${esc(v == null ? '' : v)}" aria-label="${esc(who)} ${label}" autocomplete="off"${extra}>`;
     return `<tr><th scope="row"><span class="cp-gr-who">${esc(who)}</span>${lab ? `<span class="muted cp-gr-lab">${esc(lab)}</span>` : ''}</th>
       <td data-lab="교과·영역"><div class="cp-gr-what">${inp('subject', e && e.subject, '교과', 'cp-gr-sub', ' placeholder="교과"')}${inp('area', e && e.area, '영역', 'cp-gr-area', ' placeholder="영역"')}</div></td>
@@ -278,14 +301,31 @@ function reportHTML(c) {
     </section>
     <section class="yp-card">
       <label class="yp-f"><span class="lab">제목</span><input class="field" id="cpRTitle" value="${esc(r.title)}" placeholder="${esc(docTitle('report', c))}" autocomplete="off"></label>
-      ${r.sections.length ? r.sections.map((s, i) => `<div class="cp-rsec"><div class="row"><input class="field" data-rh="${i}" value="${esc(s.head)}" aria-label="${i + 1}번째 글 머리" autocomplete="off"><button class="icon-btn" type="button" data-cp="delRSec" data-i="${i}" aria-label="${i + 1}번째 칸 지우기">×</button></div>
-        <textarea class="field" data-rt="${i}" rows="6" aria-label="${esc(s.head || `${i + 1}번째 칸`)} 글">${esc(s.text)}</textarea></div>`).join('')
-    : '<p class="muted" style="margin:0">[AI로 쓰기]를 누르면 제목과 칸이 채워져요. [+ 칸]으로 직접 써도 돼요.</p>'}
-      <div class="row"><button class="btn" type="button" data-cp="addRSec">+ 칸</button></div>
+      ${r.sections.length ? r.sections.map((s, i) => `<div class="cp-rsec"><div class="row"><input class="field" data-rh="${i}" data-rid="${esc(s.id)}" value="${esc(s.head)}" placeholder="글 머리" aria-label="${i + 1}번째 글 머리" autocomplete="off"><button class="icon-btn" type="button" data-cp="delRSec" data-id="${esc(s.id)}" aria-label="${i + 1}번째 칸 지우기">×</button></div>
+        <textarea class="field" data-rt="${i}" data-rid="${esc(s.id)}" rows="6" aria-label="${esc(s.head || `${i + 1}번째 칸`)} 글">${esc(s.text)}</textarea></div>`).join('')
+    : `<p class="muted" style="margin:0">[AI로 쓰기]를 누르면 제목과 칸이 채워져요. [+ 칸]을 누르면 ${heads.map(h => `「${esc(h)}」`).join(' ')} 칸이 생겨 직접 쓸 수 있어요(AI 키가 없어도 돼요).</p>`}
+      <div class="row"><button class="btn" type="button" data-cp="addRSec"${r.sections.length >= M.MAX_SECTIONS ? ' disabled' : ''}>+ 칸</button>${r.sections.length >= M.MAX_SECTIONS ? `<span class="muted">칸은 ${M.MAX_SECTIONS}개까지예요.</span>` : ''}</div>
     </section>`;
 }
 const docSummary = (d, c) => (d === 'confirm' ? `수업 ${c.sessions.length}줄 · 총 ${M.hoursTotal(c)}시간` : d === 'attend' ? (c.unit === 'day' ? `학생 ${c.students.length}명 × 수업 날 ${M.campDates(c).length}일` : `수업 ${c.sessions.length}줄 × 학생 ${c.students.length}명`)
-  : d === 'observe' ? `학생 ${c.students.length}명 · 한 쪽에 5명` : `${c.report.sections.length}칸`);
+  : d === 'observe' ? `학생 ${c.students.length}명 · 한 쪽에 5명` : `${M.reportSections(c).length}칸`);
+/* 「수업 일정으로」「결과 보고서로」: 받침(ㄹ 빼고)이 있으면 으로 */
+const ro = w => { const k = String(w).charCodeAt(String(w).length - 1) - 0xac00; return w + (k >= 0 && k < 11172 && k % 28 && k % 28 !== 8 ? '으로' : '로'); };
+/* 문서 카드의 준비 줄: 준비됨 ✓ · 할 일 남음(까닭) · 아직 + 그 단계로 가는 단추(출석 옆 「문서 준비」와 같은 셈) */
+function docStateHTML(r) {
+  return `<div class="cp-rd cp-doc-state ${r.state}" data-doc-state="${r.id}"><span class="cp-dot" aria-hidden="true">${r.state === 'ready' ? '✓' : ''}</span>
+      <span class="cp-rd-t"><span class="cp-rd-s"><span class="sr">${READY_SR[r.state]}</span>${esc(r.state === 'ready' ? '준비됨' : r.note)}</span></span>
+      ${r.state === 'ready' ? '' : `<button class="btn text cp-rd-go" type="button" data-sec="${r.sec}" aria-label="${esc(SEC_LABEL[r.sec])} 단계로 가기">${esc(SEC_LABEL[r.sec])} ›</button>`}</div>`;
+}
+/* 내려받기 전: 아직 빈 문서(학생·수업이 없음·아무것도 안 씀)면 알리고 그 단계로 가거나 그래도 내려받기 */
+function exportCheck(doc) {
+  const c = cur();
+  if (!c) return;
+  const r = docReadiness(c).find(x => x.id === doc);
+  if (!r || r.state !== 'none') { exportCampDoc(doc); return; }
+  ask(`「${r.label}」가 아직 비어 있어요`, `${r.note}. 지금 내려받으면 빈 문서예요.`,
+    [['dl', '그래도 내려받기'], ['go', `${ro(SEC_LABEL[r.sec])} 가기`, true]], m => { if (m === 'dl') exportCampDoc(doc); else { sec = r.sec; render(); } });
+}
 function formNote(d, f) {
   if (!f) return '';
   if (f.kind === 'hwpx') return d === 'report' ? `「${f.name}」 양식(.hwpx)의 글 머리를 따라요. 결과 보고서는 쓴 글을 기본 양식으로 내려받아요.`
@@ -294,10 +334,12 @@ function formNote(d, f) {
   return `「${f.name}」 양식의 모양을 따라요${l.title ? `: 제목 「${l.title}」` : ''}${l.columns && l.columns.length ? ` · 칸 ${l.columns.join(', ')}` : ''}${d === 'report' && l.heads && l.heads.length ? ` · 글 머리 ${l.heads.join(', ')}` : ''}`;
 }
 function docsHTML(c) {
+  const ready = Object.fromEntries(docReadiness(c).map(r => [r.id, r]));
   return `<p class="banner info cp-form-tip"><span class="grow">문서마다 학교 양식을 넣으면 그 양식에 맞춰요. 한글(.hwpx)은 양식의 표에 채우고, PDF·사진·.hwp는 AI가 제목·칸 이름·안내 글을 읽어 그 모양으로 만들어요. ${BLANK_FORM}</span></p>
     ${M.DOC_IDS.map(d => { const f = formOf(c.forms[d]), list = F.list.filter(x => x.doc === d), n = F.adding[d] || 0, lay = f && f.kind === 'layout' ? f.layout : null;
     return `<section class="yp-card cp-doc" data-doc="${d}">
       <div class="cls-card-h"><h3>${esc(docLabel(d, c))}</h3><span class="muted">${esc(docSummary(d, c))}</span></div>
+      ${docStateHTML(ready[d])}
       <div class="row cp-doc-row">
         <select class="field" data-form-pick="${d}" aria-label="${esc(docLabel(d, c))} 양식"><option value="">기본 양식(쌤비서)</option>${list.map(x => `<option value="${esc(x.id)}"${f && x.id === f.id ? ' selected' : ''}>${esc(x.name)}${x.kind === 'hwpx' ? ' (.hwpx)' : ' (모양만)'}</option>`).join('')}</select>
         <button class="btn" type="button" data-cp="pickForm" data-drop-pick data-doc="${d}"${n ? ' disabled' : ''}>${n ? '<span class="spin"></span>읽는 중…' : '양식 넣기'}</button>
@@ -338,7 +380,7 @@ function pageHTML(camps, c) {
     ${pickHTML(camps, c)}
     ${c ? `${stepsHTML(c)}
       <div id="cpSec" class="cp-sec">${SEC_HTML[sec](c)}</div>`
-    : '<section class="yp-card"><p style="margin:0">이 학년도에 만든 프로그램이 없어요. 캠프·교실·수업 무엇이든 [새 프로그램]으로 만들고 학생·수업 일정을 넣으면 출석 체크와 문서 만들기를 할 수 있어요.</p><div class="row"><button class="btn primary" type="button" data-cp="new">새 캠프 만들기</button></div></section>'}
+    : '<section class="yp-card"><p style="margin:0">이 학년도에 만든 프로그램이 없어요. 캠프·교실·수업 무엇이든 [새 프로그램]으로 만들고 학생·수업 일정을 넣으면 출석 체크와 문서 만들기를 할 수 있어요.</p><div class="row"><button class="btn primary" type="button" data-cp="new">새 프로그램</button></div></section>'}
   </div>`;
 }
 /* 다시 그린 뒤 초점을 돌려 둘 곳: 누르던 단추·칸(id나 data- 속성으로 다시 찾음) */
@@ -406,17 +448,55 @@ function ask(title, body, buttons, onPick) {
 }
 
 /* ---------- 수업 일정 ---------- */
+/* 마지막 수업 날 다음 평일(공휴일 빼고), 수업 날이 없으면 오늘 */
+const nextDay = last => (last ? M.expandDates(last, `${+last.slice(0, 4) + 1}${last.slice(4)}`).find(d => d > last) || last : today());
+/* [+ 줄]: 교시마다는 마지막 줄 날짜(그날 교시를 더함), 날마다는 다음 수업 날·같은 시간·같은 교시 수(같은 날 줄이 겹치지 않게) */
 function addRow() {
-  const c = cur(), last = M.sortSessions(c.sessions).at(-1);
-  c.sessions.push(M.newSession({ date: last ? last.date : '', subject: c.subjects[0] || '' }));
+  const c = cur(), last = M.sortSessions(c.sessions).at(-1), lastDay = M.campDates(c).at(-1);
+  const add = c.unit === 'day'
+    ? { date: lastDay ? nextDay(lastDay) : '', start: last ? last.start : '', end: last ? last.end : '', periods: last ? last.periods : null }
+    : { date: last ? last.date : '' };
+  c.sessions.push(M.newSession({ ...add, subject: c.subjects[0] || '' }));
   if (save(c)) { render(); const r = box.querySelectorAll('[data-k="date"]'); if (r.length) r[r.length - 1].focus(); }
+}
+/* 줄 지우기: 그 줄에 출석 체크가 있으면 물음(학생 빼기처럼) */
+function delRow(c, id) {
+  const i = c.sessions.findIndex(x => x.id === id);
+  if (i < 0) return;
+  const s = c.sessions[i], n = Object.keys(c.att[id] || {}).length;
+  const drop = () => { const x = cur(); x.sessions = x.sessions.filter(y => y.id !== id); delete x.att[id]; if (save(x)) render(); };
+  if (!n) { drop(); return; }
+  const when = [M.fmtDate(s.date), M.fmtTime(s), s.subject].filter(Boolean).join(' ') || `${i + 1}번째 줄`;
+  ask(`${i + 1}번째 줄 지우기`, `${when} 수업의 출석 체크 ${n}칸도 지워져요. 되돌릴 수 없어요.`, [['go', '지우기', true]], drop);
+}
+/* 같은 날 줄 합치기(날마다): 교과·지도 내용·교시 수는 한 줄로, 출석은 그날 ○가 하나라도 있으면 ○ */
+const MERGE_NOTE = '합치면 그날 교과·지도 내용·교시 수를 한 줄에 모으고, 출석은 그날 ○가 하나라도 있으면 ○, /만 있으면 /로 둬요.';
+function doMerge(id) {
+  const x = M.getCamp(id);
+  if (!x) return;
+  const n = M.sameDateCount(x), y = M.mergeSameDate(x);
+  if (save(y)) { render(); toast(`같은 날 줄을 합쳐 ${n}일을 하루 한 줄로 만들었어요. 지도 내용을 확인해 주세요.`, 7000); }
+}
+function askMerge(c) {
+  const n = M.sameDateCount(c);
+  if (!n) return;
+  ask('같은 날 줄을 합칠까요?', `같은 날 수업 줄이 여러 개인 날이 ${n}일 있어요. ${MERGE_NOTE}`, [['go', '합치기', true]], () => doMerge(c.id));
+}
+/* 출석 단위 바꾸기: 날마다로 바꿀 때 같은 날 줄이 여럿이면 합칠지 물음(합치지 않아도 출석 화면·출석부는 날짜마다 한 칸) */
+function setUnit(c, unit) {
+  if (!c || c.unit === unit || !M.UNITS.some(([k]) => k === unit)) return;
+  const n = unit === 'day' ? M.sameDateCount(c) : 0;
+  // 합치기는 바꾸기 전 단위로 셈(교시마다 줄 하나 = 한 교시), 지도 시간은 단위를 바꿔도 그대로(withUnit)
+  const apply = merge => { const x = M.getCamp(c.id); if (!x) return; if (save(M.withUnit(merge ? M.mergeSameDate(x) : x, unit))) { render(); if (merge) toast(`날마다 출석으로 바꾸고 같은 날 줄 ${n}일을 하루 한 줄로 합쳤어요.`, 7000); } };
+  if (!n) { apply(false); return; }
+  ask('같은 날 줄을 합칠까요?', `날마다 출석은 하루 한 줄이에요. 같은 날 수업 줄이 여러 개인 날이 ${n}일 있어요. ${MERGE_NOTE} 합치지 않아도 출석은 날짜마다 한 칸으로 체크해요.`,
+    [['keep', '합치지 않고 바꾸기'], ['merge', '합쳐서 바꾸기', true]], m => apply(m === 'merge'));
 }
 function openBulk() {
   const c = cur();
   if (!SS().openSheet) return;
   const ds = M.campDates(c), last = ds[ds.length - 1];
-  let next = last || today();
-  if (last) { const after = M.expandDates(last, `${+last.slice(0, 4) + 1}${last.slice(4)}`).filter(d => d > last); next = after[0] || last; }
+  const next = nextDay(last);
   const day = c.unit === 'day';
   SS().openSheet(`<h3>한 날 여러 교시 더하기</h3>
     <div class="cp-grid cp-bulk">
@@ -443,7 +523,7 @@ function openBulk() {
       if (!M.expandDates(p.date, p.date, { weekdays: [0, 1, 2, 3, 4, 5, 6], skipHolidays: false }).length) { q('cpBPrev').textContent = '날짜를 골라 주세요.'; return; }
       if (!p.slots.length) { q('cpBPrev').textContent = '시각·교시 수를 확인해 주세요.'; return; }
       const x = cur();
-      const add = day ? [M.newSession({ date: p.date, start: p.slots[0].start, end: p.slots[p.slots.length - 1].end, subject: [...new Set(p.subs)].join('·') })]
+      const add = day ? [M.newSession({ date: p.date, start: p.slots[0].start, end: p.slots[p.slots.length - 1].end, subject: [...new Set(p.subs)].join('·'), periods: p.slots.length })]
         : p.slots.map((s, i) => M.newSession({ date: p.date, start: s.start, end: s.end, subject: p.subs.length ? p.subs[i % p.subs.length] : '' }));
       x.sessions = M.sortSessions([...x.sessions, ...add]);
       SS().closeSheet();
@@ -462,18 +542,24 @@ function schedAi() {
 }
 /* ---------- 계획 파일 넣기 ---------- */
 /* 운영 계획서 → 캠프 정보(빈 칸만) + 수업 일정. AI가 있으면 계획서 글(가림)을 일정 AI에, 없으면 규칙으로 날짜 × 교시(지도 내용 빈칸) */
-async function addPlan(file) {
+/* 사진·스캔 계획서(글이 없음)는 그림 그대로 AI로 가서 이름을 가리지 못함 → 보내기 전에 물음 */
+const askPlanImages = file => ask('사진·스캔 계획서를 AI에 보낼까요?', '이 계획서는 글이 아니라 그림이라 이름을 가리지 못하고 그대로 AI로 가요. 학생·선생님 이름이 보이면 이름을 지운 계획서나 한글·PDF·워드 파일을 넣어 주세요.',
+  [['go', '그대로 보내기', true]], () => addPlan(file, { imagesOk: true }));
+async function addPlan(file, { imagesOk = false } = {}) {
   const c0 = cur();
   if (!c0) return;
   const id = c0.id, k = `${id}:plan`;
   if (busy[k]) return;
   const isImg = IMAGE.test(file.name || '') || /^image\//.test(file.type || '');
   if (isImg && !ai.ready()) { toast('사진·스캔 계획서는 AI가 읽어요. 설정 › AI에서 키를 넣거나 한글·PDF·워드 계획서를 넣어 주세요.', 7000); return; }
+  if (isImg && !imagesOk) { askPlanImages(file); return; }
   busy[k] = true; redraw();
+  let askImg = false;
   try {
     let text = '';
     if (!isImg) { try { text = await readText(file); } catch (e) { if (!e || e.code !== 'PDF_NO_TEXT') throw e; } }
     if (!text.trim() && !ai.ready()) { toast(fileMessage('PDF_NO_TEXT'), 7000); return; }
+    if (!text.trim() && !imagesOk) { askImg = true; return; } // 스캔 PDF: 그림으로 보내기 전에 물음
     const ctx = { year: currentYear(), today: today() };
     const p = readPlan(text, ctx);
     planInfo[id] = { range: p.range, weekdays: p.weekdays, dayTimes: p.dayTimes, start: p.start, end: p.end };
@@ -523,7 +609,7 @@ async function addPlan(file) {
     ask('계획서 수업 일정을 어떻게 넣을까요?', `지금 수업 줄이 ${c.sessions.length}개 있어요.${marked ? ' 바꾸면 그 줄의 출석 체크도 지워져요.' : ''}`,
       [['add', '뒤에 더하기'], ['replace', '바꾸기', true]], apply);
   } catch (e) { toast(e && e.code && isFileCode(e.code) ? fileMessage(e.code) : errText(e), 7000); }
-  finally { delete busy[k]; redraw(); }
+  finally { delete busy[k]; redraw(); if (askImg) askPlanImages(file); }
 }
 /* 계획서 지도 계획 표 → 수업 줄(표의 날짜·교과·지도 내용 그대로, 시간은 그 요일 지도시간). 캠프 정보 빈 칸도 채움 */
 async function planFromTable(id, p, tbl) {
@@ -637,31 +723,42 @@ function applyByCount(id, r) {
   let specs = r.specs;
   if (day) {
     const by = new Map();
-    for (const s of specs) { const g = by.get(s.date); if (g) { g.end = s.end; if (s.subject && !g.subject.split('·').includes(s.subject)) g.subject += `·${s.subject}`; } else by.set(s.date, { ...s }); }
+    for (const s of specs) { const g = by.get(s.date); if (g) { g.end = s.end; g.periods++; if (s.subject && !g.subject.split('·').includes(s.subject)) g.subject += `·${s.subject}`; } else by.set(s.date, { ...s, periods: 1 }); }
     specs = [...by.values()];
   }
   const fresh = list => list.map(s => M.newSession(s));
-  const go = mode => {
+  // clear: 「지금 줄에 날짜 넣기」에서 날짜가 바뀌는 줄의 출석 체크를 지울지(체크가 있는 줄이 있을 때 물은 답)
+  const go = (mode, clear = false) => {
     const x = M.getCamp(id);
     if (!x) return;
-    let note = '';
+    let note = '', y = x;
     if (mode === 'dates') {
-      const n = Math.min(x.sessions.length, specs.length);
-      x.sessions = x.sessions.map((s, i) => (i < n ? { ...s, date: specs[i].date, start: specs[i].start, end: specs[i].end, subject: s.subject || specs[i].subject } : s));
-      if (specs.length > n) x.sessions = [...x.sessions, ...fresh(specs.slice(n))];
-      note = x.sessions.length > specs.length ? ` 뒤의 ${x.sessions.length - specs.length}줄은 그대로 두었어요.` : '';
-    } else if (mode === 'add') x.sessions = M.sortSessions([...x.sessions, ...fresh(specs)]);
-    else { x.sessions = fresh(specs); x.att = {}; }
-    if (!x.subjects.length) x.subjects = [...new Set(specs.flatMap(s => s.subject.split('·')).filter(Boolean))].slice(0, 12);
-    if (!save(x)) return;
+      const d = applyDates(x, specs);
+      y = clear ? M.clearMarks(d.camp, d.moved) : d.camp;
+      note = (d.kept ? ` 뒤의 ${d.kept}줄은 그대로 두었어요.` : '') + (d.moved.length ? (clear ? ` 날짜가 바뀐 ${d.moved.length}줄의 출석 체크는 지웠어요.` : ` 날짜가 바뀐 ${d.moved.length}줄의 출석 체크는 바뀐 날짜로 옮겼어요.`) : '');
+    } else if (mode === 'add') y.sessions = M.sortSessions([...x.sessions, ...fresh(specs)]);
+    else { y.sessions = fresh(specs); y.att = {}; }
+    if (!y.subjects.length) y.subjects = [...new Set(specs.flatMap(s => s.subject.split('·')).filter(Boolean))].slice(0, 12);
+    if (!save(y)) return;
     render();
     const a = specs[0], z = specs[specs.length - 1];
     toast(`${M.fmtDate(a.date)}~${M.fmtDate(z.date)} ${r.specs.length}차시 날짜를 ${mode === 'dates' ? '지금 줄에 넣었어요(지도 내용은 그대로)' : mode === 'add' ? '더했어요' : '만들었어요'}.${note}${r.short ? ` 끝 날까지 들어가지 않은 ${r.short}차시는 빼고 넣었어요.` : ''}`, 8000);
   };
+  // 지금 줄에 날짜 넣기: 체크가 있는 줄의 날짜가 바뀌면 그 체크를 어떻게 할지 물음(그대로 두면 바뀐 날짜의 출석이 됨)
+  const dates = () => {
+    const x = M.getCamp(id);
+    if (!x) return;
+    const { moved } = applyDates(x, specs);
+    if (!moved.length) { go('dates'); return; }
+    const by = new Map(x.sessions.map(s => [s.id, s]));
+    const list = moved.slice(0, 3).map(i => M.fmtShort(by.get(i).date) || '날짜 없음').join('·') + (moved.length > 3 ? ` 외 ${moved.length - 3}줄` : '');
+    ask('출석 체크가 있는 줄의 날짜가 바뀌어요', `${list} 수업에 출석 체크가 있어요(${moved.length}줄). 그대로 두면 그 체크가 바뀐 날짜의 출석이 돼요. 날짜를 잘못 넣었던 것이면 그대로 두고, 다른 날 수업이면 체크를 지워 주세요.`,
+      [['keep', '체크 그대로 두기'], ['clear', '체크 지우기', true]], m => go('dates', m === 'clear'));
+  };
   if (!x0.sessions.length) { go('replace'); return; }
   const marked = Object.keys(x0.att).length;
-  ask('만든 날짜를 어떻게 넣을까요?', `지금 수업 줄이 ${x0.sessions.length}개 있어요. 「지금 줄에 날짜 넣기」는 지도 내용은 그대로 두고 위에서부터 차례대로 날짜·시간만 바꿔요.${marked ? ' 바꾸기는 출석 체크도 지워요.' : ''}`,
-    [['add', '뒤에 더하기'], ['replace', '바꾸기'], ['dates', '지금 줄에 날짜 넣기', true]], go);
+  ask('만든 날짜를 어떻게 넣을까요?', `지금 수업 줄이 ${x0.sessions.length}개 있어요. 「지금 줄에 날짜 넣기」는 지도 내용은 그대로 두고 위에서부터 차례대로 날짜·시간만 바꿔요.${marked ? ' 출석 체크가 있는 줄의 날짜가 바뀌면 한 번 더 물어요. 바꾸기는 출석 체크도 지워요.' : ''}`,
+    [['add', '뒤에 더하기'], ['replace', '바꾸기'], ['dates', '지금 줄에 날짜 넣기', true]], m => (m === 'dates' ? dates() : go(m)));
 }
 
 async function runSched(id, text, mode) {
@@ -693,7 +790,10 @@ async function runSched(id, text, mode) {
 function setAttDate(d) { const c = cur(); if (!c || !M.campDates(c).includes(d)) return; attDate = d; attFor = c.id; render(); }
 function tapMark(key) {
   const [sid, st] = key.split('|'), c = cur();
-  if (!c || !c.sessions.some(s => s.id === sid)) return;
+  if (!c) return;
+  // 날마다 칸(「@날짜|학생」): 그날 줄 모두에 같은 표시
+  if (sid[0] === '@') { const d = sid.slice(1); if (!c.sessions.some(s => s.date === d)) return; if (save(M.setDayMark(c, d, st, M.nextMark(M.dayMarkOf(c, d, st))))) render(); return; }
+  if (!c.sessions.some(s => s.id === sid)) return;
   const next = M.nextMark((c.att[sid] || {})[st] || '');
   if (save(M.setMark(c, sid, st, next))) render();
 }
@@ -739,6 +839,33 @@ async function runObs(id, ids) {
 }
 
 /* ---------- 결과 보고서 ---------- */
+/* [+ 칸]: 칸이 없으면 고른 꼴의 글 머리로 채우고(AI 키 없이도 직접 씀) 첫 칸 글에, 있으면 빈 칸 하나를 더해 그 글 머리에 초점 */
+function addRSec(c) {
+  const r = c.report;
+  if (r.sections.length >= M.MAX_SECTIONS) { toast(`칸은 ${M.MAX_SECTIONS}개까지예요.`); return; }
+  const first = !r.sections.length;
+  const add = first ? reportHeads(c, reportLayout(c)).map(h => M.newSection(h)) : [M.newSection('')];
+  r.sections.push(...add.slice(0, M.MAX_SECTIONS - r.sections.length));
+  if (!save(c)) return;
+  render();
+  const el = box.querySelector(`${first ? '[data-rt]' : '[data-rh]'}[data-rid="${CSS.escape(add[0].id)}"]`);
+  if (el) el.focus();
+}
+function delRSec(c, id) {
+  const s = c.report.sections.find(x => x.id === id);
+  if (!s) return;
+  const drop = () => { const x = cur(); x.report.sections = x.report.sections.filter(y => y.id !== id); if (save(x)) render(); };
+  if (s.text.trim()) ask(`「${s.head || '이름 없는 칸'}」 칸 지우기`, '이 칸에 쓴 글도 지워져요.', [['go', '지우기', true]], drop); else drop();
+}
+/* 보고서 꼴 바꾸기: 글을 아직 안 쓴 채 [+ 칸]으로 채운 글 머리 그대로면 새 꼴의 글 머리로 */
+function setReportKind(c, kind) {
+  if (c.report.kind === kind) return;
+  const r = c.report, before = reportHeads(c, reportLayout(c));
+  const untouched = r.sections.length && r.sections.every(s => !s.text.trim()) && r.sections.map(s => s.head).join('|') === before.join('|');
+  r.kind = kind;
+  if (untouched) r.sections = reportHeads(c, reportLayout(c)).map(h => M.newSection(h));
+  if (save(c)) render();
+}
 function reportAi() {
   const c = cur();
   if (!ai.ready()) { toast('설정 › AI에서 키를 넣어 주세요', 5000); return; }
@@ -882,13 +1009,15 @@ function onInput(el) {
   else if (el.dataset.obs) { c.obs[el.dataset.obs] = el.value; c.obsEdited[el.dataset.obs] = true; }
   else if (el.id === 'cpRPrompt') c.report.prompt = el.value;
   else if (el.id === 'cpRTitle') c.report.title = el.value;
-  else if (el.dataset.rh != null) { const s = c.report.sections[+el.dataset.rh]; if (s) s.head = el.value; }
-  else if (el.dataset.rt != null) { const s = c.report.sections[+el.dataset.rt]; if (s) s.text = el.value; }
+  // 보고서 칸은 id로 찾음(앞 칸을 비우거나 지워도 다른 칸에 들어가지 않게)
+  else if (el.dataset.rh != null) { const s = c.report.sections.find(x => x.id === el.dataset.rid); if (!s) return; s.head = el.value; }
+  else if (el.dataset.rt != null) { const s = c.report.sections.find(x => x.id === el.dataset.rid); if (!s) return; s.text = el.value; }
   else if (el.dataset.gr) { const n = setGrowth(c, el.dataset.gr, el.dataset.k, el.value, { date: today() }); if (n === c) return; c.growth = n.growth; } // 숫자가 아니면 저장하지 않음(칸을 벗어나면 저장한 값으로)
   else return;
   const saved = save(c);
   if (saved) paintSteps(saved);
   if (saved && el.dataset.gr) paintGrowth(saved, el.dataset.gr);
+  if (saved && el.dataset.ss) { const n = box.querySelector('.cp-count'); if (n) n.textContent = countText(saved); } // 교시·시각을 고치면 총 시간도 바로
 }
 function onClick(e) {
   const t = e.target;
@@ -901,9 +1030,9 @@ function onClick(e) {
   const av = t.closest('[data-att-view]');
   if (av) { attView = av.dataset.attView === 'all' ? 'all' : 'day'; sset(VIEW_KEY, attView); render(); return; }
   const u = t.closest('[data-unit]');
-  if (u) { const c = cur(); if (c.unit !== u.dataset.unit) { c.unit = u.dataset.unit; if (save(c)) render(); } return; }
+  if (u) { setUnit(cur(), u.dataset.unit); return; }
   const rk = t.closest('[data-rkind]');
-  if (rk) { const c = cur(); c.report.kind = rk.dataset.rkind; if (save(c)) render(); return; }
+  if (rk) { setReportKind(cur(), rk.dataset.rkind); return; }
   const b = t.closest('[data-cp]');
   if (!b) return;
   const a = b.dataset.cp, c = cur();
@@ -922,10 +1051,11 @@ function onClick(e) {
       if (save(x)) render();
     };
     const has = Object.values(c.att).some(r => r[id]) || (c.memo[id] || '').trim() || (c.obs[id] || '').trim() || c.growth[id];
-    if (has) ask(`「${st.name || '이름 없는 학생'}」 빼기`, '이 학생의 출석 체크·메모·관찰 기록·사전·사후 점수도 지워져요.', [['go', '빼기', true]], drop); else drop();
+    if (has) ask(`「${M.shownName(st, '이름 없는 학생')}」 빼기`, '이 학생의 출석 체크·메모·관찰 기록·사전·사후 점수도 지워져요.', [['go', '빼기', true]], drop); else drop();
   }
   else if (a === 'addRow') addRow();
-  else if (a === 'delRow') { c.sessions = c.sessions.filter(x => x.id !== b.dataset.id); delete c.att[b.dataset.id]; if (save(c)) render(); }
+  else if (a === 'delRow') delRow(c, b.dataset.id);
+  else if (a === 'mergeDays') askMerge(c);
   else if (a === 'sortRows') { c.sessions = M.sortSessions(c.sessions); if (save(c)) render(); }
   else if (a === 'bulk') openBulk();
   else if (a === 'byCount') openByCount();
@@ -946,11 +1076,11 @@ function onClick(e) {
   }
   else if (a === 'obsAi') obsAi();
   else if (a === 'reportAi') reportAi();
-  else if (a === 'addRSec') { c.report.sections.push({ head: '', text: '' }); if (save(c)) { render(); const h = box.querySelectorAll('[data-rh]'); if (h.length) h[h.length - 1].focus(); } }
-  else if (a === 'delRSec') { c.report.sections.splice(+b.dataset.i, 1); if (save(c)) render(); }
+  else if (a === 'addRSec') addRSec(c);
+  else if (a === 'delRSec') delRSec(c, b.dataset.id);
   else if (a === 'pickForm') { const f = box.querySelector(`#cpFile-${b.dataset.doc}`); if (f) f.click(); }
   else if (a === 'delForm') delForm(b.dataset.doc);
-  else if (a === 'export') exportCampDoc(b.dataset.doc);
+  else if (a === 'export') exportCheck(b.dataset.doc);
 }
 
 const mine = e => box && box.contains(e.target) && visible();
@@ -966,6 +1096,10 @@ document.addEventListener('change', e => {
   if (m) { const f = el.files[0]; el.value = ''; if (f) addForm(m[1], f); return; }
   // 학생 칸(학년·반·번호)은 칸을 벗어나면 정리한 값으로
   if (el.dataset.st && el.dataset.k !== 'name') { const c = cur(), s = c && c.students.find(x => x.id === el.dataset.st); if (s) el.value = s[el.dataset.k] == null ? '' : s[el.dataset.k]; }
+  // 교시 칸도(1~12가 아니면 비움 — 시각으로 셈)
+  if (el.dataset.ss && el.dataset.k === 'periods') { const c = cur(), s = c && c.sessions.find(x => x.id === el.dataset.ss); if (s) el.value = s.periods || ''; }
+  // 날마다: 날짜를 고쳐 같은 날 줄이 생기면 칸을 벗어날 때 다시 그려 합치기 안내를 보여 줌
+  if (el.dataset.ss && el.dataset.k === 'date') { const c = cur(); if (c && c.unit === 'day' && !box.querySelector('.cp-same') !== !M.sameDateCount(c)) redraw(); }
   // 사전·사후 점수 칸도 저장한 값으로(「78%」→ 78), 사후 칸을 비웠으면 칸을 벗어난 뒤 다시 그려 자동 점수를 보여 줌
   if (el.dataset.gr && (el.dataset.k === 'pre' || el.dataset.k === 'post')) {
     const c = cur(), e = c && c.growth[el.dataset.gr], v = e ? (el.dataset.k === 'pre' ? e.pre.pct : e.post && e.post.pct) : null;
