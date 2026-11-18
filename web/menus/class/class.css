@@ -94,3 +94,7 @@
   .cls-week textarea.field{border:0;resize:none;min-height:0;background:transparent;color:#000}
   .cls-w-title{border:0}
 }
+/* 주간학습안내: 고친 칸, 「알려 드립니다」 */
+.cls-week textarea.cls-wc.edited{border-color:var(--accent,#3b6ef5);box-shadow:inset 0 0 0 1px var(--accent,#3b6ef5)}
+.cls-w-legend{margin:6px 0 0;font-size:13px}
+.cls-w-announce{width:100%;box-sizing:border-box;min-height:72px}

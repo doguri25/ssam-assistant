@@ -53,6 +53,11 @@ await run('class-weekly', [
     assert(await page.inputValue(`${V} textarea[data-wc="1-1"]`) === '수학 · 고친 칸', '다시 열어도 남음');
     assert(await page.inputValue(`${V} #clsWTitle`) === '3학년 1반 다음 주 안내', '제목 남음');
     await page.click(`${V} [data-w="refill"]`);
+    // 고친 칸이 있으면 몇 칸인지 묻고 나서 지움
+    await page.waitForSelector('#clsRefill');
+    assert((await page.textContent('#clsRefill h3')).includes('1개'), await page.textContent('#clsRefill h3'));
+    await page.click('#clsRefillOk');
+    await page.waitForSelector('#clsRefill', { state: 'detached' });
     assert(await page.inputValue(`${V} textarea[data-wc="1-1"]`) !== '수학 · 고친 칸', '안 지워짐');
     assert(Object.keys((await W('2026-11-02')).cells).length === 0, '저장값');
     await page.fill(`${V} #clsWTitle`, '3학년 1반 주간학습안내');

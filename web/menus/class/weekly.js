@@ -10,6 +10,8 @@ import { listEvents, addDays } from '../../core/calendar.js';
 import {
   makeCtx, getInfo, getWeekly, saveWeekly, weekView, defaultWeek, weeklyTitle, weekCell, weeklyDoc, weekPeriods, normNotes, NOTE_ROWS, fmtDay, today, migrateWeeklyEvents, hasTimetable } from './class-model.js';
 import { askSample } from './setup.js';
+import { getSchool } from '../../core/settings.js';
+import { notesPrompt, notesToFill, autoEvents as eventsOn, AI_KEYS } from './weekly-ai.js';
 import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -17,7 +19,6 @@ const WD = '월화수목금';
 const md = d => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
 const dotted = d => `${+d.slice(5, 7)}.${+d.slice(8, 10)}`;
 const FULL = '저장 공간이 모자라 저장하지 못했어요';
-const AI_KEYS = ['prep', 'safety', 'homework', 'notice'];
 let box = null, curTab = null, monday = null;
 let stale = false; // 글을 치는 동안 표 모양이 바뀌어 칸을 벗어나면 다시 그릴 것
 migrateWeeklyEvents();
@@ -41,9 +42,17 @@ function updateRv(mon) {
 }
 const visible = () => curTab === 'weekly' && box && box.isConnected && !box.closest('[hidden]');
 
-/* 학사일정 줄: 고쳐 쓴 글이 있으면 그것, 없으면 그 주 학사일정 */
-// 공문 제출 기한·할 일(선생님 일)은 보호자께 가는 주간학습안내에 넣지 않음
-const autoEvents = date => listEvents().filter(e => e.date === date && e.source !== 'gongmun').map(e => e.title).join(', ');
+/* 학사일정 줄: 고쳐 쓴 글이 있으면 그것, 없으면 그 주 학사일정 — 공문 기한(선생님 일)·연간계획 업무 일정은 보호자께 가는 안내에 넣지 않음(weekly-ai forParents) */
+const autoEvents = date => eventsOn(listEvents(), date);
+/* 진도표대로라면 그 칸 글(고친 칸이 없을 때의 글) */
+const autoCell = (days, d, p) => weekCell(days, { cells: {} }, d, p);
+/* 고친 칸 수: 진도표와 다른 교과 칸 + 고쳐 쓴 학사일정 칸 */
+function editedCount(days, w) {
+  const cells = Object.entries(w.cells || {}).filter(([k, t]) => { const [d, p] = k.split('-').map(Number); return t !== autoCell(days, d, p); }).length;
+  const ev = days.filter((d, i) => w.notes[i].events != null && w.notes[i].events !== autoEvents(d.date)).length;
+  return cells + ev;
+}
+const isEdited = (days, w, d, p) => Object.prototype.hasOwnProperty.call(w.cells || {}, `${d}-${p}`) && w.cells[`${d}-${p}`] !== autoCell(days, d, p);
 function sheet(mon) {
   const days = weekView(makeCtx(), mon);
   const w = getWeekly(mon);
@@ -66,7 +75,7 @@ function render() {
   const { days, w, notes, title } = sheet(monday);
   const th = days.map((d, i) => `<th scope="col">${WD[i]} ${md(d.date)}</th>`).join('');
   const rows = Array.from({ length: ctx.tt.periods }, (_, p) => `<tr><th scope="row">${p + 1}교시</th>${days.map((d, i) =>
-    `<td><textarea class="field cls-wc" data-wc="${i}-${p + 1}" rows="2" aria-label="${WD[i]}요일 ${p + 1}교시">${esc(weekCell(days, w, i, p + 1))}</textarea></td>`).join('')}</tr>`).join('');
+    `<td><textarea class="field cls-wc${isEdited(days, w, i, p + 1) ? ' edited' : ''}" data-wc="${i}-${p + 1}" rows="2" aria-label="${WD[i]}요일 ${p + 1}교시${isEdited(days, w, i, p + 1) ? ' (고친 칸)' : ''}">${esc(weekCell(days, w, i, p + 1))}</textarea></td>`).join('')}</tr>`).join('');
   const nrows = NOTE_ROWS.map(([k, label]) => `<tr><th scope="row">${label}</th>${days.map((d, i) =>
     `<td><textarea class="field cls-wn${rvAt(w, i, k) ? ' rv-mark' : ''}" data-wn="${i}-${k}" rows="2" aria-label="${WD[i]}요일 ${label}">${esc(notes[i][k])}</textarea></td>`).join('')}</tr>`).join('');
   const b = busy[monday];
@@ -82,32 +91,21 @@ function render() {
       <button class="btn" type="button" data-w="print">인쇄</button>
       ${exportButton('data-w="hwpx"', { cls: 'primary' })}
     </div>
-    ${aiRowHTML('notes')}${aiNoteHTML('요일별 교과·차시 제목과 학사일정만 보내요. 학생 자료는 보내지 않아요.')}<div id="clsRvBox">${rvBoxHTML(monday)}</div>
+    ${aiRowHTML('notes')}${aiNoteHTML('요일별 교과·차시 칸, 교과서 비고, 학사일정, 이미 쓴 알림을 보내요. 사람 이름·전화번호는 가려 보내요. 학생 자료는 보내지 않아요.')}<div id="clsRvBox">${rvBoxHTML(monday)}</div>
     <div class="yp-card cls-sheet">
       <input class="field cls-w-title" id="clsWTitle" value="${esc(title)}" aria-label="제목">
       <p class="muted cls-w-range">${fmtDay(days[0].date)} ~ ${fmtDay(days[4].date)}</p>
       <div class="cls-tbl-wrap"><table class="cls-week"><thead><tr><th scope="col">교시</th>${th}</tr></thead><tbody>${rows}</tbody></table></div>
+      <p class="muted cls-w-legend">파란 테두리는 선생님이 고친 칸이에요. [다시 채우기]를 누르면 진도표·학사일정대로 돌아가요.</p>
       <h3 class="cls-w-h">요일별 알림</h3>
       <div class="cls-tbl-wrap"><table class="cls-week"><thead><tr><th scope="col">구분</th>${th}</tr></thead><tbody>${nrows}</tbody></table></div>
+      <h3 class="cls-w-h">알려 드립니다</h3>
+      <textarea class="field cls-w-announce" id="clsWAnnounce" rows="3" placeholder="한 주 전체에 알릴 말(예: 다음 주 화요일은 현장체험학습이에요. 도시락을 챙겨 주세요.)" aria-label="알려 드립니다">${esc(w.announce || '')}</textarea>
     </div>
   </div>`;
 }
 
-/* ---------- AI 알림 ---------- */
-function notesPrompt(days, notes) {
-  const lines = days.map((d, i) => {
-    const head = `${WD[i]}요일(${md(d.date)})`;
-    if (d.off) return `${head}: 수업 없음(${d.off})`;
-    const ls = d.slots.map(s => `${s.period}교시 ${s.subject}${s.lesson ? ` — ${s.lesson.unit ? s.lesson.unit + ' · ' : ''}${s.lesson.title}` : ''}`).join('; ');
-    const ev = notes[i].events ? ` / 학사일정: ${notes[i].events}` : '';
-    const have = AI_KEYS.filter(k => notes[i][k]).map(k => `${k}=${notes[i][k]}`).join(', ');
-    return `${head}: ${ls || '수업 없음'}${ev}${have ? ` / 이미 쓴 칸: ${have}` : ''}`;
-  }).join('\n');
-  return `[주간학습안내]\n초등학교 담임이 학부모·학생에게 보내는 주간학습안내의 요일별 알림을 써 주세요.\n\n${lines}\n\n`
-    + '규칙:\n- prep(준비물): 그날 수업에 필요한 것만 짧게(예: 색연필, 실내화). 없으면 ""\n- safety(안전): 그날에 맞는 안전 한 줄\n'
-    + '- homework(과제), notice(안내장): 학사일정에서 짐작되는 것이 있을 때만, 없으면 ""\n- 학부모·학생이 읽기 쉬운 짧은 말, 학생 이름은 쓰지 않음\n- 수업 없는 날은 모두 ""\n\n'
-    + '답은 JSON 하나만: {"days":[{"prep":"…","safety":"…","homework":"","notice":""}, …5개(월~금)]}';
-}
+/* ---------- AI 알림 (지시·채우기 규칙은 weekly-ai.js — 이름·전화번호는 가려 보내고 답은 되돌림, 수업 없는 날은 채우지 않음) ---------- */
 async function runAi() {
   const mon = monday;
   if (busy[mon]) return;
@@ -116,14 +114,14 @@ async function runAi() {
   render();
   let wrote = [], sent = null;
   try {
-    const { days, notes } = sheet(mon);
-    const v = await ai.generateJSON(notesPrompt(days, notes), { task: 'notes', valid: x => x && Array.isArray(x.days) });
+    const { days, notes, w: w0 } = sheet(mon);
+    // 화면 칸 그대로(선생님이 고친 교과 칸 — 「현장체험학습」 등)
+    const q = notesPrompt(days, notes, { cellAt: (d, p) => weekCell(days, w0, d, p), periods: makeCtx().tt.periods });
+    const v = await ai.generateJSON(q.prompt, { task: 'notes', valid: x => x && Array.isArray(x.days) });
     const got = normNotes(v.days);
     const w = getWeekly(mon); // 그사이 선생님이 쓴 칸은 덮지 않음
     const filled = [];
-    for (let d = 0; d < 5; d++) for (const k of AI_KEYS) {
-      if (!w.notes[d][k].trim() && got[d][k].trim()) { w.notes[d][k] = got[d][k].trim(); filled.push([d, k]); }
-    }
+    for (const [d, k, t] of notesToFill(days, w.notes, got, q)) { w.notes[d][k] = t; filled.push([d, k]); }
     // 저장하지 못하면 「채웠어요」 대신 알리고 칸에도 넣지 않음(다시 그리면 사라질 글)
     if (filled.length && !saveWeekly(mon, w)) toast(FULL, 6000);
     else {
@@ -169,7 +167,7 @@ function chooseRv(key, useRv) {
 /* ---------- 내보내기 ---------- */
 function docOf() {
   const { days, w, notes, title } = sheet(monday);
-  return { days, title, doc: weeklyDoc(days, { ...w, title, notes }), notes, w };
+  return { days, title, doc: weeklyDoc(days, { ...w, title, notes }, { periods: makeCtx().tt.periods, school: getSchool().name }), notes, w };
 }
 async function downloadHwpx() {
   const { days, title, doc } = docOf();
@@ -179,7 +177,7 @@ async function downloadHwpx() {
 function plainText() {
   const { days, title, w, notes } = docOf();
   const out = [`${title} (${fmtDay(days[0].date)} ~ ${fmtDay(days[4].date)})`];
-  const P = weekPeriods(days, w);
+  const P = weekPeriods(days, w, makeCtx().tt.periods);
   days.forEach((d, i) => {
     out.push('', `[${WD[i]} ${md(d.date)}]`);
     // 수업 없는 날도 선생님이 고쳐 쓴 칸이 있으면 한글 파일처럼 그 칸 글을(고친 칸이 없으면 까닭만)
@@ -188,16 +186,42 @@ function plainText() {
     else for (let p = 1; p <= P; p++) { const c = weekCell(days, w, i, p); if (c) out.push(`${p}교시 ${c}`); }
     for (const [k, label] of NOTE_ROWS) if (notes[i][k]) out.push(`${label}: ${notes[i][k]}`);
   });
+  if (String(w.announce || '').trim()) out.push('', '[알려 드립니다]', w.announce.trim());
   return out.join('\n');
 }
+
+/* [다시 채우기]: 고친 칸이 있으면 몇 칸인지 알리고 물음 → 교과 칸은 진도표대로, 학사일정 칸은 그 주 학사일정대로(요일별 알림·알려 드립니다는 그대로) */
+function askRefill() {
+  const days = weekView(makeCtx(), monday), w = getWeekly(monday), n = editedCount(days, w);
+  const doIt = () => {
+    const x = getWeekly(monday); x.cells = {};
+    for (let d = 0; d < 5; d++) x.notes[d].events = null;
+    if (!saveWeekly(monday, x)) { toast(FULL, 6000); return; }
+    render(); toast('학습 칸과 학사일정을 진도표·학사일정대로 다시 채웠어요');
+  };
+  if (!n) { doIt(); return; }
+  SS().openSheet(`<div id="clsRefill"><h3>고친 칸 ${n}개가 돌아가요</h3><p class="muted" style="margin:0">교과 칸은 진도표대로, 학사일정 칸은 그 주 학사일정대로 다시 채워요. 요일별 알림(준비물·과제·안내장·안전)과 「알려 드립니다」는 그대로예요.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>그대로 두기</button><button class="btn primary" type="button" id="clsRefillOk">다시 채우기</button></div></div>`,
+  sh => sh.querySelector('#clsRefillOk').addEventListener('click', () => { SS().closeSheet(); doIt(); }));
+}
+const SS = () => window.SSAM;
 
 /* ---------- 입력 ---------- */
 function onInput(el) {
   const w = getWeekly(monday);
   if (el.id === 'clsWTitle') w.title = el.value;
-  else if (el.dataset.wc) w.cells[el.dataset.wc] = el.value;
+  else if (el.id === 'clsWAnnounce') w.announce = el.value;
+  else if (el.dataset.wc) {
+    // 진도표대로의 글과 같아지면 고친 칸에서 뺌(뒤의 진도를 다시 따라감)
+    const days = weekView(makeCtx(), monday), [d, p] = el.dataset.wc.split('-').map(Number);
+    if (el.value === autoCell(days, d, p)) delete w.cells[el.dataset.wc]; else w.cells[el.dataset.wc] = el.value;
+    el.classList.toggle('edited', Object.prototype.hasOwnProperty.call(w.cells, el.dataset.wc));
+  }
   else if (el.dataset.wn) {
-    const [d, k] = el.dataset.wn.split('-'); w.notes[d][k] = el.value;
+    const [d, k] = el.dataset.wn.split('-');
+    // 학사일정 칸이 그 주 학사일정과 같아지면 다시 자동으로
+    if (k === 'events') { const days = weekView(makeCtx(), monday); w.notes[d][k] = el.value === autoEvents(days[d].date) ? null : el.value; }
+    else w.notes[d][k] = el.value;
     // 손으로 고친 칸의 검토 의견은 사라짐
     if (rvAt(w, d, k)) { w.rv = w.rv.filter(r => r.done || !(r.key === d && r.field === k)); save(monday, w); updateRv(monday); return; }
   }
@@ -245,7 +269,7 @@ document.addEventListener('click', e => {
   if (!b) return;
   const a = b.dataset.w;
   if (a === 'prev' || a === 'next') { monday = addDays(monday, a === 'prev' ? -7 : 7); render(); }
-  else if (a === 'refill') { const w = getWeekly(monday); w.cells = {}; if (!saveWeekly(monday, w)) { toast(FULL, 6000); return; } render(); toast('학습 칸을 진도표대로 다시 채웠어요'); }
+  else if (a === 'refill') askRefill();
   else if (a === 'ai') runAi();
   else if (a === 'hwpx') downloadHwpx();
   else if (a === 'copy') copyText(plainText()).then(ok => toast(ok ? '복사했어요' : '복사하지 못했어요'));

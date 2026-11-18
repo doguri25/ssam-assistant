@@ -105,7 +105,8 @@ export function normWeekly(v) {
   // 검토 AI 의견: [{ key: 요일 '0'~'4', field, problem, fix, done? }]
   const rv = (Array.isArray(w.rv) ? w.rv : []).filter(x => isObj(x) && /^[0-4]$/.test(String(x.key)) && ['prep', 'safety', 'homework', 'notice'].includes(x.field) && str(x.problem) && typeof x.fix === 'string')
     .map(x => ({ key: String(x.key), field: x.field, problem: str(x.problem).slice(0, 120), fix: x.fix.slice(0, 600), ...(x.done === 'review' || x.done === 'main' ? { done: x.done } : {}) }));
-  return { title: str(w.title), cells, notes, rv };
+  // announce: 한 주 전체 「알려 드립니다」(자유 글 — 화면·한글·복사)
+  return { title: str(w.title), cells, notes, rv, announce: typeof w.announce === 'string' ? w.announce.slice(0, 2000) : '' };
 }
 export const getWeekly = monday => normWeekly(get('class:weekly:' + monday, null));
 /* 한 번만: 지난 버전은 손대지 않은 학사일정 칸을 ''로 저장했음 → 「자동」(null)으로 */
@@ -373,7 +374,9 @@ export function normTimetableAI(v) {
 export const normNotes = v => [0, 1, 2, 3, 4].map(d => normWeekly({ notes: { 0: Array.isArray(v) && isObj(v[d]) ? v[d] : {} } }).notes[0]);
 
 export const weeklyTitle = info => (info && info.grade && info.room ? `${info.grade}학년 ${info.room}반 주간학습안내` : '주간학습안내');
-export const cellText = slot => (slot.lesson ? `${slot.subject} · ${slot.lesson.title}` : slot.subject);
+// 교과서 쪽수가 있으면 「(120~121쪽)」(학부모께 가는 주간학습안내 — 오늘 수업과 같은 꼴)
+const pagesOf = p => { const t = String(p || '').trim(); return !t ? '' : /^[\d\s~,.-]+$/.test(t) ? `${t}쪽` : t; };
+export const cellText = slot => (slot.lesson ? `${slot.subject} · ${slot.lesson.title}${pagesOf(slot.lesson.pages) ? ` (${pagesOf(slot.lesson.pages)})` : ''}` : slot.subject);
 const WD = '월화수목금';
 const md = d => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
 const NOTE_ROWS = [['events', '학사일정'], ['prep', '준비물'], ['homework', '과제'], ['notice', '안내장'], ['safety', '안전']];
@@ -388,21 +391,28 @@ export function weekCell(days, weekly, d, p) {
   const slot = day.slots.find(s => s.period === p);
   return slot ? cellText(slot) : '';
 }
-/* 문서·복사에 넣을 교시 수: 수업이 있는 마지막 교시와, 글을 쓴 마지막 교시 중 큰 것 */
-export const weekPeriods = (days, weekly) => Math.max(1, ...days.flatMap(d => d.slots.map(s => s.period)),
-  ...Object.entries((weekly && weekly.cells) || {}).filter(([, t]) => String(t).trim()).map(([k]) => +k.split('-')[1]));
-export function weeklyDoc(days, weekly) {
-  const P = weekPeriods(days, weekly);
+/* 문서·복사에 넣을 교시 수: 수업이 있는 마지막 교시와, 글을 쓴 마지막 교시 중 큰 것. max(시간표 교시 수)를 주면 그것까지만(교시 수를 줄인 뒤 화면에 없는 칸은 내보내지 않음) */
+export const weekPeriods = (days, weekly, max = Infinity) => Math.max(1, Math.min(max, Math.max(1, ...days.flatMap(d => d.slots.map(s => s.period)),
+  ...Object.entries((weekly && weekly.cells) || {}).filter(([, t]) => String(t).trim()).map(([k]) => +k.split('-')[1]))));
+/* 한글·워드·PDF 문서. opts: periods(시간표 교시 수), school(맨 위 학교 이름). weekly.announce: 한 주 전체 「알려 드립니다」 */
+export function weeklyDoc(days, weekly, { periods = Infinity, school = '' } = {}) {
+  const P = weekPeriods(days, weekly, periods);
   const head = ['교시', ...days.map((d, i) => `${WD[i]} ${md(d.date)}`)];
-  const rows = Array.from({ length: P }, (_, i) => [`${i + 1}교시`, ...days.map((d, j) => weekCell(days, weekly, j, i + 1))]);
+  // 수업 없는 날(고친 칸이 없으면): 1교시 칸에 까닭, 나머지 칸은 「-」
+  const own = j => Object.keys((weekly && weekly.cells) || {}).some(k => k.startsWith(`${j}-`));
+  const cell = (d, j, p) => (d.off && !own(j) && p > 1 ? '-' : weekCell(days, weekly, j, p));
+  const rows = Array.from({ length: P }, (_, i) => [`${i + 1}교시`, ...days.map((d, j) => cell(d, j, i + 1))]);
   const notes = NOTE_ROWS.map(([k, label]) => [label, ...days.map((d, j) => ((weekly.notes || {})[j] || {})[k] || '')]);
+  const notice = String((weekly && weekly.announce) || '').trim();
+  const W = [0.7, 2, 2, 2, 2, 2];
   return {
     title: weekly.title || '주간학습안내',
     blocks: [
-      { type: 'p', text: `${fmtDay(days[0].date)} ~ ${fmtDay(days[4].date)}` },
-      { type: 'table', head: true, rows: [head, ...rows] },
+      { type: 'p', text: `${String(school || '').trim() ? `${String(school).trim()} · ` : ''}${fmtDay(days[0].date)} ~ ${fmtDay(days[4].date)}` },
+      { type: 'table', head: true, widths: W, rows: [head, ...rows] },
       { type: 'h', text: '요일별 알림' },
-      { type: 'table', head: true, rows: [['구분', ...head.slice(1)], ...notes] }
+      { type: 'table', head: true, widths: W, rows: [['구분', ...head.slice(1)], ...notes] },
+      ...(notice ? [{ type: 'h', text: '알려 드립니다' }, { type: 'p', text: notice }] : [])
     ]
   };
 }

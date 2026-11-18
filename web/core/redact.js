@@ -7,7 +7,7 @@
    「준비물: 도시락, 우비, 안내문」처럼 머리 말이 사람이 아닌 것의 목록이면 배우지 않음), learnList로 받은 칸(회의록 참석 칸 — 사람만 적음)은 두~세 글자 이름도(privacy.js personNames).
    자리 표시가 사라진 값은 끝에 붙이지 않음. bad(t): 없는 번호·깨진 자리 표시(괄호를 바꾼 【이름1】·{1}도)가 남았는지(되돌린 글에 섞이지 않게 — 부르는 쪽이 그 줄을 버림).
    가정통신문 번역(letter-translate guard)은 따로 그대로 둠 */
-import { MASK, maskStaff, maskJosaNames, maskList, personNames, peopleNames, personUse, nameHead, nameUnderHead, stripNames, RRN_RE, INTL_RE } from './privacy.js';
+import { MASK, maskStaff, maskJosaNames, maskList, personNames, peopleNames, personUse, roleNames, nameHead, nameUnderHead, stripNames, RRN_RE, INTL_RE } from './privacy.js';
 import { maskPersons } from './chat-names.js';
 
 const PHONE = /(?<!\d)\(?0\d{1,2}\)?[-.\s)]{0,2}\d{3,4}[-.\s]?\d{4}(?!\d)/;
@@ -27,7 +27,7 @@ const ODD_TOKEN = /[[【［(（<〈《「『{｛]\s*이름\s*\d+\s*[\]】］)）
 /* 한 문서·한 글을 가리는 동안 같은 이름에 같은 번호를 주는 가리개
    → { line(text) → { text } | null, lines(texts, { learn }) → [{ text } | null], learn(texts), learnList(text), back(t), bad(t), names, secrets } */
 export function makeRedactor() {
-  const names = [], secrets = [];
+  const names = [], secrets = [], roles = new Set();
   const nameNo = n => { let i = names.indexOf(n); if (i < 0) { names.push(n); i = names.length - 1; } return i + 1; };
   const secretNo = v => { let i = secrets.indexOf(v); if (i < 0) { secrets.push(v); i = secrets.length - 1; } return i + 1; };
 
@@ -77,9 +77,14 @@ export function makeRedactor() {
     const stLines = st.text.split('\n');
     keep.forEach((f, k) => { const one = stLines.length === keep.length ? stLines[k] : stripNames(f.p.s).text; f.out = mask(f.p.s, one); if (f.out == null) f.p = null; });
     flat.forEach(f => (f.list || []).forEach(nameNo)); // 번호는 보내는 줄의 이름 다음
+    // 맡은 일 말 앞의 이름 모양 낱말(「사전 교육(이바다 인솔)」) — 흔한 이름 목록에 없어도 배워 보내는 줄에서도 가림(번호는 그 다음)
+    keep.forEach(f => { if (f.p) roleNames(f.p.s).forEach(w => roles.add(w)); });
     return { flat, n: texts.length };
   }
   function emit({ flat, n }) {
+    // 맡은 일 말 앞의 이름(roles)은 보낼 때 배움 — 그사이 알게 된 이름 + 조사(「이솔은 기록」의 이솔은)는 새 이름이 아님(아는 이름 가리기가 조사를 남기고 가림)
+    const withJosa = w => names.some(n => w.length > n.length && w.startsWith(n) && /^(?:은|는|이|가|을|를|과|와|의|도|만|께|랑)$/.test(w.slice(n.length)));
+    for (const w of roles) if (!withJosa(w)) nameNo(w);
     const res = Array.from({ length: n }, () => []);
     const dead = new Set(flat.filter(f => !f.p).map(f => f.i));
     flat.forEach(f => { if (!dead.has(f.i)) res[f.i].push(f.p.blank ? f.p.s : known(f.out)); });
