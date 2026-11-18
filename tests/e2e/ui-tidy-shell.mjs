@@ -37,8 +37,8 @@ await run('ui-tidy-shell', [
     await page.click('nav.app-side [data-menu-go="class"]');
     await page.click('nav.app-side [data-menu-go="evaluate"]');
     assert(await page.textContent('#menuTabs [aria-current="page"]') === '단원평가', '마지막 탭 기억');
-    // 키보드: 평가지 채점 다음 초점은 생활기록부 칸
-    await page.focus('#menuTabs [data-tab="gr"]');
+    // 키보드: 활동지 다음 초점은 생활기록부 칸(평가지 채점도 생활기록부 안 — 2026-11-18)
+    await page.focus('#menuTabs [data-tab="activity"]');
     await page.keyboard.press('Tab');
     assert(await page.evaluate(() => document.activeElement && document.activeElement.dataset.fold) === 'rec', '다음 초점: ' + await page.evaluate(() => document.activeElement.outerHTML.slice(0, 80)));
   }],

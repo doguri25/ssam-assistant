@@ -2,7 +2,7 @@
 // 10점 이상 다르면 두 의견 → [검토 점수 쓰기]로 점수가 바뀜, 5점 차이는 의견 없음
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { open, run, assert, FIXTURES } from './helpers.mjs';
+import { open, run, assert, FIXTURES, recTab } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -47,7 +47,7 @@ const extra = { name: '답안4.png', mimeType: 'image/png', buffer: await page.s
 
 await run('review-gr', [
   ['채점·수준 나누기 뒤 경계 위·아래(75·74)와 읽기 어려움(40) 학생만 검토, 92점 학생은 검토 안 함', async () => {
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="gr"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await recTab(page, 'gr');
     await page.waitForSelector('#grDrop');
     const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click('#grDrop')]);
     await fc.setFiles([...[1, 2, 3].map(i => ({ name: `sheet-${i}.png`, mimeType: 'image/png', buffer: readFileSync(join(FIXTURES, `sheet-${i}.png`)) })), extra]);

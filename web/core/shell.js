@@ -13,8 +13,8 @@ import './file-drop.js'; // 파일 고르기 단추(data-drop-pick)가 있는 �
 
 export const MENUS = [
   { id: 'home', label: '오늘', tabs: [] },
-  { id: 'evaluate', label: '평가', tabs: [['board', '한눈에'], ['unit', '단원평가'], ['activity', '활동지'], ['gr', '평가지 채점'],
-    ['pyeongeo', '교과 평어', 'rec'], ['cc', '창의적 체험활동', 'rec'], ['hk', '행동특성', 'rec'], ['check', '기재 점검']] },
+  { id: 'evaluate', label: '평가', tabs: [['board', '한눈에'], ['unit', '단원평가'], ['activity', '활동지'],
+    ['pyeongeo', '교과 평어', 'rec'], ['gr', '평가지 채점', 'rec'], ['cc', '창의적 체험활동', 'rec'], ['hk', '행동특성', 'rec'], ['check', '기재 점검']] },
   { id: 'training', label: '연수', tabs: [['mine', '내 필수연수'], ['board', '연수 현황판']] },
   { id: 'plan', label: '계획', tabs: [['year', '연간계획'], ['event', '행사계획'], ['class', '학급운영계획'], ['report', '결과 보고']] },
   { id: 'class', label: '학급', tabs: [['today', '오늘 수업'], ['progress', '진도표·시수'], ['weekly', '주간학습안내'], ['camp', '기초학력']] },
@@ -92,9 +92,9 @@ export function setActions(html) {
 }
 
 const LEGACY = ['pyeongeo', 'cc', 'hk', 'gr'];
-/* 평가 「생활기록부」(스펙 2026-11-14-eval-redesign §1): 교과 평어·창체·행특은 가로 메뉴에서 한 칸으로 접히고, 칸 안의 전환(eval-board.js)으로 바꿈.
-   탭 id는 그대로라 다른 곳(채팅·떠 있는 버튼·둘러보기)은 go('evaluate', 'hk')처럼 그대로 씀 */
-export const REC = ['pyeongeo', 'cc', 'hk'];
+/* 평가 「생활기록부」(스펙 2026-11-14-eval-redesign §1): 교과 평어·평가지 채점(2026-11-18 선생님 요청)·창체·행특은 가로 메뉴에서 한 칸으로 접히고,
+   칸 안의 전환(eval-board.js)으로 바꿈. 탭 id는 그대로라 다른 곳(채팅·떠 있는 버튼·둘러보기)은 go('evaluate', 'gr')처럼 그대로 씀 */
+export const REC = ['pyeongeo', 'gr', 'cc', 'hk'];
 const FOLD = { rec: '생활기록부' };
 let lastRec = '';
 const recNow = () => (REC.includes(lastRec) ? lastRec : SSAM().getMode && REC.includes(SSAM().getMode()) ? SSAM().getMode() : 'pyeongeo');

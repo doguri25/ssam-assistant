@@ -1,7 +1,7 @@
 // 평가 틀·한눈에(스펙 2026-11-14-eval-redesign §1·§2): 탭 6칸(생활기록부는 한 칸으로 접힘 + 칸 안 전환), 처음 열면 한눈에,
 // 단계 칸에 카드(단원평가·수행평가), 선생님 차례 띠·가로 메뉴 끝 「선생님 차례 n」, 카드·단추로 그 평가 열기, 390px 가로 넘침 없음,
 // 평어를 다 썼어도 확인할 것이 남은 평가는 접지 않음(띠와 가로 메뉴 수가 같음), 행동특성·평가지 채점 확인 화면을 「쌤」 버튼이 가리지 않음(1280)
-import { open, run, assert } from './helpers.mjs';
+import { open, run, assert, recTab } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -79,7 +79,7 @@ await run('eval-board', [
     assert(await page.$eval('.rec-switch', e => e.hidden), '단원평가에서 전환이 보임');
     await page.click('#menuTabs [data-fold="rec"]');
     await page.waitForFunction(() => document.querySelector('.rec-switch [aria-pressed="true"]').textContent === '행동특성');
-    await page.click('#menuTabs [data-tab="gr"]');
+    await recTab(page, 'gr');
     assert(await page.$eval('.rec-switch', e => e.hidden), '평가지 채점에서 전환이 보임');
   }],
   ['수행평가 카드의 [선생님 차례]를 누르면 평가지 채점에서 그 기록이 열림', async () => {

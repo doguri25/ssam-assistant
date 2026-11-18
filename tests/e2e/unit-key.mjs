@@ -1,6 +1,6 @@
 // 평가 › 단원평가: 탭 끼우기, 평가 목록, 1단계(답안·빈 문제지 넣기, 정답표 고치기), 사진 답안은 AI, 예시로 채우기, 다시 열기
 import { join } from 'node:path';
-import { open, run, assert, mockClaude, ROOT, FIXTURES } from './helpers.mjs';
+import { open, run, assert, mockClaude, ROOT, FIXTURES, recTab } from './helpers.mjs';
 import { zipStore } from '../../web/core/zip.js';
 
 // 합친 칸이 있는 정답지(한글 파일): 평가 내용은 1~2번, 교과서 쪽수는 1~3번이 한 칸
@@ -45,7 +45,7 @@ await run('unit-key', [
     await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'pyeongeo');
     assert(await page.isVisible('#importView') || await page.isVisible('#planView'), '교과 평어 화면이 안 보임');
     assert(!(await page.isVisible(B)), '단원평가 화면이 남음');
-    await page.click('#menuTabs [data-tab="gr"]');
+    await recTab(page, 'gr');
     assert(await page.isVisible('#grView'), '평가지 채점 화면');
     await go();
     assert(await page.isVisible(B) && !(await page.isVisible('#grView')), '다시 단원평가');

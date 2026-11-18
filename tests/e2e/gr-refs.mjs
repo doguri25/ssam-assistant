@@ -2,7 +2,7 @@
 // 한꺼번에 넣기(정답 글 + 학생 사진) → 채점 기준 문서·학생
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { open, run, assert, FIXTURES } from './helpers.mjs';
+import { open, run, assert, FIXTURES, recTab } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -47,7 +47,7 @@ await page.reload(); await page.waitForTimeout(700);
 
 await run('gr-refs', [
   ['평가요소를 고르면 「참고할 단원평가·활동지」에 이어 둔 단원평가·활동지(늦은 것 먼저, 5개 + [더보기]), 기본 체크 안 함', async () => {
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="gr"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await recTab(page, 'gr');
     await page.waitForSelector('#grUnit');
     await page.selectOption('#grUnit', 'u1');
     await page.waitForSelector('#grRefs [data-gr-ref="activity:acR"]');

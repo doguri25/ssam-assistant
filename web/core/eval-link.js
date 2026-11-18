@@ -15,7 +15,7 @@ export function findUnit(link, units = planUnits()) {
 /* 「교과 평어에 참고하기」 스위치(기본 꺼짐). attr: 그 화면의 단추 속성 이름(data-ac·data-un) */
 export function linkHTML(link, subject, attr) {
   const units = planUnits(), u = link ? findUnit(link, units) : null;
-  const what = !link ? `<span class="muted">켜면 평가 › 평가지 채점(수행평가)에서 ${subject ? esc(subject) + ' ' : ''}그 영역 평어를 쓸 때 이 결과를 참고할 수 있어요.</span>`
+  const what = !link ? `<span class="muted">켜면 평가 › 생활기록부 › 평가지 채점(수행평가)에서 ${subject ? esc(subject) + ' ' : ''}그 영역 평어를 쓸 때 이 결과를 참고할 수 있어요.</span>`
     : u ? `<b>${esc(link.subject)} · ${esc(u.label)}</b>`
     : units.length ? '<span class="act-warn">이어 둔 영역을 찾지 못했어요 · 평가계획이 바뀌었으면 [바꾸기]로 다시 골라 주세요</span>'
     : `<b>${esc(link.subject)} · ${esc(link.label)}</b>`;

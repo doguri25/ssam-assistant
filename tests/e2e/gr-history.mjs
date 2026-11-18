@@ -1,6 +1,6 @@
 // 평가지 채점 기록: 30개를 넘어도 오래된 기록을 말없이 지우지 않음
 import { join } from 'node:path';
-import { open, run, assert, mockClaude, FIXTURES } from './helpers.mjs';
+import { open, run, assert, mockClaude, FIXTURES, recTab } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -25,7 +25,7 @@ await page.reload(); await page.waitForTimeout(500);
 
 await run('gr-history', [
   ['새로 채점해 31번째 기록이 생겨도 지난 기록 30개가 모두 남음', async () => {
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="gr"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await recTab(page, 'gr');
     await page.waitForSelector('#grDrop');
     const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click('#grDrop')]);
     await fc.setFiles([join(FIXTURES, 'sheet-1.png')]);

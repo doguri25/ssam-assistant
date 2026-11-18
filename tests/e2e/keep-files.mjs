@@ -2,7 +2,7 @@
 // 쪽지·공문 처리·새 품의·연간계획·행사계획·학급운영계획·학급 준비·설정 학급 명단·활동지·평가지 채점(한꺼번에 넣기)
 // (가정통신문·결과 보고는 letter-fixes·fix1110-letter·report-fixes에서 봄)
 import { join } from 'node:path';
-import { open, run, assert, mockClaude, FIXTURES, ROOT } from './helpers.mjs';
+import { open, run, assert, mockClaude, FIXTURES, ROOT, recTab } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -13,7 +13,7 @@ await mockClaude(page, async () => '{}');
 const txt = (name, text) => ({ name, mimeType: 'text/plain', buffer: Buffer.from(text) });
 const textOf = s => page.evaluate(s => (document.querySelector(s) || {}).textContent || '', s);
 const until = async (fn, what, ms = 8000) => { const end = Date.now() + ms; while (!(await fn())) { if (Date.now() > end) throw new Error('시간 초과: ' + what); await page.waitForTimeout(50); } };
-const goTab = async (menu, tab) => { await page.click(`nav.app-side [data-menu-go="${menu}"]`); await page.click(`#menuTabs [data-tab="${tab}"]`); };
+const goTab = async (menu, tab) => { await page.click(`nav.app-side [data-menu-go="${menu}"]`); if (menu === 'evaluate' && ['pyeongeo', 'gr', 'cc', 'hk'].includes(tab)) await recTab(page, tab); else await page.click(`#menuTabs [data-tab="${tab}"]`); };
 // 지금 탭을 다시 누름 → 그 메뉴가 화면을 통째로 다시 그림
 const sameTab = () => page.click('#menuTabs [aria-current="page"]');
 

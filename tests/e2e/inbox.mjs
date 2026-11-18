@@ -1,6 +1,6 @@
 // 떠 있는 버튼(웹판): 파일 고르기·끌어 놓기 판, 확인 카드, 종류 바꾸기, 입력 칸, 바로 실행, 줄 세우기, 못 읽는 파일, 다른 끌어 놓기 칸과 겹치지 않음, 설정
 import { join } from 'node:path';
-import { open, run, assert, FIXTURES } from './helpers.mjs';
+import { open, run, assert, FIXTURES, recTab } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -132,7 +132,7 @@ await run('inbox', [
   }],
   ['평가지 채점 칸(#grDrop)에 놓은 파일은 그 칸이 받고 버튼은 가로채지 않음', async () => {
     await page.click('nav.app-side [data-menu-go="evaluate"]');
-    await page.click('#menuTabs [data-tab="gr"]');
+    await recTab(page, 'gr');
     await page.waitForSelector('#grDrop');
     const n = (await ran()).length;
     const dt = await page.evaluateHandle(() => { const d = new DataTransfer(); d.items.add(new File(['x'], '학습지.png', { type: 'image/png' })); return d; });

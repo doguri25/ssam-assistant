@@ -1,6 +1,6 @@
 // 업무별 AI: 업무에 정한 모델로만 요청이 가고, 다른 업무는 기본 AI. 옛 화면(창체)도 같음
 import { join } from 'node:path';
-import { open, run, assert, FIXTURES } from './helpers.mjs';
+import { open, run, assert, FIXTURES, recTab } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -134,7 +134,7 @@ await run('ai-roles', [
   }],
   ['같은 업무(채점)인 평가지 채점 화면의 AI 줄도 같은 글, 피드백 줄은 기본', async () => {
     const fb = await page.evaluate(() => { const x = document.querySelector('[data-ai-row="notes"] .ai-row-t'); return x ? x.textContent : ''; });
-    await page.click('#menuTabs [data-tab="gr"]');
+    await recTab(page, 'gr');
     await page.waitForSelector('#grSetup [data-ai-row="grade"] .ai-row-t');
     const txt = (await page.textContent('#grSetup [data-ai-row="grade"] .ai-row-t')).trim();
     assert(txt === 'AI: Claude Opus 5.5 · 검토: Claude Opus 5.5', txt);

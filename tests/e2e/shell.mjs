@@ -1,5 +1,5 @@
 // 창 틀: 세로 메뉴 + 헤더(┌), 메뉴 전환, 켜면 늘 「오늘」(마지막 메뉴는 저장만, 메뉴마다 마지막 탭 기억), 좁은 화면(아래 탭·더보기)
-import { open, run, assert, mockClaude } from './helpers.mjs';
+import { open, run, assert, mockClaude, recTab } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -28,7 +28,8 @@ await run('shell', [
     assert(await title() === '평가', '제목: ' + await title());
     const ts = await tabs();
     // 탭 6칸(스펙 2026-11-14-eval-redesign §1): 생활기록부는 교과 평어·창체·행특을 한 칸으로 접음 — 처음 들어가면 한눈에
-    assert(ts.join('|') === '한눈에|단원평가|활동지|평가지 채점|생활기록부|기재 점검', '가로 메뉴: ' + ts.join('|'));
+    // 평가지 채점도 생활기록부 안(2026-11-18 선생님 요청)
+    assert(ts.join('|') === '한눈에|단원평가|활동지|생활기록부|기재 점검', '가로 메뉴: ' + ts.join('|'));
     assert(await current('header.app-top nav.app-tabs') === '한눈에', '가로 메뉴 현재');
   }],
   ['로고 칸과 헤더 높이가 76px', async () => {
@@ -44,12 +45,15 @@ await run('shell', [
     await page.reload(); await page.waitForTimeout(400);
     assert(await title() === '오늘' && await page.isVisible('section[data-menu="home"]'), '새로고침 뒤 제목: ' + await title());
   }],
-  ['평가 › 평가지 채점을 누르면 채점 화면', async () => {
+  ['평가 › 생활기록부 › 평가지 채점을 누르면 채점 화면, 칸 안 전환에 교과 평어·평가지 채점·창체·행특', async () => {
     await page.click('nav.app-side [data-menu-go="evaluate"]');
-    await page.click('header.app-top nav.app-tabs [data-tab="gr"]');
+    await recTab(page, 'gr');
     assert(await page.evaluate(() => window.SSAM.getMode()) === 'gr', 'mode가 gr이 아님');
     assert(await page.isVisible('#grView'), '#grView 안 보임');
-    assert(await current('header.app-top nav.app-tabs') === '평가지 채점', '가로 메뉴 현재');
+    assert(await current('header.app-top nav.app-tabs') === '생활기록부', '가로 메뉴 현재');
+    const sw = await page.$$eval('section[data-menu="evaluate"] .rec-switch [data-rec-go]', l => l.map(b => b.textContent));
+    assert(sw.join('|') === '교과 평어|평가지 채점|창의적 체험활동|행동특성', '칸 안 전환: ' + sw.join('|'));
+    assert(await page.getAttribute('section[data-menu="evaluate"] .rec-switch [data-rec-go="gr"]', 'aria-pressed') === 'true', '평가지 채점이 눌림');
   }],
   ['메뉴마다 마지막 탭: 계획 › 행사계획 → 학급 → 계획이면 행사계획, 새로고침해도 그대로', async () => {
     const side = m => page.click(`nav.app-side [data-menu-go="${m}"]`);

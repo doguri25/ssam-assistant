@@ -1,6 +1,6 @@
 // 적힌 번호로 학생 맞추기: 걷은 순서가 뒤섞인 답안 → 번호 칸 정하기 → AI가 번호 칸만 모은 그림 한 장을 읽음 → 확인 표(노란 줄을 고쳐야 채점)
 // → 번호 차례로 늘어놓고 학생마다 맞는 쪽으로 채점 (단원평가·평가지 채점)
-import { open, run, assert } from './helpers.mjs';
+import { open, run, assert, recTab } from './helpers.mjs';
 import { SAMPLE_ITEMS } from '../../web/menus/evaluate/unit/unit-sample.js';
 
 const t = await open();
@@ -221,7 +221,7 @@ await run('student-no', [
     reads = [2, 3, 1];
     await page.evaluate(() => localStorage.setItem('ssam:grset', JSON.stringify({ maskOn: false, mask: [] })));
     await page.reload(); await page.waitForTimeout(500);
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="gr"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await recTab(page, 'gr');
     await page.waitForSelector('#grDrop');
     const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click('#grDrop')]);
     await fc.setFiles(files);

@@ -1,6 +1,6 @@
 // 업스테이지 AI: 고르기(기본 Solar Pro 4, 막힌 옛 모델은 Solar Pro 4로), 채팅 주소·키, 이미지는 글자 읽기(OCR) 뒤 글만 보냄, 실패 안내, 권장 안내(E-5), 연결 확인(S-2)
 import { join } from 'node:path';
-import { open, run, assert, FIXTURES } from './helpers.mjs';
+import { open, run, assert, FIXTURES, recTab } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -70,7 +70,7 @@ await run('upstage', [
     assert(!log.includes('other'), '다른 AI로 요청이 감');
   }],
   ['창체·평가지 채점 화면에 손글씨 권장 안내 한 줄', async () => {
-    await page.click('#menuTabs [data-tab="gr"]');
+    await recTab(page, 'gr');
     assert((await page.textContent('#grView')).includes('손글씨 이미지는 Claude·Gemini·GPT를 권장해요'), '평가지 채점 안내 없음');
     await page.evaluate(t => import('./core/shell.js').then(s => s.go('evaluate', t)), 'cc');
     assert((await page.textContent('#ccView')).includes('손글씨 이미지는 Claude·Gemini·GPT를 권장해요'), '창체 안내 없음');

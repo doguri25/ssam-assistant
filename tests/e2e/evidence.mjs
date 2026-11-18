@@ -3,7 +3,7 @@
 // 고친 글은 「고친 글 · 근거는 처음 쓴 글 기준이에요」 · 복사·모두 복사·표로 복사·전체복사는 평어 글만 · 예전 모양 답(text·한 줄 글)은 근거 없이 그대로
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { open, run, assert, mockClaude, FIXTURES } from './helpers.mjs';
+import { open, run, assert, mockClaude, FIXTURES, recTab } from './helpers.mjs';
 
 const t = await open();
 const { page, ctx, url, errors } = t;
@@ -135,7 +135,7 @@ await run('evidence', [
   }],
 
   ['평가지 채점 평어: 요청에 학생마다 근거 목록(수준·요약·잘한 점·보완할 점)·근거 규칙, 답은 문장마다 src', async () => {
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="gr"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await recTab(page, 'gr');
     await page.waitForSelector('#grDrop');
     const [fc] = await Promise.all([page.waitForEvent('filechooser'), page.click('#grDrop')]);
     await fc.setFiles([1, 2, 3].map(i => ({ name: `sheet-${i}.png`, mimeType: 'image/png', buffer: readFileSync(join(FIXTURES, `sheet-${i}.png`)) })));

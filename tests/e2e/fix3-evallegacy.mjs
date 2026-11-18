@@ -1,7 +1,7 @@
 // 평가 옛 화면(평가지 채점·행특) 3차 고침 (11월 5일)
 // 한꺼번에 넣은 정답 글의 「~ 이름: 답」은 그대로, 행특 메모 한꺼번에 넣기의 빈 메모 칸, [검토 점수 쓰기]로 수준이 바뀌면 평어를 다시 씀,
 // 「채점에서 빼기」는 [쪽 순서 거꾸로] 뒤에도 그 평가지를 따라감, 학년을 정하지 않았으면 「[학년] 3학년」을 보내지 않음
-import { open, run, assert, mockClaude } from './helpers.mjs';
+import { open, run, assert, mockClaude, recTab } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -49,7 +49,7 @@ const fresh = async (set = {}, del = []) => {
   await setLS({ 'ssam:grset': { maskOn: false, mask: [] }, ...set }, del);
   await page.evaluate(() => { for (const k of Object.keys(localStorage)) if (/^ssam:(gr:|grs$)/.test(k)) localStorage.removeItem(k); });
   await page.goto(url, { timeout: 30000 }); await page.waitForTimeout(500);
-  await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="gr"]');
+  await page.click('nav.app-side [data-menu-go="evaluate"]'); await recTab(page, 'gr');
   await page.waitForSelector('#grDrop');
 };
 const upload = async files => {
@@ -122,7 +122,7 @@ await run('fix3-evallegacy', [
     await page.waitForSelector('#hkGrade');
     await page.selectOption('#hkGrade', '5'); await page.selectOption('#hkGrade', '3');
     await page.waitForTimeout(700);
-    await page.click('#menuTabs [data-tab="gr"]'); await page.waitForSelector('#grDrop');
+    await recTab(page, 'gr'); await page.waitForSelector('#grDrop');
     await upload([await shot(300)]);
     await title('곱셈');
     const g0 = grades.length;

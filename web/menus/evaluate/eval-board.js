@@ -1,7 +1,7 @@
 /* 평가 › 한눈에(스펙 2026-11-14-eval-redesign §1·§2).
    - 한눈에: 단원평가·활동지·평가지 채점마다 단계 칸(준비·채점·결과 확인·보충·생활기록부)에 카드, 확인할 것이 있으면 주황.
    - 가로 메뉴 끝 「선생님 차례 n」(확인할 것의 합, 0이면 없음) — 누르면 한눈에.
-   - 생활기록부 칸 안 전환(교과 평어·창체·행특): 평가 칸 맨 위, 그 셋 중 하나일 때만.
+   - 생활기록부 칸 안 전환(교과 평어·평가지 채점·창체·행특): 평가 칸 맨 위, 그 넷 중 하나일 때만.
    - 결과 확인 칸 카드의 [마치기]: 그 평가를 끝난 평가로 접고 선생님 차례에서 뺌(eval-close.js, 점수·글은 그대로), 끝난 평가 목록의 [다시 열기]로 되돌림.
    단계·확인 수 규칙은 eval-stage.js(순수). 학생 이름은 쓰지 않음(번호·수만) */
 import { onEnter, go, REC } from '../../core/shell.js';
@@ -163,8 +163,8 @@ function drawPill() {
 }
 
 /* 생활기록부 칸 안 전환 */
-const REC_LABEL = { pyeongeo: '교과 평어', cc: '창의적 체험활동', hk: '행동특성' };
-const REC_SUB = { pyeongeo: '평가 결과로 교과 학습 발달 상황을 써요', cc: '자율·동아리·진로 활동 특기사항을 써요', hk: '관찰 메모로 행동특성 및 종합의견을 써요' };
+const REC_LABEL = { pyeongeo: '교과 평어', gr: '평가지 채점', cc: '창의적 체험활동', hk: '행동특성' };
+const REC_SUB = { pyeongeo: '평가 결과로 교과 학습 발달 상황을 써요', gr: '수행평가 평가지를 채점하고 학생마다 평어를 써요', cc: '자율·동아리·진로 활동 특기사항을 써요', hk: '관찰 메모로 행동특성 및 종합의견을 써요' };
 function drawSwitch(section, tab) {
   if (!sw || !section.contains(sw)) {
     sw = document.createElement('div'); sw.className = 'rec-switch';

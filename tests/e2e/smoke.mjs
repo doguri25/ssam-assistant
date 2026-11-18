@@ -1,5 +1,5 @@
 // 앱이 열리고 평가 화면들이 바뀌는지 (가장 기본)
-import { open, run, assert, enter } from './helpers.mjs';
+import { open, run, assert, enter, recTab } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -14,7 +14,7 @@ await run('smoke', [
     assert(await page.isVisible('#ccView'), '#ccView가 보이지 않음');
   }],
   ['평가지 채점 화면으로 바뀜', async () => {
-    await page.click('#menuTabs [data-tab="gr"]');
+    await recTab(page, 'gr');
     assert(await page.isVisible('#grView'), '#grView가 보이지 않음');
   }],
   ['바꾸는 동안에도 오류 없음', async () => { assert(errors.length === 0, '페이지 오류: ' + errors.join(' | ')); }]

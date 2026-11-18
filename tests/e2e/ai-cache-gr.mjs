@@ -1,7 +1,7 @@
 // 평가지 채점 AI 요청: 기준 그림 2장 → 공통 글(cache_control, 「앞의 그림 2장은 정답·채점 기준」) → 학생 그림 → 학생 글,
 // 공통은 학생마다 같음, 끝나면 「AI 사용량」 줄, 기록에 남아 다시 열면 「지난 채점」
 import { join } from 'node:path';
-import { open, run, assert, mockClaude, FIXTURES } from './helpers.mjs';
+import { open, run, assert, mockClaude, FIXTURES, recTab } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -27,7 +27,7 @@ await page.reload(); await page.waitForTimeout(500);
 
 await run('ai-cache-gr', [
   ['기준 그림이 앞, 공통 글에 cache_control·「앞의 그림 2장은 정답·채점 기준」, 학생 그림·글이 뒤, 공통은 학생마다 같음', async () => {
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="gr"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await recTab(page, 'gr');
     await page.waitForSelector('#grDrop');
     const [c1] = await Promise.all([page.waitForEvent('filechooser'), page.click('[data-gr="critImg"]')]);
     await c1.setFiles([join(FIXTURES, 'sheet-2.png'), join(FIXTURES, 'sheet-3.png')]);
@@ -65,7 +65,7 @@ await run('ai-cache-gr', [
     const u = await page.evaluate(() => { const id = JSON.parse(localStorage.getItem('ssam:grs'))[0]; return JSON.parse(localStorage.getItem('ssam:gr:' + id)).aiUse; });
     assert(u && u.sent === 3150 && u.cached === 3000 && u.out === 200, JSON.stringify(u)); // 바로 위에서 한 학생만 다시 채점한 것
     await page.reload(); await page.waitForTimeout(500);
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="gr"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await recTab(page, 'gr');
     await page.click('[data-grhist]');
     await page.waitForSelector('#grResults #grAiUse');
     assert((await page.textContent('#grAiUse')).startsWith('지난 채점 AI 사용량'), await page.textContent('#grAiUse'));

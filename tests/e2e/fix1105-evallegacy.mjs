@@ -2,7 +2,7 @@
 // 가릴 곳 없이 가리기가 켜져 있으면 채점 전에 물음, 한꺼번에 넣기에 정답만 넣으면 지금 채점에 더함(스캔·학생 그대로), 정답 글은 이름 칸만 가림,
 // 다음 평가 묶음은 지난 기준 글·제목을 비움, 옛 기록의 겹친 번호, 행특 메모 한꺼번에 넣기의 이름 칸,
 // 평가지 채점 탭의 AI 줄 하나(평어도 채점 AI로), 행특 특성 버튼 늘림
-import { open, run, assert, mockClaude } from './helpers.mjs';
+import { open, run, assert, mockClaude, recTab } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -61,7 +61,7 @@ const fresh = async (grset = { maskOn: false, mask: [] }) => {
     if (g) localStorage.setItem('ssam:grset', JSON.stringify(g));
   }, grset);
   await page.goto(url, { timeout: 30000 }); await page.waitForTimeout(500);
-  await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="gr"]');
+  await page.click('nav.app-side [data-menu-go="evaluate"]'); await recTab(page, 'gr');
   await page.waitForSelector('#grDrop');
 };
 const upload = async files => {
@@ -246,7 +246,7 @@ await run('fix1105-evallegacy', [
       localStorage.setItem('ssam:grs', JSON.stringify(['old1']));
     });
     await page.goto(url, { timeout: 30000 }); await page.waitForTimeout(500);
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="gr"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await recTab(page, 'gr');
     await page.waitForSelector('[data-grhist="old1"]');
     await page.click('[data-grhist="old1"]');
     await page.waitForSelector('[data-gr="copyAll"]');

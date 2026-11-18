@@ -50,7 +50,22 @@ export async function open({ width = 1280, height = 860 } = {}) {
 export async function enter(page, menu, tab) {
   await page.waitForFunction(m => !!document.querySelector(`nav.app-side [data-menu-go="${m}"]`), menu);
   await page.evaluate(m => document.querySelector(`nav.app-side [data-menu-go="${m}"]`).click(), menu);
-  if (tab) await page.evaluate(t => { const b = document.querySelector(`#menuTabs [data-tab="${t}"]`); if (!b) throw new Error('탭 없음: ' + t); b.click(); }, tab);
+  // 평가 「생활기록부」 안 탭(교과 평어·평가지 채점·창체·행특)은 생활기록부 칸 → 칸 안 전환으로(선생님이 누르는 차례)
+  if (tab) await page.evaluate(t => {
+    const b = document.querySelector(`#menuTabs [data-tab="${t}"]`);
+    if (b) { b.click(); return; }
+    const f = document.querySelector('#menuTabs [data-fold="rec"]');
+    if (!f) throw new Error('탭 없음: ' + t);
+    f.click();
+    const r = document.querySelector(`section[data-menu="evaluate"] .rec-switch [data-rec-go="${t}"]`);
+    if (!r) throw new Error('탭 없음: ' + t);
+    r.click();
+  }, tab);
+}
+/* 평가 › 생활기록부 안의 탭(pyeongeo·gr·cc·hk)으로: 가로 메뉴 「생활기록부」 → 칸 안 전환 */
+export async function recTab(page, id) {
+  await page.click('#menuTabs [data-fold="rec"]');
+  await page.click(`section[data-menu="evaluate"] .rec-switch [data-rec-go="${id}"]`);
 }
 
 /* Claude API 가짜 응답. handler({ prompt(글 조각을 모두 이음), images(그림 수), content, body }) → 돌려줄 글,

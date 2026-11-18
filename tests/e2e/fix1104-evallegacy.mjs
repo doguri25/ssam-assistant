@@ -1,7 +1,7 @@
 // 평가 옛 화면(평가지 채점)·한꺼번에 넣기 고침 (11월 4일)
 // 적힌 번호로 맞출 때 결석 번호·채점에서 뺀 쪽이 나이스 칸을 밀지 않음, 글자층 학생 스캔은 정답·기준 글이 되지 않음(묶음 글은 이름 가림),
 // 다음 평가 묶음은 지난 정답표를 비우고 넣음, 넣을 것이 없을 때 알림, 기준 칸을 고치는 중에는 다시 그리지 않음, 「새 채점」 직전 저장
-import { open, run, assert, mockClaude } from './helpers.mjs';
+import { open, run, assert, mockClaude, recTab } from './helpers.mjs';
 
 const t = await open();
 const { page, url, errors } = t;
@@ -36,7 +36,7 @@ const toastText = () => page.evaluate(() => (document.querySelector('#toast') ||
 const fresh = async () => {
   await page.evaluate(() => { for (const k of Object.keys(localStorage)) if (/^ssam:(gr:|grs$)/.test(k)) localStorage.removeItem(k); });
   await page.goto(url, { timeout: 30000 }); await page.waitForTimeout(500);
-  await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="gr"]');
+  await page.click('nav.app-side [data-menu-go="evaluate"]'); await recTab(page, 'gr');
   await page.waitForSelector('#grDrop');
 };
 const upload = async files => {
@@ -142,7 +142,7 @@ await run('fix1104-evallegacy', [
   }],
   ['[gr-byno-skip-dup] 지난 채점으로 다시 열어도 나이스 글은 [1번, 2번]', async () => {
     await page.goto(url, { timeout: 30000 }); await page.waitForTimeout(500);
-    await page.click('nav.app-side [data-menu-go="evaluate"]'); await page.click('#menuTabs [data-tab="gr"]');
+    await page.click('nav.app-side [data-menu-go="evaluate"]'); await recTab(page, 'gr');
     await page.waitForSelector('[data-grhist]');
     await page.click('[data-grhist]');
     await page.waitForSelector('[data-gr="copyAll"]');
