@@ -15,7 +15,7 @@ const COMMON = new Set(['이야기', '우리반', '우리말', '우리들', '도
   '전염병', '연장전', '주관식', '방학중', '오전중', '오후중', '진행중', '공사중', '기간중', '최대치', '최소치', '최고치', '최저치', '연필심', '이월분', '원단위',
   '우체국', '진주성', '공산성', '연수원', '유치원', '변경안', '신설안', '명령조', '경어조', '구어조', '문어조', '기본조', '강약조', '홍보지', '정보지', '안내지',
   '이번호', '지난호', '소규모', '민원인', '지역민', '장마철', '소재지', '주소지',
-  '강낭콩', '봉선화', '반대편', '육성회', '마무리', '금요일', '공휴일', '기념일', '서술형', '공문철', '원어민']);
+  '강낭콩', '봉선화', '반대편', '육성회', '마무리', '금요일', '공휴일', '기념일', '서술형', '공문철', '원어민', '지도안', '위인전']);
 // 전화번호: 0으로 시작하는 국번(앞에 숫자가 붙지 않음) — 「1200000 1150000」「3000 4000 5000」 같은 금액·숫자 줄은 아님
 const PHONE = /(?<!\d)\(?0\d{1,2}\)?[-.\s)]{0,2}\d{3,4}[-.\s]?\d{4}/;
 
@@ -121,8 +121,9 @@ const LIST_WORD = new Set(['조리원', '지도원', '구성원', '연구원', '
 const ROLE_END = /(?:교사|강사|위원|요원|직원|[생부팀청과직년급])$/;
 /* 사람만 적는 칸·줄의 낱말이 이름인지: 흔한 성으로 시작하는 두~세 글자(이승기·정영자·김수한·김솔·이산 — 조사 같은 끝 글자도), 두 글자 성 + 두 글자(남궁하늘).
    네 글자는 두 글자 성만(진로교사·안전요원은 아님). 흔한 낱말·직함·부서·인원·쉼 말(교장·담임·전원·주무관·연구부·조퇴)은 아님 */
+// 직함 + 님(강사님·선배님·원장님)은 호칭이라 이름이 아님(「김솔님」은 이름)
 const personWord = t => DOUBLE.test(t) || (/^[가-힣]{2,3}$/.test(t) && SURNAME.has(t[0]) && !COMMON.has(t) && !TWO_WORD.has(t) && !STAFF_WORD.has(t)
-  && !LIST_WORD.has(t) && !TITLE.has(t) && !ROLE_END.test(t));
+  && !LIST_WORD.has(t) && !TITLE.has(t) && !ROLE_END.test(t) && !(/님$/.test(t) && (TWO_WORD.has(t.slice(0, -1)) || TITLE.has(t.slice(0, -1)))));
 const LIST_SPLIT = /[\s|,，·、/()（）:：;[\]【】<>〈〉《》「」『』→←~]+/;
 const words = text => String(text == null ? '' : text).split(LIST_SPLIT).map(t => t.replace(/^\d+[.)번]?/, '').replace(/^[^가-힣]+|[^가-힣]+$/g, ''));
 /* 사람 이름만 늘어놓는 칸(회의록 참석 칸 — 「김하늘(교무), 이산, 정영자 주무관」)의 이름 → [이름] */
@@ -303,10 +304,12 @@ const LIST_HEAD = new RegExp(`(${LIST_WHO}\\s*(?:\\(\\s*\\d+\\s*명\\s*\\)|（\\
 const LIST_BARE = new RegExp(`(${LIST_WHO}\\s+)((?:[가-힣]{2,4}(?:\\s*(?:선생님|님))?\\s*[,，、·]\\s*)+[가-힣]{2,4}(?:\\s*(?:선생님|님))?)(?=$|[^가-힣])`, 'g');
 // 한 항목(쉼표·가운뎃점으로 나눈 것)에 낱말이 여럿이면(「설문 조사」「신규 임용 교사」) 두 글자 낱말은 이름으로 보지 않음 — 세 글자 이름 모양만
 const LIST_FILL = /^(?:선생님|선생|님|교사|외|등|\d+\s*명|[(（].*[)）])$/;
+// 이름 앞 꾸밈(학년·반·번호·부서·직함 — 「1학년 김솔」「교무부 김솔」「1-1 김솔」「행정실 김솔」「3학년 담임 김솔」): 낱말 수를 셀 때 빼서 두 글자 이름도 가림
+const LIST_DECOR = /^(?:\d+(?:학년|반|학급|번)|\d+-\d+|\d+학년\d+반|[가-힣]*[부실과팀]|[가-힣]*(?:부장|담임|교감|교장|주무관|실무사|강사))$/;
 const maskListBody = body => { let n = 0;
   const out = body.split(/([,，、·/]|\s+및\s+)/).map((item, i) => {
     if (i % 2) return item;
-    const toks = item.replace(/[(（][^)）]*[)）]/g, ' ').trim().split(/\s+/).filter(t => t && !LIST_FILL.test(t));
+    const toks = item.replace(/[(（][^)）]*[)）]/g, ' ').trim().split(/\s+/).filter(t => t && !LIST_FILL.test(t) && !LIST_DECOR.test(t));
     // 낱말이 여럿인데 이름 모양이 아닌 낱말이 섞이면(「신규 임용 교사」「전교 학생회 임원」) 두 글자는 이름 아님. 모두 이름 모양이면(「김솔 이산」) 이름 목록
     const nameTok = t => { const r = /^[가-힣]{2,6}$/.test(t) && staffJosa(t); return !!r && (r[0].length === 2 || personWord(r[0])); };
     const multi = toks.length > 1 && !toks.every(nameTok);
@@ -324,15 +327,21 @@ export function maskPeopleList(text) {
     .replace(LIST_BARE, (m, head, body) => { const [b, n] = maskListBody(body); masked += n; return head + b; });
   return { text: s, masked };
 }
-// colonOnly: 직함 뒤 이름은 쌍점 뒤만(「강사: 탁보결」 — 「선생님 설명을」「부장 선거」는 아님, 활동지 글)
-const STAFF_BEFORE_COLON = /((?:강사|담당자?|주무관|선생님|부장|문의)\s*[:：]\s*|인솔자?\s*[:：]\s*)([가-힣]{2,5})(?![가-힣])/g;
+// colonOnly: 직함 뒤 이름은 쌍점 뒤면 예전대로, 띄어쓰기만이면 세 글자 이름 모양에 조사가 없거나 사람 조사일 때만
+// (「강사 박솔빛」「담당 이바다에게」는 가림 — 「선생님 설명을」「부장 선거」「담당 구역」은 아님, 활동지·창체·행사 칸 글)
+const COLON_ONLY_J = /^(?:이|가|께|께서|에게|한테|에게서|한테서|은|는|와|과|랑|이랑|하고|의)?$/;
 export function maskStaff(text, { colonOnly = false } = {}) {
   const p = maskPeopleList(text);
   let masked = p.masked;
   const s = p.text
     .replace(STAFF_AFTER, (m, pre, n, sp, who) => (staffName(n) && !(n.length === 2 && who === '님') ? (masked++, pre + MASK + sp + who) : m))
-    .replace(colonOnly ? STAFF_BEFORE_COLON : STAFF_BEFORE, (m, pre, w, off, str) => { const r = staffJosa(w, str.slice(0, off + pre.length), str.slice(off + m.length)); return r && (!/^인솔/.test(pre) || insolName(w.slice(0, w.length - r[1].length), str.slice(off + m.length))) ? (masked++, pre + MASK + r[1]) : m; })
-    .replace(colonOnly ? /(?!)/g : INSOL_SPACE, (m, pre, w) => (plainOk(w) && staffName(w) && personWord(w) && !INSOL_GROUP.has(w) && !(TWO_WORD.has(w.slice(0, 2)) && /[은는이가을를]$/.test(w)) ? (masked++, pre + MASK) : m));
+    .replace(STAFF_BEFORE, (m, pre, w, off, str) => {
+      const r = staffJosa(w, str.slice(0, off + pre.length), str.slice(off + m.length));
+      if (!r || (/^인솔/.test(pre) && !insolName(w.slice(0, w.length - r[1].length), str.slice(off + m.length)))) return m;
+      if (colonOnly && !/[:：]/.test(pre) && !(r[0].length >= 3 && plainOk(r[0]) && roleWord(r[0]) && COLON_ONLY_J.test(r[1]))) return m;
+      return (masked++, pre + MASK + r[1]);
+    })
+    .replace(INSOL_SPACE, (m, pre, w) => (plainOk(w) && staffName(w) && personWord(w) && (!colonOnly || roleWord(w)) && !INSOL_GROUP.has(w) && !(TWO_WORD.has(w.slice(0, 2)) && /[은는이가을를]$/.test(w)) ? (masked++, pre + MASK) : m));
   return { text: s, masked };
 }
 
@@ -350,7 +359,8 @@ export function maskJosaNames(text) {
   const s = String(text == null ? '' : text).replace(/(^|[^가-힣○])([가-힣]{4,8})(?![가-힣])/g, (m, pre, w, off, str) => {
     const n = w.slice(0, 3), j = w.slice(3);
     // 「진단평가·성취평가·지필평가」「정보교과·선택교과」의 끝 글자는 조사가 아님
-    if ((j === '가' && /평$/.test(n)) || (j === '과' && /교$/.test(n))) return m;
+    // 「하회마을·한옥마을·민속마을」의 「을」도(마을)
+    if ((j === '가' && /평$/.test(n)) || (j === '과' && /교$/.test(n)) || (j === '을' && /마$/.test(n))) return m;
     if (!j || !josaOk(n, j, str.slice(0, off + pre.length), str.slice(off + m.length)) || !josaName(n, /^(?:님|씨)?으?로|^에서$/.test(j))) return m;
     masked++;
     return pre + MASK + j;

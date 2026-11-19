@@ -123,7 +123,10 @@ export function classify({ name = '', text = '', scan = false } = {}) {
   if (/기초\s*시간표/.test(head)) add('timetable', 6, '「기초시간표」예요.');
   if (/월\s*[|,]\s*화\s*[|,]\s*수\s*[|,]\s*목\s*[|,]\s*금/.test(t)) add('timetable', 3, '요일 칸이 있어요.');
 
-  if (lines.slice(0, 15).some(l => /번\s*호/.test(l) && /(성\s*명|이\s*름)/.test(l))) add('roster', 8, '번호·성명 머리가 있는 명단이에요.');
+  // 명단 머리(「번호 | 성명」「번호,이름」): 문제지·학습지 머리의 쓰는 칸(「번호 (  ) 이름 (    )」「번호 ___ 이름 ___」「번호:   이름:」)은 아님.
+  // 문항·답 칸이 있는 문제지(unit-paper 7점)도 명단으로 보지 않음
+  const fillIn = l => /\(\s*\)|（\s*）|_{2,}|[:：]\s{2,}|[:：]\s*$/.test(l);
+  if (!(score['unit-paper'] >= 7) && lines.slice(0, 15).some(l => /번\s*호/.test(l) && /(성\s*명|이\s*름)/.test(l) && !fillIn(l))) add('roster', 8, '번호·성명 머리가 있는 명단이에요.');
   if (/명렬|명단/.test(n)) add('roster', 2, '파일 이름에 「명단」이 있어요.');
 
   if (/견\s*적\s*서/.test(t)) add('quote', 6, '「견적서」예요.');

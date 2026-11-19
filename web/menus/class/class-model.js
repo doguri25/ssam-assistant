@@ -177,9 +177,11 @@ function editRec(date, period, fn) {
   if (Object.keys(day).length) log[date] = day; else delete log[date];
   return set('class:log', log);
 }
+/* 그 칸의 기록을 이어 쓸 수 있는지: 같은 교과, 또는 메모만 적은 칸(적을 때의 시간표 교과로 저장돼 있어도 화면은 지금 시간표 교과로 보여 줌 — slotsOn) */
+const sameRec = (r, subject) => !!r && (r.subject === subject || (!r.status && !r.swap));
 /* status가 null이면 그 시간 체크를 지움(메모·교체는 남김) */
 export const setMark = (date, period, subject, status) =>
-  editRec(date, period, r => (r && r.subject === subject ? { ...r, status: status || '' } : { subject, status: status || '' }));
+  editRec(date, period, r => (sameRec(r, subject) ? { ...r, subject, status: status || '' } : { subject, status: status || '' }));
 /* 그날 그 교시만 다른 교과로(교체·보강, 시간표는 그대로). planned: 시간표의 교과(시간표에 없는 교시는 '') — 같으면 교체를 지움.
    교과가 바뀌면 체크는 지움(다른 교과의 차시라서), 메모는 남김. 이름이 비면 false */
 export function setSwap(date, period, subject, planned) {
@@ -393,7 +395,7 @@ export function markDay(ctx, date, status, only = 'left') {
   for (const s of dayView(ctx, date).slots) {
     if (s.kind === 'staff' || s.status === status || (only === 'left' && s.status)) continue;
     const r = day[s.period];
-    day[s.period] = cleanRec({ ...(r && r.subject === s.subject ? r : { subject: s.subject }), status });
+    day[s.period] = cleanRec({ ...(sameRec(r, s.subject) ? r : {}), subject: s.subject, status });
     n++;
   }
   if (!n) return 0;

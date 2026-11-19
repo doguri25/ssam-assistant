@@ -230,7 +230,14 @@ export function payloadFor(intent, text) {
     const left = /\n/.test(t) ? rest : meat(s.replace(KW[intent], ' ').replace(VIEW_W, ' '));
     return { text: rest.length >= 4 && left.length >= 2 ? s : '' };
   }
-  if (intent === 'translate') return { lang: langOf(t) };
+  if (intent === 'translate') {
+    // 붙여 넣은 가정통신문 + 번역 말(「이 가정통신문 베트남어로 번역해 줘\n…」「…\n위 내용 영어로 번역해 줘」): 첫 줄·끝 줄의 번역 말을 뺀 글이 남으면 그 글도(text) —
+    // 가정통신문 탭에 있던 다른 글을 번역하지 않게(chat.js가 이 글로 먼저 가정통신문을 씀). 한 줄 글(「가정통신문 베트남어로」)은 언어만
+    const ls = t.split('\n'), cmd = l => !!langOf(l) && (/번역/.test(l) || LANG_CUE.test(l)) && l.length <= 40;
+    if (ls.length > 1 && cmd(ls[0])) ls.shift(); else if (ls.length > 1 && cmd(ls[ls.length - 1])) ls.pop(); else ls.length = 0;
+    const body = ls.join('\n').trim(), text = meat(body).length >= 10 ? payloadFor('letter', body).text : '';
+    return text ? { lang: langOf(t), text } : { lang: langOf(t) };
+  }
   if (intent === 'multi') return { view: /정성|자기\s*실적/.test(t) ? 'qual' : /정량/.test(t) ? 'quant' : '' };
   if (intent === 'memo' || intent === 'memoView') { const m = parseMemo(t); return m ? { nos: m.nos, body: m.body } : { nos: [], body: '' }; }
   // 한 달 달력: 「다음 달 일정」「지난달 달력」이면 그 달

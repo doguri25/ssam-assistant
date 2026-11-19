@@ -58,7 +58,11 @@ export async function goRoute(r) {
   else if (r.to === 'handover') go('etc', 'handover');
   else if (r.to === 'message') go('etc', 'message');
   else if (r.to === 'multi') { const fn = await optional('../menus/etc/multi.js', 'openMulti'); if (fn) fn(r.view); else go('etc', 'multi'); }
-  else if (r.to === 'camp') { const fn = await optional('../menus/class/camp.js', 'openCamp'); if (fn) fn(r.section); else go('class', 'camp'); }
+  else if (r.to === 'camp') {
+    // id: 그 프로그램을 골라 둠(한 달 달력·학년말 마감 — 지금 고른 다른 프로그램이 열리지 않게)
+    if (r.id) { try { const m = await import('../menus/class/camp-model.js'); if (m.getCamp(r.id) && m.currentCampId() !== r.id) m.setCurrentCamp(r.id); } catch (e) {} }
+    const fn = await optional('../menus/class/camp.js', 'openCamp'); if (fn) fn(r.section); else go('class', 'camp');
+  }
   else if (r.to === 'settings') go('settings', r.tab);
   else if (r.to === 'home') go('home');
 }

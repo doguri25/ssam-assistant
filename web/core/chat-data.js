@@ -15,22 +15,26 @@ const wday = s => toD(s).getUTCDay();
 const diffDays = (a, b) => Math.round((toD(b) - toD(a)) / 86400000);
 const md = s => `${+s.slice(5, 7)}월 ${+s.slice(8, 10)}일(${DAY[wday(s)]})`;
 const mdShort = s => `${+s.slice(5, 7)}/${+s.slice(8, 10)}`;
-const relWord = (date, today) => ({ 0: '오늘', 1: '내일', 2: '모레' }[diffDays(today, date)] || '');
+const relWord = (date, today) => ({ '-2': '그제', '-1': '어제', 0: '오늘', 1: '내일', 2: '모레' }[diffDays(today, date)] || '');
 
 /* ---------- 묻는 글 알아보기 ---------- */
 // 묻는 꼴(이게 있어야 자료 질문)
 const ASK = /[?？]|몇|얼마|어때|어땠|어떤가|어떻게\s*(?:돼|되)|알려|보여|뭐(?:야|예요|에요|지|임|\s*있|\s*남)|누구|누가|어디까지|남았|남은|있어|있나|있니|있을까|나왔|나갔|궁금|됐어|됐나|볼래/;
 // 하는 법·만들기·명령(자료를 묻는 게 아님)
 const NOT = /어떻게(?!\s*(?:돼|되))|어떡|방법|하는\s*법|요령|양식|서식|만들|뽑아|뽑는|채점\s*해|넣어|넣는|넣을|바꾸|바꿔|고치|고쳐|처리\s*해|정리|써\s*줘|써줘|쓰는|작성|결과지|결과표|출석부|확인서|보고서|내려받|인쇄|체크/;
-const DAYW = [['오늘', 0], ['내일', 1], ['모레', 2], ['글피', 3]];
+const DAYW = [['오늘', 0], ['내일', 1], ['모레', 2], ['글피', 3], ['그저께', -2], ['그제', -2], ['어제', -1]];
 const WEEK = [['일요일', 0], ['월요일', 1], ['화요일', 2], ['수요일', 3], ['목요일', 4], ['금요일', 5], ['토요일', 6]];
 function dayOf(t, today) {
-  // 날짜(「11월 24일」「12/1」「12. 1.」): 해는 오늘이 든 학년도(3~12월은 그해, 1·2월은 다음 해)
+  // 날짜(「11월 24일」「12/1」「12. 1.」): 해는 오늘이 든 학년도(3~12월은 그해, 1·2월은 다음 해).
+  // 다만 1·2월에 묻는 3~12월은 지난 학년도와 곧 올 학년도 가운데 오늘에 가까운 날(2월에 「3월 2일」은 곧 올 3월, 「12월 5일」은 지난 12월)
   const dm = /(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t) || /(?<![\d.])(\d{1,2})\s*[./]\s*(\d{1,2})(?![\d])(?!\s*교시)/.exec(t);
   if (dm && +dm[1] >= 1 && +dm[1] <= 12 && +dm[2] >= 1 && +dm[2] <= 31) {
-    const ty = +today.slice(0, 4), tm = +today.slice(5, 7), sy = tm <= 2 ? ty - 1 : ty, y = +dm[1] <= 2 ? sy + 1 : sy;
-    const d = `${y}-${String(+dm[1]).padStart(2, '0')}-${String(+dm[2]).padStart(2, '0')}`;
-    if (fromD(toD(d)) === d) return d;
+    const ty = +today.slice(0, 4), tm = +today.slice(5, 7), sy = tm <= 2 ? ty - 1 : ty, mmdd = `${String(+dm[1]).padStart(2, '0')}-${String(+dm[2]).padStart(2, '0')}`;
+    const ok = y => { const d = `${y}-${mmdd}`; return fromD(toD(d)) === d ? d : ''; };
+    let d = ok(+dm[1] <= 2 ? sy + 1 : sy);
+    const up = tm <= 2 && +dm[1] >= 3 ? ok(ty) : '';
+    if (up && (!d || Math.abs(diffDays(today, up)) < Math.abs(diffDays(today, d)))) d = up;
+    if (d) return d;
   }
   if (/내일\s*모레/.test(t)) return addDays(today, 2);
   for (const [w, n] of DAYW) if (t.includes(w)) return addDays(today, n);
@@ -40,6 +44,13 @@ function dayOf(t, today) {
     return addDays(today, (n - wday(today) + 7) % 7);
   }
   return today;
+}
+/* 요일·날짜·오늘/내일 같은 말 없이 「다음 주·이번 주·지난주(저번 주)」만 있으면 그 주 월요일, 아니면 '' */
+function weekOf(t, today) {
+  const next = /다음\s*주/.test(t), last = /지난\s*주|저번\s*주/.test(t);
+  if (!(next || last || /이번\s*주|금주/.test(t))) return '';
+  if (/\d{1,2}\s*월\s*\d{1,2}\s*일|(?<![\d.])\d{1,2}\s*[./]\s*\d{1,2}(?![\d])/.test(t) || DAYW.some(([w]) => t.includes(w)) || WEEK.some(([w]) => t.includes(w) || t.includes(w.slice(0, 1) + '욜'))) return '';
+  return addDays(addDays(today, -((wday(today) + 6) % 7)), next ? 7 : last ? -7 : 0);
 }
 const subjectOf = (t, extra = []) => [...extra, ...SUBJECTS].find(s => s && t.includes(s)) || '';
 // 학생 번호(「3번 문항」「3번 문제」는 아님)
@@ -58,9 +69,11 @@ export function dataQuestion(text, { today = '', subjects = [] } = {}) {
   if (/예산|집행률/.test(t) && /얼마|남|집행률|현황|몇|어때|어떻게\s*돼/.test(t) && ask && !/과목|품의\s*(?:써|만들)/.test(t)) return { kind: 'budget', ...base };
   // 필수연수 남은 것(「연수 몇 개 남았어?」「필수연수 뭐 남았지?」) — 「연수 안내 쪽지 뭐라고 써?」는 아님
   if (/필수\s*연수|의무\s*연수|연수.{0,6}(?:남았|남은|몇\s*개|이수\s*(?:했|안|못))|이수\s*(?:안|못)\s*한\s*연수/.test(t) && ask && !/쪽지|안내문|공문/.test(t)) return { kind: 'training', ...base };
-  if ((/시간표|\d\s*교시/.test(t) && (ask || short)) || (/(?:오늘|내일|모레|글피|[월화수목금]요일)\s*수업/.test(t) && ask)) {
+  if ((/시간표|\d\s*교시/.test(t) && (ask || short)) || (/(?:오늘|내일|모레|글피|어제|그제|그저께|[월화수목금]요일)\s*수업/.test(t) && ask)) {
     const p = t.match(/(\d)\s*교시/);
-    return { kind: 'timetable', ...base, day: dayOf(t, today), period: p ? +p[1] : 0 };
+    // 요일·날짜 없이 「다음 주·이번 주·지난주 시간표」: 그 주 월~금(week: 그 주 월요일)
+    const wk = weekOf(t, today);
+    return { kind: 'timetable', ...base, day: wk || dayOf(t, today), period: p ? +p[1] : 0, ...(wk ? { week: wk } : {}) };
   }
   if (!ask) return null;
   if (/도달\s*(?:하지\s*)?못|미도달|도달\s*안|결손|부진|기초\s*학력\s*(?:에\s*)?(?:들어갈|넣을|대상|갈)|기준\s*(?:미만|아래|안\s*되)/.test(t)) return { kind: 'gap', ...base };
@@ -140,6 +153,19 @@ export function answerTimetable(q, view, today) {
   return out([`${label} 시간표`, ...view.slots.map(s => `- ${s.period}교시 ${one(s)}`)].join('\n'), 'today');
 }
 
+/* 한 주(월~금) 시간표: views는 날마다 answerTimetable과 같은 { date, has, off, slots } */
+export function answerWeek(q, views = [], today) {
+  if (!views.length || !views[0].has) return out('시간표가 아직 없어요. 학급 › 진도표·시수에서 시간표를 넣어 주세요.', 'progress');
+  const one = s => `${s.subject}${s.lesson && s.lesson.title ? `(${s.lesson.title})` : ''}`;
+  const lines = views.map(v => {
+    const rel = relWord(v.date, today), head = `${rel ? rel + ' ' : ''}${mdShort(v.date)}(${DAY[wday(v.date)]})`;
+    if (v.off) return `- ${head}: 수업 없음(${v.off})`;
+    if (q.period) { const s = v.slots.find(x => x.period === q.period); return `- ${head} ${q.period}교시: ${s ? one(s) : '수업 없음'}`; }
+    return `- ${head}: ${v.slots.length ? v.slots.map(s => `${s.period}교시 ${one(s)}`).join(', ') : '수업 없음'}`;
+  });
+  return out([`${md(views[0].date)}~${md(views[views.length - 1].date)} 시간표`, ...lines].join('\n'), 'today');
+}
+
 /* camp: { name, sessions(수업 수), students: [{ label, no, present, absent, marked }] } 또는 null */
 export function answerAttendance(q, camp) {
   if (!camp) return out('기초학력 프로그램이 아직 없어요. 학급 › 기초학력에서 만들면 출석을 세어 드려요.', 'camp');
@@ -196,6 +222,10 @@ export async function answerFor(q, { today }) {
         const l = p.sub.lessons[p.actual];
         return { name: p.sub.name, actual: p.actual, plan: p.plan, expected: p.expected, diff: p.diff, started: p.started, next: l ? { unit: l.unit, title: l.title, no: l.no } : null };
       }));
+    }
+    if (q.week) {
+      const has = C.hasTimetable(ctx.tt);
+      return answerWeek(q, [0, 1, 2, 3, 4].map(i => { const d = addDays(q.week, i), v = C.dayView(ctx, d); return { date: d, has, off: v.off || '', slots: v.slots.map(s => ({ period: s.period, subject: s.subject, lesson: s.lesson })) }; }), today);
     }
     const v = C.dayView(ctx, q.day);
     return answerTimetable(q, { date: q.day, has: C.hasTimetable(ctx.tt), off: v.off || '', slots: v.slots.map(s => ({ period: s.period, subject: s.subject, lesson: s.lesson })) }, today);

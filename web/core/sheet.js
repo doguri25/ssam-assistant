@@ -3,8 +3,19 @@
 import { unzip } from './zip.js';
 import { toNumber } from '../menus/purchase/rules.js';
 
-/* UTF-8(BOM 포함)이 아니면 EUC-KR(엑셀이 저장한 CSV) */
+/* UTF-16(메모장 「유니코드」·엑셀 「유니코드 텍스트(*.txt)」 — BOM FF FE·FE FF, BOM 없어도 앞 글의 홀수 자리가 거의 0이면 LE),
+   UTF-8(BOM 포함), 둘 다 아니면 EUC-KR(엑셀이 저장한 CSV) — 예전에는 UTF-16도 EUC-KR로 읽어 깨진 글이 그대로 들어갔음 */
+function looksUtf16le(u8) {
+  const n = Math.min(u8.length, 400) & ~1;
+  if (n < 4) return false;
+  let z = 0;
+  for (let i = 1; i < n; i += 2) if (u8[i] === 0) z++;
+  return z / (n / 2) > 0.6;
+}
 export function decodeText(u8) {
+  if (u8.length >= 2 && u8[0] === 0xFF && u8[1] === 0xFE) return new TextDecoder('utf-16le').decode(u8);
+  if (u8.length >= 2 && u8[0] === 0xFE && u8[1] === 0xFF) return new TextDecoder('utf-16be').decode(u8);
+  if (looksUtf16le(u8)) return new TextDecoder('utf-16le').decode(u8);
   try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(u8); }
   catch (e) { return new TextDecoder('euc-kr').decode(u8); }
 }
@@ -39,11 +50,53 @@ const attr = (attrs, name) => { const m = new RegExp(`\\b${name}="([^"]*)"`).exe
 const texts = xml => [...String(xml).replace(/<rPh\b[\s\S]*?<\/rPh>/g, '').matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)].map(m => unxml(m[1])).join('');
 const colIndex = ref => { let n = 0; for (const ch of String(ref).replace(/\d+/g, '').toUpperCase()) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1; };
 
+/* 날짜·시각 칸: 엑셀·구글 시트는 날짜를 일련번호(1900 기준 날 수, 소수는 시각)에 날짜 서식을 붙여 저장함 —
+   styles.xml cellXfs의 서식 번호(기본 날짜 14~17·22·27~31·34~36·50~54·57·58, 시각 18~21·32·33·45~47·55·56,
+   사용자 서식은 따옴표·[색] 밖에 y·d가 들면 날짜, h·s만 들면 시각, [h]는 지난 시간)로 알아봄.
+   예전에는 「46345.633333333331」 그대로 읽어 구글 폼 응답 .xlsx의 제출일이 비고 AI에 일련번호가 갔음 */
+const DATE_IDS = new Set([14, 15, 16, 17, 22, 27, 28, 29, 30, 31, 34, 35, 36, 50, 51, 52, 53, 54, 57, 58]);
+const TIME_IDS = new Set([18, 19, 20, 21, 32, 33, 45, 47, 55, 56]);
+function numFmtKinds(stylesXml) {
+  const custom = new Map();
+  for (const m of String(stylesXml).matchAll(/<numFmt\b([^>]*?)\/?>/g)) {
+    const id = attr(m[1], 'numFmtId'), code = attr(m[1], 'formatCode');
+    if (id != null && code != null) custom.set(+id, unxml(code));
+  }
+  const kindOf = id => {
+    if (DATE_IDS.has(id)) return 'date';
+    if (TIME_IDS.has(id)) return 'time';
+    if (id === 46) return 'span';
+    const code = custom.get(id);
+    if (code == null) return '';
+    // 따옴표 글·\글자·_글자(빈칸)·*글자(채움)·[색·지역]은 빼고 봄([h]·[mm]·[ss] 지난 시간은 둠)
+    const bare = code.split(';')[0].replace(/"[^"]*"|\\.|_.|\*.|\[(?![hms]+\])[^\]]*\]/gi, '');
+    if (/[yd]/i.test(bare) || /m{3,}/i.test(bare)) return 'date';
+    if (/\[h+\]/i.test(bare)) return 'span';
+    if (/[hs]/i.test(bare)) return 'time';
+    return '';
+  };
+  const xfs = /<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/.exec(String(stylesXml));
+  return xfs ? [...xfs[1].matchAll(/<xf\b([^>]*?)(?:\/>|>)/g)].map(m => kindOf(+(attr(m[1], 'numFmtId') || 0))) : [];
+}
+const p2 = n => String(n).padStart(2, '0');
+function serialText(v, kind) {
+  const n = Number(v);
+  if (!isFinite(n) || n < 0 || (kind === 'date' && (n < 1 || n > 2958465))) return v;
+  const mins = Math.round(n * 1440);
+  if (kind === 'span') return `${Math.floor(mins / 60)}:${p2(mins % 60)}`;
+  const day = Math.floor(mins / 1440), hm = `${p2(Math.floor(mins % 1440 / 60))}:${p2(mins % 60)}`;
+  if (kind === 'time') return hm;
+  const d = new Date(Date.UTC(1899, 11, 30) + day * 86400000);
+  const ymd = `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}`;
+  return mins % 1440 ? `${ymd} ${hm}` : ymd;
+}
+
 /* 첫 시트를 줄×칸 글로 */
 export async function readXlsx(u8) {
   const files = await unzip(u8);
   const text = name => { const f = files.get(name); return f ? new TextDecoder().decode(f) : ''; };
   const shared = [...text('xl/sharedStrings.xml').matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)].map(m => texts(m[1]));
+  const fmt = numFmtKinds(text('xl/styles.xml'));
   // 첫 시트의 파일: workbook.xml의 첫 sheet → 관계 파일의 Target
   let sheetPath = 'xl/worksheets/sheet1.xml';
   const first = /<sheet\b([^>]*)\/?>/.exec(text('xl/workbook.xml'));
@@ -71,6 +124,7 @@ export async function readXlsx(u8) {
       if (t === 's') val = shared[+val] || '';
       else if (t === 'inlineStr') val = texts(inner);
       else if (t === 'b') val = val === '1' ? 'TRUE' : 'FALSE';
+      else if ((!t || t === 'n') && val !== '') { const k = fmt[+(attr(c[1], 's') || 0)]; if (k) val = serialText(val, k); }
       while (cells.length < ci) cells.push('');
       cells[ci] = val;
       ci++;

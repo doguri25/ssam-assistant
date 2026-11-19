@@ -328,7 +328,7 @@ test('[fix1116-privacy-C10-overlearn] 보내지 않는 줄은 사람 명단(머�
   // 표: 「이름」 머리 칸 아래 칸만 배움(이름이 늘어선 표 줄을 통째로 보내지 않을 때)
   const t = makeRedactor(), o = t.lines(['이름 | 이름 | 이름 | 비고', '김하늘 | 이바다 | 한가람 | 도시락', '이바다 발표, 도시락 지참']);
   assert.equal(o[1], null);
-  assert.equal(o[2].text, '〔이름2〕 발표, 도시락 지참');
+  assert.equal(o[2].text, '〔이름1〕 발표, 도시락 지참'); // 이바다는 흔한 이름 목록(바다)에 있어 보내는 줄에서 먼저 번호를 받음(bugs4)
 });
 
 test('[fix1116-privacy-C10-narrow] 회의록 참석 칸: 흔한 성으로 시작하는 두~네 글자 이름은 모두 배움(이승기·정영자·김수한·최윤화·김솔·이산) — 직함·인원·부서 말은 아님', () => {
@@ -418,13 +418,13 @@ test('[fix1116-privacy-R2-people-head] 인수인계서·회의록(core/redact.js
     }
   }
   const o = makeRedactor().lines(['1. 김하늘 2. 이바다 3. 한가람 4. 박솔빛', '이바다: 모둠 기록 담당']);
-  assert.deepEqual(o.map(x => x && x.text), [null, '〔이름2〕: 모둠 기록 담당']);
+  assert.deepEqual(o.map(x => x && x.text), [null, '〔이름1〕: 모둠 기록 담당']); // 보내는 줄의 이바다가 먼저 번호를 받음(bugs4 — 흔한 이름 목록에 바다)
   // 한 줄에 사람 아닌 목록과 사람 명단이 같이 있으면 사람 명단 쪽 이름은 배움
   const m = makeRedactor().lines(['준비물: 도시락, 우비 / 인솔: 김하늘, 이바다, 한가람, 박솔빛', '이바다 버스 예약', '도시락은 각자']);
-  assert.deepEqual(m.map(x => x && x.text), [null, '〔이름2〕 버스 예약', '도시락은 각자']);
+  assert.deepEqual(m.map(x => x && x.text), [null, '〔이름1〕 버스 예약', '도시락은 각자']); // 보내는 줄의 이바다가 먼저 번호(bugs4)
   // 사람이 아닌 것의 목록 머리 말이라도 몸에 사람 말(학생·선생님·님)이 있으면 배움
   const c = makeRedactor().lines(['가. 내용: 김하늘, 이바다, 한가람, 박솔빛 학생 표창', '이바다 기록 담당']);
-  assert.deepEqual(c.map(x => x && x.text), [null, '〔이름2〕 기록 담당']);
+  assert.deepEqual(c.map(x => x && x.text), [null, '〔이름1〕 기록 담당']); // 보내는 줄의 이바다가 먼저 번호(bugs4)
   // 사람이 아닌 것의 목록: 배우지 않음
   for (const l of ['준비물: 도시락, 우비, 안내문, 신분증', '[준비물] 도시락, 우비, 안내문, 신분증', '- 물품: 도시락, 우비, 안내문, 신분증', '교재: 이야기책, 안내문, 신분증, 도시락',
     '준비물 도시락 우비 안내문 신분증']) {

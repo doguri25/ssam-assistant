@@ -36,9 +36,11 @@ export function yearendRows(d = {}, done = new Set()) {
     !subs.length ? '진도표가 없어요' : left ? `남은 시수 ${left}시간${behindText ? ` · ${behindText}` : ''}` : behindText || '계획 시수를 모두 마쳤어요', { to: 'progress' }));
   // 5. 기초학력 문서
   const camps = d.camps || [];
-  const notReady = camps.map(c => ({ name: c.name, left: (c.docs || []).filter(x => x.state !== 'ready') })).filter(c => c.left.length);
+  const notReady = camps.map(c => ({ id: c.id, name: c.name, left: (c.docs || []).filter(x => x.state !== 'ready') })).filter(c => c.left.length);
   out.push(row('camp', !camps.length ? 'none' : notReady.length ? 'todo' : 'done',
-    !camps.length ? '기초학력 프로그램이 없어요' : notReady.length ? notReady.slice(0, 2).map(c => `「${c.name}」 ${c.left.map(x => `${x.label} ${x.note}`).slice(0, 2).join(', ')}`).join(' / ') : '문서가 모두 준비됐어요', { to: 'camp' }));
+    !camps.length ? '기초학력 프로그램이 없어요' : notReady.length ? notReady.slice(0, 2).map(c => `「${c.name}」 ${c.left.map(x => `${x.label} ${x.note}`).slice(0, 2).join(', ')}`).join(' / ') : '문서가 모두 준비됐어요',
+    // [가기]: 덜 된 첫 프로그램의 문서 칸(지금 고른 다른 프로그램이 아니라)
+    notReady.length && notReady[0].id ? { to: 'camp', id: notReady[0].id, section: 'docs' } : { to: 'camp' }));
   // 6. 연수
   const t = d.training || {}, mineLeft = t.mineLeft || 0, boardLeft = t.boardLeft || [];
   out.push(row('training', !t.mineTotal && !(t.boardCourses || 0) ? 'none' : mineLeft || boardLeft.length || t.noStaff ? 'todo' : 'done',

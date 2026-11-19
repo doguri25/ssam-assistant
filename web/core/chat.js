@@ -226,8 +226,10 @@ export async function send(text) {
   if (!memoNow && screenQuestion(said)) { say(screenAnswer(readScreen({ nav: get('nav', null), menus: MENUS })), { md: true, src: me.id }); return; }
   // 앱 자료로 답할 수 있는 묻는 글(단원평가 평균·학생 점수·도달·진도·시간표·출석률·공문 기한)은 AI 없이 바로(스펙 2026-11-14 §1)
   const dq = dataQuestion(said, { today: today(), subjects: subjectNames() });
-  // 다만 쓰는 일이 분명하면(「남은 예산으로 색종이 구입 품의 부탁해」) 그 일로 — 넘길 글을 잃지 않게
-  if (dq && !memoNow && !(isSure(r) && WRITE_IDS.includes(r.intent))) { await answerData(dq, me); return; }
+  // 다만 쓰는 일이 분명하면(「남은 예산으로 색종이 구입 품의 부탁해」) 그 일로 — 넘길 글을 잃지 않게.
+  // 교체·보강·수업 메모를 넣는 말(「3교시 보강 넣기」「5교시 수업 메모」 — 규칙이 오늘 수업으로 고름)도 시간표 답이 아니라 학급 › 오늘 수업으로
+  const lessonEdit = isSure(r) && r.intent === 'today' && /교체|보강|메모|기록|넣기/.test(said);
+  if (dq && !memoNow && !lessonEdit && !(isSure(r) && WRITE_IDS.includes(r.intent))) { await answerData(dq, me); return; }
   if (isSure(r)) {
     // 관찰 메모는 이름을 가리기 전 글로 넘김(메모에 넣을 때 가리고 가린 수를 알림 — 전화번호만 먼저 가림)
     const memo = r.intent === 'memo' && parseMemo(maskContacts(raw));
@@ -295,7 +297,8 @@ async function assist({ raw, said, r, me }) {
   const chips = plan.run.length ? [] : chipList([...plan.nav, ...out.choices, ...r.candidates], r.question || plan.nav.length > 0);
   if (out.reply) say(handoffText(out.reply), { md: true, chips, src: me.id });
   else if (!plan.run.length) say('아래 화면에서 할 수 있어요. 누르면 그 화면으로 가요(저절로 시작하지 않아요).', { chips, src: me.id });
-  for (const a of plan.run) await run(a.intent, a.payload);
+  // 회의록은 규칙 길·후보 버튼처럼 가리기 전 글(회의록 탭이 가려 보내고 이름을 되돌림 — AI가 옮긴 글은 ○○○가 든 글이라 넣지 않음, 내용이 없으면 그 탭만 엶)
+  for (const a of plan.run) await run(a.intent, a.intent === 'minutes' ? payloadFor('minutes', raw) : a.payload);
 }
 const failText = e => (e && e.code === 'bad_json' ? '답을 읽지 못했어요' : e && e.code ? ai.errorMessage(e.code, e) : '답이 비었어요').replace(/[.。]\s*$/, '');
 /* AI 없이 답하기(offlineWay): 애매한 명령은 후보 버튼, 할 일·일정을 물으면 오늘 할 일, 묻는 글(하는 법)은 안내에서 찾아 답함 */
@@ -343,7 +346,8 @@ async function run(intent, p = {}) {
     if (p && p.mon >= 1 && p.mon <= 12) { const mm = String(p.mon).padStart(2, '0'), cal = +today().slice(0, 4);
       // 「2027년 3월」「내년 3월」은 그 해, 해를 말하지 않으면 학년도의 그 달
       if (p.year) ym = `${p.year}-${mm}`; else if (typeof p.rel === 'number') ym = `${cal + p.rel}-${mm}`;
-      else { const y = (await import('./years.js')).currentYear(today()); ym = `${p.mon <= 2 ? y + 1 : y}-${mm}`; } }
+      // 1·2월에 묻는 1·2월은 올해 그 달(2월에 새 학년도를 먼저 시작해도 「2월 일정」이 다음 해 2월로 가지 않게)
+      else { const y = (await import('./years.js')).currentYear(today()), tm = +today().slice(5, 7); ym = `${p.mon <= 2 ? (tm <= 2 ? cal : y + 1) : y}-${mm}`; } }
     (await import('../menus/home/month.js')).openMonth(ym);
     say('한 달 달력을 열었어요. 날짜를 누르면 그날 일정·기한을, 줄을 누르면 그 메뉴로 가요.');
     afterGo(); return;
@@ -400,6 +404,22 @@ async function run(intent, p = {}) {
     afterGo(); return;
   }
   if (intent === 'translate') {
+    // 붙여 넣은 가정통신문 + 번역 말: 가정통신문 탭에 있던 다른 글을 번역하지 않고, 붙여 넣은 글로 먼저 가정통신문을 씀(번역은 다 쓴 가정통신문만)
+    if (p.text) {
+      const m = await import('../menus/etc/letter.js'), L = langLabel(p.lang);
+      const next = L ? `다 쓰면 「가정통신문 ${L}로」라고 다시 말해 주세요.` : '다 쓰면 「가정통신문 베트남어로」처럼 번역할 말과 함께 다시 말해 주세요.';
+      if (m.putLetterSources({ memo: p.text }) === 'added') {
+        say(`쓰던 가정통신문(넣을 내용·공문)이 있어서 바꾸지 않고 넣을 내용 끝에 덧붙였어요. 확인한 뒤 [가정통신문 쓰기]를 누르고, ${next}`);
+        afterGo(); return;
+      }
+      let st;
+      try { st = m.write(); } catch (e) { st = 'error'; }
+      tell(st, { started: `번역은 다 쓴 가정통신문으로 해요. 붙여 넣은 글을 가정통신문 넣을 내용에 넣고 먼저 가정통신문을 쓰고 있어요. ${next}`,
+        'no-ai': `가정통신문 넣을 내용에 넣었어요. ${NO_AI}`,
+        busy: `다른 가정통신문을 쓰는 중이에요. 붙여 넣은 글은 새 가정통신문의 넣을 내용에 넣어 두었으니, 다 쓴 뒤 [가정통신문 쓰기]를 누르고, ${next}`,
+        empty: '번역할 가정통신문 내용이 없어요(명단·전화번호 줄을 빼니 남은 글이 없어요). 넣을 내용을 적어 주세요.' });
+      afterGo(); return;
+    }
     if (!p.lang) { say('어느 말로 번역할까요?', { chips: LANGS.map(([id, l]) => ({ intent: 'translate', label: l, lang: id })) }); return; }
     const fn = await optional('../menus/etc/letter.js', 'openLetterTranslate');
     if (fn) {

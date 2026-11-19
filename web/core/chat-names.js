@@ -24,13 +24,16 @@ const NAMES = (
   + '경은 경미 미란 미라 미나 미현 미희 선미 선경 선주 성희 성은 성아 수미 순영 숙희 연경 영미 영란 영은 영주 영아 옥희 유경 유미 윤미 은미 은실 은숙 인숙 인희 정미 정란 '
   + '정연 정애 주영 지숙 지애 지희 현숙 현미 혜경 혜련 희경 희숙 희진 수영 연주 혜성 은하 '
   + '다온 라온 가온 서온 이레 소담 단비 은별 별하 하랑 도담 다올 누리 우주 민주 새롬 하엘').split(/\s+/).filter(Boolean);
-export const GIVEN = new Set(NAMES);
+// 「다」로 끝나는 이름(이바다·한바다): 목록 밖 이름은 낱말 끝 글자(LOOSE_END — 「다」는 「나가다가」「지나다가」「마시다가」 같은 동사 끝)로 걸러서 목록에 따로 둠.
+// 이름 글자(SYL)에는 넣지 않음(「바」가 들어간 다른 낱말을 이름으로 보지 않게). 성 없이 「바다가」(바다)는 낱말(WORDLIKE)
+const DA_NAMES = ['바다'];
+export const GIVEN = new Set([...NAMES, ...DA_NAMES]);
 // 이름에 쓰이는 글자(목록 밖 이름을 볼 때 두 글자 모두 이 글자여야 함) + 요즘 이름에 흔한 글자(서이든·김윤설·이하휘)
 const SYL = new Set(NAMES.join('') + '든설휘');
 /* 낱말과 같은 이름: 성 없이 쓰면(「하나가」「미소를」「지원이 필요」「정수를 더함」) 낱말일 수 있어 성 없는 이름 규칙에서는 뺌.
    (「김하나가」처럼 성이 붙거나 「하나는이」가 아니라 「하나 어머니」처럼 가족 말이 붙으면 이름) */
 export const WORDLIKE = new Set(('하나 미소 우주 누리 슬기 보람 사랑 하늘 나래 이레 단비 은하 지혜 은혜 유리 연주 현지 현미 영아 정수 상수 진수 인수 지수 준수 선호 수호 경호 '
-  + '성기 동수 민주 지나 가람 초롱 한결 한별 아름 태양 시원 지원 수정 수영 진영 혜성 지연 재원 동원 시연 지인 주연 수경 미정 미숙 정숙 미진 재현 지성 시안 로운 성현').split(' '));
+  + '성기 동수 민주 지나 가람 초롱 한결 한별 아름 태양 시원 지원 수정 수영 진영 혜성 지연 재원 동원 시연 지인 주연 수경 미정 미숙 정숙 미진 재현 지성 시안 로운 성현 바다').split(' '));
 // 동사와 같은 이름 + 는(「지우는 습관」「재우는」「태우는」)
 const VERB_NAME = new Set(['지우', '재우', '태우']);
 // 외자 이름(「김솔 학생」「이름: 박준」): 앞뒤에 사람을 가리키는 말이 있을 때만
@@ -42,7 +45,9 @@ const EXCEPT = new Set(('현미경 정지선 고시원 진지한 편하진 심�
   // 흔한 성 글자 + 이름에 쓰는 두 글자인 낱말(「도우미가」「마무리를」「유리창이」「민주주의」)
   + '도우미 마무리 최우수 옥수수 은하수 원주민 이주민 민주주 유리창 우주선 손수건 조리원 지도원 모둠원 정원사 조리사 '
   // 흔한 성 글자 + 이름 목록의 두 글자인 낱말 + 로(「임시안으로」「예시안으로」「정동진으로」)
-  + '임시안 예시안 백지안 정동진 공문철').split(' '));
+  + '임시안 예시안 백지안 정동진 공문철 '
+  // 흔한 성 글자 + 이름 글자 두 글자인 생물·물건·시설 낱말(「송사리, 금붕어」「고사리, 도라지」 — 쉼표로 늘어놓으면 이름 목록으로 보였음)
+  + '송사리 고사리 오소리 소나무 천문대 유리병 손수레').split(' '));
 // 두 글자(성 + 외자)인데 흔한 낱말
 const EXCEPT2 = new Set('이민 고민 주민 국민 도민 정진 전진 공현 차진 안진 오진 강진 노현 지진 추진 홍진 남산 한산 기한 우산 유산 원산 진산 반찬 기혁 신혁 구현 표현 모현 노한 공한 방한 반한 원한 유한 기호 신호 구호 보호 선호 주호 장호 전호'.split(' '));
 const DOUBLE = /^(?:남궁|황보|제갈|선우|독고)/;
@@ -83,7 +88,9 @@ const OLD_END = /[이가는을를의에도만와과로한할된던운간친른�
 /* 낱말 하나(tok)를 보고 가릴 길이(앞에서부터)를 돌려줌(없으면 0). prev·next: 앞뒤 한글 낱말, before·after: 낱말 앞·뒤 글(「로」 자리 보기).
    memo: 행특 메모(잘못 가려도 덜 아까움 — 을·를·과도, 홀로 쓴 이름도), first: 줄의 첫 낱말 */
 function hit(tok, prev, next, { memo = false, first = false, before = '', after = '' } = {}) {
-  const cue = NEXT_CUE.test(next || '') || PREV_CUE.test(prev || '');
+  // 「3번 남다율」「남다율(3번)」: 번호 바로 옆 이름, 「생일: 남다율」도 사람을 가리킴
+  const cue = NEXT_CUE.test(next || '') || PREV_CUE.test(prev || '') || (prev === '번' && /\d\s*번\s*$/.test(before))
+    || (prev === '생일' && /생일\s*[:：]\s*$/.test(before)) || /^\s?[(（]\s*\d{1,2}\s*번\s*[)）]/.test(after);
   // 「로·으로(부터)」(s)는 이름 자리일 때만(privacy.js roSpot — 「바꿔·정함·뽑」 앞, 「로부터」는 「연락·받」 앞). 「예정대로」「노란색으로」는 낱말 끝 글자로도 거름(roName).
   // 목록의 이름(g)은 「로 해 줘·로 함」 앞에서도(「담당자를 김민준으로 해 줘」)
   const ro = (s, g = '') => !/^으?로/.test(s) || roSpot(s, before, after, GIVEN.has(g));
@@ -169,9 +176,17 @@ function personCuts(s, memo) {
 }
 /* 쉼표·가운뎃점·「와·과·랑·하고」로 늘어놓은 이름(「이바다, 남다율, 탁보결 셋이」「한가람, 남도율 둘이」「남다율·탁보결 둘이」):
    늘어선 낱말이 모두 성 + 두 글자(○○○ 포함)이고 그중 하나라도 이미 가렸거나 이름 꼴(nameTok)이면 모두 가림. 마지막 낱말은 조사가 붙어도 됨 */
+// 화살표(「남다율 → 탁보결」)도 이음. 이름 바로 뒤 짧은 괄호(「남다율(11/23), 탁보결(11/27)」「남다율(칠판), 탁보결(우유)」)는 건너뜀 — 괄호 안에 이름 모양 낱말이 있으면 그대로 봄
 const LINK = /^(?:와|과|랑|이랑|하고)$/;
-function listCuts(s, cuts) {
+const PAREN = /(?<=[가-힣])[ \t]?[(（]([^()（）\n]{1,15})[)）]/g;
+// 흔한 성 글자로 시작하는 호칭·직함·가족 말(「○○○ 선생님, ○○○ 선생님」의 선생님 — 이름 목록에 묶으면 가리개가 배워 글 전체의 「선생님」을 가렸음)
+const TITLE3 = /^(?:선생님|선생들|어머니|어머님|주무관|강사님|강사진|선배님|원장님|원어민|기사님|위원님|위원장|반장님|조리사|영양사)$/;
+// 땅 이름·시설·부서 끝 글자(「경주시, 안동시」「경복궁, 인사동」「민속촌, 용인시」「석굴암」「○○○, 연구부 ○○○」) — 이미 가린 자리나 흔한 이름 목록의 이름이 아니면 이름 목록에 넣지 않음
+const PLACE_END = /[시군읍면궁촌암사동부실과팀]$/;
+function listCuts(s0, cuts) {
   const cut = new Set(cuts.map(c => c[0]));
+  const named = t => [...t.matchAll(/[가-힣]{3,}/g)].some(m => SURNAME.has(m[0][0]));
+  const s = s0.replace(PAREN, (m, inner) => (named(inner) ? m : ' '.repeat(m.length)));
   const toks = [...s.matchAll(/○○○|[가-힣]+/g)].map(m => ({ i: m.index, w: m[0] }));
   // 낱말 하나: { i, base(3글자), tail(붙은 조사), end }
   const items = [];
@@ -184,20 +199,41 @@ function listCuts(s, cuts) {
     }
     items.push({ i: t.i, base: t.w.slice(0, 3), tail: t.w.slice(3), end: t.i + t.w.length });
   }
-  const shape = x => x.base === MASK || (x.base.length === 3 && SURNAME.has(x.base[0]) && !EXCEPT.has(x.base) && !/\d/.test(x.base));
+  const title = x => x.base !== MASK && TITLE3.test(x.base);
+  // 「함께하는·공부하는」(~하 + 는)은 동사(hit의 verb와 같게)
+  const shape = x => x.base === MASK || (x.base.length === 3 && SURNAME.has(x.base[0]) && !EXCEPT.has(x.base) && !/\d/.test(x.base) && !title(x)
+    && !(x.tail === '는' && /하$/.test(x.base) && !cut.has(x.i))
+    && (!PLACE_END.test(x.base) || cut.has(x.i) || GIVEN.has(x.base.slice(1))));
   const strong = x => x.base === MASK || cut.has(x.i) || nameTok(x.base);
-  const runs = []; let run = [];
-  const close = () => { if (run.length >= 2) runs.push(run); run = []; };
+  // 빈칸으로만 이은 이름(「탁보결 남다율 남도율 셋이」 — 쉼표 없이): 낱말마다 이름 꼴이거나 두 글자가 이름 글자(「모둠으로」「정리함」은 아님)이고,
+  // 묶음에 이름 꼴(strong)이 2개 이상일 때만(「한국사 세계사」 같은 낱말 줄은 아님)
+  const loose = x => strong(x) || (x.base.length === 3 && SYL.has(x.base[1]) && SYL.has(x.base[2]));
+  const runs = []; let run = [], spaced = false, prevSpace = false;
+  const close = () => { if (run.length >= 2) runs.push({ r: run, spaced }); run = []; spaced = false; };
+  let link = false;
   for (let k = 0; k < items.length; k++) {
-    const x = items[k], gap = k + 1 < items.length ? s.slice(x.end, items[k + 1].i) : '';
-    if (!shape(x) || (x.tail && !SUFFIX.test(x.tail))) { close(); continue; }
+    const x = items[k];
+    if (!shape(x) || (x.tail && !SUFFIX.test(x.tail))) { close(); link = false; prevSpace = false; continue; }
+    if (prevSpace && !loose(x)) close();
+    // 이름 바로 뒤에 띄어 쓴 호칭(「○○○ 선생님, 이바다 선생님」「한가람 어머니, 이바다 어머니께」): 호칭을 건너뛰어 그 뒤 쉼표·「과」로 이음
+    let last = x;
+    const t = items[k + 1];
+    const titled = !x.tail && t && title(t) && /^[ \t]+$/.test(s.slice(x.end, t.i)) && (!t.tail || SUFFIX.test(t.tail));
+    // 호칭 뒤 「과·와·랑」(「○○○ 선생님과」)에 이어지는 낱말은 그 자체가 이름 꼴이거나 뒤에 호칭이 올 때만(「○○○ 선생님과 함께하는」은 아님)
+    if (link && !strong(x) && !titled) close();
+    if (titled) { last = t; k++; }
     run.push(x);
-    const joined = !x.tail ? /^\s*[,，·、/]\s*$/.test(gap) : LINK.test(x.tail) && /^\s+$/.test(gap);
+    const gap = k + 1 < items.length ? s.slice(last.end, items[k + 1].i) : '';
+    const space = last === x && !x.tail && /^[ \t]+$/.test(gap) && loose(x);
+    const joined = !last.tail ? /^\s*(?:[,，·、/]|→|->|⇒)\s*$/.test(gap) || space : LINK.test(last.tail) && /^\s+$/.test(gap);
+    if (space) spaced = true;
+    prevSpace = space;
+    link = joined && !!last.tail && last !== x;
     if (!joined) close();
   }
   close();
-  for (const r of runs) {
-    if (!r.some(strong)) continue;
+  for (const { r, spaced: sp } of runs) {
+    if (r.filter(strong).length < (sp ? 2 : 1)) continue;
     for (const x of r) if (x.base !== MASK && !cut.has(x.i)) { cuts.push([x.i, 3]); cut.add(x.i); }
   }
   return cuts.sort((a, b) => a[0] - b[0]);

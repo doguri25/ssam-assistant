@@ -6,7 +6,7 @@
    계획서에 「지도 계획」 표(차시·과목·날짜·학습 내용)가 있으면 그 표 그대로 수업 줄(planTable·tableSessions — AI 안 부름, 2026-11-13).
    시간은 「지도시간」 줄의 요일마다 시간(「수요일 13:40~14:20, 목요일 14:30~15:10」), 표의 날짜가 「/」로 비었으면 기간·요일에서 차시 수만큼 셈 */
 import { maskPersons } from '../../core/chat-names.js';
-import { maskContacts } from '../../core/privacy.js';
+import { maskContacts, maskStaff } from '../../core/privacy.js';
 import { findRange, findWeekdays, schedulePrompt, normSchedule } from './camp-ai.js';
 import { isDate, weekday, yearOfMonth } from '../../core/calendar.js';
 import { newSession } from './camp-model.js';
@@ -32,7 +32,7 @@ function field(lines, re) {
   return '';
 }
 const toMin = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
-const TIME = /(\d{1,2})\s*:\s*(\d{2})\s*[~∼〜–-]\s*(\d{1,2})\s*:\s*(\d{2})/;
+const TIME = /(\d{1,2})\s*:\s*(\d{2})\s*[~∼〜～–-]\s*(\d{1,2})\s*:\s*(\d{2})/;
 const hm = (h, m) => `${pad(+h)}:${m}`;
 
 /* 「매주 수요일 13:40~14:20, 목요일 14:30~15:10」 → { 3: { start, end }, 4: { … } } — 시간 앞에 요일이 적힌 것만 */
@@ -227,7 +227,8 @@ export function tableSessions(t, p, camp) {
 export function planPrompt(text, camp, ctx = {}, p = null) {
   let s = str(text);
   for (const n of [camp && camp.teacher, p && p.teacher]) { const w = tidy(n); if (w.length >= 2) s = s.split(w).join('지도교사'); }
-  s = maskContacts(maskPersons(s).text);
+  // 직함 앞뒤 교직원 이름(「협력강사: 박솔빛」「보조강사 이바다 선생님」)도 — 직함 뒤 이름은 쌍점 뒤만(「선생님 시범을 따라」는 그대로)
+  s = maskContacts(maskStaff(maskPersons(s).text, { colonOnly: true }).text);
   return schedulePrompt(s, camp, { ...ctx, plan: true, range: p ? p.range : undefined, weekdays: p ? p.weekdays : undefined });
 }
 

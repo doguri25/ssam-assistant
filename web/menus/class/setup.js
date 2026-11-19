@@ -11,6 +11,7 @@ import { keepFiles } from '../../core/keep-files.js';
 import * as ai from '../../core/ai.js';
 import { readText, fileMessage } from '../../core/files.js';
 import { getSchool } from '../../core/settings.js';
+import { redactText } from '../../core/redact.js';
 import { normName, periodStart, lessonYear, parseJindo, parseTimetable, jindoYear } from './class-import.js';
 import {
   getInfo, setInfo, getTimetable, setTimetable, listSubjects, saveSubject, removeSubject, setSubjects, resetRecords,
@@ -35,6 +36,13 @@ let open = true; // 준비를 펼쳤는지(시간표·진도표가 있으면 탭
 let entered = false; // 학급 › 진도표·시수에 머무는 중(다른 탭·메뉴에 갔다 오면 false)
 let ttMode = null; // 이번에 머무는 동안 고른 시간표 칸 고치기: 'today'(오늘부터) · 'all'(처음부터), 아직 안 물었으면 null
 const MAX_SRC = 60000;
+/* AI로 보내는 시간표·진도표 글: 사람 이름(담임·전담·작성자)·연락처는 자리 표시(〔이름1〕·{{1}})로 가려 보내고(core/redact.js — 이름만 늘어선 명단 줄은 빼고),
+   답의 자리 표시는 되돌림(차시 제목 「박지원의 열하일기」처럼 글에 든 이름이 그대로 돌아오게) → { text, back } */
+function hideSrc(text) {
+  const r = redactText(String(text || '').slice(0, MAX_SRC));
+  const back = t => (typeof t === 'string' ? r.back(t).replace(/〔\s*이름\s*\d+\s*〕|\{\{\s*\d+\s*\}\}/g, '○○○') : t);
+  return { text: r.text, back };
+}
 const ACCEPT = '.hwp,.hwpx,.pdf,.csv,.xlsx,.txt';
 const FILES = `<input type="file" id="clsTtFile" accept="${ACCEPT}" hidden><input type="file" id="clsJindoFile" accept="${ACCEPT}" hidden>`;
 const AI_KEY = '설정 › AI에서 키를 넣어 주세요';
@@ -161,7 +169,7 @@ function ttPrompt(info, text) {
   return `[시간표 읽기]\n아래는 학교 시간표 파일의 글이에요. ${info.grade}학년 ${info.room}반의 시간표만 읽어 주세요.\n\n`
     + '규칙:\n- cells는 요일 5개(월~금), 요일마다 1교시부터 교시 순서대로 과목 이름\n- 빈 시간은 ""\n- periods는 교시 수(4~7)\n- 파일에 없는 과목은 지어내지 않음\n\n'
     + '답은 JSON 하나만: {"periods":6,"cells":[["국어","수학","사회","과학","체육",""],["…"],["…"],["…"],["…"]]}\n\n'
-    + `시간표 글:\n${text.slice(0, MAX_SRC)}`;
+    + `시간표 글:\n${text}`;
 }
 async function runTtAi() {
   if (!ai.ready()) { toast(AI_KEY); return; }
@@ -169,7 +177,7 @@ async function runTtAi() {
   const info = getInfo();
   ttMsg = { ...ttMsg, busy: true }; drawTtMsg();
   try {
-    const v = await ai.generateJSON(ttPrompt(info, lastTt), { valid: x => !!normTimetableAI(x) });
+    const v = await ai.generateJSON(ttPrompt(info, hideSrc(lastTt).text), { valid: x => !!normTimetableAI(x) });
     ttMsg = null;
     putTimetable(normTimetableAI(v), 'AI가 읽은 시간표로 바꿔요.', () => { changed('ttAi'); if (visible()) render(); toast('AI가 읽은 시간표를 넣었어요. 칸을 확인해 주세요', 5000); });
   } catch (err) {
@@ -284,9 +292,9 @@ function lessonPrompt(name, text) {
   return `[진도표 읽기]\n아래는 초등학교 교과 진도표(연간지도계획) 글이에요. 「${name}」 교과의 차시 목록만 뽑아 주세요.\n\n`
     + '규칙:\n- 한 줄 = 1시간. 「3~4차시」처럼 두 시간이면 두 줄로 나눔\n- 진도표 순서대로\n'
     + '- week: 주 번호(정수, 없으면 null), period: 기간(예: 9.7~9.12, 없으면 ""), unit: 단원명, title: 학습 주제, pages: 쪽수, memo: 비고\n'
-    + '- 진도표에 없는 내용은 지어내지 않음\n\n'
+    + '- 진도표에 없는 내용은 지어내지 않음\n- 〔이름1〕·{{1}} 같은 자리 표시는 고치지 말고 그대로 옮김\n\n'
     + '답은 JSON 하나만: {"lessons":[{"week":1,"period":"8.24~8.29","unit":"1. 단원","title":"학습 주제","pages":"10~11","memo":""}]}\n\n'
-    + `진도표 글:\n${text.slice(0, MAX_SRC)}`;
+    + `진도표 글:\n${text}`;
 }
 async function runLessonAi(token, name, text, msg, btn) {
   if (!ai.ready()) { msg(AI_KEY); return; }
@@ -297,7 +305,10 @@ async function runLessonAi(token, name, text, msg, btn) {
   btn.disabled = true; msg('AI가 차시를 뽑는 중이에요…');
   let lessons;
   try {
-    const v = await ai.generateJSON(lessonPrompt(name, text), { valid: x => x && Array.isArray(x.lessons) });
+    const src = hideSrc(text);
+    const v = await ai.generateJSON(lessonPrompt(name, src.text), { valid: x => x && Array.isArray(x.lessons) });
+    // 가린 이름 되돌리기(차시 제목·단원·비고에 옮겨 쓴 자리 표시)
+    v.lessons = v.lessons.map(l => (l && typeof l === 'object' ? { ...l, unit: src.back(l.unit), title: src.back(l.title), pages: src.back(l.pages), memo: src.back(l.memo), period: src.back(l.period) } : l));
     // 파일에 학년도가 없으면 지금 자료의 학년도·오늘·뽑은 기간의 요일로 정함(jindoYear)
     const year = ym ? +ym[1] : jindoYear(v.lessons.map(l => l && l.period), { today: today(), year: currentYear() });
     lessons = normLessons(v.lessons, year);

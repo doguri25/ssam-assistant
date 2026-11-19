@@ -413,9 +413,14 @@ function inReportSheet(cid) {
 }
 /* 현황판 가져오기: 비어 있으면 그대로, 있으면 합치기·바꾸기 물음(이수증 파일은 들어 있지 않음) */
 async function importBoard(f) {
-  let nb;
-  try { nb = T.parseBoardFile(await f.text()); } catch (e) { nb = null; }
+  let nb, fy = 0;
+  try { const text = await f.text(); nb = T.parseBoardFile(text); fy = T.boardFileYear(text); } catch (e) { nb = null; }
   if (!nb) { toast('쌤비서 연수 현황판 파일(.ssam-training.json)이 아니에요'); return; }
+  // 다른 학년도 파일: 같은 이름 연수(청렴교육 등 해마다 같은 이름)의 지난해 제출·이수번호가 올해 칸에 들어가지 않게 명단만
+  if (fy && fy !== yearNow()) {
+    if (!confirm(`이 파일은 ${fy}학년도 현황판이에요(지금은 ${yearNow()}학년도). 교직원 명단만 가져올까요? 연수·제출 기록은 가져오지 않아요.`)) return;
+    nb = { ...nb, courses: [], marks: {} };
+  }
   const cur = T.getBoard(), put = (b, msg) => { if (putBoard(b)) { render(); toast(msg, 5000); } };
   if (!cur.staff.length && !cur.courses.length) { put(nb, `현황판을 가져왔어요(교직원 ${nb.staff.length}명 · 연수 ${nb.courses.length}개)`); return; }
   SS().openSheet(`<div id="trImport"><h3>현황판 가져오기</h3><p class="muted" style="margin:0">가져올 파일: 교직원 ${nb.staff.length}명 · 연수 ${nb.courses.length}개. 지금 현황판(교직원 ${cur.staff.length}명 · 연수 ${cur.courses.length}개)과 어떻게 할까요?</p>
@@ -503,9 +508,9 @@ document.addEventListener('click', async e => {
   const cell = e.target.closest('[data-tr-cell]');
   if (cell) {
     const [cid, sid] = cell.dataset.trCell.split('|'), b = T.getBoard(), m = T.markOf(b, cid, sid), next = T.nextMark(m && m.s);
-    // 미제출로 돌리면 보관한 이수증도 지움
-    // 미제출로 돌리면 이수일·파일 이름·보관한 이수증이 지워짐 — 남긴 것이 있으면 먼저 물음(두 번 누르기로 말없이 지우지 않게)
-    if (!next && m && (m.kept || m.date || m.link || m.file) && !confirm(`${(b.staff.find(x => x.id === sid) || {}).name || ''} 선생님의 제출 기록${m.kept ? '과 보관한 이수증' : ''}이 지워져요. 미제출로 돌릴까요?`)) return;
+    // 미제출로 돌리면 이수번호·이수일·파일 이름·반려 사유·보관한 이수증이 지워짐 — 남긴 것이 있으면 먼저 물음(두 번 누르기로 말없이 지우지 않게).
+    // 종이·사진 이수증은 이수번호만 남으니(파일을 보관하지 않음) 이수번호도 셈
+    if (!next && m && (m.kept || m.date || m.link || m.file || m.code || m.note) && !confirm(`${(b.staff.find(x => x.id === sid) || {}).name || ''} 선생님의 제출 기록${m.code ? `(이수번호 ${m.code})` : ''}${m.kept ? '과 보관한 이수증' : ''}이 지워져요. 미제출로 돌릴까요?`)) return;
     if (putBoard(T.setMark(b, cid, sid, next, next === 'sent' && !m ? { file: '' } : {}))) { if (!next && m && m.kept) dropFiles([[cid, sid]]); render(); }
     return;
   }

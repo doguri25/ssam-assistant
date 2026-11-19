@@ -65,11 +65,11 @@ export function monthItems(d = {}, ym, today = '') {
   for (const c of d.courses || []) if (c && isDate(c.due)) put(c.due, { kind: 'training', text: `연수 현황 「${c.title}」 제출 기한${c.left ? ` · 미제출 ${c.left}명` : ''}`, route: { to: 'training', tab: 'board' }, need: !!c.left });
   // 예산 집행 마감(남은 돈이 있으면 얼마인지)
   for (const p of d.budgets || []) if (p && isDate(p.due)) put(p.due, { kind: 'budget', text: `예산 「${p.name}」 집행 마감${p.left > 0 ? ` · 남은 ${won(p.left)}원` : ''}`, route: { to: 'budget' }, need: p.left > 0 });
-  // 기초학력 수업(같은 날 여러 줄이면 한 번, 몇 번인지)
+  // 기초학력 수업(같은 날 여러 줄이면 한 번, 몇 번인지) — 누르면 그 프로그램의 출석 칸(지금 고른 다른 프로그램이 아니라)
   for (const c of d.camps || []) {
     const n = {};
     for (const x of c.dates || []) if (isDate(x)) n[x] = (n[x] || 0) + 1;
-    for (const [x, k] of Object.entries(n)) put(x, { kind: 'camp', text: `기초학력 「${c.name || '기초학력'}」 수업${k > 1 ? ` ${k}번` : ''}`, route: { to: 'camp' } });
+    for (const [x, k] of Object.entries(n)) put(x, { kind: 'camp', text: `기초학력 「${c.name || '기초학력'}」 수업${k > 1 ? ` ${k}번` : ''}`, route: { to: 'camp', id: c.id || '', section: 'att' } });
   }
   for (const m of d.messages || []) if (m && isDate(m.due)) put(m.due, { kind: 'message', text: `쪽지 「${String(m.title || '안내').replace(/^\[[^\]]*\]\s*/, '')}」 신청·회신 마감`, route: { to: 'message' } });
   for (const t of d.todos || []) if (t && isDate(t.due) && t.task) put(t.due, { kind: 'minutes', text: `회의 할 일: ${t.task}`, route: { to: 'minutes', id: t.id } });

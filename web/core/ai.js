@@ -41,11 +41,22 @@ export function parseJSON(text) {
   const fence = /```(?:json)?\s*([\s\S]*?)```/i.exec(s);
   const body = fence ? fence[1].trim() : s;
   try { return JSON.parse(body); } catch (e) {}
-  const i = body.search(/[{[]/);
-  if (i < 0) return null;
-  const j = body.lastIndexOf(body[i] === '{' ? '}' : ']');
-  if (j <= i) return null;
-  try { return JSON.parse(body.slice(i, j + 1)); } catch (e) { return null; }
+  // 여는 괄호마다 따옴표 안은 건너뛰며 짝이 되는 닫는 괄호를 찾아 읽어 봄(처음 읽히는 것) — 예전에는 마지막 닫는 괄호까지 잘라
+  // 뒤 설명의 「{{1}}」·앞 머리 「[출력]」이 있으면 못 읽었음
+  const open = from => { const m = body.slice(from).search(/[{[]/); return m < 0 ? -1 : from + m; };
+  for (let i = open(0), tries = 0; i >= 0 && tries < 40; i = open(i + 1), tries++) {
+    let depth = 0, q = false, j = -1;
+    for (let k = i; k < body.length; k++) {
+      const ch = body[k];
+      if (q) { if (ch === '\\') k++; else if (ch === '"') q = false; continue; }
+      if (ch === '"') q = true;
+      else if (ch === '{' || ch === '[') depth++;
+      else if (ch === '}' || ch === ']') { if (!--depth) { j = k; break; } }
+    }
+    if (j < 0) continue;
+    try { return JSON.parse(body.slice(i, j + 1)); } catch (e) {}
+  }
+  return null;
 }
 
 const RETRY = '\n\n다른 말 없이 JSON만 답하세요.';

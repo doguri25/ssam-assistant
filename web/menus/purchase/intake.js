@@ -5,8 +5,8 @@ import { emptyItem, findPersonal, toNumber, plainItemName, plainOfficial, PER_UN
 import { readQuote } from './quote.js';
 import { findItems, isTotalName, totalKey } from '../../core/sheet.js';
 import { readText } from '../../core/files.js';
-import { nameCell, staffName, MASK, maskContacts } from '../../core/privacy.js';
-import { redactText } from '../../core/redact.js';
+import { nameCell, staffName, MASK, maskContacts, peopleNames, RRN_RE } from '../../core/privacy.js';
+import { makeRedactor } from '../../core/redact.js';
 
 // 세는 말: 없는 말(「체육복 30벌」「간식 420인분」)은 수량 1로 읽혀 합계가 크게 줄었음. 「회·일·단」은 날짜·차례(「제3회」「12일」)와 헷갈려 넣지 않음
 const UNITS = '박스|상자|개|권|자루|세트|장|통|묶음|팩|병|봉|봉지|EA|ea|Ea|명|인분|시간|차시|식|건|매|롤|켤레|벌|쌍|대|부|kg|g|L|ml|m|판|타|다스|캔|포|입|갑|곽|송이|다발|그루|마리|포기|줄|잔|BOX|Box|box|SET|Set|set|PCS|Pcs|pcs|포대|덩이';
@@ -205,11 +205,16 @@ function rowItem(cells) {
   const at = cells.findIndex(c => c && !NUM_CELL.test(c) && !UNIT_CELL.test(c) && !packCell(c));
   if (at < 0) return null;
   const rest = cells.slice(at + 1).filter(Boolean);
-  const qc = rest.map(packCell).find(Boolean);
-  const name = cells[at], texts = rest.filter(c => !NUM_CELL.test(c) && !UNIT_CELL.test(c) && !packCell(c));
-  const unit = rest.find(c => UNIT_CELL.test(c)) || (qc ? qc[2] : ''), nums = rest.filter(c => NUM_CELL.test(c)).map(toNumber);
+  const nums = rest.filter(c => NUM_CELL.test(c)).map(toNumber);
   if (!nums.length) return null;
-  const [qty, price] = qc ? [toNumber(qc[1]), nums[0]] : nums.length >= 2 ? [nums[0], nums[1]] : [1, nums[0]];
+  // 포장 단위 칸을 수량으로 보는 것은 남은 수가 단가 하나일 때(「색종이 | 10묶음 | 3,000」)나 그 수 × 단가가 금액과 맞을 때(「현수막 | 2개 | 45,000 | 90,000」)만.
+  // 「품명 | 규격 | 수량 | 단가」의 규격 칸이 「12자루」「1000개」「1식」이면(「색연필 | 12자루 | 30 | 4,500」) 그 칸은 규격, 수 둘이 수량·단가
+  const qc0 = rest.map(packCell).find(Boolean), q0 = qc0 ? toNumber(qc0[1]) : 0;
+  const qc = qc0 && (nums.length === 1 || Math.abs(q0 * nums[0] - nums[1]) < 1) ? qc0 : null;
+  const pack = c => qc && packCell(c);
+  const name = cells[at], texts = rest.filter(c => !NUM_CELL.test(c) && !UNIT_CELL.test(c) && !pack(c));
+  const unit = rest.find(c => UNIT_CELL.test(c)) || (qc ? qc[2] : '');
+  const [qty, price] = qc ? [q0, nums[0]] : nums.length >= 2 ? [nums[0], nums[1]] : [1, nums[0]];
   return { ...emptyItem(), name, spec: texts[0] || '', unit, qty: String(qty > 0 ? qty : 1), price: String(Math.round(price)) };
 }
 export function tableItems(text) {
@@ -364,8 +369,21 @@ export const maskNames = t => String(t || '')
   .replace(KIN_AFTER, (m, pre, n, sp, who) => (kinName(n) ? `${pre}${MASK}${sp || ' '}${who}` : m))
   .replace(KIN_BEFORE, (m, pre, n) => (kinName(n) ? `${pre}${MASK}` : m));
 /* AI로 가는 품의 글: maskNames(직함·학생 옆 이름) 다음 core/redact.js 가리개(쉼표·가운뎃점으로 이은 이름, 「수상자: …」 목록, 맡은 일 말 앞 이름, 명단 줄 빼기)를 한 번 더.
-   자리 표시는 ○○○로(답을 되돌리지 않음) */
-export const maskForAI = t => redactText(maskNames(t)).text.replace(/〔이름\d+〕|\{\{\d+\}\}/g, MASK);
+   자리 표시는 ○○○로(답을 되돌리지 않음). 가리개가 보내지 않는 줄이라도 수량·금액이 있는 품목 줄(「이순신 장영실 정약용 위인전 3권 36,000원」
+   「상품번호 1234-5678-9012 색연필 10개」)은 빼지 않고 그 줄의 이름 모양 낱말·긴 번호만 ○○○ — AI 답이 규칙으로 읽은 품목을 통째로 대신해서, 줄을 빼면 그 품목이 조용히 사라졌음.
+   주민번호·계좌 말(계좌·예금주)·연락처가 있는 줄은 그대로 뺌 */
+const LONG_NO = /(?<![\d-])\d{2,6}(?:-\d{2,8}){2,3}(?![\d-])/g;
+const ITEM_LINE = new RegExp(`${QTY.source}|\\d\\s*(?:만\\s*)?원`);
+export const maskForAI = t => {
+  const ls = maskNames(t).split('\n'), rd = makeRedactor(), out = rd.lines(ls);
+  return out.map((x, k) => {
+    if (x) return x.text;
+    const l = ls[k];
+    if (RRN_RE.test(l) || /계좌|예금주/.test(l) || hasContact(l) || !ITEM_LINE.test(l)) return null;
+    const ns = [...new Set([...peopleNames(l), ...rd.names])].filter(n => /^[가-힣]{2,4}$/.test(n)).sort((a, b) => b.length - a.length);
+    return ns.reduce((v, n) => v.split(n).join(MASK), l.replace(LONG_NO, m => (m.replace(/\D/g, '').length >= 10 ? MASK : m)));
+  }).filter(x => x != null).join('\n').replace(/〔이름\d+〕|\{\{\d+\}\}/g, MASK);
+};
 
 /* 넣기: { text } | { file } → { items(배송비 줄 포함), fields, by: 'rule'|'table'|'ai', missed }
    noAI: 강사 수당 품의 — 글은 앱 규칙으로만 읽고, 그림·글 없는 PDF는 읽지 않음(강사 이름이 AI로 가지 않게) */

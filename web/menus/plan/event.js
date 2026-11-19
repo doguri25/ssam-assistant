@@ -19,6 +19,7 @@ import { summarize, formText, stripPersonal, readStripped, personalMsg } from '.
 import { qrPng } from '../../core/qr.js';
 import { readTable } from '../../core/sheet.js';
 import { listPlans, planText, textForAI } from './year-model.js';
+import { maskStaff, maskContacts } from '../../core/privacy.js';
 import { putReportSources } from './report.js';
 import { putLetterDraft } from '../etc/letter.js';
 import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
@@ -31,8 +32,9 @@ const STEPS = ['행사 정보', '구성안', '문서', '설문·결과'];
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const won = n => Number(n || 0).toLocaleString('ko-KR');
 const fmtDay = d => `${+d.slice(5, 7)}월 ${+d.slice(8, 10)}일(${'일월화수목금토'[weekday(d)]})`;
-/* AI로 보내는 행사 칸(행사명·목적·대상·장소·예산): 전화번호·직함 앞뒤 교직원 이름은 ○○○로(「한가람 선생님 정년퇴임 기념식」) */
-const evAI = v => textForAI(String(v == null ? '' : v)).trim();
+/* AI로 보내는 행사 칸(행사명·목적·대상·장소·예산): 전화번호·직함 앞뒤 교직원 이름은 ○○○로(「한가람 선생님 정년퇴임 기념식」).
+   짧은 칸 글이라 직함 뒤는 쌍점 뒤·세 글자 이름만(「부장 선거」는 그대로) */
+const evAI = v => maskStaff(maskContacts(String(v == null ? '' : v)), { colonOnly: true }).text.trim();
 const kindName = id => (KINDS.find(k => k[0] === id) || KINDS[3])[1];
 
 let box = null, curTab = null;

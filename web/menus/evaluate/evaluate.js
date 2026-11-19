@@ -365,22 +365,36 @@ function hwpxXmlToBlocks(xml, DOMParserImpl) {
   const blocks = [];
   const local = el => (el.localName || el.nodeName.split(':').pop());
   const kids = el => Array.from(el.childNodes || []).filter(n => n.nodeType === 1);
-  const textOf = (p) => {
-    // 문단 안의 글자 (표는 제외)
+  // <hp:t> 안의 탭·줄바꿈·묶음/고정폭 빈칸은 자식 요소(<hp:tab/>·<hp:lineBreak/>·<hp:nbSpace/>·<hp:fwSpace/>)로 저장됨 —
+  // textContent로 읽으면 사라져 「담당⇥김하늘」이 「담당김하늘」로 붙어 이름 가리기가 놓쳤음(.hwp 파서 paraText와 같은 규칙)
+  const T_ATOM = { tab: '\t', lineBreak: '\n', nbSpace: ' ', fwSpace: ' ', hyphen: '-' };
+  const tOf = (t) => {
     let s = '';
+    for (const x of Array.from(t.childNodes || [])) {
+      if (x.nodeType === 3 || x.nodeType === 4) s += x.nodeValue;
+      else if (x.nodeType === 1) s += T_ATOM[local(x)] || '';
+    }
+    return s;
+  };
+  const textOf = (p) => {
+    // 문단 안의 글자 (표는 제외). 머리말·꼬리말·각주·미주·글상자(subList) 안 문단은 문단 글에 빈칸 없이 붙지 않게
+    // 뒤에 따로 줄로(.hwp 파서 doCtrl처럼 — 「새싹초등학교 가정통신문2026학년도 …」로 제목이 망가졌음)
+    let s = '';
+    const extra = [];
     const walk = (n) => {
       for (const c of kids(n)) {
         const ln = local(c);
         if (ln === 'tbl') continue;
-        if (ln === 't') s += c.textContent;
+        if (ln === 't') s += tOf(c);
         else if (ln === 'tab') s += '\t';
         else if (ln === 'lineBreak') s += '\n';
         else if (ln === 'script') s += ' ' + eqText(c.textContent) + ' ';
+        else if (ln === 'subList') { for (const q of kids(c).filter(k => local(k) === 'p')) { const t = textOf(q); if (t.trim()) extra.push(t); } }
         else walk(c);
       }
     };
     walk(p);
-    return s;
+    return extra.length ? (s.trim() ? s + '\n' : '') + extra.join('\n') : s;
   };
   const findTables = (p) => {
     const out = [];

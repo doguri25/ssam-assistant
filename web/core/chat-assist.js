@@ -109,7 +109,7 @@ export const TEXT_INTENTS = ['purchase', 'message', 'letter', 'gongmun', 'report
 export function actionPayload(a, { said = '', question = false } = {}) {
   const own = question ? {} : payloadFor(a.intent, said);
   if (TEXT_INTENTS.includes(a.intent)) return { text: own.text || (a.text ? payloadFor(a.intent, a.text).text : '') || '' };
-  if (a.intent === 'translate') return { lang: a.lang || own.lang || '' };
+  if (a.intent === 'translate') return { lang: a.lang || own.lang || '', ...(own.text ? { text: own.text } : {}) }; // 붙여 넣은 가정통신문(payloadFor)
   if (a.intent === 'multi') return { view: own.view || '' };
   // 한 달 달력: 칸을 채우지 않고 달만 고름(묻는 글 「12월 일정 뭐 있어?」도 그 달)
   if (a.intent === 'month') return payloadFor('month', said);

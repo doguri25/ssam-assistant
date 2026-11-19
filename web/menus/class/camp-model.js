@@ -6,6 +6,7 @@
 import { get, set } from '../../core/store.js';
 import { isDate, addDays, weekday, HOLIDAYS, closedDays } from '../../core/calendar.js';
 import { maskPersons } from '../../core/chat-names.js';
+import { maskStaff } from '../../core/privacy.js';
 
 export const KEY = 'camp';
 export const UNITS = [['period', '교시마다'], ['day', '날마다']];
@@ -306,7 +307,9 @@ export function toAlias(text, camp) {
   s = s.replace(/(학생[A-Z])이(?=(?:가|는|를|랑|도|의|한테|에게|하고|와|야|네|처럼|보다|만)(?![가-힣]))/g, '$1')
     .replace(/(학생[A-Z])이(?![가-힣])/g, '$1가').replace(/(학생[A-Z])(은|을|과)(?![가-힣])/g, (m, a, j) => a + { 은: '는', 을: '를', 과: '와' }[j])
     .replace(/(학생[A-Z])이었/g, '$1였').replace(/(학생[A-Z])이에요/g, '$1예요').replace(/(학생[A-Z])이(?=[가-힣])/g, '$1');
-  return s.split('\n').map(l => maskPersons(l).text).join('\n');
+  // 직함 앞뒤 교직원 이름(「협력강사: 박솔빛」「보조강사 이바다 선생님」「담임 이바다 선생님께」)도 — 지도교사 칸에 없는 둘째·셋째 교사.
+  // 직함 뒤 이름은 쌍점 뒤만(colonOnly — 관찰 글 「선생님 도움을 받아」「선생님 설명을 듣고」는 그대로)
+  return s.split('\n').map(l => maskStaff(maskPersons(l).text, { colonOnly: true }).text).join('\n');
 }
 
 /* ---------- 날짜·교시 ---------- */

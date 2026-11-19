@@ -278,10 +278,15 @@ export function statsTsv(b, cids = null) {
 
 /* 명단 붙여 넣기: 한 줄에 한 명(「이름 ⇥ 부서」·「이름, 부서」·「이름  부서」), 머리 줄(이름·성명)은 뺌 → [{ name, dept }] */
 // 명단 머리 칸(이름·성명·성함·교직원명, 표에서 붙여 넣은 「성 명」「이 름」도) — 붙여넣기·파일·구글 폼 모두 이것 하나로
-const STAFF_H = /^(이\s*름|성\s*명|성\s*함|교직원명)$/;
+// 괄호 꼬리(「이름(성명)」「성명(한글)」)와 「교원명·직원명·교직원 이름」도
+const STAFF_H = /^(?:이\s*름|성\s*명|성\s*함|(?:교\s*직\s*원|교\s*원|직\s*원)\s*(?:명|이\s*름))(?:\s*[(（][^)）]*[)）])?$/;
 // 띄어쓰기로 나눈 줄의 이름 낱말: 성으로 시작하는 2~4자(교감·체육·보건은 아님), 맡은 일·과목 말(전담·국어·연구원…)과 부서·직위 끝말은 아님(김지원·최예원은 이름)
 const ROLE_TOK = /^(?:전담|조리|조리원|조리사|도서|정보|진로|국어|연구|연구원|원어민|방과후|수석|교감|담임|유아|기간제|강사|주무|서무|방송|당직|특수|돌봄|보건|영양|상담|사서|행정|교무|교사|교장|부장)$/;
 const nameTok = t => looksLikeName(t) && !ROLE_TOK.test(t) && !/(?:부|실|과|반|년|장|사|관|무|교사|선생님?|님|팀|전담|담임)$/.test(t);
+// 부서·직위 칸(「교무부」「3학년 1반」「행정실」「교무실무사」「부장」) — 이름 끝 글자로도 흔한 「실」은 학교 방 이름만
+const DEPT_CELL = t => { const v = String(t || '').trim(); return ROLE_TOK.test(v) || /^\d+\s*(?:학년|-\s*\d+)/.test(v) || /(?:부|팀|과|센터|학년|반|담임|교사|교감|교장|전담|실무사|실무원|주무관|조리사|조리원|전담사|부장|(?:행정|교무|보건|상담|도서|과학|방송|교장|교감|급식|전산|특수|돌봄)실)$/.test(v); };
+// 명단 머리 칸 말(머리 줄 없는 붙여넣기에서 「연번 ⇥ 부서」 줄을 사람으로 넣지 않게)
+const HEAD_WORD = /^(?:연\s*번|번\s*호|순\s*번|부\s*서|소\s*속|직\s*위|직\s*급|직\s*종|담\s*당|교\s*과|업\s*무|구\s*분|직\s*군|비\s*고)$/;
 export function parseStaff(text) {
   // 머리 줄(「연번 ⇥ 부서 ⇥ 성명」)이 있는 엑셀 붙여넣기는 칸 이름대로(성명 칸이 첫 칸이 아니어도)
   const rows = String(text || '').split(/\r?\n/).filter(l => l.trim()).map(l => l.split('\t'));
@@ -304,8 +309,14 @@ function parseStaffLines(text) {
     }
     // 번호 칸(「1」「1.」)은 건너뜀
     const c = cells.filter(x => !/^\d+[.)]?$/.test(x));
-    const name = cleanName(c[0] || '');
-    if (name && /[가-힣A-Za-z]/.test(name)) out.push({ name, dept: str(c.slice(1).join(' '), 30) });
+    // 머리 말뿐인 줄(「연번 ⇥ 부서 ⇥ 직위」)은 사람이 아님
+    if (c.length && c.every(x => HEAD_WORD.test(x))) continue;
+    // 「부서 ⇥ 이름」「연번 ⇥ 부서 ⇥ 직위 ⇥ 성명」 차례(학교 명단 엑셀을 머리 줄 없이 복사): 첫 칸이 부서·직위 말이고 다른 칸이 이름 모양이면 그 칸이 이름
+    let ni = 0;
+    // (이름 칸은 부서·직위 말이 아닌 이름 모양 — 「김진실」처럼 끝 글자가 「실」인 이름도)
+    if (!nameTok(cleanName(c[0] || '')) && DEPT_CELL(c[0] || '')) { const j = c.findIndex((x, i) => { const n = cleanName(x); return i > 0 && looksLikeName(n) && !ROLE_TOK.test(n) && !DEPT_CELL(n); }); if (j > 0) ni = j; }
+    const name = cleanName(c[ni] || '');
+    if (name && /[가-힣A-Za-z]/.test(name)) out.push({ name, dept: str(c.filter((_, i) => i !== ni).join(' '), 30) });
   }
   return out;
 }
@@ -376,6 +387,8 @@ export function boardCsv(b) {
 
 /* ---------- 수합: 구글 폼 응답·묶음·결과 보고 ---------- */
 const NAME_H = STAFF_H;
+/* 폼 이수번호 칸 → 이수번호. 번호를 못 읽으면 칸 글(숫자가 있을 때만) — 「없음」「모름」「-」 같은 답은 '' (필수 칸이라 번호 없는 분이 적기 쉬움) */
+const formCode = v => { const c = certCode(v) || codeNorm(v); return /\d/.test(c) ? c : ''; };
 /* 구글 폼 날짜(「2026. 11. 2 오후 3:15:00」「2026/11/02 15:15:00」「2026-11-02」) → ISO, 아니면 '' */
 const formDate = v => { const m = /(20\d{2})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})/.exec(String(v || '')); return m && +m[2] >= 1 && +m[2] <= 12 && +m[3] >= 1 && +m[3] <= 31 ? `${m[1]}-${pad(+m[2])}-${pad(+m[3])}` : ''; };
 /* 설문 응답 표 → { hits: [{ sid, cid, link, date }], miss: [{ name, course, link, date, sid }] }. cid: 연수 열이 없을 때의 연수(고른 것) */
@@ -401,7 +414,7 @@ export function formResponses(rows, b, { cid = '' } = {}) {
     if (who.length > 1 && di >= 0) who = who.filter(s => s.dept && (r[di] || '').includes(s.dept));
     const course = ci >= 0 ? bestCourse(b.courses, r[ci] || '', { one: true }) : b.courses.find(c => c.id === cid) || (b.courses.length === 1 ? b.courses[0] : null);
     const link = ((fi >= 0 ? r[fi] : '') || '').split(/[,\s]+/).find(x => /^https?:\/\//.test(x)) || '';
-    const date = ti >= 0 ? formDate(r[ti]) : '', code = ki >= 0 && !/^\s*0\d{1,2}\s*-?\s*\d{3,4}\s*-?\s*\d{4}\s*$/.test(r[ki] || '') ? (certCode(r[ki] || '') || codeNorm(r[ki] || '')) : '';
+    const date = ti >= 0 ? formDate(r[ti]) : '', code = ki >= 0 && !/^\s*0\d{1,2}\s*-?\s*\d{3,4}\s*-?\s*\d{4}\s*$/.test(r[ki] || '') ? formCode(r[ki] || '') : '';
     if (who.length === 1 && course) hits.push({ sid: who[0].id, cid: course.id, link, date, code });
     else miss.push({ name, course: course ? course.id : '', link, date, code, sid: who.length === 1 ? who[0].id : '' });
   }
@@ -521,6 +534,10 @@ export function parseBoardFile(text) {
   for (const row of Object.values(b.marks)) for (const m of Object.values(row)) m.kept = false;
   return b;
 }
+/* 파일 글 → 내보낸 학년도(숫자, 없으면 0) — 다른 학년도 현황판을 가져올 때 물으려고 */
+export function boardFileYear(text) {
+  try { const v = JSON.parse(String(text || '').replace(/^\uFEFF/, '')); const y = isObj(v) ? Number(v.year) : 0; return Number.isInteger(y) && y > 2000 && y < 2100 ? y : 0; } catch (e) { return 0; }
+}
 const RANK_MARK = { back: 1, sent: 2, ok: 3 };
 /* 합치기: 같은 이름·부서는 한 사람, 같은 연수 이름은 한 연수, 칸은 더 나아간 상태(확인 > 제출 > 반려) */
 export function mergeBoards(a, b) {
@@ -562,7 +579,8 @@ export const reportTitle = (b, cids, year) => {
 export function reportDoc(b, { cids, title = '', related = '', year, school = '' } = {}) {
   const cs = b.courses.filter(c => cids.includes(c.id));
   const who = b.staff.filter(s => cs.some(c => inTarget(c, s)));
-  const count = list => KINDS.map(k => [k, list.filter(s => s.kind === k).length]).filter(([, n]) => n);
+  // 구분 없는 사람도 셈(구분별 표·실적 표의 「구분 없음」 줄과 같이 — 합이 대상 수와 맞게)
+  const count = list => [...KINDS, ''].map(k => [k || '구분 없음', list.filter(s => s.kind === k).length]).filter(([, n]) => n);
   const kinds = count(who), blocks = [], P = text => blocks.push({ type: 'p', text });
   let n = 1;
   if (related) P(`${n++}. 관련: ${related}`);

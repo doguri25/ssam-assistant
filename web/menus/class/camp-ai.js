@@ -16,7 +16,7 @@ const WEEK = '일월화수목금토';
 
 /* ---------- 글에서 기간·요일 읽기 ---------- */
 const YEAR = '(?:(20\\d{2})\\s*[-./년]\\s*)?';
-const RANGE = new RegExp(`${YEAR}(\\d{1,2})\\s*[-./월]\\s*(\\d{1,2})\\s*일?\\.?(?:\\s*\\([^)]{1,4}\\))?\\s*(?:~|∼|〜|–|부터)\\s*${YEAR}(?:(\\d{1,2})\\s*[-./월]\\s*)?(\\d{1,2})(?!\\s*[:시분])`);
+const RANGE = new RegExp(`${YEAR}(\\d{1,2})\\s*[-./월]\\s*(\\d{1,2})\\s*일?\\.?(?:\\s*\\([^)]{1,4}\\))?\\s*(?:[~∼〜～–]|부터)\\s*${YEAR}(?:(\\d{1,2})\\s*[-./월]\\s*)?(\\d{1,2})(?!\\s*[:시분])`);
 /* 「1/8~1/23」「1월 8일~23일」「2027. 1. 8.~1. 23.」「1.8부터 1.15까지」 → { from, to }. 연도 없는 날은 학년도(year)의 달(1·2월은 다음 해),
    그렇게 읽은 기간이 오늘보다 한 달 넘게 지났으면 한 해 뒤 */
 export function findRange(text, { year, today } = {}) {
@@ -38,12 +38,21 @@ export function findRange(text, { year, today } = {}) {
   return isDate(from) && isDate(to) && from <= to ? { from, to } : null;
 }
 const WD = { 일: 0, 월: 1, 화: 2, 수: 3, 목: 4, 금: 5, 토: 6 };
-/* 「평일」→ 월~금, 「월수금」「화, 목」「수요일」 → 그 요일들, 없으면 null(「수학」「화목한」「1월 8일」은 요일이 아님) */
+/* 요일 범위 「월~목」「월요일~금요일」「(월)~(금)」「월요일부터 목요일까지」 — 앞 글자가 숫자인 것(「1월~3월」)·날짜 범위(「1. 11.(월) ~ 1. 22.(금)」)는 아님 */
+const SPAN = /\(?([일월화수목금토])\)?(?:요일)?\s*(?:[~∼〜～–-]|부터)\s*\(?([일월화수목금토])\)?(?:요일)?(?:까지|마다|에만|에|만)?(?![가-힣])/g;
+/* 「평일」→ 월~금, 「월수금」「화, 목」「수요일」 → 그 요일들, 「월~목」「월요일~금요일」 → 그 사이 요일 모두, 없으면 null(「수학」「화목한」「1월 8일」은 요일이 아님) */
 export function findWeekdays(text) {
-  const t = String(text == null ? '' : text);
-  if (/평일|주중|월\s*~\s*금/.test(t)) return [1, 2, 3, 4, 5];
-  const toks = [...t.matchAll(/[가-힣]+/g)].map(m => ({ w: m[0], i: m.index, e: m.index + m[0].length }));
+  let t = String(text == null ? '' : text);
+  if (/평일|주중/.test(t)) return [1, 2, 3, 4, 5];
   const days = new Set();
+  t = t.replace(SPAN, (m, a, b, at, all) => {
+    if (at > 0 && /\d/.test(all[at - 1])) return m;
+    const x = WD[a], y = WD[b];
+    if (x > y) return m;
+    for (let d = x; d <= y; d++) days.add(d);
+    return ' '.repeat(m.length);
+  });
+  const toks = [...t.matchAll(/[가-힣]+/g)].map(m => ({ w: m[0], i: m.index, e: m.index + m[0].length }));
   let run = [], end = -1;
   const flush = () => { const all = run.flatMap(r => r.days); if (all.length >= 2 || run.some(r => r.yoil)) all.forEach(d => days.add(d)); run = []; };
   for (const tk of toks) {

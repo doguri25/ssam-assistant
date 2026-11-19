@@ -18,12 +18,17 @@ export const isFileCode = code => !!MSG[code];
 const bridge = () => (window.SSAM && window.SSAM.files) || {};
 const tidy = s => String(s || '').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 
-/* 워드 본문 XML → 글: 문단마다 줄, 표 칸은 탭(줄 끝 탭은 뺌), 줄바꿈·탭 표시 */
+/* 워드 본문 XML → 글: 문단마다 줄, 표 칸은 탭(줄 끝 탭은 뺌), 줄바꿈·탭 표시.
+   본문이 아닌 것은 먼저 뺌: 글상자의 옛 워드용 사본(mc:Fallback — 워드 2010 이후는 같은 글상자를 Choice·Fallback에 한 벌씩 저장해 글이 두 번 들었음),
+   변경 내용 추적으로 지운 글(w:delText)·옮기기 전 자리(w:moveFrom), 목차·쪽 번호 필드 코드(w:instrText — 「 PAGEREF _Toc15 \h」) */
 const XENT = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
 function docxText(files) {
   const x = files.get('word/document.xml');
   if (!x) throw { code: 'READ_FAILED' };
   return new TextDecoder().decode(x)
+    .replace(/<mc:Fallback\b[^>]*\/>|<mc:Fallback\b[\s\S]*?<\/mc:Fallback>/g, '')
+    .replace(/<w:(delText|instrText|delInstrText)\b[^>]*\/>|<w:(delText|instrText|delInstrText)\b[^>]*>[\s\S]*?<\/w:\2>/g, '')
+    .replace(/<w:moveFrom\b[^>]*\/>|<w:moveFrom\b[^>]*>[\s\S]*?<\/w:moveFrom>/g, '')
     .replace(/<w:tab\/>/g, '\t').replace(/<w:br[^>]*\/>/g, '\n')
     .replace(/<\/w:p>/g, '\n').replace(/<\/w:tc>/g, '\t').replace(/\n\t/g, '\t').replace(/<\/w:tr>/g, '\n')
     .replace(/<[^>]+>/g, '').replace(/&(amp|lt|gt|quot|apos);/g, (m, k) => XENT[k]).replace(/&#(\d+);/g, (m, n) => String.fromCodePoint(+n))
