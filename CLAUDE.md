@@ -53,6 +53,11 @@
   학년말 마감 `web/menus/home/yearend-model.js`(줄 규칙)·`yearend.js`(모으기 `gatherYearend`, 시트 `openYearend`, `[data-ye-open]`, 저장 `yearend:done`), 기재 점검 요약 `check.js checkSummary`,
   오늘 화면 카드(12~2월)·설정 › 학년도·채팅 intent `yearend`. 교내 연수 `course.inhouse`·`inhouseNotice`·`signSheetDoc`·`allPresent`·`inhouseReportDoc`, 현황판 공유 `exportBoard`·`parseBoardFile`·`mergeBoards`,
   쪽지 회신 기한 `message-model deadlineLines → briefing({ messages })` (`tests/unit/fix1119-yearend.test.mjs`, e2e `fix1119-yearend.mjs`).
+- 0.36.0 뒤 멀티에이전트 버그 찾기(2026-11-19): 5 영역 찾기 + 영역마다 검증, 확인된 26건(겹친 1건) 모두 고침(`tests/unit/fix1119-bugs.test.mjs`).
+  이름 가리기 `roleNames`(맡은 일 머리 뒤·쉼표로 이은 이름, -문·-별 낱말은 아님)·`ITEM`(괄호 안 목록)·「인솔」은 쌍점 뒤·띄어 쓴 이름만, 주간학습안내 자리 표시 옮긴 답은 버림,
+  진도 `assumeFrom`은 posAt 없으면 세지 않음·`leftPeriods`는 posAt·start 앞 빼기·메모만 칸은 교체 아님·판마다 교시 수 `periodsOn`·`termStart` 진도 자리 끝·`prevHours0`,
+  기초학력 AI 일정 closedDays·날짜 넣기 periods·합치기 1000자, 연수 `maskForAI`·`certDate(text, today)`·`certHours` 분·띄어 쓴 명단·직위/구분 칸·칸 지울 때 물음·CP949 ZIP 이름(`core/zip.js`),
+  떠 있는 버튼 이수증은 본문 말이 있을 때만·늘 물음, 채팅 화면 가기 intent는 쓰기 명령·붙여 넣은 글에 물러남, 학년말 예산 예정·현황판 명단 없음·카드 다시 셈.
 - 메뉴 사이 흐름 점검(2026-11-18 「각 정보와 메뉴가 유기적으로 돌아가는지 확인해줘」, 0.36.0): 채팅 intent `budget`·`idea`·교체/보강/메모 → 오늘 수업·전담 → 진도표,
   「예산 얼마 남았어?」(`budget-model chatAnswer`), 떠 있는 버튼 kind `cert`(이수증 → `training.js putCerts`), 기초학력 수업 날은 `calendar closedDays`(재량휴업일 등 — 방학은 아님) 건너뜀,
   인수인계서에 기초학력(`camp-model handoverRows`)·연수 (`tests/unit/fix1118-flow.test.mjs`, e2e `fix1118-flow.mjs`).
@@ -72,7 +77,7 @@
 
 ## 시험
 
-- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1601개 통과)
+- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1607개 통과)
 - e2e 한 파일: `node tests/e2e/<이름>.mjs`
 - e2e 전체: `node tests/e2e/run-all.mjs` (약 170개 파일, 45~50분). 파일마다 다른 포트를 써서 나눠 돌려도 된다. 전체가 도는 동안에는 작업 폴더를 고치지 말고 `.claude/worktrees/` 아래 worktree에서 일한다(그 안에서는 저장소의 node_modules를 그대로 찾는다).
 

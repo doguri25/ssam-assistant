@@ -115,7 +115,7 @@ async function addMineCerts(files, only = null) {
   try {
     for (const f of (await expand(files)).map(x => x.file)) {
       const text = await certText(f), list = T.listMine();
-      const r = T.readCert({ name: f.name, text }, list);
+      const r = T.readCert({ name: f.name, text }, list, today());
       const id = only || r.id;
       const x = id && list.find(y => y.id === id);
       if (x) { if (putItem(T.applyCert(x, { name: f.name, ...r }, today()))) put++; } else minePend.push({ name: f.name, doneDate: r.doneDate, hours: r.hours });
@@ -358,7 +358,7 @@ async function addBoardCerts(files) {
     for (const f of await expand(files)) {
       const text = await certText(f.file);
       const r = T.matchFile({ name: f.name, text }, T.getBoard());
-      const extra = { date: text ? T.certDate(text) : '', hours: text ? T.certHours(text) : null };
+      const extra = { date: text ? T.certDate(text, today()) : '', hours: text ? T.certHours(text) : null };
       if (r.sid && r.cid) { if (await putBoardCert(r.cid, r.sid, f, extra)) put++; }
       else boardPend.push({ name: f.name, sid: r.sid, cid: r.cid, bytes: f.bytes, ...extra });
     }
@@ -383,7 +383,12 @@ function inNoticeSheet(cid) {
   SS().openSheet(`<div id="trInNotice"><h3>안내 쪽지 — ${esc(c.title)}</h3><textarea class="field" id="trInNoticeText" rows="13">${esc(text)}</textarea>
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" id="trInNoticeMsg">쪽지 작성에서 다듬기</button><button class="btn primary" type="button" id="trInNoticeCopy">복사</button></div></div>`, sh => {
     sh.querySelector('#trInNoticeCopy').addEventListener('click', () => { copyText(sh.querySelector('#trInNoticeText').value); toast('안내 쪽지를 복사했어요'); });
-    sh.querySelector('#trInNoticeMsg').addEventListener('click', async () => { const v = sh.querySelector('#trInNoticeText').value; SS().closeSheet(); try { (await import('../etc/message.js')).putMessageFiles([], { text: v }); } catch (e) { go('etc', 'message'); } });
+    // 쪽지 작성은 AI로 읽음 — 강사·교직원 이름은 가려 보냄(쪽지 칸에는 강사 칸이 없어 잃는 것 없음)
+    sh.querySelector('#trInNoticeMsg').addEventListener('click', async () => {
+      const v = T.maskForAI(sh.querySelector('#trInNoticeText').value, [c.inhouse && c.inhouse.lecturer, ...T.getBoard().staff.map(s => s.name)]);
+      SS().closeSheet(); toast('강사·교직원 이름은 가려서 쪽지 작성으로 보냈어요. 쪽지에 직접 넣어 주세요.', 5000);
+      try { (await import('../etc/message.js')).putMessageFiles([], { text: v }); } catch (e) { go('etc', 'message'); }
+    });
   });
 }
 /* 교내 연수 결과 보고: 주요 내용을 적어 한글·워드·PDF로(AI 없이) */
@@ -482,6 +487,8 @@ document.addEventListener('click', async e => {
   if (cell) {
     const [cid, sid] = cell.dataset.trCell.split('|'), b = T.getBoard(), m = T.markOf(b, cid, sid), next = T.nextMark(m && m.s);
     // 미제출로 돌리면 보관한 이수증도 지움
+    // 미제출로 돌리면 이수일·파일 이름·보관한 이수증이 지워짐 — 남긴 것이 있으면 먼저 물음(두 번 누르기로 말없이 지우지 않게)
+    if (!next && m && (m.kept || m.date || m.link || m.file) && !confirm(`${(b.staff.find(x => x.id === sid) || {}).name || ''} 선생님의 제출 기록${m.kept ? '과 보관한 이수증' : ''}이 지워져요. 미제출로 돌릴까요?`)) return;
     if (putBoard(T.setMark(b, cid, sid, next, next === 'sent' && !m ? { file: '' } : {}))) { if (!next && m && m.kept) dropFiles([[cid, sid]]); render(); }
     return;
   }

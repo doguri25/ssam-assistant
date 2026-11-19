@@ -111,8 +111,8 @@ await run('fix1118-class-weekly', [
       for (const k of Object.keys(log)) delete log[k];
       log[d] = { [s.period]: { subject: s.subject, status: 'done' } };
       localStorage.setItem('ssam:class:log', JSON.stringify(log));
-      // 예시로 채운 날(오늘)에 정한 진도 자리는 지움 → 처음 체크한 날부터 셈
-      const subs = JSON.parse(localStorage.getItem('ssam:class:subjects')).map(({ posAt, ...x }) => x);
+      // 진도 자리를 지난주(10/25)에 정한 것으로 → 그다음 날부터 체크하지 않은 칸을 셈
+      const subs = JSON.parse(localStorage.getItem('ssam:class:subjects')).map(x => ({ ...x, posAt: '2026-10-25' }));
       localStorage.setItem('ssam:class:subjects', JSON.stringify(subs));
       const c2 = m.makeCtx('2026-10-29');
       return { plain: m.cellText(m.weekView(c2, '2026-11-02')[0].slots[0]), assumed: m.cellText(m.weekView({ ...c2, assume: true }, '2026-11-02')[0].slots[0]), left: m.missingList(c2, 20).length };

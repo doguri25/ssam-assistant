@@ -132,14 +132,19 @@ export function classify({ name = '', text = '', scan = false } = {}) {
   if (/타임스탬프|timestamp/i.test(first)) add('survey', 9, '구글 폼 응답(타임스탬프)이에요.');
 
   // 연수 이수증·수료증: 「성 명:」 칸·복사기 파일 이름(scan)이 있어도 학생 문제지가 아님(학생 이름 칸 12점 + 스캔 이름 12점보다 높게)
-  if (/이\s*수\s*증|수\s*료\s*증/.test(head) && /이\s*수|수\s*료/.test(t) && /연수|교육|과정/.test(t)) add('cert', 30, '연수 이수증이에요. 연수 메뉴에서 이수를 기록해요(AI로 보내지 않아요).');
+  // 이수증 본문 말(「위 사람은 … 이수하였음을 증명합니다」)이나 짧은 「이수증」 제목 + 성명 칸일 때만 — 연수 공문(수신·발신·협조…)·연수 계획은 아님
+  const certBody = /위\s*(?:사람|분)은|이수하였음을|수료하였음을|증명합니다|수료하였기에/.test(t)
+    || (lines.slice(0, 5).some(l => /^\s*(?:이\s*수\s*증|수\s*료\s*증)(?:\s*\(.*\))?\s*$/.test(l)) && /(?:성\s*명|이\s*름)\s*[:：]/.test(t));
+  const docSigns = [/수\s*신/, /발\s*신/, /경\s*유/, /협조하여\s*주시기/, /붙\s*임/].filter(re => re.test(t)).length >= 2 || YEAR_PARTS.filter(re => re.test(t)).length >= 2 || /(운영|추진|연간)\s*계획/.test(head);
+  if (certBody && !docSigns && /이\s*수\s*증|수\s*료\s*증/.test(head) && /이\s*수|수\s*료/.test(t) && /연수|교육|과정/.test(t)) add('cert', 30, '연수 이수증이에요. 연수 메뉴에서 이수를 기록해요(AI로 보내지 않아요).');
   else if (/이수증|수료증/.test(n)) add('cert', 4, '파일 이름에 「이수증」이 있어요.');
 
   const ranked = Object.keys(score).sort((a, b) => score[b] - score[a] || order(a) - order(b));
   const top = ranked[0];
   if (!top || score[top] < 4) return { kind: 'unknown', why: '어떤 파일인지 알아보지 못했어요. 할 일을 골라 주세요.', alts: ranked };
   // 이름 칸 하나(12점)로만 학생 답안이라고 봤으면 단원평가의 올려 둔 스캔을 바꾸기 전에 물어봄
-  return { kind: top, why: why[top], alts: ranked.slice(1), ...(top === 'unit-scan' && named && score[top] === 12 ? { ask: true } : {}) };
+  // 이수증은 늘 물어봄(바로 실행이어도 연수 상태를 말없이 바꾸지 않게)
+  return { kind: top, why: why[top], alts: ranked.slice(1), ...((top === 'unit-scan' && named && score[top] === 12) || top === 'cert' ? { ask: true } : {}) };
 }
 
 /* [{file, kind}] → [{kind, files}] — 같은 종류는 묶고 KINDS 차례로 */

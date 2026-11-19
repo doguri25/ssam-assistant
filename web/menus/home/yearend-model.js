@@ -39,13 +39,16 @@ export function yearendRows(d = {}, done = new Set()) {
     !camps.length ? '기초학력 프로그램이 없어요' : notReady.length ? notReady.slice(0, 2).map(c => `「${c.name}」 ${c.left.map(x => `${x.label} ${x.note}`).slice(0, 2).join(', ')}`).join(' / ') : '문서가 모두 준비됐어요', { to: 'camp' }));
   // 6. 연수
   const t = d.training || {}, mineLeft = t.mineLeft || 0, boardLeft = t.boardLeft || [];
-  out.push(row('training', !t.mineTotal && !(t.boardCourses || 0) ? 'none' : mineLeft || boardLeft.length ? 'todo' : 'done',
-    !t.mineTotal && !(t.boardCourses || 0) ? '연수 기록이 없어요' : [mineLeft ? `내 필수연수 미이수 ${mineLeft}개` : '', boardLeft.length ? `현황판 미제출 — ${boardLeft.slice(0, 2).map(x => `${x.title} ${x.left}명`).join(', ')}` : ''].filter(Boolean).join(' · ') || '연수를 모두 챙겼어요',
-    { to: 'training', tab: !mineLeft && boardLeft.length ? 'board' : 'mine' }));
+  out.push(row('training', !t.mineTotal && !(t.boardCourses || 0) ? 'none' : mineLeft || boardLeft.length || t.noStaff ? 'todo' : 'done',
+    !t.mineTotal && !(t.boardCourses || 0) ? '연수 기록이 없어요' : [mineLeft ? `내 필수연수 미이수 ${mineLeft}개` : '', boardLeft.length ? `현황판 미제출 — ${boardLeft.slice(0, 2).map(x => `${x.title} ${x.left}명`).join(', ')}` : '',
+      t.noStaff ? `연수 현황판에 교직원 명단이 없어요(연수 ${t.boardCourses}개)` : ''].filter(Boolean).join(' · ') || '연수를 모두 챙겼어요',
+    { to: 'training', tab: !mineLeft && (boardLeft.length || t.noStaff) ? 'board' : 'mine' }));
   // 7. 예산 집행
   const ps = (d.budget || []).filter(p => p && p.project);
-  const money = ps.reduce((n, p) => n + Math.max(0, p.left || 0), 0);
-  out.push(row('budget', !ps.length ? 'none' : money ? 'todo' : 'done', !ps.length ? '등록한 사업이 없어요' : money ? `남은 예산 ${won(money)}원(${ps.filter(p => p.left > 0).length}개 사업) — 불용·이월을 확인하세요` : '사업 예산을 모두 썼어요', { to: 'budget' }));
+  // 남은 돈(예산 − 집행 − 예정)과 에듀파인에 올리기 전 예정(품의 초안) — 둘 다 0이어야 다 됨
+  const money = ps.reduce((n, p) => n + Math.max(0, p.left || 0), 0), plan = ps.reduce((n, p) => n + Math.max(0, p.planned || 0), 0);
+  out.push(row('budget', !ps.length ? 'none' : money || plan ? 'todo' : 'done', !ps.length ? '등록한 사업이 없어요'
+    : money || plan ? `${[money ? `남은 예산 ${won(money)}원(${ps.filter(p => p.left > 0).length}개 사업)` : '', plan ? `예정 ${won(plan)}원 에듀파인에 올리기 전` : ''].filter(Boolean).join(' · ')} — 불용·이월을 확인하세요` : '사업 예산을 모두 썼어요', { to: 'budget' }));
   // 8. 공문
   const docs = (d.gongmun || []).filter(x => x && !x.done);
   out.push(row('gongmun', !(d.gongmun || []).length ? 'none' : docs.length ? 'todo' : 'done', !(d.gongmun || []).length ? '넣은 공문이 없어요' : docs.length ? `다 하지 않은 공문 ${docs.length}개` : '공문을 모두 처리했어요', { to: 'gongmun' }));

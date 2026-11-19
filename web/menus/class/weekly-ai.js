@@ -43,7 +43,8 @@ export function notesToFill(days, notes, got, { back = t => t, bad = () => false
     if (days[d] && days[d].off) continue;
     for (const k of AI_KEYS) {
       const g = String((got[d] && got[d][k]) || '').trim();
-      if (!g || String((notes[d] && notes[d][k]) || '').trim() || bad(g)) continue;
+      // 자리 표시(〔이름1〕)를 옮겨 쓴 답은 버림 — 되돌린 실명 글이 칸에 들어가 검토 AI로 가지 않게(지시도 옮기지 말라고 함)
+      if (!g || String((notes[d] && notes[d][k]) || '').trim() || bad(g) || /〔이름\d+〕|\{\{\d+\}\}/.test(g)) continue;
       out.push([d, k, back(g).trim()]);
     }
   }

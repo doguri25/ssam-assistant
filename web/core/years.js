@@ -104,7 +104,7 @@ export function carryOver(snap, newYear, { classSetup = false } = {}) {
     const first = firstSchoolDay(newYear), keep = d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= first && d < `${newYear + 1}-03-01`;
     // 2월에 지난 학년도 날짜로 읽은 차시도 새 학년도 날짜로 (기간이 없는 차시는 그대로)
     const redate = list => list.map(l => { const f = isObj(l) && periodStart(l.period, newYear); return f ? { ...l, from: f } : l; });
-    if (Array.isArray(subs)) out['class:subjects'] = JSON.stringify(subs.filter(isObj).map(({ since, posAt, ...x }) => ({ ...x, offset: 0, hours0: 0, start: keep(x.start) ? x.start : first,
+    if (Array.isArray(subs)) out['class:subjects'] = JSON.stringify(subs.filter(isObj).map(({ since, posAt, prevHours0, ...x }) => ({ ...x, offset: 0, hours0: 0, start: keep(x.start) ? x.start : first,
       ...(Array.isArray(x.lessons) ? { lessons: redate(x.lessons) } : {}) })));
   }
   return out;

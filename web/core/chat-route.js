@@ -89,9 +89,9 @@ const RULES = [
   ['weekly', /주간\s*학습|주학|다음\s*주\s*안내|주안(?!점)/, 3.5],
   ['today', /오늘\s*(?:수업|시간표)/, 3.5],
   // 학급 손보기(2026-11-18): 교체·보강·수업 메모는 오늘 수업, 전담·시수만 교과는 진도표·시수
-  ['today', /교체\s*수업|수업\s*교체|보강|수업\s*메모/, 3.2], ['progress', /전담|시수만/, 3],
+  ['today', /교체\s*수업|수업\s*교체|보강\s*(?:넣|기록|체크|수업)|수업\s*메모/, 3.2], ['progress', /(?:교과\s*)?전담\s*(?:시수|시간|교과|수업|체크)|시수만/, 3],
   // 예산 집행 현황(품의 › 예산) — 「예산 과목」(품의 칸)은 아님
-  ['budget', /예산\s*(?:집행|현황|탭|얼마|남)|남은\s*예산|집행\s*(?:률|현황|마감)|사업\s*예산|사업별\s*예산|불용/, 3.6],
+  ['budget', /예산\s*(?:집행|현황|탭|얼마|남)|남은\s*예산|집행\s*(?:률|현황|마감)|사업별\s*예산|불용\s*(?:액|예산)/, 3.6],
   // 「학년말 성적 처리 안내」 같은 글은 아님 — 마감·정리·점검을 같이 말할 때만
   ['yearend', /학년\s*말\s*(?:마감|정리|점검)|학기\s*말\s*(?:마감|정리)|마감\s*도우미|생기부\s*마감|생활\s*기록부\s*마감|학년\s*마무리/, 3.4],
   ['idea', /수업\s*아이디어|수업\s*활동\s*(?:추천|아이디어|구상)|수업\s*구상/, 3.6],
@@ -136,6 +136,10 @@ function scoreOf(t, o = {}) {
   if (lang && (/번역/.test(t) || LANG_CUE.test(t))) scores.translate = 5;
   // 다면평가 낱말은 글감일 때가 많음: 쪽지·가정통신문·단원평가·평어·결과 보고서 같은 글 넣는 일이 분명하면 그 일(「다면평가 위원회 안내 쪽지」)
   if (scores.multi && ['message', 'letter', 'unit', 'pyeongeo', 'report', 'gr', 'gongmun', 'purchase'].some(id => (scores[id] || 0) >= 3)) scores.multi = 1;
+  // 화면으로 가기만 하는 일(예산·연수·학년말·수업 아이디어·오늘 수업·진도표)은 글을 쓰는 일(쪽지·가정통신문·공문·보고서·품의·회의록·행사)이 분명하면 물러남 — 넘길 글을 잃지 않게
+  if (['message', 'letter', 'gongmun', 'report', 'purchase', 'minutes', 'event'].some(id => (scores[id] || 0) >= 2.5)) for (const id of ['budget', 'training', 'yearend', 'idea', 'today', 'progress']) if (scores[id] && scores[id] < 4) scores[id] = 1;
+  // 붙여 넣은 여러 줄 글도 화면 가기로 보내지 않음(글이 사라짐)
+  if (o.paste) for (const id of ['budget', 'training', 'yearend', 'idea']) if (scores[id]) scores[id] = Math.min(scores[id], 1);
   return scores;
 }
 /* 분명히 앞선 할 일(SURE 이상, 둘째보다 GAP 이상) 또는 null */

@@ -76,7 +76,11 @@ export async function unzip(u8) {
     const csize = dv.getUint32(p + 20, true);
     const nlen = dv.getUint16(p + 28, true), xlen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true);
     const loc = dv.getUint32(p + 42, true);
-    const name = dec.decode(u8.subarray(p + 46, p + 46 + nlen));
+    // 이름: UTF-8 표시(bit 11)가 없고 UTF-8로 읽히지 않으면 한글 Windows 압축(CP949)으로
+    const raw0 = u8.subarray(p + 46, p + 46 + nlen), utf = dv.getUint16(p + 8, true) & 0x0800;
+    let name;
+    if (utf) name = dec.decode(raw0);
+    else { try { name = new TextDecoder('utf-8', { fatal: true }).decode(raw0); } catch (e) { try { name = new TextDecoder('euc-kr').decode(raw0); } catch (e2) { name = dec.decode(raw0); } } }
     const start = loc + 30 + dv.getUint16(loc + 26, true) + dv.getUint16(loc + 28, true);
     const raw = u8.subarray(start, start + csize);
     if (!name.endsWith('/')) out.set(name, method === 0 ? raw.slice() : method === 8 ? await inflate(raw) : raw.slice());

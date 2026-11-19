@@ -3,6 +3,7 @@
    저장(학년도 자료): training:mine(내 필수연수 줄), training:board(연수 현황판 — 담당 선생님의 명단·연수·제출 상태) */
 import { get, set } from '../../core/store.js';
 import { setEvents } from '../../core/calendar.js';
+import { maskStaff } from '../../core/privacy.js';
 
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const str = (v, n) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n);
@@ -99,26 +100,36 @@ function datesIn(text) {
   return out;
 }
 /* 이수일: 「이수일·수료일·이수 일자·교육 기간·기간」 이름표가 있는 줄의 날짜(기간이면 끝 날), 없으면 글 속 마지막 날짜. 없으면 '' */
-export function certDate(text) {
-  const lines = String(text || '').split(/\n/);
-  for (const l of lines) {
-    if (!/이수\s*일|수료\s*일|이수\s*일자|수료\s*일자|교육\s*기간|연수\s*기간|학습\s*기간|기\s*간/.test(l)) continue;
-    const ds = datesIn(l);
-    if (ds.length) return ds[ds.length - 1].iso;
-  }
-  const all = datesIn(text);
-  return all.length ? all[all.length - 1].iso : '';
+export function certDate(text, today = '') {
+  const lines = String(text || '').split(/\n/), ok = d => !today || d <= today; // 앞날(교육 기간 끝·발급 예정)은 이수일이 아님
+  const pick = re => { for (const l of lines) { if (!re.test(l)) continue; const ds = datesIn(l).map(x => x.iso).filter(ok); if (ds.length) return ds[ds.length - 1]; } return ''; };
+  // 1) 「이수일·수료일(자)」 이름표(띄어 쓴 「이 수 일」도), 2) 기간(끝 날), 3) 발급·발행 줄을 뺀 글 속 마지막 날짜
+  const a = pick(/이\s*수\s*일\s*자?|수\s*료\s*일\s*자?/);
+  if (a) return a;
+  const b = pick(/(?:교\s*육|연\s*수|학\s*습)?\s*기\s*간/);
+  if (b) return b;
+  const all = lines.filter(l => !/발\s*급|발\s*행/.test(l)).flatMap(l => datesIn(l).map(x => x.iso)).filter(ok);
+  if (all.length) return all[all.length - 1];
+  // 4) 발급일만 있으면 그 날(오늘보다는 이수일에 가까움)
+  const iss = lines.flatMap(l => datesIn(l).map(x => x.iso)).filter(ok);
+  return iss.length ? iss[iss.length - 1] : '';
 }
 /* 이수 시간: 「n시간」(없으면 「n차시」). 없으면 null */
 export function certHours(text) {
   const t = String(text || '');
-  const h = /(\d{1,3}(?:\.\d)?)\s*시간/.exec(t) || /(\d{1,3})\s*차시/.exec(t);
-  return h ? num(h[1]) : null;
+  const hm = /(\d{1,3})\s*시간\s*(\d{1,2})\s*분/.exec(t);
+  if (hm) return num(+hm[1] + +hm[2] / 60);
+  const h = /(\d{1,3}(?:\.\d)?)\s*시간/.exec(t);
+  if (h) return num(h[1]);
+  const m = /(\d{2,4})\s*분(?![가-힣])/.exec(t);
+  if (m) return num(+m[1] / 60);
+  const c = /(\d{1,3})\s*차시/.exec(t);
+  return c ? num(c[1]) : null;
 }
 /* 이수증 한 장 → 어느 줄인지(id, 못 맞추면 null)·이수일·시간. name: 파일 이름, text: 읽은 글(사진·스캔은 '') */
-export function readCert({ name = '', text = '' } = {}, items = []) {
+export function readCert({ name = '', text = '' } = {}, items = [], today = '') {
   const pick = bestCourse(items, `${name}\n${text}`);
-  return { id: pick ? pick.id : null, doneDate: certDate(text), hours: certHours(text) };
+  return { id: pick ? pick.id : null, doneDate: certDate(text, today), hours: certHours(text) };
 }
 /* 이수증을 그 줄에 넣기 → 바뀐 줄 */
 export const applyCert = (item, { name, doneDate, hours }, today) => ({ ...item, status: item.status === 'sent' || item.status === 'ok' ? item.status : 'done',
@@ -235,14 +246,22 @@ export function statsTsv(b, cids = null) {
 
 /* 명단 붙여 넣기: 한 줄에 한 명(「이름 ⇥ 부서」·「이름, 부서」·「이름  부서」), 머리 줄(이름·성명)은 뺌 → [{ name, dept }] */
 export function parseStaff(text) {
+  // 머리 줄(「연번 ⇥ 부서 ⇥ 성명」)이 있는 엑셀 붙여넣기는 칸 이름대로(성명 칸이 첫 칸이 아니어도)
+  const rows = String(text || '').split(/\r?\n/).filter(l => l.trim()).map(l => l.split('\t'));
+  if (rows.some(r => r.length > 1 && r.some(c => /^\s*(이름|성명|성함|교직원명)\s*$/.test(c)))) return staffFromRows(rows);
   const out = [];
   for (const raw of String(text || '').split(/\r?\n/)) {
     const l = raw.trim().replace(/^\d+\s*[.)]\s*/, ''); // 「1. 한가람」의 번호
     if (!l) continue;
-    const cells = (l.includes('\t') ? l.split('\t') : l.includes(',') ? l.split(',') : l.split(/\s{2,}/)).map(c => c.trim()).filter(Boolean);
-    if (!cells.length || cells.some(c => /^(이름|성명|교직원명|성\s*명)$/.test(c))) continue;
-    // 한 줄에 이름만 여러 개(「김하늘 이바다 한가람」)
-    if (cells.length === 1 && /^[가-힣]{2,5}(?:\s+[가-힣]{2,5}){2,}$/.test(cells[0])) { cells[0].split(/\s+/).forEach(n => out.push({ name: cleanName(n), dept: '' })); continue; }
+    let cells = (l.includes('\t') ? l.split('\t') : l.includes(',') ? l.split(',') : l.split(/\s{2,}/)).map(c => c.trim()).filter(Boolean);
+    if (!cells.length || cells.some(c => /^(이름|성명|성함|교직원명|성\s*명)$/.test(c))) continue;
+    // 띄어쓰기 하나로만 나눈 줄(「김하늘 교무부 부장」「김하늘 이바다 한가람」): 모두 이름 모양이면 여러 사람, 아니면 첫 낱말이 이름·나머지는 부서
+    if (cells.length === 1 && /\s/.test(cells[0]) && /[가-힣]/.test(cells[0])) {
+      const toks = cells[0].split(/\s+/);
+      const nameTok = t => /^[가-힣]{2,4}$/.test(t) && !/(?:부|실|과|반|년|장|사|관|무|임|교사|선생님?|님|팀|원)$/.test(t);
+      if (toks.length >= 2 && toks.every(nameTok)) { toks.forEach(n => out.push({ name: cleanName(n), dept: '' })); continue; }
+      if (/^[가-힣]{2,5}$/.test(toks[0])) cells = [toks[0], toks.slice(1).join(' ')];
+    }
     // 번호 칸(「1」「1.」)은 건너뜀
     const c = cells.filter(x => !/^\d+[.)]?$/.test(x));
     const name = cleanName(c[0] || '');
@@ -255,8 +274,14 @@ export function staffFromRows(rows) {
   const rs = (rows || []).map(r => (r || []).map(c => String(c == null ? '' : c).trim()));
   const hi = rs.findIndex(r => r.some(c => /^(이름|성명|교직원명|성\s*명)$/.test(c)));
   if (hi < 0) return parseStaff(rs.map(r => r.join('\t')).join('\n'));
-  const h = rs[hi], ni = h.findIndex(c => /^(이름|성명|교직원명|성\s*명)$/.test(c)), di = h.findIndex(c => /^(부서|소속|직위|직급|담당|교과|업무)$/.test(c));
-  return rs.slice(hi + 1).map(r => ({ name: cleanName(r[ni] || ''), dept: di >= 0 ? str(r[di], 30) : '' })).filter(s => s.name && /[가-힣A-Za-z]/.test(s.name));
+  const h = rs[hi], ni = h.findIndex(c => /^(이름|성명|성함|교직원명|성\s*명)$/.test(c));
+  const dis = h.map((c, i) => (/^(부서|소속|직위|직급|직종|담당|교과|업무)$/.test(c) ? i : -1)).filter(i => i >= 0), ki = h.findIndex(c => /^(구분|직군)$/.test(c));
+  // 구분 칸: 교원·교사 → 교원, 직원·행정직·일반직 → 직원, 공무직·교육공무직 → 공무직
+  const kindCell = v => (/공무직/.test(v) ? '공무직' : /교원|교사|교감|교장/.test(v) ? '교원' : /직원|행정|일반직|지방공무원/.test(v) ? '직원' : '');
+  return rs.slice(hi + 1).map(r => {
+    const dept = str(dis.map(i => r[i] || '').filter(Boolean).join(' '), 30), k = ki >= 0 ? kindCell(r[ki] || '') : '';
+    return { name: cleanName(String(r[ni] || '').replace(/^\d+\s*[.)]\s*/, '')), dept, ...(k ? { kind: k } : {}) };
+  }).filter(s => s.name && /[가-힣A-Za-z]/.test(s.name));
 }
 /* 명단 더하기: 같은 이름·부서는 한 번 → { staff, added } */
 export function mergeStaff(staff, list) {
@@ -431,6 +456,13 @@ export function inhouseReportDoc(b, cid, { summary = '', year, school = '' } = {
     { type: 'table', head: true, rows: [['연번', '부서', '이름', '참석'], ...targetStaff(b, c).map((s, i) => [String(i + 1), s.dept, s.name, cellText(b, c, s, { report: true }).replace(/^이수/, '참석').replace(/^미이수$/, '불참')])] }] };
 }
 
+/* AI로 가는 글(쪽지 작성에 넘김)에서 사람 이름 가리기: 넘긴 이름(강사·명단)은 ○○○, 「강사:」 줄, 직함 앞뒤 이름(maskStaff) */
+export function maskForAI(text, names = []) {
+  let t = String(text || '');
+  for (const n of [...new Set((names || []).map(x => String(x || '').trim()).filter(x => x.length >= 2))].sort((a, b) => b.length - a.length)) t = t.split(n).join('○○○');
+  t = t.replace(/^(□\s*강사\s*[:：]).*$/m, '$1 ○○○');
+  return maskStaff(t).text;
+}
 /* ---------- 현황판 공유(내보내기·가져오기 — 이수증 파일은 빼고) ---------- */
 export const BOARD_FILE = 'training-board';
 export const exportBoard = (b, year) => JSON.stringify({ app: 'ssam', kind: BOARD_FILE, version: 1, year, at: new Date().toISOString(), board: normBoard(b) }, null, 1);

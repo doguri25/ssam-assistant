@@ -33,7 +33,7 @@ export function newStudent(f = {}) {
 }
 /* periods: 그 줄의 교시 수(날마다 한 줄에 하루 여러 교시 — 지도 시간에 셈). 없으면 null(rowHours가 셈) */
 export function newSession(f = {}) {
-  return { id: rid('ss'), date: isDate(f.date) ? f.date : '', start: normTime(f.start), end: normTime(f.end), subject: str(f.subject).trim().slice(0, 30), content: str(f.content).slice(0, 300), periods: intIn(f.periods, 1, 12) };
+  return { id: rid('ss'), date: isDate(f.date) ? f.date : '', start: normTime(f.start), end: normTime(f.end), subject: str(f.subject).trim().slice(0, 30), content: str(f.content).slice(0, 1000), periods: intIn(f.periods, 1, 12) };
 }
 /* 결과 보고서 칸 { id, head, text } */
 export const newSection = (head = '', text = '') => ({ id: rid('rs'), head: str(head).trim().slice(0, 60), text: str(text).slice(0, 6000) });
@@ -205,7 +205,8 @@ export function mergeSameDate(camp) {
     for (const x of list) delete att[x.id];
     if (Object.keys(row).length) att[first.id] = row;
     out.push({ ...first, start: list.map(x => x.start).filter(Boolean).sort()[0] || '', end: list.map(x => x.end).filter(Boolean).sort().at(-1) || '',
-      subject: subs.join('·').slice(0, 30), content: content.slice(0, 300), periods: Math.min(12, list.reduce((n, x) => n + rowHours(camp, x), 0)) });
+      // 지도 내용 한도(1000자)는 newSession과 같게 — 같은 날 줄을 합쳐도 뒤 차시 내용이 잘리지 않게
+      subject: subs.join('·').slice(0, 30), content: content.slice(0, 1000), periods: Math.min(12, list.reduce((n, x) => n + rowHours(camp, x), 0)) });
   }
   return { ...camp, sessions: out, att };
 }

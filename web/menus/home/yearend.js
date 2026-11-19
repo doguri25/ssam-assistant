@@ -27,7 +27,7 @@ export async function gatherYearend(t = todayStr()) {
     progress: cls ? safe(() => cls.summary(cls.makeCtx(t)).map(p => ({ name: p.sub.name, plan: p.plan, actual: p.actual, diff: p.diff })), []) : [],
     camps: camp && steps ? safe(() => camp.listCamps().map(c => ({ name: c.name || '기초학력', docs: steps.docReadiness(c) })), []) : [],
     training: {
-      mineTotal: mine.length, mineLeft: mine.filter(x => !tr.isDone(x.status)).length, boardCourses: b ? b.courses.length : 0,
+      mineTotal: mine.length, mineLeft: mine.filter(x => !tr.isDone(x.status)).length, boardCourses: b ? b.courses.length : 0, noStaff: !!(b && b.courses.length && !b.staff.length),
       boardLeft: b && b.staff.length ? b.courses.map(c => ({ title: c.title, left: tr.missingStaff(b, c.id).length })).filter(x => x.left) : []
     },
     budget: bud ? safe(() => bud.summary(year, t), []) : [],

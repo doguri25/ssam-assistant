@@ -103,6 +103,9 @@ await run('fix1118-class-today', [
     assert(!(await page.isVisible(`${V} [data-day]`)), '하루 한꺼번에 단추');
   }],
   ['[A5] 반만 체크한 날도 「체크하지 않은 날」 — 「11/16(월) 2·3·4교시 남음」', async () => {
+    // 진도 자리를 11/1에 정한 것으로(그 뒤 날만 「체크하지 않은 날」 — 예시로 채운 오늘 앞 날은 세지 않으므로)
+    await page.evaluate(() => { const k = 'ssam:class:subjects'; localStorage.setItem(k, JSON.stringify(JSON.parse(localStorage.getItem(k)).map(x => ({ ...x, posAt: '2026-11-01' })))); });
+    await tab('progress'); await tab('today');
     await day('2026-11-18');
     const b = await page.$$eval(`${V} [data-go-day]`, bs => bs.map(x => x.textContent.trim()));
     assert(b.includes('11/16(월) 2·3·4교시 남음') && b.includes('11/17(화)'), JSON.stringify(b));

@@ -251,6 +251,8 @@ onEnter('home', (tab, section) => {
   refresh();
 });
 // 학급 체크·AI 바꿈·창으로 돌아옴(다른 창에서 고쳤을 수 있음): 보이면 다시
+// 학년말 마감 시트에서 [했어요]를 누르면 카드의 n / 전체도 다시 셈
+document.addEventListener('yearend:changed', () => { if (visible()) refresh(); });
 document.addEventListener('class:changed', () => { if (visible()) draw(); });
 document.addEventListener('ssam:ai-changed', () => { if (visible()) draw(); });
 window.addEventListener('focus', () => { if (visible()) refresh(); });

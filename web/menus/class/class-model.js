@@ -28,13 +28,15 @@ export function normTimetable(v) {
   const raw = isObj(v) && Array.isArray(v.versions) ? v.versions.filter(x => isObj(x) && (x.from === '' || isDate(x.from)) && Array.isArray(x.cells)) : [];
   const vs = [];
   for (const x of raw.slice().sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0))) {
-    const e = { from: x.from, cells: normCells(x.cells) };
+    // periods: 그 판의 교시 수(「오늘부터」 교시 수가 다른 시간표로 바꿔도 지난날은 그때 교시 수로) — 없으면 지금 교시 수
+    const pv = intIn(x.periods, 4, 7), e = { from: x.from, cells: normCells(x.cells), ...(pv ? { periods: pv } : {}) };
     if (vs.length && vs[vs.length - 1].from === e.from) vs[vs.length - 1] = e; else vs.push(e);
   }
   const cells = normCells(isObj(v) && Array.isArray(v.cells) ? v.cells : vs.length ? vs[vs.length - 1].cells : []);
   if (vs.length) { vs[0].from = ''; vs[vs.length - 1].cells = cells; }
   const kept = [];
-  for (const x of vs) if (!kept.length || !sameCells(x.cells, kept[kept.length - 1].cells)) kept.push(x);
+  if (vs.length) vs[vs.length - 1].periods = periods;
+  for (const x of vs) if (!kept.length || !sameCells(x.cells, kept[kept.length - 1].cells) || (x.periods || periods) !== (kept[kept.length - 1].periods || periods)) kept.push(x);
   if (kept.length > 1) kept[kept.length - 1].cells = cells;
   return kept.length > 1 ? { periods, cells, versions: kept } : { periods, cells };
 }
@@ -48,7 +50,14 @@ export function cellsOn(tt, date) {
   for (const x of vs) if (x.from <= date) c = x.cells;
   return c;
 }
-const copyVersions = t => (t.versions || [{ from: '', cells: t.cells }]).map(x => ({ from: x.from, cells: x.cells.map(r => r.slice()) }));
+/* 그날 쓰는 시간표의 교시 수(판마다, 없으면 지금 교시 수) */
+export function periodsOn(tt, date) {
+  const vs = tt && Array.isArray(tt.versions) ? tt.versions : [];
+  let n = tt.periods;
+  for (const x of vs) if (x.from <= date) n = x.periods || tt.periods;
+  return n;
+}
+const copyVersions = t => (t.versions || [{ from: '', cells: t.cells }]).map(x => ({ from: x.from, cells: x.cells.map(r => r.slice()), periods: x.periods || t.periods }));
 /* 시간표 칸 하나 고치기 → 새 시간표. from: '' = 처음부터(지난날도 — 잘못 넣었음), 날짜 = 그 날부터(그 앞 날은 그때 시간표 그대로) */
 export function editCell(tt, d, p, name, from = '') {
   const t = normTimetable(tt), vs = copyVersions(t);
@@ -63,7 +72,7 @@ export function editCell(tt, d, p, name, from = '') {
 export function replaceTimetable(tt, next, from = '') {
   const t = normTimetable(tt), n = normTimetable(next);
   if (!from) return n;
-  return normTimetable({ periods: n.periods, versions: [...copyVersions(t).filter(x => x.from < from), { from, cells: n.cells }], cells: n.cells });
+  return normTimetable({ periods: n.periods, versions: [...copyVersions(t).filter(x => x.from < from), { from, cells: n.cells, periods: n.periods }], cells: n.cells });
 }
 /* 오늘 앞 체크 기록이 있는지(시간표를 고칠 때 「오늘부터 / 처음부터」를 물을지) */
 export const hasPastRecords = (log, t) => Object.entries(log || {}).some(([d, day]) => d < t && Object.values(day).some(r => r && r.status));
@@ -90,6 +99,8 @@ export function normSubject(v) {
     // posAt: 진도 자리(offset)를 마지막으로 정한 날(다음 차시 고르기·진도표대로 맞추기·가져오기) — 주간학습안내가 체크하지 않은 날을 셀 때의 시작
     ...(isDate(v.posAt) ? { posAt: v.posAt } : {}),
     offset, hours0: h0Of({ hours0: v.hours0, offset }),
+    // prevHours0: 다음 학기 진도표로 바꾸기 전 학기의 「체크 전 실시」(연간 실시에 더함)
+    ...(Number.isInteger(v.prevHours0) && v.prevHours0 > 0 ? { prevHours0: v.prevHours0 } : {}),
     total: Number.isInteger(v.total) && v.total >= 0 ? v.total : null,
     lessons: (Array.isArray(v.lessons) ? v.lessons : []).map(normLesson).filter(Boolean)
   };
@@ -177,7 +188,7 @@ export function setSwap(date, period, subject, planned) {
 }
 /* 수업 메모(짧게): 기록이 있는 칸은 기록된 교과에(다른 교과로 바꾸지 않음), 비우면 메모를 지움 */
 export const setMemo = (date, period, subject, memo) =>
-  editRec(date, period, r => ({ ...(r || { subject, status: '' }), memo: str(memo) }));
+  editRec(date, period, r => ({ ...(r && (r.status || r.swap) ? r : { subject, status: '' }), memo: str(memo) }));
 
 const blankNote = () => ({ events: '', prep: '', homework: '', notice: '', safety: '' });
 export function normWeekly(v) {
@@ -258,11 +269,13 @@ export const makeCtx = (t = today()) => ({ tt: getTimetable(), subjects: listSub
 /* 그날 교시 목록: 그날 쓰던 시간표 판의 칸, 기록이 있는 교시는 기록된 교과(교체·보강 — 시간표 교과는 planned, 시간표에 없는 교시는 planned '') */
 export function slotsOn(ctx, date) {
   if (dayOff(ctx, date)) return [];
-  const row = (cellsOn(ctx.tt, date)[weekday(date) - 1] || []).slice(0, ctx.tt.periods);
+  const row = (cellsOn(ctx.tt, date)[weekday(date) - 1] || []).slice(0, periodsOn(ctx.tt, date));
   const out = row.map((subject, i) => ({ period: i + 1, subject })).filter(s => s.subject);
   const day = ctx.log && ctx.log[date];
   if (!day) return out;
   for (const [p, r] of Object.entries(day)) {
+    // 메모만 적은 칸(체크·교체 없음)은 시간표 교과 그대로(시간표를 바꾼 뒤 예전 교과가 남아 「교체」로 보이지 않게)
+    if (!r.status && !r.swap) continue;
     const i = out.findIndex(s => s.period === +p);
     if (i < 0) out.push({ period: +p, subject: r.subject, planned: '' });
     else if (out[i].subject !== r.subject) out[i] = { period: +p, subject: r.subject, planned: out[i].subject };
@@ -296,7 +309,8 @@ const MAX_AHEAD = 200;
 /* 주간학습안내(ctx.assume)에서 체크하지 않은 지난 칸을 진도표대로 한 것으로 셀 첫날: 진도 자리를 정한 다음 날(posAt), 없으면 처음 체크한 날.
    다음 학기 진도표로 바꾼 교과는 기준일(since) 앞은 세지 않음. 셀 날이 없으면 '' */
 export function assumeFrom(ctx, sub) {
-  let from = sub.posAt ? addDays(sub.posAt, 1) : Object.keys(ctx.log || {}).filter(d => d < ctx.today && Object.values(ctx.log[d]).some(r => r.status)).sort()[0] || '';
+  // 진도 자리를 정한 날이 없는 교과(0.36 앞에 넣은 교과)는 세지 않음 — 예전 진도 자리가 그 앞 체크하지 않은 칸을 이미 담고 있어 두 번 세게 됨
+  let from = sub.posAt ? addDays(sub.posAt, 1) : '';
   if (from && sub.since && from < sub.since) from = sub.since;
   return from && from < ctx.today ? from : '';
 }
@@ -397,7 +411,7 @@ export function hours(ctx, sub) {
   return { plan, done, left: Math.max(0, plan - done) };
 }
 /* 연간 실시: 다음 학기 진도표로 바꾼 교과(since)도 그 앞 학기 기록까지 */
-export const yearHours = (ctx, sub) => hours(ctx, sub).done + (sub.since ? records(ctx, sub, { all: true }).filter(r => r.date < sub.since && r.status !== 'skip').length : 0);
+export const yearHours = (ctx, sub) => hours(ctx, sub).done + (sub.prevHours0 || 0) + (sub.since ? records(ctx, sub, { all: true }).filter(r => r.date < sub.since && r.status !== 'skip').length : 0);
 
 /* 다음에 할 차시를 n(1부터)으로: 기록·실시 시수는 두고 진도 자리(offset)만 */
 export const setNext = (ctx, sub, n) => ({ ...sub, hours0: h0Of(sub), offset: n - 1 - records(ctx, sub).filter(r => r.status === 'done').length, posAt: ctx.today });
@@ -408,7 +422,7 @@ const ORDER = ['국어', '수학', '사회', '과학', '영어', '음악', '미�
 export function extraNames(ctx) {
   const names = [];
   const add = n => { if (!n || findSubject(ctx.subjects, n)) return; const k = extraKey(n); if (k && !names.includes(k)) names.push(k); };
-  for (const c of [ctx.tt.cells, ...(ctx.tt.versions || []).map(v => v.cells)]) for (const row of c) row.slice(0, ctx.tt.periods).forEach(add);
+  for (const v of [{ cells: ctx.tt.cells, periods: ctx.tt.periods }, ...(ctx.tt.versions || [])]) for (const row of v.cells) row.slice(0, v.periods || ctx.tt.periods).forEach(add);
   for (const [d, day] of Object.entries(ctx.log || {})) if (d <= ctx.today) for (const r of Object.values(day)) add(r.subject);
   const rank = n => (ORDER.includes(n) ? ORDER.indexOf(n) : ORDER.length);
   return names.map((n, i) => [n, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(x => x[0]);
@@ -504,7 +518,9 @@ export function termStart(ctx, old, lessons) {
     const left = new Map();
     for (const l of list) { const t = String(l.title || '').trim(); left.set(t, (left.get(t) || 0) + 1); }
     const kept = old.lessons.filter(l => { const n = left.get(l.title) || 0; if (n) left.set(l.title, n - 1); return n > 0; }).length;
-    return h.plan > 0 && h.done >= h.plan && same * 2 < list.length && kept * 2 < old.lessons.length ? ctx.today : null;
+    // 앞 진도표를 마침: 실시 시수가 계획에 닿았거나, 진도 자리(「다음 차시」·진도표대로 맞추기)가 끝까지 감(체크 전 실시는 그대로라 시수만으로는 모자랄 수 있음)
+    const at = old.offset + records(ctx, old).filter(r => r.status === 'done').length;
+    return h.plan > 0 && (h.done >= h.plan || at >= h.plan) && same * 2 < list.length && kept * 2 < old.lessons.length ? ctx.today : null;
   }
   const first = dates.sort()[0], back = !!old.since && first < old.since, base = back ? { ...old, since: '' } : old;
   const had = new Set(old.lessons.map(l => l.from).filter(Boolean)), early = records(ctx, base).some(r => r.date < first);
@@ -519,7 +535,8 @@ export function termStart(ctx, old, lessons) {
    앞의 기록은 세지 않고 새 교과처럼 계획 진도에 맞춤. fields: 함께 바꿀 값(이름·총 시수). 저장하지 못하면 null */
 export function replaceLessons(old, lessons, fields = {}) {
   const since = termStart(makeCtx(), old, lessons);
-  if (since) { const neu = saveSubject({ ...old, ...fields, since, start: since, offset: 0, hours0: 0, lessons }); return neu && saveSubject(seat(makeCtx(), neu)); }
+  // 앞 학기의 「체크 전 실시」는 prevHours0로 남김(연간 실시 yearHours에 더함)
+  if (since) { const neu = saveSubject({ ...old, ...fields, since, start: since, offset: 0, hours0: 0, prevHours0: (old.prevHours0 || 0) + h0Of(old), lessons }); return neu && saveSubject(seat(makeCtx(), neu)); }
   return saveSubject({ ...old, ...(since === '' ? { since: '' } : {}), ...fields, lessons });
 }
 /* 새 교과 넣기(진도표 파일·AI로 뽑기·직접 쓰기): 계획 진도에 맞춤. fields: 이름·차시 목록·총 시수. 저장하지 못하면 null.
@@ -550,7 +567,8 @@ export function leftPeriods(ctx, d) {
   return slotsOn(ctx, d).filter(s => {
     if (logged(ctx, d, s.period)) return false;
     const f = findSubject(ctx.subjects, s.subject);
-    return !!f && f.lessons.length > 0 && !(f.since && d < f.since);
+    // 진도 자리를 정한 날까지(그 자리가 앞 칸을 이미 담음)·교과를 넣기 전 날은 세지 않음(주간학습안내 assumeFrom과 같게)
+    return !!f && f.lessons.length > 0 && !(f.since && d < f.since) && !(f.posAt && d <= f.posAt) && !(isDate(f.start) && d < f.start);
   }).map(s => s.period);
 }
 /* 체크하지 않은 날: 처음 체크한 날부터, 오늘 앞 수업일 n일 안에서 진도표 있는 교과 수업 가운데 체크하지 않은 교시가 있는 날(오래된 순, 반만 체크한 날도).

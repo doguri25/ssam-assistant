@@ -2,7 +2,7 @@
    날짜는 앱이 정함: 선생님 글에서 기간·요일을 읽어(findRange·findWeekdays) 펼치고 주말·공휴일은 뺌(camp-model expandDates).
    AI는 하루 시간(교시)·교과 차례·지도 내용만 쓰고, 앱이 기간을 못 읽었을 때만 AI가 읽은 기간을 씀.
    AI로 가는 글에는 학생 이름 대신 학생A·학생B(toAlias), 지도교사 이름은 보내지 않음 */
-import { isDate, weekday, yearOfMonth, addDays, HOLIDAYS } from '../../core/calendar.js';
+import { isDate, weekday, yearOfMonth, addDays, HOLIDAYS, closedDays } from '../../core/calendar.js';
 import { toAlias, aliasMap, attStats, hoursTotal, campDates, sortSessions, expandDates, periodSlots, normTime, newSession, REPORT_HEADS, REPORT_KINDS } from './camp-model.js';
 import { DOC_LABEL } from './camp-docs.js';
 import { growthLines } from './camp-growth.js';
@@ -99,13 +99,15 @@ export function normSchedule(v, { range = null, weekdays = null } = {}) {
   const wdAI = arr(o.weekdays).map(Number).filter(n => Number.isInteger(n) && n >= 0 && n <= 6);
   const wd = weekdays && weekdays.length ? weekdays : wdAI.length ? wdAI : [1, 2, 3, 4, 5];
   const from = range ? range.from : isDate(o.from) ? o.from : '', to = range ? range.to : isDate(o.to) ? o.to : '';
+  // 학교가 쉬는 날(재량휴업일·개교기념일 — calendar closedDays)도 공휴일처럼 뺌(지시의 수업 날 수와 줄 수가 맞게)
   let dates = [], dropped = 0;
+  const closed = closedDays(), ok = d => isSchoolDay(d) && !closed.has(d);
   if (from && to && from <= to) {
     const want = expandDates(from, to, { weekdays: wd, skipHolidays: false });
-    dates = want.filter(isSchoolDay); dropped = want.length - dates.length;
+    dates = want.filter(ok); dropped = want.length - dates.length;
   } else {
     const ds = [...new Set(arr(o.dates).filter(isDate))].sort();
-    dates = ds.filter(isSchoolDay); dropped = ds.length - dates.length;
+    dates = ds.filter(ok); dropped = ds.length - dates.length;
   }
   let slots = arr(o.slots).filter(isObj).map(s => ({ start: normTime(s.start), end: normTime(s.end) })).filter(s => s.start && s.end && s.start < s.end)
     .sort((a, b) => (a.start < b.start ? -1 : 1)).slice(0, 10);

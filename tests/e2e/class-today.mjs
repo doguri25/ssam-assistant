@@ -79,6 +79,8 @@ await run('class-today', [
   }],
   ['체크하지 않은 날 → 누르면 그날로', async () => {
     await page.evaluate(() => localStorage.setItem('ssam:class:log', JSON.stringify({ '2026-10-26': { 1: { subject: '국어', status: 'done' } }, '2026-10-29': { 2: { subject: '국어(자)', status: 'done' } } })));
+    // 진도 자리는 학기 초에 정한 것으로(예시로 채운 오늘 앞 날도 「체크하지 않은 날」에 들게)
+    await page.evaluate(() => { const k = 'ssam:class:subjects'; localStorage.setItem(k, JSON.stringify(JSON.parse(localStorage.getItem(k)).map(x => ({ ...x, posAt: '2026-09-01' })))); });
     await tab('progress'); await tab('today');
     // 반만 체크한 날(10/26 — 1교시만)도 「체크하지 않은 날」(class-fix A5)
     const days = await page.$$eval(`${V} [data-go-day]`, bs => bs.map(b => b.dataset.goDay));

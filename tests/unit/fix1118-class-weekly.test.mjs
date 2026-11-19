@@ -94,12 +94,13 @@ test('주간학습안내: 체크하지 않은 지난 칸도 진도표대로 한 
   const idx = (ctx, date) => m.dayView(ctx, date).slots[0].index;
   // 체크: 11/2 완료, 11/3~5 체크 안 함, 오늘(11/6)은 앞날처럼 한 시간
   assert.equal(idx(base(sub0), '2026-11-09'), 2, '오늘 수업 셈');
-  assert.equal(idx({ ...base(sub0), assume: true }, '2026-11-09'), 5, '진도 자리를 정한 날이 없으면 처음 체크한 날부터');
+  assert.equal(idx({ ...base(sub0), assume: true }, '2026-11-09'), 2, '진도 자리를 정한 날이 없으면(0.36 앞에 넣은 교과) 세지 않음 — 예전 진도 자리가 이미 담고 있음');
+  assert.equal(idx({ ...base({ ...sub0, posAt: '2026-11-01' }), assume: true }, '2026-11-09'), 5, '정한 다음 날부터');
   const at = { ...sub0, posAt: '2026-11-04' };
   assert.equal(idx({ ...base(at), assume: true }, '2026-11-09'), 3, '진도 자리를 정한 다음 날부터');
-  assert.equal(idx({ ...base({ ...sub0, since: '2026-11-05' }), assume: true }, '2026-11-09'), 2, '다음 학기 기준일 앞은 기록도 체크 안 한 칸도 세지 않음(11/5 + 오늘)');
+  assert.equal(idx({ ...base({ ...sub0, posAt: '2026-11-01', since: '2026-11-05' }), assume: true }, '2026-11-09'), 2, '다음 학기 기준일 앞은 기록도 체크 안 한 칸도 세지 않음(11/5 + 오늘)');
   // 지난 날의 칸: 그 앞 체크 안 한 칸만큼
-  assert.equal(idx({ ...base(sub0), assume: true }, '2026-11-04'), 2);
+  assert.equal(idx({ ...base({ ...sub0, posAt: '2026-11-01' }), assume: true }, '2026-11-04'), 2);
   // 다음 차시 고르기는 그날을 남김
   assert.equal(m.setNext(base(sub0), sub0, 4).posAt, '2026-11-06');
   assert.equal(m.normSubject({ ...sub0, posAt: '2026-11-04' }).posAt, '2026-11-04');

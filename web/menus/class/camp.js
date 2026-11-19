@@ -600,7 +600,7 @@ async function addPlan(file, { imagesOk = false } = {}) {
       if (!x.subjects.length) x.subjects = [...new Set(sessions.flatMap(s => s.subject.split('·')).filter(Boolean))].slice(0, 12);
       if (!save(x)) return;
       render();
-      toast(`${info}수업 ${sessions.length}줄을 ${mode === 'add' ? '더했어요' : '만들었어요'}${spec.dropped ? ` · 주말·공휴일 ${spec.dropped}일은 뺐어요` : ''}`
+      toast(`${info}수업 ${sessions.length}줄을 ${mode === 'add' ? '더했어요' : '만들었어요'}${spec.dropped ? ` · 주말·공휴일·재량휴업일 ${spec.dropped}일은 뺐어요` : ''}`
         + (empty ? (byAI ? ` · 지도 내용이 빈 ${empty}줄은 채워 주세요` : ' · 지도 내용은 비어 있어요(AI 키가 있으면 계획서의 지도 내용까지 넣어요)') : '') + '. 날짜·시간을 확인해 주세요.', 9000);
     };
     if (!c.sessions.length) { apply('replace'); return; }
@@ -781,7 +781,7 @@ async function runSched(id, text, mode) {
     if (!save(c)) return;
     const here = visible() && cur() && cur().id === id;
     toast(`${here ? '' : `기초학력 「${c.name || '이름 없는 프로그램'}」에 `}수업 ${sessions.length}줄을 ${mode === 'add' ? '더했어요' : '만들었어요'}`
-      + (spec.dropped ? ` · 주말·공휴일 ${spec.dropped}일은 뺐어요` : '') + (empty ? ` · 지도 내용이 빈 ${empty}줄은 채워 주세요` : '') + '. 날짜·시간을 확인해 주세요.', 7000);
+      + (spec.dropped ? ` · 주말·공휴일·재량휴업일 ${spec.dropped}일은 뺐어요` : '') + (empty ? ` · 지도 내용이 빈 ${empty}줄은 채워 주세요` : '') + '. 날짜·시간을 확인해 주세요.', 7000);
   } catch (e) { toast(errText(e), 6000); }
   finally { delete busy[k]; redraw(); }
 }
