@@ -2587,9 +2587,10 @@ async function checkUpdate(manual) {
   try { info = await T.core.invoke('check_update'); }
   catch (e) { if (manual) toast('업데이트를 확인하지 못했어요: ' + String(e && (e.message || e)).slice(0, 120), 5000); return; }
   UPD.info = info;
-  if (!info.available) {
+  // 앱이 빈 답(null)을 주면 새 버전 없음으로 봄(오류로 멈추지 않게)
+  if (!info || !info.available) {
     const top0 = $('#updTop'); if (top0) top0.hidden = true;
-    if (manual) toast(info.latest ? `최신 버전이에요 (${info.current})` : '아직 올라온 업데이트가 없어요');
+    if (manual) toast(info && info.latest ? `최신 버전이에요 (${info.current})` : '아직 올라온 업데이트가 없어요');
     return;
   }
   // 알림 창을 실수로 닫아도 ⋮ 옆 버튼으로 다시 열 수 있게
