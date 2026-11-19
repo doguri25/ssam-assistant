@@ -4,7 +4,7 @@
 
 ## 지금 상태 (2026-11-19)
 
-- 최신 릴리즈는 **v0.37.1**(두 번째 버그 찾기 25건). 그 앞 v0.37.0(학년말 마감 도우미, 교내 자율연수, 쪽지 회신 기한·현황판 공유, 버그 25건), v0.36.0(연수 메뉴·이수증 수합, 학급 탭 손보기, 메뉴 사이 연결). main과 작업 브랜치 `claude/wonderful-johnson-lqb8em`은 그 릴리즈 커밋.
+- 최신 릴리즈는 **v0.37.1**(두 번째 버그 찾기 25건). 그 앞 v0.37.0(학년말 마감 도우미, 교내 자율연수, 쪽지 회신 기한·현황판 공유, 버그 25건), v0.36.0(연수 메뉴·이수증 수합, 학급 탭 손보기, 메뉴 사이 연결). main은 그 릴리즈 커밋, 작업 브랜치 `claude/wonderful-johnson-lqb8em`은 그 뒤 선생님 요청(아래 2026-11-19 「1,2 … 6 한달 달력」)이 더 있다(릴리즈 안 함).
   - 0.34.1: 남은 한계 고침 — 기준표 칸 글은 AI로 갈 때 이름을 ○○○로(`rubric-model.js aiCell`), 「김정대로 바꿔 줘」(privacy `DAERO`·`roGivenName`),
     물건 머리 줄의 이름은 다른 줄에서 사람으로 쓰일 때 배움(privacy `personUse`), 품의 「총 30자루 15,000원」(`tests/unit/fix1117-limits.test.mjs`).
   - 수준별 기준표(루브릭): 설계 `docs/superpowers/specs/2026-11-16-rubric-design.md`, 계획 `docs/superpowers/plans/2026-11-16-rubric.md`.
@@ -65,6 +65,14 @@
   기초학력 `closedDays`는 방학·한 주 넘는 휴업 기간 빼고·날짜 넣기 같은 시각이면 교시 수 그대로·날마다 한 덩어리는 periods null·`longMergeDates`(1000자 넘는 날은 합치지 않음)·오늘 화면 카드 `shownName`·빈 칸으로 셈,
   연수 `STAFF_H`·`parseStaffLines`(서로 부르지 않음)·`nameTok`(looksLikeName·`ROLE_TOK`)·`certDate` 끝나지 않은 기간은 마지막에 첫날·폼 다시 넣기는 같은 주소면 그대로·`mergeBoards` 반려는 `at`·`lecturerNames`,
   채팅 `WRITE_IDS`(쓰기 명령이면 dataQuestion 안 함)·붙여 넣은 글은 오늘 수업·진도표 예전 규칙만·다른 메뉴 일이 분명하면 화면 가기 물러남, 이수증 본문 말 넓힘·사진 이수증도 물음, 쪽지 마감 줄 한 번.
+- 선생님 요청(2026-11-19 「1,2 이수증 파일은 스캔해서 코드만 받게 해줘 … 6 한달 달력 넣어주고 멀티에이전트를 돌려서 버그를 찾아내어 수정해줘」, 릴리즈 안 함):
+  1) 교직원 이름 가리기: 연수 현황판 명단 이름은 어느 길에서든(`privacy knownStaff`·`maskKnown` — stripNames·maskStaff·`chat-names maskPersons`가 부름, 저장값 비교는 `store.getRaw`),
+     「미제출:」「아직 안 낸 분:」「참석자:」 뒤 목록(`LIST_HEAD`·`maskPeopleList`), 쪽지·가정통신문·공문 처리·결과 보고의 `cleanSheet`도 maskStaff.
+  2) 오늘 화면 기초학력 출석: 결석이 섞인 학생을 누르면 먼저 물음(`home-model absentOn`).
+  이수증은 이수번호만: `training-model certCode`(「제 … 호」「이수번호:」, 글 속 「기관-구분-20xx-번호」)·`codeNorm`, 칸 `code`·내 필수연수 `certNo`, 파일은 보관하지 않음(예전 `kept` 파일만 [예전 이수증 묶음]),
+     연수 이름 시트·못 맞춘 줄에서 이수번호 넣기, 구글 폼 「이수번호」 칸·만들기 안내, 결과 보고 명단·엑셀 명단표에 이수번호, 붙임 2는 kept가 있을 때만 (`tests/unit/fix1119-asks.test.mjs`).
+  6) 한 달 달력: 스펙 `docs/superpowers/specs/2026-11-19-month-calendar-design.md`. `web/menus/home/month-model.js`(칸·그날 할 것)·`month.js`(`gatherMonth`, 시트 `openMonth`, `[data-month-open]`),
+     오늘 화면 머리·공문 기한 카드 단추, 채팅 intent `month`(「12월 일정」은 그 학년도 달) (`tests/unit/fix1119-month.test.mjs`, e2e `fix1119-month.mjs`).
 - 메뉴 사이 흐름 점검(2026-11-18 「각 정보와 메뉴가 유기적으로 돌아가는지 확인해줘」, 0.36.0): 채팅 intent `budget`·`idea`·교체/보강/메모 → 오늘 수업·전담 → 진도표,
   「예산 얼마 남았어?」(`budget-model chatAnswer`), 떠 있는 버튼 kind `cert`(이수증 → `training.js putCerts`), 기초학력 수업 날은 `calendar closedDays`(재량휴업일 등 — 방학은 아님) 건너뜀,
   인수인계서에 기초학력(`camp-model handoverRows`)·연수 (`tests/unit/fix1118-flow.test.mjs`, e2e `fix1118-flow.mjs`).
@@ -84,7 +92,7 @@
 
 ## 시험
 
-- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1617개 통과)
+- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1624개 통과)
 - e2e 한 파일: `node tests/e2e/<이름>.mjs`
 - e2e 전체: `node tests/e2e/run-all.mjs` (약 170개 파일, 45~50분). 파일마다 다른 포트를 써서 나눠 돌려도 된다. 전체가 도는 동안에는 작업 폴더를 고치지 말고 `.claude/worktrees/` 아래 worktree에서 일한다(그 안에서는 저장소의 node_modules를 그대로 찾는다).
 

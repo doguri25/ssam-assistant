@@ -32,6 +32,7 @@ export const INTENTS = [
   ['budget', '예산 집행 현황', '품의 › 예산: 사업마다 예산·집행·예정·남은 돈·집행 마감'],
   ['idea', '수업 아이디어', '평가 › 활동지 › 수업 아이디어: 진도표 다음 차시로 수업 활동 아이디어 받기'],
   ['yearend', '학년말 마감', '학년말 마감 도우미: 생활기록부 글·기재 점검·평가·진도·기초학력 문서·연수·예산·공문·인수인계서·백업·새 학년도 점검표'],
+  ['month', '한 달 달력', '한 달 달력: 학사일정·공문 기한·연수·예산 마감·기초학력 수업·쪽지 회신·회의 할 일을 한 달에'],
   ['training', '필수연수', '연수 › 내 필수연수(이수 기한·이수증)·연수 현황판(교직원 이수증 제출 체크)'],
   ['memo', '관찰 메모', '학생 번호로 행동특성 관찰 메모 남기기'],
   ['memoView', '메모 보기', '학생 번호의 관찰 메모 보기'],
@@ -94,6 +95,7 @@ const RULES = [
   ['budget', /예산\s*(?:집행|현황|탭|얼마|남)|남은\s*예산|집행\s*(?:률|현황|마감)|사업별\s*예산|불용\s*(?:액|예산)/, 3.6],
   // 「학년말 성적 처리 안내」 같은 글은 아님 — 마감·정리·점검을 같이 말할 때만
   ['yearend', /학년\s*말\s*(?:마감|정리|점검)|학기\s*말\s*(?:마감|정리)|마감\s*도우미|생기부\s*마감|생활\s*기록부\s*마감|학년\s*마무리/, 3.4],
+  ['month', /한\s*달\s*(?:달력|일정|기한)|(?:이번|다음|지난|이)\s*달\s*(?:일정|달력|기한|할\s*일|스케줄)|월간\s*(?:달력|일정)|달력\s*(?:보여|열어|볼래|보기)/, 3.4], ['month', /(?:^|[^\d])(?:1[0-2]|[1-9])\s*월\s*(?:일정|달력|학사\s*일정|기한|할\s*일)/, 3.2], ['month', /달력/, 2.4],
   ['idea', /수업\s*아이디어|수업\s*활동\s*(?:추천|아이디어|구상)|수업\s*구상/, 3.6],
   ['progress', /진도표|시수/, 3], ['progress', /진도/, 2],
   // 기초학력(교과) 캠프: 「캠프 출석」, 캠프 + 출석·관찰·수업 확인서·보고서는 결과 보고·행특보다 앞섬. 「영어 캠프 안내 가정통신문」은 캠프가 아님
@@ -142,12 +144,12 @@ function scoreOf(t, o = {}) {
     if (scores.progress) { if (/진도표|시수/.test(t)) scores.progress = 3; else if (/진도/.test(t)) scores.progress = 2; else delete scores.progress; }
   }
   // 화면으로 가기만 하는 일(예산·연수·학년말·수업 아이디어·오늘 수업·진도표)은 글을 쓰는 일(쪽지·가정통신문·공문·보고서·품의·회의록·행사)이 분명하면 물러남 — 넘길 글을 잃지 않게
-  const NAV_IDS = ['budget', 'training', 'yearend', 'idea', 'today', 'progress'];
+  const NAV_IDS = ['budget', 'training', 'yearend', 'idea', 'today', 'progress', 'month'];
   if (['message', 'letter', 'gongmun', 'report', 'purchase', 'minutes', 'event'].some(id => (scores[id] || 0) >= 2.5)) for (const id of NAV_IDS) if (scores[id] && scores[id] < 4) scores[id] = 1;
   // 다른 메뉴 일(인수인계서·주간학습안내·연간계획·기재 점검·평어·채점·기초학력·다면평가…)이 분명해도 물러남(「인수인계서에 연수 현황 넣어 줘」)
   if (['handover', 'weekly', 'year', 'classplan', 'check', 'pyeongeo', 'hk', 'cc', 'gr', 'unit', 'activity', 'camp', 'multi'].some(id => (scores[id] || 0) >= 2.5)) for (const id of NAV_IDS) if (scores[id] && scores[id] < 4) scores[id] = 1;
   // 붙여 넣은 여러 줄 글도 화면 가기로 보내지 않음(글이 사라짐)
-  if (o.paste) for (const id of ['budget', 'training', 'yearend', 'idea']) if (scores[id]) scores[id] = Math.min(scores[id], 1);
+  if (o.paste) for (const id of ['budget', 'training', 'yearend', 'idea', 'month']) if (scores[id]) scores[id] = Math.min(scores[id], 1);
   return scores;
 }
 /* 분명히 앞선 할 일(SURE 이상, 둘째보다 GAP 이상) 또는 null */
@@ -228,6 +230,8 @@ export function payloadFor(intent, text) {
   if (intent === 'translate') return { lang: langOf(t) };
   if (intent === 'multi') return { view: /정성|자기\s*실적/.test(t) ? 'qual' : /정량/.test(t) ? 'quant' : '' };
   if (intent === 'memo' || intent === 'memoView') { const m = parseMemo(t); return m ? { nos: m.nos, body: m.body } : { nos: [], body: '' }; }
+  // 한 달 달력: 「다음 달 일정」「지난달 달력」이면 그 달
+  if (intent === 'month') { const m = /(?:^|[^\d])(1[0-2]|[1-9])\s*월/.exec(t); return { text: /다음\s*달/.test(t) ? '다음 달' : /지난\s*달/.test(t) ? '지난달' : '', mon: m ? +m[1] : 0 }; }
   return {};
 }
 

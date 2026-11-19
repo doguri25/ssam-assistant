@@ -2,7 +2,7 @@
    흔한 성 + 흔한 이름(두 글자) 목록으로 봄: 「김민수가」「박지훈 결석계」「이서연이」「김민수네」, 성 없이 「민준이가」(받침 있는 이름 + 이 + 조사).
    이름 목록에 없어도 앞뒤에 「학생·어머니·선생님·님·결석·상담」이나 「담임·회장·이름:」이 붙으면 이름 글자로만 된 낱말은 가림.
    「구구단을」「모둠원과」「마무리를」「한국사를」「고무줄을」「조각품을」처럼 흔한 성 글자로 시작하는 낱말은 그대로 */
-import { SURNAME, MASK, nameCell, roName, roSpot, roGivenName } from './privacy.js';
+import { SURNAME, MASK, nameCell, roName, roSpot, roGivenName, maskKnown } from './privacy.js';
 
 /* 흔한 이름(성을 뺀 두 글자): 요즘 학생 이름과 선생님·보호자 나이대 이름. 흔한 낱말과 겹치는 것(정한·해진·어진·하진·대한·성원·정원·연수·진주·나라)은 뺌 */
 const NAMES = (
@@ -141,11 +141,12 @@ function hit(tok, prev, next, { memo = false, first = false, before = '', after 
 
 /* 줄 안의 사람 이름을 ○○○로(조사·호칭은 남김) → { text, masked }. memo: 행특 메모(더 넓게 가림) */
 export function maskPersons(text, { memo = false } = {}) {
-  const s = String(text == null ? '' : text);
+  // 연수 현황판 교직원 명단에 넣은 이름은 먼저(흔한 이름 목록에 없어도)
+  const k = maskKnown(String(text == null ? '' : text)), s = k.text;
   const cuts = personCuts(s, memo);
   let out = s;
   for (const [at, len] of cuts.reverse()) out = out.slice(0, at) + MASK + out.slice(at + len);
-  return { text: out, masked: cuts.length };
+  return { text: out, masked: cuts.length + k.masked };
 }
 /* 이름이 있는 곳 [{ start, end }] (평가 › 기재 점검이 글에 표시함) */
 export const personSpans = (text, { memo = false } = {}) => personCuts(String(text == null ? '' : text), memo).map(([at, len]) => ({ start: at, end: at + len }));

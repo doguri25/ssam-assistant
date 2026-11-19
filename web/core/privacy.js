@@ -1,4 +1,5 @@
 /* 개인정보 규칙: 사람 이름 모양, 명단·담임 표·전화번호 줄 빼기 (학생 이름은 저장하지도 AI로 보내지도 않음) */
+import { getRaw } from './store.js';
 export const SURNAME = new Set('김이박최정강조윤장임한오서신권황안송전홍유류고문양손배백허남심노하곽성차주우구민진나지엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예봉경'.split(''));
 const DOUBLE = /^(남궁|황보|제갈|선우|독고)[가-힣]{2}$/;
 // 흔한 성씨 글자로 시작하는 세 글자 낱말 (이름으로 세지 않음)
@@ -267,9 +268,48 @@ const staffJosa = (w, before = '', after = '') => { for (const k of [3, 2]) { if
 const INSOL_GROUP = new Set(['정담임', '부담임', '전담임', '우천시', '이동시', '각반별']);
 const insolName = (n, after) => (n.length === 3 ? personWord(n) && !INSOL_GROUP.has(n) : /^\s*(?:$|[,，)）]|선생님|교사)/.test(after));
 /* 직함 앞뒤의 교직원 이름만 ○○○로(그 밖의 글은 그대로 — 가린 자리를 되돌릴 수 있게 바꾸기만 함) → { text, masked } */
-export function maskStaff(text) {
+/* ---------- 연수 현황판 교직원 명단의 이름 ---------- */
+/* 흔한 이름 목록에 없어도(「남다율」「탁보결」) 명단에 넣은 이름은 어느 메뉴에서든 가림 — 쪽지·공문·채팅·회의록 … (stripNames·maskStaff·maskPersons가 부름) */
+let staffRaw, staffList = [], staffRe = null;
+export function knownStaff() {
+  const raw = getRaw('training:board');
+  if (raw === staffRaw) return staffList;
+  staffRaw = raw; staffList = []; staffRe = null;
+  try {
+    const b = raw ? JSON.parse(raw) : null;
+    const ns = b && Array.isArray(b.staff) ? b.staff.map(s => String((s && s.name) || '').replace(/\s+/g, '')).filter(n => /^[가-힣]{2,4}$/.test(n) && !TITLE.has(n)) : [];
+    staffList = [...new Set(ns)].sort((a, b) => b.length - a.length);
+  } catch (e) { staffList = []; }
+  return staffList;
+}
+// 이름 뒤: 끝·한글 아닌 글자·조사·호칭(「남다율님께」「탁보결 선생님」「남다율이랑」) — 「이산화탄소」처럼 이름 뒤에 다른 글자가 바로 붙은 낱말은 아님
+const KNOWN_NEXT = '(?=$|[^가-힣]|은|는|이|가|을|를|의|에|께|와|과|도|만|님|씨|샘|쌤|한테|랑|부터|까지|로|으로|선생|교사|부장|주무관|실무사|강사|담임|교감|교장)';
+export function maskKnown(text, names = knownStaff()) {
+  const s = String(text == null ? '' : text);
+  if (!names.length || !s) return { text: s, masked: 0 };
+  const re = names === staffList ? (staffRe = staffRe || new RegExp(`(?<![가-힣])(?:${names.join('|')})${KNOWN_NEXT}`, 'g'))
+    : new RegExp(`(?<![가-힣])(?:${names.join('|')})${KNOWN_NEXT}`, 'g');
   let masked = 0;
-  const s = String(text == null ? '' : text)
+  const out = s.replace(re, () => (masked++, MASK));
+  return { text: out, masked };
+}
+/* 사람 명단 머리 뒤(「미제출: 남다율, 탁보결」「아직 안 낸 분: …」「참석자: …」) — 목록의 이름 모양 낱말(두 글자 성 이름도)을 가림 */
+const LIST_HEAD = /((?:미\s*제출(?:자)?|미\s*이수(?:자)?|미\s*응답(?:자)?|미\s*회신(?:자)?|미\s*참석(?:자)?|미\s*신청(?:자)?|미\s*완료(?:자)?|안\s*(?:낸|내신|하신|한)\s*(?:분|사람|선생님)들?|제출\s*안\s*(?:한|하신)\s*(?:분|사람|선생님)들?|참석자|참가자|참여자|불참자?|대상자|교직원)\s*(?:명단|현황)?\s*[:：]\s*)([^\n]*)/g;
+const maskListBody = body => { let n = 0; const out = body.replace(/(^|[^가-힣])([가-힣]{2,6})(?![가-힣])/g, (m, pre, w, off, str) => {
+  const r = staffJosa(w, str.slice(0, off + pre.length), str.slice(off + m.length));
+  return r && (r[0].length === 2 || personWord(r[0])) ? (n++, pre + MASK + r[1]) : m;
+}); return [out, n]; };
+// 명단에 넣은 이름 + 사람 명단 머리 뒤 목록 → { text, masked } (stripNames·maskStaff가 먼저 부름)
+export function maskPeopleList(text) {
+  const k = maskKnown(text);
+  let masked = k.masked;
+  const s = k.text.replace(LIST_HEAD, (m, head, body) => { const [b, n] = maskListBody(body); masked += n; return head + b; });
+  return { text: s, masked };
+}
+export function maskStaff(text) {
+  const p = maskPeopleList(text);
+  let masked = p.masked;
+  const s = p.text
     .replace(STAFF_AFTER, (m, pre, n, sp, who) => (staffName(n) && !(n.length === 2 && who === '님') ? (masked++, pre + MASK + sp + who) : m))
     .replace(STAFF_BEFORE, (m, pre, w, off, str) => { const r = staffJosa(w, str.slice(0, off + pre.length), str.slice(off + m.length)); return r && (!/^인솔/.test(pre) || insolName(w.slice(0, w.length - r[1].length), str.slice(off + m.length))) ? (masked++, pre + MASK + r[1]) : m; })
     .replace(INSOL_SPACE, (m, pre, w) => (plainOk(w) && staffName(w) && personWord(w) && !INSOL_GROUP.has(w) && !(TWO_WORD.has(w.slice(0, 2)) && /[은는이가을를]$/.test(w)) ? (masked++, pre + MASK) : m));
@@ -310,6 +350,8 @@ export function stripNames(text, { keep = null } = {}) {
     if ((many && !(keep && keep(line))) || PHONE.test(line)) { dropped++; return false; }
     return true;
   });
+  // 연수 현황판 교직원 명단의 이름·「미제출: …」 같은 사람 명단 머리 뒤 목록
+  for (let i = 0; i < ls.length; i++) { const p = maskPeopleList(ls[i]); ls[i] = p.text; masked += p.masked; }
   // 직책 옆 이름 (「회장 김가람」, 「담임: 김준형」, 「회장 | 이나래」)
   for (let i = 0; i < ls.length; i++) ls[i] = ls[i].replace(ROLE_NAME, (m, pre, w, off, str) => { const r = nameJosa(w, roleOk, str.slice(0, off + pre.length), str.slice(off + m.length)); return r ? (masked++, pre + MASK + r[1]) : m; });
   // 이름 칸 (「6번 이름 김민수」「이름: 김솔」)

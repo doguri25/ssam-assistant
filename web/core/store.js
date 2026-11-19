@@ -13,6 +13,11 @@ export function get(key, fallback = null) {
   } catch (e) { return fallback; }
 }
 
+/* 저장한 글 그대로(JSON으로 풀지 않음) — 자주 읽는 쪽이 바뀌었는지만 견줄 때(privacy.knownStaff) */
+export function getRaw(key) {
+  try { const v = storage && storage.getItem(PREFIX + key); return v == null ? null : String(v); } catch (e) { return null; }
+}
+
 /* 학년도를 옮기는 동안 모든 저장을 멈춤 (옮긴 학년도에 지난 자료가 섞이지 않게) */
 let frozen = false;
 export const freeze = () => { frozen = true; };

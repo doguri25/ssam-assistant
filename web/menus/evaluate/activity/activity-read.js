@@ -1,5 +1,5 @@
 /* 활동지 머리 읽기(스펙 4.1): 교과·단원·차시·쪽·활동 이름, 그리고 학기. 못 찾으면 빈칸(선생님이 고침) */
-import { stripNames } from '../../../core/privacy.js';
+import { stripNames, maskStaff } from '../../../core/privacy.js';
 
 /* 넣은 활동지 글 다듬기: 주민번호 모양 줄은 빼고, 이름·전화번호가 적힌 줄(privacy.js)은 빼거나 가리고, 「이름: 김하늘」은 이름만 지움
    (「이름: 교사용」·빈 이름 칸은 그대로) → { text, cut(뺀 줄·가린 이름 수) } */
@@ -10,8 +10,10 @@ export function cleanSheet(text) {
   let named = 0;
   const kept = src.filter(l => !RRN.test(l)).map(l => l.replace(FILLED, (m, pre) => { named++; return pre.replace(/\s+$/, ''); }));
   const r = stripNames(kept.join('\n'));
-  const lines = r.dropped + (src.length - kept.length), names = r.masked + named; // 뺀 줄 · 가린 이름
-  return { text: r.text.trim(), cut: lines + names, lines, names };
+  // 직함 앞뒤 교직원 이름(「남다율 선생님께」「강사: 탁보결」)도 — 쪽지·가정통신문·공문 처리·결과 보고가 이 글을 AI로 보냄
+  const st = maskStaff(r.text);
+  const lines = r.dropped + (src.length - kept.length), names = r.masked + named + st.masked; // 뺀 줄 · 가린 이름
+  return { text: st.text.trim(), cut: lines + names, lines, names };
 }
 
 export const SUBJECTS = ['국어', '수학', '사회', '과학', '도덕', '영어', '음악', '미술', '체육', '실과', '바른 생활', '슬기로운 생활', '즐거운 생활'];

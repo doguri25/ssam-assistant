@@ -333,6 +333,16 @@ const tell = (st, words) => say(words[st] || words.error || '하지 못했어요
 /* 할 일 하기: 분명하면 그 메뉴로 가서 칸을 채우고 바로 시작(저장·결재·상신은 선생님이 직접) */
 async function run(intent, p = {}) {
   if (NAV[intent]) { const [m, t, msg] = NAV[intent]; go(m, t); say(msg); afterGo(); return; }
+  if (intent === 'month') {
+    // 「다음 달 일정」이면 다음 달로
+    const raw = String((p && p.text) || ''), m = await import('../menus/home/month-model.js'), now = m.monthOf(today());
+    // 「12월 일정」: 그 학년도의 그 달(3~12월은 학년도 해, 1·2월은 다음 해)
+    let ym = /다음\s*달/.test(raw) ? m.shiftMonth(now, 1) : /지난\s*달/.test(raw) ? m.shiftMonth(now, -1) : now;
+    if (p && p.mon >= 1 && p.mon <= 12) { const y = (await import('./years.js')).currentYear(today()); ym = `${p.mon <= 2 ? y + 1 : y}-${String(p.mon).padStart(2, '0')}`; }
+    (await import('../menus/home/month.js')).openMonth(ym);
+    say('한 달 달력을 열었어요. 날짜를 누르면 그날 일정·기한을, 줄을 누르면 그 메뉴로 가요.');
+    afterGo(); return;
+  }
   if (intent === 'yearend') {
     (await import('../menus/home/yearend.js')).openYearend();
     say('학년말 마감 점검표를 열었어요. 위에서부터 차례로 [가기]로 챙기면 돼요.');

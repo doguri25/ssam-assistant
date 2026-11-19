@@ -63,7 +63,7 @@ function headHTML(d) {
     : '<button type="button" class="btn tonal hm-tour" data-tour="start" aria-haspopup="dialog"><span aria-hidden="true">▶</span>3분 둘러보기</button>';
   return `<header class="hm-head">
     <div class="hm-head-t"><p class="hm-date">${esc(H.dateLine(d.t, y, { demo }))}</p><h2 id="hmTitle">${esc(H.headline(n))}</h2></div>
-    <div class="hm-head-b">${tour}
+    <div class="hm-head-b">${tour}<button type="button" class="btn tonal hm-month" data-month-open aria-haspopup="dialog"><span aria-hidden="true">📅</span> 한 달 달력</button>
     <button type="button" class="hm-ai ${a.ok ? 'ok' : 'need'}" data-hm-go="ai" aria-label="사용 중인 AI: ${esc(a.ok ? `${a.name} 준비됨` : '정해 주세요')} (설정 › AI로 가기)">
       <span class="hm-ai-dot" aria-hidden="true">${a.ok ? '✓' : '!'}</span><span>${a.ok ? `${esc(a.name || 'AI')} · 준비됨` : 'AI를 정해 주세요'}</span></button></div>
   </header>`;
@@ -83,7 +83,7 @@ function gmHTML(d) {
   const rows = lines.map(l => `<li>${l.html}</li>`).join('');
   return `<section class="hm-card hm-gm" aria-labelledby="hmGmH"><div class="hm-card-h"><h3 id="hmGmH">${d.mn.length ? '공문·회의 기한' : '공문 기한'}</h3></div>
     ${rows ? `<ul class="hm-list">${rows}</ul>` : '<p class="muted hm-none">가까운 기한이 없어요</p>'}
-    <div class="hm-card-f"><button type="button" class="btn text" data-hm-go="gongmun">공문 처리</button>${d.mn.length ? '<button type="button" class="btn text" data-hm-go="minutes">회의록</button>' : ''}</div></section>`;
+    <div class="hm-card-f"><button type="button" class="btn text" data-hm-go="gongmun">공문 처리</button>${d.mn.length ? '<button type="button" class="btn text" data-hm-go="minutes">회의록</button>' : ''}<button type="button" class="btn text" data-month-open>한 달 달력</button></div></section>`;
 }
 function lessonHTML(d) {
   const c = d.lessons;
@@ -191,7 +191,10 @@ function onClick(e) {
   if (m) {
     const c = camp();
     if (!c) return;
-    if (!saveCamp(H.cycleDay(c, today(), m.dataset.hmMark))) { toast(FULL_MSG, 7000); return; }
+    // 교시마다 출석·결석이 섞인 학생: 누르면 모든 교시가 출석이 되므로 먼저 물음(아니면 기초학력 화면에서 교시마다)
+    const sid = m.dataset.hmMark, st = H.dayMarks(c, today()).find(x => x.id === sid), absent = st && st.mark === 'mixed' ? H.absentOn(c, today(), sid) : 0;
+    if (absent && !confirm(`${st.name}: 오늘 결석으로 체크한 수업이 ${absent}개 있어요. 오늘 수업을 모두 출석으로 바꿀까요?\n(교시마다 바꾸려면 [취소] 뒤 「기초학력 열기」)`)) return;
+    if (!saveCamp(H.cycleDay(c, today(), sid))) { toast(FULL_MSG, 7000); return; }
     draw();
     return;
   }

@@ -47,6 +47,7 @@
 .tr-cs-list li>span:first-child{flex:1 1 110px;min-width:0}
 .tr-cs-list select{width:auto}
 .tr-cs-note{flex:1 1 140px;min-width:0}
+.tr-cs-code,.tr-pcode{flex:1 1 160px;min-width:0}
 #trStaffText,#trNudgeText{width:100%;box-sizing:border-box}
 /* 연수 수합(2026-11-19): 대상 아닌 칸·보관한 이수증·수합 마무리·연수 대상 */
 .tr-na{color:var(--line);text-align:center}

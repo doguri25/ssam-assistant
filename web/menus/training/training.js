@@ -9,7 +9,7 @@ import { readTable } from '../../core/sheet.js';
 import { currentYear } from '../../core/years.js';
 import * as T from './training-model.js';
 import { registerInbox } from '../../core/inbox.js';
-import { forms, MAX_FORM } from '../../core/form-store.js';
+import { forms } from '../../core/form-store.js';
 import { zipStore, unzip } from '../../core/zip.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
 import { getSchool } from '../../core/settings.js';
@@ -43,7 +43,7 @@ function itemHTML(x, t) {
       : x.status === 'sent' ? `<button class="btn tiny" type="button" data-tr="st" data-st="ok" data-id="${esc(x.id)}">확인 완료</button><button class="btn text tiny" type="button" data-tr="back" data-id="${esc(x.id)}">반려</button>` : '';
   return `<li class="tr-item tr-${x.status}" data-tr-item="${esc(x.id)}">
     <div class="tr-main"><b class="tr-title">${esc(x.title)}</b> ${st}<div class="muted tr-meta">${meta}</div>
-      ${x.cert ? `<div class="muted tr-cert">이수증: ${esc(x.cert)}${x.doneDate ? ` (${md(x.doneDate)} 이수)` : ''}</div>` : x.doneDate ? `<div class="muted tr-cert">${md(x.doneDate)} 이수</div>` : ''}
+      ${x.certNo || x.cert || x.doneDate ? `<div class="muted tr-cert">${[x.certNo ? `이수번호 ${esc(x.certNo)}` : x.cert ? `이수증: ${esc(x.cert)}` : '', x.doneDate ? `${md(x.doneDate)} 이수` : ''].filter(Boolean).join(' · ')}</div>` : ''}
       ${x.status === 'back' && x.note ? `<div class="tr-back">반려: ${esc(x.note)}</div>` : ''}</div>
     <div class="row tr-act">${act}
       <button class="btn text tiny" type="button" data-tr="cert" data-id="${esc(x.id)}" data-drop-pick>이수증 넣기</button>
@@ -62,7 +62,7 @@ function pendHTML(list, items) {
 function renderMine() {
   const t = today(), list = T.listMine(), s = T.mineSummary(list, t), y = currentYear(t);
   const head = `<div class="m-head m-head-row"><div><h2>내 필수연수 <span class="muted">(${y}학년도)</span></h2>
-    ${introHTML('training-mine', '올해 들어야 하는 연수의 기한을 챙기고 이수증을 넣어 이수를 기록해요. 이수증은 이 컴퓨터에서만 읽고(AI로 보내지 않아요) 파일 이름·이수일·시간만 남겨요 — 파일은 컴퓨터에 그대로 두세요. 공문 처리에서 연수 공문을 넣으면 [내 필수연수에 넣기]가 떠요.')}</div>
+    ${introHTML('training-mine', '올해 들어야 하는 연수의 기한을 챙기고 이수증을 넣어 이수를 기록해요. 이수증은 이 컴퓨터에서만 읽고(AI로 보내지 않아요) 이수번호·이수일·시간만 남겨요 — 파일은 보관하지 않으니 컴퓨터에 그대로 두세요. 사진·스캔은 글을 읽지 못해 [고치기]에서 이수번호를 넣어요. 공문 처리에서 연수 공문을 넣으면 [내 필수연수에 넣기]가 떠요.')}</div>
     <div class="m-head-act"><button class="btn" type="button" data-tr="defaults">기본 목록 넣기</button><button class="btn" type="button" data-tr="add">+ 연수 더하기</button>
       <button class="btn primary" type="button" data-tr="certs" data-drop-pick${busy ? ' disabled' : ''}>${busy ? '<span class="spin"></span>읽는 중…' : '이수증 넣기'}</button>
       <input type="file" id="trMineFiles" hidden multiple accept="${CERT_ACCEPT}"></div></div>`;
@@ -87,14 +87,15 @@ function itemSheet(x = {}) {
       <label class="yp-f"><span class="lab">시간</span><input class="field" id="trHours" inputmode="decimal" value="${esc(x.hours || '')}" autocomplete="off" placeholder="예) 2"></label></div>
     <label class="yp-f"><span class="lab">곳 <span class="muted">(연수원·사이트, 비워도 돼요)</span></span><input class="field" id="trWhere" value="${esc(x.where || '')}" autocomplete="off"></label>
     ${x.id ? `<label class="yp-f"><span class="lab">상태</span><select class="field" id="trStatus">${opts}</select></label>
-      <label class="yp-f"><span class="lab">이수일</span><input class="field" id="trDone" type="date" value="${esc(x.doneDate || '')}"></label>
+      <div class="row tr-two"><label class="yp-f"><span class="lab">이수일</span><input class="field" id="trDone" type="date" value="${esc(x.doneDate || '')}"></label>
+        <label class="yp-f"><span class="lab">이수번호</span><input class="field" id="trCertNo" value="${esc(x.certNo || '')}" autocomplete="off" placeholder="예) 충남-특직-2026-001"></label></div>
       <label class="yp-f"><span class="lab">메모 <span class="muted">(반려 사유 등)</span></span><input class="field" id="trNote" value="${esc(x.note || '')}" autocomplete="off"></label>` : ''}
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="trItemOk">${x.id ? '고치기' : '더하기'}</button></div></div>`, sh => {
     sh.querySelector('#trItemOk').addEventListener('click', () => {
       const title = sh.querySelector('#trTitle').value.trim();
       if (!title) { toast('연수 이름을 넣어 주세요'); return; }
       const v = { ...x, title, due: sh.querySelector('#trDue').value, hours: sh.querySelector('#trHours').value, where: sh.querySelector('#trWhere').value, at: x.at || Date.now() };
-      if (x.id) Object.assign(v, { status: sh.querySelector('#trStatus').value, doneDate: sh.querySelector('#trDone').value, note: sh.querySelector('#trNote').value });
+      if (x.id) Object.assign(v, { status: sh.querySelector('#trStatus').value, doneDate: sh.querySelector('#trDone').value, certNo: sh.querySelector('#trCertNo').value, note: sh.querySelector('#trNote').value });
       const list = T.listMine().filter(y => y.id !== x.id);
       if (!T.saveMine([...list, v])) { toast(FULL, 6000); return; }
       SS().closeSheet(); render();
@@ -111,19 +112,21 @@ const putItem = x => { if (!T.saveMine([...T.listMine().filter(y => y.id !== x.i
 /* 이수증 여러 장: 맞는 줄을 찾아 넣고, 못 맞춘 것은 고르게 */
 async function addMineCerts(files, only = null) {
   busy = true; render();
-  let put = 0;
+  let put = 0, noCode = 0;
   try {
     for (const f of (await expand(files)).map(x => x.file)) {
       const text = await certText(f), list = T.listMine();
       const r = T.readCert({ name: f.name, text }, list, today());
       const id = only || r.id;
       const x = id && list.find(y => y.id === id);
-      if (x) { if (putItem(T.applyCert(x, { name: f.name, ...r }, today()))) put++; } else minePend.push({ name: f.name, doneDate: r.doneDate, hours: r.hours });
+      if (!r.code) noCode++;
+      if (x) { if (putItem(T.applyCert(x, { name: f.name, ...r }, today()))) put++; } else minePend.push({ name: f.name, doneDate: r.doneDate, hours: r.hours, code: r.code });
     }
   } finally { busy = false; }
   render();
-  if (put) toast(`이수증 ${put}개를 넣었어요${minePend.length ? ` · ${minePend.length}개는 어느 연수인지 골라 주세요` : ''}`);
-  else if (minePend.length) toast('어느 연수 이수증인지 골라 주세요');
+  const nc = noCode ? ` · 이수번호를 읽지 못한 ${noCode}개(사진·스캔 등)는 [고치기]에서 넣어 주세요` : '';
+  if (put) toast(`이수증 ${put}개를 넣었어요(파일은 보관하지 않고 이수번호·이수일만)${minePend.length ? ` · ${minePend.length}개는 어느 연수인지 골라 주세요` : ''}${nc}`, nc ? 7000 : 4000);
+  else if (minePend.length) toast(`어느 연수 이수증인지 골라 주세요${nc}`, nc ? 7000 : 4000);
 }
 
 /* ---------- 연수 현황판 ---------- */
@@ -142,13 +145,13 @@ function boardHTML(b, t) {
   const th = b.courses.map(c => `<th scope="col"><button class="btn text tiny tr-th" type="button" data-tr="course" data-id="${esc(c.id)}">${esc(c.title)}</button></th>`).join('');
   const rows = b.staff.map(s => `<tr><th scope="row">${esc(s.name)}</th><td class="muted">${esc(s.kind)}</td><td class="muted">${esc(s.dept)}</td>${b.courses.map(c => {
     if (!T.inTarget(c, s)) return '<td class="tr-na" title="대상 아님">—</td>';
-    const m = T.markOf(b, c.id, s.id), tip = m ? [m.file, m.date ? `${md(m.date)} 이수` : '', m.link ? '구글 폼' : '', m.kept ? '파일 보관' : ''].filter(Boolean).join(' · ') : '';
-    return `<td><button class="tr-cell${cellCls(m)}" type="button" data-tr-cell="${esc(c.id)}|${esc(s.id)}" aria-label="${esc(s.name)} ${esc(c.title)} ${T.markLabel(m && m.s)}"${tip ? ` title="${esc(tip)}"` : ''}>${T.markLabel(m && m.s)}${m && m.kept ? '<span class="tr-clip" aria-hidden="true">📎</span>' : ''}</button></td>`;
+    const m = T.markOf(b, c.id, s.id), tip = m ? [m.code ? `이수번호 ${m.code}` : '', m.date ? `${md(m.date)} 이수` : '', m.file && m.file !== '구글 폼' ? m.file : '', m.link || m.file === '구글 폼' ? '구글 폼' : '', m.kept ? '파일 보관(예전)' : ''].filter(Boolean).join(' · ') : '';
+    return `<td><button class="tr-cell${cellCls(m)}" type="button" data-tr-cell="${esc(c.id)}|${esc(s.id)}" aria-label="${esc(s.name)} ${esc(c.title)} ${T.markLabel(m && m.s)}"${tip ? ` title="${esc(tip)}"` : ''}>${T.markLabel(m && m.s)}${m && m.code ? '<span class="tr-clip" aria-hidden="true">#</span>' : ''}${m && m.kept ? '<span class="tr-clip" aria-hidden="true">📎</span>' : ''}</button></td>`;
   }).join('')}</tr>`).join('');
   return `${b.courses.length ? `<div class="tr-courses">${courses}</div>` : ''}
     ${boardPendHTML(b)}
     ${b.courses.length ? `<div class="tr-tbl-wrap"><table class="tr-table"><thead><tr><th scope="col">이름</th><th scope="col">구분</th><th scope="col">부서</th>${th}</tr></thead><tbody>${rows}</tbody></table></div>
-      <p class="muted tr-legend">칸을 누르면 미제출 → 제출 → 확인 → 미제출(종이로 받은 것도 칸을 눌러요). 반려는 연수 이름을 눌러 골라요. 📎는 이 기기에 보관한 이수증, 「—」는 대상이 아닌 사람이에요.</p>
+      <p class="muted tr-legend">칸을 누르면 미제출 → 제출 → 확인 → 미제출(종이로 받은 것도 칸을 눌러요). 반려·이수번호는 연수 이름을 눌러 넣어요. #은 이수번호가 있는 칸, 📎는 예전에 이 기기에 보관한 이수증, 「—」는 대상이 아닌 사람이에요.</p>
       ${finishHTML(b)}`
     : '<div class="yp-card"><p style="margin:0">[+ 연수 더하기]로 챙길 연수를 넣어 주세요. 공문 처리에서 연수 공문의 [연수 현황판에 넣기]로도 넣을 수 있어요.</p></div>'}`;
 }
@@ -158,9 +161,9 @@ function finishHTML(b) {
   return `<div class="yp-card tr-finish"><h3>수합 마무리</h3>
     <div class="tr-fin-pick">${b.courses.map(c => `<label class="chk"><input type="checkbox" data-tr-fin value="${esc(c.id)}" checked> ${esc(c.title)}</label>`).join('')}</div>
     <div class="row tr-fin-act"><button class="btn primary" type="button" data-tr="report">결과 보고 만들기</button><button class="btn" type="button" data-tr="stats">교육청 실적 표 복사</button>
-      <button class="btn" type="button" data-tr="zip">이수증 묶음(ZIP)</button><button class="btn" type="button" data-tr="csv">엑셀 명단표</button>
+      ${kept ? '<button class="btn" type="button" data-tr="zip">예전 이수증 묶음(ZIP)</button>' : ''}<button class="btn" type="button" data-tr="csv">엑셀 명단표</button>
       <button class="btn text" type="button" data-tr="personal">사람별 미제출 복사</button></div>
-    <p class="muted tr-fin-note">이수증 ${kept}개를 이 기기에 보관하고 있어요(백업 파일에는 들어가지 않아요). 결과 보고·명단표에는 이름이 들어가 AI로 보내지 않고 이 컴퓨터에서만 만들어요.</p></div>`;
+    <p class="muted tr-fin-note">이수증 파일은 보관하지 않고 이수번호만 남겨요(백업 파일에 같이 들어가요) — 결과 보고 명단·엑셀 명단표에 이수번호가 들어가요.${kept ? ` 예전에 이 기기에 보관한 이수증 ${kept}개는 [예전 이수증 묶음]으로 받을 수 있어요(백업 파일에는 들어가지 않아요).` : ''} 결과 보고·명단표에는 이름이 들어가 AI로 보내지 않고 이 컴퓨터에서만 만들어요.</p></div>`;
 }
 const finCids = () => [...box.querySelectorAll('[data-tr-fin]:checked')].map(x => x.value);
 function boardPendHTML(b) {
@@ -171,12 +174,13 @@ function boardPendHTML(b) {
     <span class="tr-file">${esc(p.name)}${p.form ? ' <span class="muted">(구글 폼 응답)</span>' : ''}</span>
     <select class="field" data-tr-psid="${i}" aria-label="${esc(p.name)} 사람"><option value="">사람</option>${so.replace(`value="${esc(p.sid || '')}"`, `value="${esc(p.sid || '')}" selected`)}</select>
     <select class="field" data-tr-pcid="${i}" aria-label="${esc(p.name)} 연수"><option value="">연수</option>${co.replace(`value="${esc(p.cid || '')}"`, `value="${esc(p.cid || '')}" selected`)}</select>
+    <input class="field tr-pcode" data-tr-pcode="${i}" value="${esc(p.code || '')}" placeholder="이수번호" aria-label="${esc(p.name)} 이수번호" autocomplete="off">
     <button class="btn tiny primary" type="button" data-tr="bpPut" data-i="${i}">넣기</button><button class="btn text tiny" type="button" data-tr="bpDrop" data-i="${i}">버리기</button></li>`).join('')}</ul></div>`;
 }
 function renderBoard() {
   const t = today(), b = T.getBoard(), y = currentYear(t);
   const head = `<div class="m-head m-head-row"><div><h2>연수 현황판 <span class="muted">(${y}학년도)</span></h2>
-    ${introHTML('training-board', '연수 담당 선생님이 교직원 이수증을 수합해요. 메신저로 받은 이수증(구글 드라이브 ZIP도)을 한꺼번에 끌어 놓으면 파일 이름·이수증 글에서 이름과 연수를 찾아 「제출」로 체크하고, 구글 폼은 응답 엑셀·CSV를 넣어요. 종이는 칸을 눌러요. 다 모으면 아래 「수합 마무리」에서 결과 보고·교육청 실적 표·이수증 묶음·엑셀 명단표를 만들어요. 명단과 이수증은 이 컴퓨터에만 두고 AI로 보내지 않아요.')}</div>
+    ${introHTML('training-board', '연수 담당 선생님이 교직원 이수증을 수합해요. 메신저로 받은 이수증(구글 드라이브 ZIP도)을 한꺼번에 끌어 놓으면 파일 이름·이수증 글에서 이름과 연수를 찾아 「제출」로 체크하고 이수번호(「중앙교육연수원-유초중-직무-2026-…」「충남-특직-2026-…」)만 남겨요 — 이수증 파일은 보관하지 않아요. 구글 폼은 이수번호를 받는 폼의 응답 엑셀·CSV를 넣어요. 종이·사진은 칸을 누르거나 연수 이름을 눌러 이수번호를 넣어요. 다 모으면 아래 「수합 마무리」에서 결과 보고·교육청 실적 표·엑셀 명단표를 만들어요. 명단과 이수번호는 이 컴퓨터에만 두고 AI로 보내지 않아요.')}</div>
     <div class="m-head-act"><button class="btn" type="button" data-tr="staff">명단 ${b.staff.length ? `고치기 (${b.staff.length}명)` : '넣기'}</button><button class="btn" type="button" data-tr="addCourse">+ 연수 더하기</button>
       ${b.staff.length && b.courses.length ? `<button class="btn text" type="button" data-tr="formGuide">구글 폼 만들기 안내</button><button class="btn" type="button" data-tr="form" data-drop-pick>구글 폼 응답 넣기</button>
       <button class="btn primary" type="button" data-tr="bcerts" data-drop-pick${busy ? ' disabled' : ''}>${busy ? '<span class="spin"></span>읽는 중…' : '이수증 한꺼번에 넣기'}</button>` : ''}
@@ -188,13 +192,9 @@ function renderBoard() {
 }
 const putBoard = b => { if (!T.saveBoard(b)) { toast(FULL, 6000); return false; } return true; };
 
-/* ---------- 이수증 파일 보관(이 기기 IndexedDB — 백업 파일에는 들어가지 않음, 5MB까지) ---------- */
+/* ---------- 예전에 보관한 이수증 파일(이 기기 IndexedDB — 0.37까지. 이제는 보관하지 않고 이수번호만 남김) ---------- */
 const fileStore = () => forms('training');
 const yearNow = () => currentYear(today());
-async function keepFile(cid, sid, f) {
-  if (!f || !f.bytes || !f.bytes.length || f.bytes.length > MAX_FORM) return false;
-  try { await (await fileStore()).put({ id: T.fileKey(yearNow(), cid, sid), name: f.name, bytes: f.bytes, savedAt: Date.now() }); return true; } catch (e) { return false; }
-}
 async function dropFiles(pairs) {
   try { const st = await fileStore(); for (const [cid, sid] of pairs) await st.del(T.fileKey(yearNow(), cid, sid)).catch(() => {}); } catch (e) {}
 }
@@ -295,11 +295,12 @@ function courseSheet(cid) {
     <ul class="tr-cs-list">${T.targetStaff(b, c).map(s => { const m = T.markOf(b, cid, s.id); return `<li><span>${esc(s.name)}${s.dept ? ` <span class="muted">${esc(s.dept)}</span>` : ''}</span>
       <select class="field" data-tr-cs="${esc(s.id)}" aria-label="${esc(s.name)} 상태">${opt(m && m.s)}</select>
       <input class="field tr-cs-note" data-tr-csn="${esc(s.id)}" value="${esc((m && m.note) || '')}" placeholder="반려 사유" aria-label="${esc(s.name)} 반려 사유"${m && m.s === 'back' ? '' : ' hidden'}>
-      ${m && m.file ? `<span class="muted tr-file">${esc(m.file)}</span>` : ''}</li>`; }).join('')}</ul>
+      <input class="field tr-cs-code" data-tr-csc="${esc(s.id)}" value="${esc((m && m.code) || '')}" placeholder="이수번호" aria-label="${esc(s.name)} 이수번호" autocomplete="off"${m && (m.s === 'sent' || m.s === 'ok') ? '' : ' hidden'}>
+      ${m && m.file && m.file !== '구글 폼' ? `<span class="muted tr-file">${esc(m.file)}</span>` : ''}</li>`; }).join('')}</ul>
     <div class="row">${c.inhouse ? '<button class="btn text" type="button" id="trCsAllIn">모두 참석으로</button>' : ''}<button class="btn text" type="button" id="trCsAllOk">제출한 사람 모두 확인</button><button class="btn text" type="button" id="trCsMiss">미제출 명단 복사</button>
       <button class="btn text" type="button" id="trCsDel">연수 지우기</button><span class="grow"></span>
       <button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="trCsOk">저장</button></div></div>`, sh => {
-    sh.addEventListener('change', e => { const s = e.target.closest('[data-tr-cs]'); if (s) { const n = sh.querySelector(`[data-tr-csn="${CSS.escape(s.dataset.trCs)}"]`); if (n) n.hidden = s.value !== 'back'; } });
+    sh.addEventListener('change', e => { const s = e.target.closest('[data-tr-cs]'); if (s) { const k = CSS.escape(s.dataset.trCs), n = sh.querySelector(`[data-tr-csn="${k}"]`), cd = sh.querySelector(`[data-tr-csc="${k}"]`); if (n) n.hidden = s.value !== 'back'; if (cd) cd.hidden = !(s.value === 'sent' || s.value === 'ok'); } });
     sh.querySelector('#trCsAllOk').addEventListener('click', () => sh.querySelectorAll('[data-tr-cs]').forEach(s => { if (s.value === 'sent') s.value = 'ok'; }));
     // 교내 연수: 대상 모두 「확인」(이수일 = 연수 날)으로 저장하고 다시 열어 빠진 사람만 고치게
     const allIn = sh.querySelector('#trCsAllIn');
@@ -322,8 +323,10 @@ function courseSheet(cid) {
       const gone = [];
       sh.querySelectorAll('[data-tr-cs]').forEach(s => {
         const sid = s.dataset.trCs, old = T.markOf(cur, cid, sid), note = (sh.querySelector(`[data-tr-csn="${CSS.escape(sid)}"]`) || {}).value || '';
-        if ((old && old.s) !== (s.value || undefined) || (s.value === 'back' && note !== ((old && old.note) || ''))) {
-          cur = T.setMark(cur, cid, sid, s.value, s.value === 'back' ? { note } : {});
+        // 이수번호(종이·사진으로 받은 이수증은 여기서 넣음) — 제출·확인 칸만
+        const code = T.codeNorm((sh.querySelector(`[data-tr-csc="${CSS.escape(sid)}"]`) || {}).value || ''), withCode = s.value === 'sent' || s.value === 'ok';
+        if ((old && old.s) !== (s.value || undefined) || (s.value === 'back' && note !== ((old && old.note) || '')) || (withCode && code !== ((old && old.code) || ''))) {
+          cur = T.setMark(cur, cid, sid, s.value, s.value === 'back' ? { note } : withCode ? { code } : {});
           if (!s.value) gone.push([cid, sid]);
         }
       });
@@ -347,24 +350,28 @@ function nudgeSheet(cid) {
   });
 }
 /* 이수증 한꺼번에: 사람·연수를 찾아 「제출」, 못 맞춘 것은 고르게 */
-async function putBoardCert(cid, sid, f, { date = '', hours = null } = {}) {
-  const kept = await keepFile(cid, sid, f), b = T.getBoard(), old = T.markOf(b, cid, sid);
-  return putBoard(T.setMark(b, cid, sid, old && old.s === 'ok' ? 'ok' : 'sent', { file: f.name, note: '', date: date || (old && old.date) || '', hours: hours || (old && old.hours) || null, kept: kept || !!(old && old.kept) }));
+/* 이수증 한 장 → 그 칸 「제출」(확인은 그대로): 파일은 보관하지 않고 이수번호·이수일·시간·파일 이름만. 예전에 보관한 파일은 새 이수증이 오면 지움 */
+async function putBoardCert(cid, sid, f, { date = '', hours = null, code = '' } = {}) {
+  const b = T.getBoard(), old = T.markOf(b, cid, sid);
+  const ok = putBoard(T.setMark(b, cid, sid, old && old.s === 'ok' ? 'ok' : 'sent', { file: f.name, note: '', date: date || (old && old.date) || '', hours: hours || (old && old.hours) || null, code: code || (old && old.code) || '', kept: false }));
+  if (ok && old && old.kept) dropFiles([[cid, sid]]);
+  return ok;
 }
 async function addBoardCerts(files) {
   busy = true; render();
-  let put = 0;
+  let put = 0, noCode = 0;
   try {
     for (const f of await expand(files)) {
       const text = await certText(f.file);
       const r = T.matchFile({ name: f.name, text }, T.getBoard());
-      const extra = { date: text ? T.certDate(text, today()) : '', hours: text ? T.certHours(text) : null };
+      const extra = { date: text ? T.certDate(text, today()) : '', hours: text ? T.certHours(text) : null, code: text ? T.certCode(text) : '' };
+      if (!extra.code) noCode++;
       if (r.sid && r.cid) { if (await putBoardCert(r.cid, r.sid, f, extra)) put++; }
-      else boardPend.push({ name: f.name, sid: r.sid, cid: r.cid, bytes: f.bytes, ...extra });
+      else boardPend.push({ name: f.name, sid: r.sid, cid: r.cid, ...extra });
     }
   } finally { busy = false; }
   render();
-  toast(`${put ? `${put}개를 맞췄어요` : '맞춘 이수증이 없어요'}${boardPend.length ? ` · ${boardPend.length}개는 못 맞췄어요` : ''}`, 5000);
+  toast(`${put ? `${put}개를 맞췄어요(파일은 보관하지 않고 이수번호만)` : '맞춘 이수증이 없어요'}${boardPend.length ? ` · ${boardPend.length}개는 못 맞췄어요` : ''}${noCode ? ` · 이수번호를 읽지 못한 ${noCode}개(사진·스캔 등)는 연수 이름을 눌러 넣어 주세요` : ''}`, noCode ? 8000 : 5000);
 }
 async function staffFile(f) {
   try {
@@ -432,13 +439,13 @@ async function formFile(f) {
     for (const h of last.values()) {
       const old = T.markOf(cur, h.cid, h.sid);
       // 누적 응답 시트를 다시 넣을 때 이미 넣은 응답(같은 파일 주소)은 그대로 — 반려·확인·메모·이수일이 되돌아가지 않게(다시 낸 응답은 새 주소)
-      if (old && (old.link || '') === (h.link || '') && (h.link || old.file === '구글 폼')) { same++; continue; }
+      if (old && (old.link || '') === (h.link || '') && (old.code || '') === (h.code || '') && (h.link || h.code || old.file === '구글 폼')) { same++; continue; }
       // 이수증에서 읽은 이수일·넣어 둔 파일은 그대로(폼 시각은 이수일이 아님), 반려한 칸은 새 응답 날짜로
-      cur = T.setMark(cur, h.cid, h.sid, old && old.s === 'ok' ? 'ok' : 'sent', { file: old && old.kept ? old.file : '구글 폼', link: h.link, date: (old && old.s !== 'back' && old.date) || h.date || '', note: '' });
+      cur = T.setMark(cur, h.cid, h.sid, old && old.s === 'ok' ? 'ok' : 'sent', { file: old && old.kept ? old.file : '구글 폼', link: h.link, code: h.code || (old && old.code) || '', date: (old && old.s !== 'back' && old.date) || h.date || '', note: '' });
       put++;
     }
     if (put && !putBoard(cur)) return;
-    for (const m of r.miss) boardPend.push({ name: m.name, sid: m.sid, cid: m.course, link: m.link, date: m.date, form: true });
+    for (const m of r.miss) boardPend.push({ name: m.name, sid: m.sid, cid: m.course, link: m.link, date: m.date, code: m.code, form: true });
     render();
     toast(`구글 폼 응답 ${put}명을 「제출」로 넣었어요${same ? ` · ${same}명은 이미 넣은 응답이라 그대로 뒀어요` : ''}${r.miss.length ? ` · ${r.miss.length}명은 골라 주세요` : ''}`, 5000);
   };
@@ -567,8 +574,9 @@ document.addEventListener('click', async e => {
     if (a === 'bpPut') {
       const sid = (box.querySelector(`[data-tr-psid="${i}"]`) || {}).value, cid = (box.querySelector(`[data-tr-pcid="${i}"]`) || {}).value;
       if (!sid || !cid) { toast('사람과 연수를 골라 주세요'); return; }
-      if (p.form) { if (!putBoard(T.setMark(T.getBoard(), cid, sid, 'sent', { file: '구글 폼', link: p.link, date: p.date }))) return; }
-      else if (!await putBoardCert(cid, sid, { name: p.name, bytes: p.bytes }, p)) return;
+      const code = T.codeNorm((box.querySelector(`[data-tr-pcode="${i}"]`) || {}).value || p.code || '');
+      if (p.form) { if (!putBoard(T.setMark(T.getBoard(), cid, sid, 'sent', { file: '구글 폼', link: p.link, date: p.date, code }))) return; }
+      else if (!await putBoardCert(cid, sid, { name: p.name }, { ...p, code })) return;
     }
     boardPend.splice(i, 1); render();
   }

@@ -34,7 +34,7 @@ export const isDone = s => s === 'done' || s === 'sent' || s === 'ok';
 export function normItem(v) {
   if (!isObj(v) || !str(v.title, 100)) return null;
   return { id: typeof v.id === 'string' && v.id ? v.id.slice(0, 40) : newId('tm'), title: str(v.title, 100), hours: num(v.hours), due: isDate(v.due) ? v.due : '',
-    where: str(v.where, 60), status: ST.includes(v.status) ? v.status : 'todo', doneDate: isDate(v.doneDate) ? v.doneDate : '', cert: str(v.cert, 120),
+    where: str(v.where, 60), status: ST.includes(v.status) ? v.status : 'todo', doneDate: isDate(v.doneDate) ? v.doneDate : '', cert: str(v.cert, 120), certNo: codeNorm(v.certNo),
     note: str(v.note, 200), from: str(v.from, 60), at: Number(v.at) || 0 };
 }
 /* 차례: 미이수·반려(기한 가까운 것 먼저, 기한 없는 것은 뒤) → 이수함 → 제출함 → 확인 완료, 같으면 이름 */
@@ -134,14 +134,32 @@ export function certHours(text) {
   const c = /(\d{1,3})\s*차시/.exec(t);
   return c ? num(c[1]) : null;
 }
-/* 이수증 한 장 → 어느 줄인지(id, 못 맞추면 null)·이수일·시간. name: 파일 이름, text: 읽은 글(사진·스캔은 '') */
+/* ---------- 이수번호(이수증 번호) — 이수증 파일은 보관하지 않고 이 번호만 남김(2026-11-19 선생님 요청) ---------- */
+// 「중앙교육연수원-유초중-직무-2026-12345」「충남-특직-2026-001」 꼴: 하이픈으로 이은 마디(띄어 쓴 「충남 - 특직」도), 끝 「호」는 뺌
+const SEG = '[가-힣A-Za-z0-9]{1,20}';
+const CODE_ANY = new RegExp(`${SEG}(?:\\s*[-–]\\s*${SEG}){1,7}`, 'g');
+export const codeNorm = v => String(v == null ? '' : v).replace(/\s*[-–]\s*/g, '-').replace(/^\s*제\s*/, '').replace(/\s*호\s*$/, '').replace(/\s+/g, ' ').trim().slice(0, 60);
+// 이름표 없이 글 속에서 찾을 때: 마디 셋 넘게·한글/영문 마디·20xx 연도 마디·끝 마디에 숫자(날짜 2026-11-03·전화번호는 아님)
+const strictCode = c => c.split('-').length >= 3 && /[가-힣A-Za-z]/.test(c) && /(?:^|-)20\d{2}(?:-|$)/.test(c) && /\d/.test(c.split('-').pop());
+const CODE_LABEL = /(?:이\s*수\s*(?:증\s*)?번\s*호|증\s*서\s*번\s*호|수\s*료\s*(?:증\s*)?번\s*호|발\s*급\s*번\s*호|연\s*수\s*번\s*호)\s*[:：]?\s*(.+)/;
+/* 이수증 글 → 이수번호. 1) 「이수번호·증서번호·수료번호·발급번호:」 또는 「제 … 호」 옆, 2) 글 속 「기관-구분-연도-번호」 꼴. 없으면 '' */
+export function certCode(text) {
+  const t = String(text || '');
+  for (const l of t.split(/\n/)) {
+    const m = CODE_LABEL.exec(l) || /(?:^|[\s(（])제\s*([^호\n]{3,60}?)\s*호(?![가-힣])/.exec(l);
+    if (m) for (const x of m[1].matchAll(CODE_ANY)) { const c = codeNorm(x[0]); if (c.includes('-') && /\d/.test(c)) return c; }
+  }
+  for (const x of t.matchAll(CODE_ANY)) { const c = codeNorm(x[0]); if (strictCode(c)) return c; }
+  return '';
+}
+/* 이수증 한 장 → 어느 줄인지(id, 못 맞추면 null)·이수일·시간·이수번호. name: 파일 이름, text: 읽은 글(사진·스캔은 '') */
 export function readCert({ name = '', text = '' } = {}, items = [], today = '') {
   const pick = bestCourse(items, `${name}\n${text}`);
-  return { id: pick ? pick.id : null, doneDate: certDate(text, today), hours: certHours(text) };
+  return { id: pick ? pick.id : null, doneDate: certDate(text, today), hours: certHours(text), code: certCode(text) };
 }
 /* 이수증을 그 줄에 넣기 → 바뀐 줄 */
-export const applyCert = (item, { name, doneDate, hours }, today) => ({ ...item, status: item.status === 'sent' || item.status === 'ok' ? item.status : 'done',
-  cert: str(name, 120), doneDate: doneDate || item.doneDate || today, hours: item.hours || hours || null, note: item.status === 'back' ? '' : item.note });
+export const applyCert = (item, { name, doneDate, hours, code }, today) => ({ ...item, status: item.status === 'sent' || item.status === 'ok' ? item.status : 'done',
+  cert: str(name, 120), certNo: codeNorm(code) || item.certNo || '', doneDate: doneDate || item.doneDate || today, hours: item.hours || hours || null, note: item.status === 'back' ? '' : item.note });
 
 /* ---------- 공문에서 ---------- */
 /* 연수 공문인지: 제목·요약·할 일·제출 내용에 연수·교육이 있고 이수·수료 말이 있음 */
@@ -206,8 +224,8 @@ export function normBoard(v) {
     if (!cid.has(c) || !isObj(row)) continue;
     for (const [s, m] of Object.entries(row)) {
       if (!sid.has(s) || !isObj(m) || !MK.includes(m.s)) continue;
-      // date·hours: 이수증 글에서 읽은 이수일·시간, link: 구글 폼 파일 주소, kept: 이 기기에 파일을 보관함
-      (marks[c] = marks[c] || {})[s] = { s: m.s, file: str(m.file, 120), note: str(m.note, 200), at: Number(m.at) || 0, date: isDate(m.date) ? m.date : '', hours: num(m.hours),
+      // date·hours: 이수증 글에서 읽은 이수일·시간, code: 이수번호, link: 구글 폼 파일 주소, kept: 이 기기에 파일을 보관함(0.37 앞 — 이제는 보관하지 않음)
+      (marks[c] = marks[c] || {})[s] = { s: m.s, file: str(m.file, 120), note: str(m.note, 200), at: Number(m.at) || 0, date: isDate(m.date) ? m.date : '', hours: num(m.hours), code: codeNorm(m.code),
         link: /^https?:\/\//.test(String(m.link || '')) ? String(m.link).slice(0, 300) : '', kept: !!m.kept };
     }
   }
@@ -338,7 +356,7 @@ export function cellText(b, c, s, { report = false } = {}) {
   if (!m) return report ? '미이수' : '';
   if (m.s === 'back') return `반려${m.note ? `(${m.note})` : ''}`;
   const lab = report ? '이수' : markLabel(m.s);
-  return m.date ? `${lab}(${mdot(m.date)})` : lab;
+  return `${m.date ? `${lab}(${mdot(m.date)})` : lab}${m.code ? ` ${m.code}` : ''}`;
 }
 /* 엑셀(CSV): 이름, 구분, 부서, 연수…, 맨 아래 이수율, 그 아래 구분별 실적 */
 const csvCell = v => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
@@ -361,8 +379,10 @@ export function formResponses(rows, b, { cid = '' } = {}) {
   if (hi < 0) return { hits: [], miss: [], noName: true };
   const h = rs[hi], col = re => h.findIndex(c => re.test(c));
   const ni = col(NAME_H), di = col(/^(부서|소속|직위|학년)/), ti = col(/타임스탬프|timestamp|제출\s*(일|시)|날짜/i);
-  const ci = h.findIndex((c, i) => i !== ni && /연수|교육|과정/.test(c) && !/파일|이수증|업로드|첨부/.test(c));
-  let fi = col(/파일|이수증|업로드|첨부/);
+  // 이수번호 칸(「이수번호」「이수증 번호」「증서번호」) — 이수증 파일 대신 받는 칸
+  const ki = col(/번\s*호/);
+  const ci = h.findIndex((c, i) => i !== ni && i !== ki && /연수|교육|과정/.test(c) && !/파일|이수증|업로드|첨부|번\s*호/.test(c));
+  let fi = h.findIndex((c, i) => i !== ki && /파일|이수증|업로드|첨부/.test(c));
   if (fi < 0) fi = h.findIndex((_, i) => rs.slice(hi + 1).some(r => /^https?:\/\//.test(r[i] || '')));
   const hits = [], miss = [];
   for (const r of rs.slice(hi + 1)) {
@@ -373,9 +393,9 @@ export function formResponses(rows, b, { cid = '' } = {}) {
     if (who.length > 1 && di >= 0) who = who.filter(s => s.dept && (r[di] || '').includes(s.dept));
     const course = ci >= 0 ? bestCourse(b.courses, r[ci] || '', { one: true }) : b.courses.find(c => c.id === cid) || (b.courses.length === 1 ? b.courses[0] : null);
     const link = ((fi >= 0 ? r[fi] : '') || '').split(/[,\s]+/).find(x => /^https?:\/\//.test(x)) || '';
-    const date = ti >= 0 ? formDate(r[ti]) : '';
-    if (who.length === 1 && course) hits.push({ sid: who[0].id, cid: course.id, link, date });
-    else miss.push({ name, course: course ? course.id : '', link, date, sid: who.length === 1 ? who[0].id : '' });
+    const date = ti >= 0 ? formDate(r[ti]) : '', code = ki >= 0 ? (certCode(r[ki] || '') || codeNorm(r[ki] || '')) : '';
+    if (who.length === 1 && course) hits.push({ sid: who[0].id, cid: course.id, link, date, code });
+    else miss.push({ name, course: course ? course.id : '', link, date, code, sid: who.length === 1 ? who[0].id : '' });
   }
   return { hits, miss, courseCol: ci >= 0 };
 }
@@ -392,10 +412,10 @@ export function bundleName(c, s, file) {
 export function bundleEntries(b, files, { year, cids = null } = {}) {
   const out = [], used = new Set();
   const cs = b.courses.filter(c => !cids || cids.includes(c.id));
-  const rows = [['연수', '이름', '구분', '부서', '상태', '이수일', '파일']];
+  const rows = [['연수', '이름', '구분', '부서', '상태', '이수일', '이수번호', '파일']];
   for (const c of cs) for (const s of targetStaff(b, c)) {
     const m = markOf(b, c.id, s.id);
-    if (!m || m.s === 'back') { rows.push([c.title, s.name, s.kind, s.dept, m ? '반려' : '미제출', '', '']); continue; }
+    if (!m || m.s === 'back') { rows.push([c.title, s.name, s.kind, s.dept, m ? '반려' : '미제출', '', '', '']); continue; }
     const f = files && files.get(fileKey(year, c.id, s.id));
     let name = '';
     if (f && f.bytes) {
@@ -403,7 +423,7 @@ export function bundleEntries(b, files, { year, cids = null } = {}) {
       for (let i = 2; used.has(name); i++) name = name.replace(/(?: \(\d+\))?(\.[a-z0-9]+)$/i, ` (${i})$1`);
       used.add(name); out.push({ name, data: f.bytes });
     }
-    rows.push([c.title, s.name, s.kind, s.dept, markLabel(m.s), m.date || '', name ? name.split('/').pop() : m.link ? `링크 ${m.link}` : '종이·링크']);
+    rows.push([c.title, s.name, s.kind, s.dept, markLabel(m.s), m.date || '', m.code || '', name ? name.split('/').pop() : m.link ? `링크 ${m.link}` : m.code ? '' : '종이·링크']);
   }
   out.push({ name: '이수 현황.csv', data: '\uFEFF' + rows.map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n' });
   return out;
@@ -427,10 +447,9 @@ export function formGuide(b, year) {
     '  - 성명 (단답형, 필수) ← 쌤비서가 이 칸으로 명단과 맞춰요',
     '  - 부서 (단답형) ← 같은 이름이 있을 때 가려요',
     ...(cs.length > 1 ? [`  - 연수 (객관식, 필수): ${cs.join(' / ')}`] : []),
-    '  - 이수증 (파일 업로드, 필수 — PDF·이미지)',
+    '  - 이수번호 (단답형, 필수) 예) 중앙교육연수원-유초중-직무-2026-… / 충남-특직-2026-… ← 이수증 맨 위·아래의 번호',
     '3. 응답 탭 › 스프레드시트에 연결 › 파일 › 다운로드 › CSV(또는 엑셀) → 연수 현황판 [구글 폼 응답 넣기]',
-    '4. 이수증 파일: 구글 드라이브의 「(파일 응답)」 폴더를 오른쪽 클릭 › 다운로드(ZIP) → [이수증 한꺼번에 넣기]',
-    '   (구글 폼은 파일 이름 끝에 「- 응답자 이름」을 붙여 저장해서 이름으로 맞춰요)'].join('\n');
+    '   (이수증 파일은 받지 않아요 — 이수번호만 남겨 백업 파일에 같이 들어가요)'].join('\n');
 }
 /* ---------- 교내 자율연수(스펙 2026-11-19-yearend-design §2) ---------- */
 /* 안내 쪽지(AI 없이): 「[연수 안내] ○○」 일시·장소·대상·강사 */
@@ -548,7 +567,8 @@ export function reportDoc(b, { cids, title = '', related = '', year, school = ''
   }
   const left = cs.map(c => [c, missingStaff(b, c.id).length]).filter(([, x]) => x);
   P(`  ${multi ? '마' : '라'}. 미이수: ${left.length ? `${left.map(([c, x]) => (cs.length > 1 ? `${c.title} ${x}명` : `${x}명`)).join(', ')} — 개별 안내 후 이수하도록 함` : '없음'}`);
-  const certs = cs.reduce((t, c) => t + courseStats(b, c.id).done, 0);
+  // 붙임 2(이수증)는 이 기기에 보관한 이수증이 있을 때만(이제는 이수번호만 받아 명단 표에 적음)
+  const certs = cs.reduce((t, c) => t + targetStaff(b, c).filter(s => { const m = markOf(b, c.id, s.id); return m && m.kept && m.s !== 'back'; }).length, 0);
   P(`붙임  1. 연수별 이수 현황 명단 1부.${certs ? '' : '  끝.'}`);
   if (certs) P(`      2. 이수증 ${certs}부.  끝.`);
   blocks.push({ type: 'break' }, { type: 'h', text: '붙임 1. 연수별 이수 현황 명단' },

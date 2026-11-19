@@ -28,7 +28,7 @@ test('이수증 읽기: 연수 맞추기·이수일·시간(AI 없이)', () => {
   assert.equal(T.bestCourse(items, '청렴 이수증.jpg').id, 'i3');
   assert.equal(T.bestCourse(items, '이수증.pdf'), null, '어느 연수인지 모르면 null');
   const text = '이 수 증\n성 명: 김하늘\n과정명: 2026년 아동학대 예방 및 신고의무자 교육\n교육기간: 2026. 10. 1. ~ 2026. 10. 31.\n이수시간: 2시간\n발급일 2026년 11월 2일';
-  assert.deepEqual(T.readCert({ name: 'scan01.pdf', text }, items), { id: 'i2', doneDate: '2026-10-31', hours: 2 });
+  assert.deepEqual(T.readCert({ name: 'scan01.pdf', text }, items), { id: 'i2', doneDate: '2026-10-31', hours: 2, code: '' });
   assert.equal(T.certDate('수료일자 2026-09-03'), '2026-09-03');
   assert.equal(T.certDate('발급 2026.11.05'), '2026-11-05');
   assert.equal(T.certHours('총 3차시'), 3);
@@ -56,7 +56,7 @@ test('현황판: 명단 읽기·더하기·칸 바꾸기·이수율', () => {
   assert.equal(m.added, 1); assert.equal(m.staff.length, 2);
   let b = T.normBoard({ staff: [{ id: 's1', name: '김하늘' }, { id: 's2', name: '이바다' }, { id: 's3', name: '한가람' }, { id: 's4', name: '박솔빛' }],
     courses: [{ id: 'c1', title: '성희롱·성폭력 예방교육', due: '2026-11-30' }], marks: { c1: { s1: { s: 'ok' }, s9: { s: 'sent' }, s2: { s: 'zz' } }, cX: { s1: { s: 'ok' } } } });
-  assert.deepEqual(b.marks, { c1: { s1: { s: 'ok', file: '', note: '', at: 0, date: '', hours: null, link: '', kept: false } } }, '없는 사람·연수·상태는 버림');
+  assert.deepEqual(b.marks, { c1: { s1: { s: 'ok', file: '', note: '', at: 0, date: '', hours: null, code: '', link: '', kept: false } } }, '없는 사람·연수·상태는 버림');
   b = T.setMark(b, 'c1', 's2', 'sent', { file: '이바다.pdf' });
   b = T.setMark(b, 'c1', 's3', 'back', { note: '다른 연수 이수증' });
   assert.deepEqual(T.courseStats(b, 'c1'), { total: 4, sent: 1, ok: 1, back: 1, none: 1, done: 2, rate: 50 });
@@ -158,11 +158,11 @@ test('수합: 구글 폼 응답 넣기(이름·연수·파일 주소·날짜)', 
     ['2026/11/04 10:00:00', '최누리', '3학년', '학교폭력', ''],
     ['', '', '', '', '']];
   const r = T.formResponses(rows, b);
-  assert.deepEqual(r.hits, [{ sid: 's2', cid: 'c1', link: 'https://drive.google.com/open?id=abc', date: '2026-11-02' }, { sid: 's5', cid: 'c1', link: 'https://drive.google.com/open?id=def', date: '2026-11-03' }]);
+  assert.deepEqual(r.hits, [{ sid: 's2', cid: 'c1', link: 'https://drive.google.com/open?id=abc', date: '2026-11-02', code: '' }, { sid: 's5', cid: 'c1', link: 'https://drive.google.com/open?id=def', date: '2026-11-03', code: '' }]);
   assert.deepEqual(r.miss.map(x => [x.name, x.course, x.sid]), [['김하늘', 'c2', ''], ['최누리', 'c2', '']], '같은 이름(부서 없음)·명단에 없는 사람은 고르기');
   // 연수 열이 없으면 고른 연수
   const r2 = T.formResponses([['성명', '파일'], ['한가람', 'https://drive.google.com/x']], b, { cid: 'c1' });
-  assert.deepEqual(r2.hits, [{ sid: 's3', cid: 'c1', link: 'https://drive.google.com/x', date: '' }]);
+  assert.deepEqual(r2.hits, [{ sid: 's3', cid: 'c1', link: 'https://drive.google.com/x', date: '', code: '' }]);
   assert.equal(T.formResponses([['a', 'b']], b).noName, true);
   assert.ok(r.courseCol && !r2.courseCol, '연수 열이 있는지(없으면 화면이 어느 연수인지 물음)');
 });
@@ -175,7 +175,7 @@ test('수합: 이수증 묶음(ZIP 항목)·결과 보고 문서', () => {
   assert.deepEqual(e.slice(0, 2).map(x => x.name), ['성희롱·성폭력 예방교육/성희롱·성폭력 예방교육_김하늘(3학년 담임).pdf', '성희롱·성폭력 예방교육/성희롱·성폭력 예방교육_이바다(보건교사).jpg']);
   const csv = e[2].data;
   assert.equal(e[2].name, '이수 현황.csv');
-  assert.ok(csv.includes('성희롱·성폭력 예방교육,한가람,직원,행정실 주무관,제출,,종이·링크') && csv.includes(',박솔빛,공무직,교무실무사,미제출,,'), csv);
+  assert.ok(csv.includes('성희롱·성폭력 예방교육,한가람,직원,행정실 주무관,제출,,,종이·링크') && csv.includes(',박솔빛,공무직,교무실무사,미제출,,,'), csv);
   assert.equal(T.relatedOf({ from: '○○교육지원청', no: '교육지원과-1234', date: '2026-11-02', title: '2026년 법정의무교육 이수 안내' }), '○○교육지원청 교육지원과-1234(2026. 11. 2.) 「2026년 법정의무교육 이수 안내」');
   const doc = T.reportDoc(b, { cids: ['c1', 'c2'], related: 'A-1(2026. 11. 2.) 「안내」', year: 2026, school: '새싹초등학교' });
   assert.equal(doc.title, '2026학년도 성희롱·성폭력 예방교육 등 법정의무교육 이수 결과 보고');
@@ -183,7 +183,10 @@ test('수합: 이수증 묶음(ZIP 항목)·결과 보고 문서', () => {
   assert.deepEqual(txt.slice(0, 4), ['1. 관련: A-1(2026. 11. 2.) 「안내」', '2. 위 호와 관련하여 새싹초등학교 교직원의 법정의무교육 이수 결과를 다음과 같이 보고합니다.',
     '  가. 연수명: 성희롱·성폭력 예방교육, 학교폭력 예방교육', '  나. 대상: 교직원 5명(교원 2명, 직원 1명, 공무직 2명)']);
   assert.ok(txt.includes('  마. 미이수: 성희롱·성폭력 예방교육 2명, 학교폭력 예방교육 2명 — 개별 안내 후 이수하도록 함'), txt.join('\n'));
-  assert.ok(txt.includes('      2. 이수증 3부.  끝.'), txt.join('\n'));
+  // 이수증 파일은 이제 보관하지 않음 — 붙임 2(이수증)는 이 기기에 보관한 이수증(kept)이 있을 때만
+  assert.ok(txt.includes('붙임  1. 연수별 이수 현황 명단 1부.  끝.'), txt.join('\n'));
+  const kept = T.reportDoc(T.setMark(b, 'c1', 's2', 'sent', { kept: true }), { cids: ['c1'], year: 2026 }).blocks.map(x => x.text);
+  assert.ok(kept.includes('      2. 이수증 1부.  끝.'), kept.join('\n'));
   const tbl = doc.blocks.filter(x => x.type === 'table');
   assert.deepEqual(tbl[0].rows[1], ['성희롱·성폭력 예방교육', '5명', '3명', '2명', '60%']);
   assert.deepEqual(tbl[2].rows[1], ['1', '김하늘', '교원', '3학년 담임', '이수(11. 2.)', '미이수']);
@@ -201,7 +204,7 @@ test('수합 더하기: 사람별 미제출 글·구글 폼 만들기 안내·�
   assert.deepEqual(T.missingByPerson(b).map(x => [x.s.id, x.courses.map(c => c.id)]), [['s1', ['c2']], ['s2', ['c1']], ['s3', ['c1']], ['s4', ['c1']], ['s5', ['c1']]]);
   assert.equal(T.personalText(b, ['c1']).split('\n').slice(0, 2).join('\n'), '이바다 선생님(보건교사): 성희롱·성폭력 예방교육(반려 — 흐림)\n한가람 선생님(행정실 주무관): 성희롱·성폭력 예방교육(11. 20.까지)');
   const g = T.formGuide(b, 2026);
-  assert.ok(g.includes('성명 (단답형, 필수)') && g.includes('연수 (객관식, 필수): 성희롱·성폭력 예방교육 / 학교폭력 예방교육') && g.includes('(파일 응답)'), g);
+  assert.ok(g.includes('성명 (단답형, 필수)') && g.includes('연수 (객관식, 필수): 성희롱·성폭력 예방교육 / 학교폭력 예방교육') && g.includes('이수번호 (단답형, 필수)') && !g.includes('파일 업로드'), g);
   assert.ok(!T.formGuide(T.normBoard({ courses: [{ id: 'x', title: '청렴교육' }] }), 2026).includes('객관식'), '연수가 하나면 연수 질문 없음');
   const { classify } = await import('../../web/core/inbox-classify.js');
   const z = classify({ name: 'drive-download-20261119.zip', text: '' });

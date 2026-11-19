@@ -101,7 +101,9 @@ export function dayMarks(camp, date) {
   const ss = sessionsOn(camp, date);
   return camp.students.map(st => ({ id: st.id, name: shownName(st, '이름 없는 학생'), mark: ss.length ? stateOf(camp, ss, st.id) : '' }));
 }
-/* 학생 버튼: 그날 수업 모두 ○ → / → 빈칸 → ○ (섞여 있으면 ○부터) */
+/* 그날 이 학생의 결석(/) 수업 수 — 섞인 학생을 모두 ○로 바꾸기 전에 물을 때(오늘 화면) */
+export const absentOn = (camp, date, sid) => sessionsOn(camp, date).filter(s => camp.att[s.id] && camp.att[s.id][sid] === 'X').length;
+/* 학생 버튼: 그날 수업 모두 ○ → / → 빈칸 → ○ (섞여 있으면 ○부터 — 결석이 섞였으면 부르는 쪽이 먼저 물음) */
 export function cycleDay(camp, date, sid) {
   if (!camp.students.some(s => s.id === sid)) return camp;
   const ss = sessionsOn(camp, date);

@@ -54,7 +54,7 @@ await run('fix1119-training-more', [
     await page.click(`${sheet} #ibRun`);
     await page.waitForFunction(() => { const b = JSON.parse(localStorage.getItem('ssam:training:board')); const c = b.courses.find(x => x.title === '청렴교육'); return c && b.marks[c.id] && b.marks[c.id].c && b.marks[c.id].b; });
     const b = await board(), c = b.courses.find(x => x.title === '청렴교육');
-    assert(b.marks[c.id].c.kept && b.marks[c.id].b.file === '청렴 - 이바다.jpg', JSON.stringify(b.marks[c.id]));
+    assert(b.marks[c.id].c.s === 'sent' && !b.marks[c.id].c.kept && b.marks[c.id].b.file === '청렴 - 이바다.jpg', JSON.stringify(b.marks[c.id]));
     const n = await page.evaluate(() => JSON.parse(localStorage.getItem('ssam:nav')));
     assert(n.menu === 'training' && n.tab === 'board', JSON.stringify(n));
   }],
