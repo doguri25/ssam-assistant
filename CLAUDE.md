@@ -4,7 +4,7 @@
 
 ## 지금 상태 (2026-11-19)
 
-- 최신 릴리즈는 **v0.37.0**(학년말 마감 도우미, 교내 자율연수, 쪽지 회신 기한·현황판 공유, 버그 25건). 그 앞 v0.36.0(연수 메뉴·이수증 수합, 학급 탭 손보기, 메뉴 사이 연결). main은 그 릴리즈 커밋, 작업 브랜치 `claude/wonderful-johnson-lqb8em`은 그 뒤 두 번째 버그 찾기 고침(릴리즈 안 함)이 더 있다.
+- 최신 릴리즈는 **v0.37.1**(두 번째 버그 찾기 25건). 그 앞 v0.37.0(학년말 마감 도우미, 교내 자율연수, 쪽지 회신 기한·현황판 공유, 버그 25건), v0.36.0(연수 메뉴·이수증 수합, 학급 탭 손보기, 메뉴 사이 연결). main과 작업 브랜치 `claude/wonderful-johnson-lqb8em`은 그 릴리즈 커밋.
   - 0.34.1: 남은 한계 고침 — 기준표 칸 글은 AI로 갈 때 이름을 ○○○로(`rubric-model.js aiCell`), 「김정대로 바꿔 줘」(privacy `DAERO`·`roGivenName`),
     물건 머리 줄의 이름은 다른 줄에서 사람으로 쓰일 때 배움(privacy `personUse`), 품의 「총 30자루 15,000원」(`tests/unit/fix1117-limits.test.mjs`).
   - 수준별 기준표(루브릭): 설계 `docs/superpowers/specs/2026-11-16-rubric-design.md`, 계획 `docs/superpowers/plans/2026-11-16-rubric.md`.
@@ -58,7 +58,7 @@
   진도 `assumeFrom`은 posAt 없으면 세지 않음·`leftPeriods`는 posAt·start 앞 빼기·메모만 칸은 교체 아님·판마다 교시 수 `periodsOn`·`termStart` 진도 자리 끝·`prevHours0`,
   기초학력 AI 일정 closedDays·날짜 넣기 periods·합치기 1000자, 연수 `maskForAI`·`certDate(text, today)`·`certHours` 분·띄어 쓴 명단·직위/구분 칸·칸 지울 때 물음·CP949 ZIP 이름(`core/zip.js`),
   떠 있는 버튼 이수증은 본문 말이 있을 때만·늘 물음, 채팅 화면 가기 intent는 쓰기 명령·붙여 넣은 글에 물러남, 학년말 예산 예정·현황판 명단 없음·카드 다시 셈.
-- 0.37.0 뒤 두 번째 멀티에이전트 버그 찾기(2026-11-19 「멀티에이전트로 다시 버그를 찾아 수정해줘」, 아직 릴리즈 안 함): 확인된 25건 모두 고침(`tests/unit/fix1119-bugs2.test.mjs`).
+- 0.37.0 뒤 두 번째 멀티에이전트 버그 찾기(2026-11-19 「멀티에이전트로 다시 버그를 찾아 수정해줘」, 0.37.1): 확인된 25건 모두 고침(`tests/unit/fix1119-bugs2.test.mjs`).
   이름 가리기 `roleWord`·`colonWord`(맡은 일 쌍점 뒤 -리·-형·-별 이름)·`ROLE_COLON` 진행자·후보·`roleNames(text, known)`·redact `tie`(아는 이름에 쉼표로 이은 이름)·`INSOL_GROUP`/`insolName`(「인솔: 전학년 담임」은 아님),
   진도 `posDone`(진도 자리를 정할 때 그날 앞 완료 수 — 뒤에 그 앞 날을 체크하면 시수만)·`h0At`(체크 전 실시가 담은 날, `leftPeriods`가 그날까지 뺌)·`doneCount`·새 학년도·다시 넣은 교과 posAt = 시작 전날·
   `assumedList`(주간학습안내 「이어 셌어요」는 이어 센 날만)·`termStart` 오늘 기록이 앞 학기를 마치면 내일, 학년말 진도 줄은 `p.left`(실시),
