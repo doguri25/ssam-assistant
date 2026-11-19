@@ -40,6 +40,7 @@ const BLANK_FORM = '학생 이름이 적힌 양식은 빈 양식으로 넣어 �
 const MARK_TEXT = { O: '○', X: '/' }, MARK_WORD = { O: '출석', X: '결석' };
 
 let box = null, curTab = null, sec = 'info', attDate = '', attFor = '';
+let wantDate = ''; // 다른 곳(한 달 달력)에서 고른 출석 날짜 — 들어올 때 한 번만
 let stale = false; // 칸에 치는 동안 다시 그릴 일이 생김 → 칸을 벗어나면 다시 그림
 const busy = {}; // `${캠프 id}:sched|obs|report` → true
 const drafts = {}; // 캠프 id → [AI로 만들기] 칸 글(화면에만)
@@ -1121,17 +1122,21 @@ document.addEventListener('focusout', e => {
 });
 
 /* 다른 곳(채팅 「캠프 출석」 등)에서 이 탭으로 */
-export function openCamp(section) {
+export function openCamp(section, date = '') {
   if (section && SECS.some(s => s[0] === section)) sec = section;
+  wantDate = /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? String(date) : '';
   go('class', 'camp');
 }
 
 onEnter('class', (tab, section) => {
   if (!box || !section.contains(box)) { box = document.createElement('div'); box.className = 'cls-camp'; section.append(box); }
   curTab = tab;
+  const want = wantDate; wantDate = ''; // 한 번만(다른 탭으로 들어와도 남지 않게)
   box.hidden = tab !== 'camp';
   if (box.hidden) return;
   attFor = ''; // 탭에 들어올 때마다 출석 날짜는 오늘(없으면 가까운 수업 날)부터 — 학급 › 오늘 수업과 같이
+  // 한 달 달력에서 그날 수업 줄을 누르고 왔으면 그날(그 프로그램에 그 수업 날이 있을 때만)
+  if (want) { const c = cur(); if (c && M.campDates(c).includes(want)) { attDate = want; attFor = c.id; } }
   render();
   const sig = sigOf();
   loadForms().then(() => { if (sigOf() !== sig) redraw(); }).catch(() => {});

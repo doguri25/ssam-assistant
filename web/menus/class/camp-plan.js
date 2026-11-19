@@ -47,6 +47,18 @@ export function weekTimes(line) {
   return out;
 }
 
+/* 시간 줄의 교시 수: 「09:00~12:40 (5교시)」「5교시(09:00~12:40)」「1~5교시」(「하루」 없이 적은 것).
+   「1교시 40분」(교시 길이)·「6교시 후」(시작 때)·「총 6차시」(캠프 전체)·「1교시 09:00~09:40, 2교시 …」(교시마다 시각 — 교시 수가 여럿)는 아님,
+   그 교시 수가 시작~끝(span분)에 들어가지 않으면(한 교시 30분 아래) 아님 → 교시 수 또는 null */
+function linePeriods(line, span) {
+  const re = /(?:^|[^\d~∼〜～–:-])(?<!(?:총|전체|모두|누계|합계)\s*)(?:(\d{1,2})\s*[~∼〜～–-]\s*)?(\d{1,2})\s*(?:교시|차시)(?!\s*(?:당|\d{1,3}\s*분|[:：]|후|이후|뒤|다음|부터|까지|끝|마치|전|이전))/g;
+  const ns = new Set();
+  for (const m of str(line).matchAll(re)) ns.add(m[1] ? +m[2] - +m[1] + 1 : +m[2]);
+  if (ns.size !== 1) return null;
+  const n = [...ns][0];
+  return n >= 1 && n <= 10 && n * 30 <= span ? n : null;
+}
+
 /* 운영 계획서 글 → { name, target, subjects, teacher, range, weekdays, start, end, periods, minutes, rest } (못 찾은 것은 ''·null·[]) */
 export function readPlan(text, { year, today } = {}) {
   const t = str(text).replace(/\r\n?/g, '\n');
@@ -81,12 +93,19 @@ export function readPlan(text, { year, today } = {}) {
   const tmm = TIME.exec(timeLine);
   const start = tmm ? `${pad(+tmm[1])}:${tmm[2]}` : '', end = tmm ? `${pad(+tmm[3])}:${tmm[4]}` : '';
   const num = re => { const m = re.exec(t); return m ? +(m.slice(1).find(Boolean)) : null; };
-  const periods = num(/(?:하루|1\s*일|매일|일일)\s*(\d{1,2})\s*(?:교시|차시|시간(?!\s*[:：]))/);
-  const rest = num(/(?:쉬는\s*시간|휴식(?:\s*시간)?)\s*(\d{1,2})\s*분/);
+  let periods = num(/(?:하루|1\s*일|매일|일일)\s*(\d{1,2})\s*(?:교시|차시|시간(?!\s*[:：]))/);
+  const span = start && end ? toMin(end) - toMin(start) : 0;
+  if (!periods && span > 0) periods = linePeriods(timeLine, span);
+  let rest = num(/(?:쉬는\s*시간|휴식(?:\s*시간)?)\s*(\d{1,2})\s*분/);
   let minutes = num(/(?:1\s*교시|한\s*교시|교시\s*당|1\s*차시|차시\s*당)\s*(\d{2,3})\s*분|(\d{2,3})\s*분\s*수업/);
-  if (!minutes && periods && start && end) { // 교시 길이가 없으면 시작~끝에서 셈(쉬는 시간을 모르면 10분)
-    const r = rest == null ? 10 : rest, m = Math.floor((toMin(end) - toMin(start) - r * (periods - 1)) / periods);
-    if (m >= 10) minutes = m;
+  if (!minutes && periods && start && end) { // 교시 길이가 없으면 시작~끝에서 셈
+    // 쉬는 시간도 모르면 먼저 한 교시 40분(초등)으로 쉬는 시간을 셈 — 09:00~12:40 하루 5교시 → 40분·쉬는 5분
+    const r40 = rest == null && periods > 1 ? (span - 40 * periods) / (periods - 1) : NaN;
+    if (Number.isInteger(r40) && r40 >= 0 && r40 <= 20) { minutes = 40; rest = r40; }
+    else { // 그 밖에는 쉬는 시간(모르면 10분)을 빼고 나눔
+      const r = rest == null ? 10 : rest, m = Math.floor((span - r * (periods - 1)) / periods);
+      if (m >= 10) minutes = m;
+    }
   }
   return { name, target, subjects, teacher, range, weekdays, dayTimes, start, end, periods, minutes, rest };
 }

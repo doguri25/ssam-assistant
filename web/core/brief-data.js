@@ -61,7 +61,8 @@ export async function goRoute(r) {
   else if (r.to === 'camp') {
     // id: 그 프로그램을 골라 둠(한 달 달력·학년말 마감 — 지금 고른 다른 프로그램이 열리지 않게)
     if (r.id) { try { const m = await import('../menus/class/camp-model.js'); if (m.getCamp(r.id) && m.currentCampId() !== r.id) m.setCurrentCamp(r.id); } catch (e) {} }
-    const fn = await optional('../menus/class/camp.js', 'openCamp'); if (fn) fn(r.section); else go('class', 'camp');
+    // date: 그날 출석 칸(한 달 달력의 지난·다가올 수업 줄 — 오늘 출석이 아니라)
+    const fn = await optional('../menus/class/camp.js', 'openCamp'); if (fn) fn(r.section, r.date); else go('class', 'camp');
   }
   else if (r.to === 'settings') go('settings', r.tab);
   else if (r.to === 'home') go('home');

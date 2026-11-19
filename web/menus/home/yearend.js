@@ -3,6 +3,7 @@
 import { get, set } from '../../core/store.js';
 import { goRoute } from '../../core/brief-data.js';
 import { toast } from '../../core/ui.js';
+import { schoolYearOf } from '../../core/calendar.js';
 import * as Y from './yearend-model.js';
 
 const SS = () => window.SSAM;
@@ -33,7 +34,8 @@ export async function gatherYearend(t = todayStr()) {
     budget: bud ? safe(() => bud.summary(year, t), []) : [],
     gongmun: gm ? safe(() => gm.listDocs(), []) : [],
     backupAt: Number(get('backupAt', 0)) || 0, now: Date.now(),
-    prepYear: yrs ? yrs.prepYear(t, year) : 0
+    prepYear: yrs ? yrs.prepYear(t, year) : 0,
+    started: yrs && year > schoolYearOf(t) ? year : 0
   };
 }
 export async function yearendState(t = todayStr()) { const rows = Y.yearendRows(await gatherYearend(t), doneSet()); return { rows, ...Y.yearendScore(rows) }; }

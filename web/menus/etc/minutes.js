@@ -39,8 +39,13 @@ function switchTo(x) {
   if (job && job.x.id === x.id) x = job.x;
   d = x; setCurrent(x.id); M.busy = !!job && job.x === x; M.msg = M.busy ? '정리하는 중…' : '';
 }
-// 저장: 내용이 없어지면(마지막 할 일을 [✕]로 뺌) 저장했던 것도 뺌(saveMinutes — 지운 할 일이 「오늘」에 남지 않게)
-function persist(x = cur()) { if (!gone.has(x.id)) saveMinutes(x); }
+// 저장: 내용이 없어지면(마지막 할 일을 [✕]로 뺌) 저장했던 것도 뺌(saveMinutes — 지운 할 일이 「오늘」에 남지 않게).
+// 보고 있는 회의록이면 「지금 보는 회의록」으로도 적음 — 처음 쓰는 회의록([새 회의록]을 누르지 않고 바로 쓴 것)도 앱을 다시 켜면 그대로(빈 회의록이 떠 다시 쓰면 둘로 늘지 않게)
+function persist(x = cur()) {
+  if (gone.has(x.id)) return;
+  saveMinutes(x);
+  if (x === d && hasContent(x) && currentId() !== x.id) setCurrent(x.id);
+}
 const touch = (x, k) => { x.touched = [...new Set([...(x.touched || []), k])]; };
 
 /* ---------- 그리기 ---------- */

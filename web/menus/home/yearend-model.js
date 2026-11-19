@@ -7,8 +7,14 @@ export const ROWS = [
   ['writers', '생활기록부 글'], ['check', '기재 점검'], ['evals', '평가 마무리'], ['progress', '진도·시수'], ['camp', '기초학력 문서'],
   ['training', '연수'], ['budget', '예산 집행'], ['gongmun', '공문'], ['handover', '인수인계서'], ['backup', '백업'], ['newyear', '새 학년도 준비']
 ];
-/* 학년말(12~2월)인지 — 오늘 화면 카드 */
-export const yearendSeason = today => { const m = +String(today || '').slice(5, 7); return m === 12 || m === 1 || m === 2; };
+/* 학년말(12~2월)인지 — 오늘 화면 카드. year(지금 자료의 학년도)가 오늘이 든 학년도보다 크면(1·2월에 새 학년도를 이미 시작함) 아님 —
+   그때 자료는 막 시작한 학년도라 마감할 것이 아님 */
+export const yearendSeason = (today, year) => {
+  const s = String(today || ''), m = +s.slice(5, 7);
+  if (!(m === 12 || m === 1 || m === 2)) return false;
+  const sy = m <= 2 ? +s.slice(0, 4) - 1 : +s.slice(0, 4);
+  return !(Number.isInteger(year) && year > 2000 && year < 9000 && year > sy);
+};
 
 export function yearendRows(d = {}, done = new Set()) {
   const row = (id, state, line, go) => ({ id, label: (ROWS.find(r => r[0] === id) || [id, id])[1], state: state === 'todo' && done.has(id) ? 'done' : state, line, go, marked: done.has(id) });
@@ -62,7 +68,8 @@ export function yearendRows(d = {}, done = new Set()) {
   const days = d.backupAt ? Math.floor(((d.now || Date.now()) - d.backupAt) / 864e5) : null;
   out.push(row('backup', days != null && days <= 30 ? 'done' : 'todo', days == null ? '아직 백업 파일을 만들지 않았어요' : days <= 30 ? `마지막 백업 ${days < 1 ? '오늘' : `${days}일 전`}` : `마지막 백업이 ${days}일 전이에요`, { to: 'settings', tab: 'years' }));
   // 11. 새 학년도 준비
-  out.push(row('newyear', d.prepYear ? 'todo' : 'none', d.prepYear ? `${d.prepYear}학년도를 시작하세요(연간계획·학교 정보·명단을 가져가요)` : '1·2월에 새 학년도를 시작해요', { to: 'settings', tab: 'years' }));
+  // 이미 새 학년도를 시작했으면(d.started — 지금 학년도가 오늘이 든 학년도보다 큼) 「시작했어요」
+  out.push(row('newyear', d.prepYear ? 'todo' : 'none', d.prepYear ? `${d.prepYear}학년도를 시작하세요(연간계획·학교 정보·명단을 가져가요)` : d.started ? `${d.started}학년도를 시작했어요` : '1·2월에 새 학년도를 시작해요', { to: 'settings', tab: 'years' }));
   return out;
 }
 /* 한눈에: 다 된 줄 / 셀 줄(해당 없음 빼고) */

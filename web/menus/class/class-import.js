@@ -8,8 +8,8 @@ export const normName = s => String(s == null ? '' : s).replace(/\s+/g, '');
 
 // 「3.2~3.6」「3. 2.~3. 6.」「3.2∼3.6」「3.2.(월)~3.6.(금)」「3/2~3/6」
 const PERIOD = /^(\d{1,2})\s*[./]\s*(\d{1,2})\s*\.?\s*(?:\([^)]{1,3}\))?\s*[~∼〜～–-]\s*(\d{1,2})\s*[./]\s*(\d{1,2})\s*\.?\s*(?:\([^)]{1,3}\))?$/;
-// 차시 칸 「5/14」, 두 시간 줄 「2~3/4」
-const LESSON_NO = /^\d+(?:\s*[~∼〜-]\s*\d+)?\s*\/\s*\d+$/;
+// 차시 칸 「5/14」, 두 시간 줄 「2~3/4」(물결표·줄표는 기간 칸 PERIOD와 같은 글자 — 「2～3/4」「2–3/4」)
+const LESSON_NO = /^\d+(?:\s*[~∼〜～–-]\s*\d+)?\s*\/\s*\d+$/;
 const SUB_AREA = /^(자율.?자치활동|동아리활동|진로활동)$/;
 const pad = n => String(n).padStart(2, '0');
 
@@ -104,7 +104,7 @@ export function parseJindo(text, { today, year: dataYear } = {}) {
       else if (PERIOD.test(x)) period = x;
       else unit = x;
     }
-    const no = c[k].replace(/\s+/g, ''), two = /^(\d+)[~∼〜-](\d+)\/(\d+)$/.exec(no);
+    const no = c[k].replace(/\s+/g, ''), two = /^(\d+)[~∼〜～–-](\d+)\/(\d+)$/.exec(no);
     const nos = two && +two[2] >= +two[1] && +two[2] - +two[1] < 10 ? Array.from({ length: +two[2] - +two[1] + 1 }, (_, i) => `${+two[1] + i}/${two[3]}`) : [no];
     for (const x of nos) cur.lessons.push({ week, period, from: periodStart(period, year), unit, title, no: x, pages: c[k + 1] || '', memo: c[k + 2] || '' });
     sec.n += nos.length;

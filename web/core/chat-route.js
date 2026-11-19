@@ -206,7 +206,10 @@ const KW = {
   // 회의록: 「3학년 협의회 회의록 보여 줘」「지난주 회의 내용 다시 정리」의 낱말(남은 글이 짧으면 메모가 아님 — MEMO_MIN)
   minutes: /(?:회의록|협의록)(?:으로|을|를)?|협의회|회의|내용|결과|정리|열어|보여|다시|지난\s*주|이번\s*주|어제|오늘/g
 };
-const VIEW_W = /기한|마감|목록|확인|정리|보기|쓰기|보여|보자|열어|열기|다시|이어서|이어|쓰던|쓴|지난|보낸|받은|밀린|남은|급한|이번\s*주|오늘|어제|거|것|좀/g;
+// 기간·제출 말(「다음 주·이번 달·11월·2학기·내일까지·아직 안 낸·낼·제출할」)도 보는 말(「다음 주 공문 기한」「11월 가정통신문 다시 보기」는 넣을 글이 아님)
+const VIEW_W = /기한|마감|목록|확인|정리|보기|쓰기|보여|보자|열어|열기|다시|이어서|이어|쓰던|쓴|지난|보낸|받은|밀린|남은|급한|이번\s*주|오늘|어제|거|것|좀|(?:이번|다음|지난|저번)\s*(?:달|주)|저번(?:에)?|\d{1,2}\s*월(?:에)?|[12]\s*학기|내일|모레|까지|아직|안\s*낸|낼|제출할|내야\s*할/g;
+// 품의: 쓰던 품의·최근 작성·저장한 템플릿을 보거나 다시 여는 말(「쓰던 품의 이어서」「최근 품의 보여 줘」「저장한 품의 템플릿」)
+const PC_VIEW = /최근|작성(?:한|했던)?|템플릿|양식|저장(?:한|된|해\s*둔)?|기록|내역|쓰는|불러(?:와|오기)?|전에|(?:^|\s)새로?(?=\s|$)/g;
 const MEMO_MIN = 15; // 한 줄 글은 회의록 낱말을 빼고 이만큼 넘게 남아야 메모(줄을 바꿔 쓴 글은 내용이 있으면 메모)
 // 글 앞의 「가정통신문 써 줘」「쪽지:」「공문 처리」+줄바꿈 (뒤에 내용이 이어질 때)
 const LEAD_W = '(?:가정\\s*통신문|안내장|(?:안내\\s*)?쪽지|공문(?:[ \\t]*처리)?|결과\\s*보고(?:서)?|회의록|협의록)';
@@ -219,7 +222,13 @@ const tidy = s => String(s || '').replace(/\r\n?/g, '\n').split('\n').map(l => l
    줄바꿈은 그대로 둠. 전화번호·전자 우편 가리기는 부르는 쪽(chat.js maskContacts) */
 export function payloadFor(intent, text) {
   const t = tidy(text);
-  if (intent === 'purchase') { const s = trimTail(tidy(t.replace(KW.purchase, ' '))); return { text: meat(s).length >= 2 ? s : '' }; }
+  if (intent === 'purchase') {
+    const s = trimTail(tidy(t.replace(KW.purchase, ' ')));
+    // 한 줄 글이 보는 말뿐이면(「쓰던 품의 이어서」「품의 목록」) 품목이 아님 — 쓰던 품의를 치우고 AI를 부르지 않게 그 탭만(템플릿·최근 작성은 그 탭)
+    if (!/\n/.test(t) && meat(s.replace(VIEW_W, ' ').replace(PC_VIEW, ' ')).length < 2)
+      return { text: '', view: /템플릿|양식/.test(s) ? 'templates' : !/쓰던|이어/.test(s) && /최근|기록|목록|내역|지난|어제|쓴|작성/.test(s) ? 'recent' : '' };
+    return { text: meat(s).length >= 2 ? s : '' };
+  }
   if (['message', 'letter', 'gongmun', 'report', 'minutes'].includes(intent)) {
     // 회의록: 메모 뒤 끝 줄 명령(「…\n회의록 써 줘」)은 넘길 메모에서 뺌
     const body = intent === 'minutes' && (cmdLine(t.split('\n').filter(Boolean)) || {}).tail ? t.slice(0, t.lastIndexOf('\n')).trim() : t;
@@ -263,9 +272,36 @@ export function parseMemo(text) {
   if (!list.length) return null;
   return { nos: list, body: t.slice(m[0].length).trim() };
 }
-const VIEW = /^(?:학생\s*)?(?:행특\s*|관찰\s*|행동\s*특성\s*)?메모\s*(?:좀\s*)?(?:보기|봐|볼래|보자|보여\s*(?:줘|주세요|줄래요?)|확인|알려\s*(?:줘|주세요))?\s*[.?!]*$/;
+// 「3번 메모 (좀) 보기·봐 줘·보여 줘·확인해 줘·열어 줘·알려 줘」
+const VIEW = new RegExp(`^(?:학생\\s*)?(?:행특\\s*|관찰\\s*|행동\\s*특성\\s*)?메모\\s*(?:을|를)?\\s*(?:좀\\s*)?(?:보기|볼래|보자|확인|(?:봐|보여|확인\\s*해|알려|열어)\\s*(?:${PLEASE}|요)?)?\\s*[.?!~]*$`);
 // 관찰 메모 끝말(「~함」「~임」「~했어요」): 다른 할 일 낱말이 있어도 메모
 export const MEMO_END = /(?:함|임|음|됨|짐|봄|줌|했다|한다|였다|이다|좋다|있다|없다|해요|했어요|어요|아요|이에요|예요|했음|많음)\s*[.!]*$/;
+// 「n번」 뒤 글이 부탁 꼬리(「… 줘」「… 주세요」「… 부탁해」)로 끝나면 관찰 메모가 아니라 해 달라는 말(「3번 메모 지워 줘」「3번 평어 다시 써 줘」「3번 출석 체크해 줘」)
+const ASK_END = new RegExp(`(?:${PLEASE}|부탁(?:해요?|합니다|드려요|드립니다))\\s*[.!?~]*$`);
+// 「… 줘요」는 해요체 관찰(「청소를 잘 도와줘요」「친구한테 양보해 줘요」)일 수도 — 앱 일(메모·평어·점수·출석 …)이나 고치는 말이 있을 때만 부탁
+const ASK_AMBIG = /줘요\s*[.!~]*$/;
+const APP_ASK = /메모|행특|행동\s*특성|평어|점수|성적|출석|결석|출결|기초\s*학력|채점|문자|쪽지|가정\s*통신문|시간표|진도|기록|지워|삭제|고쳐|바꿔|다시|보여|확인/;
+// 다만 메모를 넣어 달라는 꼬리(「… 메모해 줘」「… 메모로 남겨 줘」「… 행특에 넣어 줘」)는 그 꼬리를 뺀 글이 메모
+const MEMO_PUT = new RegExp(`\\s*(?:(?:(?:행특|관찰|행동\\s*특성)\\s*)?메모(?:에|로|를)?\\s*(?:좀\\s*)?(?:해|넣어|남겨|적어|써|추가해|달아)?|(?:행특|행동\\s*특성|관찰\\s*기록)(?:에|으로|로)\\s*(?:좀\\s*)?(?:넣어|남겨|적어|써))\\s*(?:둬|놔)?\\s*(?:${PLEASE}|요)\\s*[.!~]*$`);
+// 「… 기록해 줘」는 남은 글이 관찰 메모 끝말일 때만(「발표 잘함 기록해 줘」 — 「출석 기록해 줘」는 아님)
+const NOTE_PUT = new RegExp(`\\s*(?:(?:으로|로|라고)\\s*)?(?:기록|적어|남겨)\\s*(?:해)?\\s*(?:둬|놔)?\\s*(?:좀\\s*)?(?:${PLEASE}|요)\\s*[.!~]*$`);
+// 「메모에 … 넣어 줘」「메모: … 적어 줘」
+const MEMO_LEAD = /^(?:(?:행특|관찰|행동\s*특성)\s*)?메모(?:에|로)?(?![가-힣])\s*[:,]?\s*/;
+const PUT_END = new RegExp(`\\s*(?:을|를)?\\s*(?:넣어|적어|남겨|써|추가해)\\s*(?:둬|놔)?\\s*(?:${PLEASE}|요)\\s*[.!~]*$`);
+/* 「n번」 뒤 글(body) → { body }(메모로 넣을 글) | { view: true }(메모 보기) | null(메모가 아닌 부탁 — 「메모 지워 줘」「평어 써 줘」) */
+export function memoAsk(body) {
+  const b = String(body || '').trim();
+  if (VIEW.test(b)) return { view: true };
+  if (MEMO_END.test(b) || !ASK_END.test(b) || (ASK_AMBIG.test(b) && !APP_ASK.test(b))) return { body: b };
+  const tidyRest = s => s.replace(/[\s,.:;·]+$/, '').replace(MEMO_LEAD, '').trim();
+  let m = MEMO_PUT.exec(b), rest = m ? tidyRest(b.slice(0, m.index)) : '';
+  if (meat(rest).length >= 2) return { body: rest };
+  m = NOTE_PUT.exec(b); rest = m ? tidyRest(b.slice(0, m.index)) : '';
+  if (meat(rest).length >= 2 && MEMO_END.test(rest)) return { body: rest };
+  const lead = MEMO_LEAD.exec(b), put = PUT_END.exec(b);
+  rest = lead && put && put.index > lead[0].length ? tidyRest(b.slice(lead[0].length, put.index)) : '';
+  return meat(rest).length >= 2 ? { body: rest } : null;
+}
 // 번호 뒤에 와도 메모가 아닌 말(「3번 문항」「3번 단원평가」…)
 const NOT_MEMO = /^(?:문항|문제|단원|차시|교시|째|쪽|페이지)/;
 /* 학생 관찰 메모 꼴(「3번 …」, 「3번 문항·단원평가 …」는 아님)이면 { nos, body }, 아니면 null */
@@ -301,9 +337,12 @@ export function routeText(text, { docFile = false } = {}) {
     else for (const id of HEAD_IDS) { if (head[id]) scores[id] = head[id]; else delete scores[id]; }
   }
   // 관찰 메모: 글 앞이 「n번」
-  const memo = parseMemo(t);
-  if (memo && !NOT_MEMO.test(memo.body)) {
-    if (VIEW.test(memo.body)) return { intent: 'memoView', payload: { nos: memo.nos }, confidence: 1, candidates: [], question: false };
+  const pm = parseMemo(t), how = pm && !NOT_MEMO.test(pm.body) ? memoAsk(pm.body) : undefined;
+  // 부탁 꼬리로 끝나는 글: 메모 보기·메모 넣기 꼬리(「… 메모해 줘」)만 메모, 다른 부탁(「3번 메모 지워 줘」「3번 평어 다시 써 줘」)은 메모에 넣지 않고 다른 할 일·도우미로
+  if (how && how.view) return { intent: 'memoView', payload: { nos: pm.nos }, confidence: 1, candidates: [], question: false };
+  if (how === null && /메모|행특|행동\s*특성/.test(pm.body)) scores.hk = Math.max(scores.hk || 0, 1);
+  const memo = how && how.body != null ? { nos: pm.nos, body: how.body } : null;
+  if (memo) {
     // 묻는 글(「3번 학생 상담 어떻게 하면 좋을까?」)은 메모로 넣지 않음(메모 끝말이면 메모)
     if (meat(memo.body).length >= 2 && (!ask || MEMO_END.test(memo.body))) {
       const other = Object.entries(scores).filter(([id]) => !['briefing'].includes(id)).sort((a, b) => b[1] - a[1]);

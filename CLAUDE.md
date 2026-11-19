@@ -4,7 +4,7 @@
 
 ## 지금 상태 (2026-11-19)
 
-- 최신 릴리즈는 **v0.38.0**(한 달 달력·이수증은 이수번호만·교직원 이름 가리기·오늘 화면 출석 물음, 세 번째~다섯 번째 버그 찾기 94건). 그 앞 v0.37.1(두 번째 버그 찾기 25건), v0.37.0(학년말 마감 도우미, 교내 자율연수, 쪽지 회신 기한·현황판 공유, 버그 25건), v0.36.0(연수 메뉴·이수증 수합, 학급 탭 손보기, 메뉴 사이 연결). main과 작업 브랜치 `claude/wonderful-johnson-lqb8em`은 그 릴리즈 커밋.
+- 최신 릴리즈는 **v0.38.1**(여섯 번째 버그 찾기 23건). 그 앞 v0.38.0(한 달 달력·이수증은 이수번호만·교직원 이름 가리기·오늘 화면 출석 물음, 세 번째~다섯 번째 버그 찾기 94건), v0.37.1(두 번째 버그 찾기 25건), v0.37.0(학년말 마감 도우미, 교내 자율연수, 쪽지 회신 기한·현황판 공유, 버그 25건). main과 작업 브랜치 `claude/wonderful-johnson-lqb8em`은 그 릴리즈 커밋.
   - 0.34.1: 남은 한계 고침 — 기준표 칸 글은 AI로 갈 때 이름을 ○○○로(`rubric-model.js aiCell`), 「김정대로 바꿔 줘」(privacy `DAERO`·`roGivenName`),
     물건 머리 줄의 이름은 다른 줄에서 사람으로 쓰일 때 배움(privacy `personUse`), 품의 「총 30자루 15,000원」(`tests/unit/fix1117-limits.test.mjs`).
   - 수준별 기준표(루브릭): 설계 `docs/superpowers/specs/2026-11-16-rubric-design.md`, 계획 `docs/superpowers/plans/2026-11-16-rubric.md`.
@@ -95,6 +95,11 @@
   `chat-names` EXCEPT(원주율·반지름…)·EXCEPT2 「인솔」·`PAREN_CUE`(직함(이름)·이름(직함))·memo 「…해」 동사, 행특 메모 `maskPersons(…, { memo: true })`, 행사 `evAI`·활동지 colonOnly(선생님 한마디 등),
   학급운영계획 AI 글·연간계획/행사 참고 글 `sourceForAI`·결과 보고 파일 이름, 기초학력 「월-수-금」·관찰 메모 이름, 단원평가 정답지 학년·교과·단원·채점 기준 칸,
   쪽지 붙임 다시 넣기는 그 파일만 읽음, 인수인계서 [AI로 정리]는 써 둔 글이 있으면 물음, 공문 제목 점.
+- 여섯 번째 멀티에이전트 버그 찾기(2026-11-19 「멀티에이전트로 디버깅해주고 커밋 릴리즈해줘」, 0.38.1): 5 영역(다섯 번째 고침의 회귀·학급·연수/오늘 화면·채팅·화면 흐름 Playwright) 찾기+검증, 확인 23건 모두 고침
+  (`tests/unit/fix1119-bugs6-r5`·`-class`·`-trhome`·`-chat`·`-ui.test.mjs`, e2e `fix1119-bugs6-class`·`-trhome`·`-chat`·`-ui.mjs`).
+  품의 `maskForAI` 되살린 줄은 강한 이름·maskPersons만(weak 물건 낱말은 가린 이름 옆일 때만, 다시 빼지 않음)·ORDER_HEAD 뒤 장소·학년 낱말, `chat-names` EXCEPT 진단평·기초평…·hae는 보조 동사 앞만, `sourceForAI` 머리 말 낱말,
+  진도 2학기 바꿀 때 1학기 offset·hours0 정리·`class-import` 「～」「–」 차시, 기초학력 계획 「(5교시)」·교시 길이, 시간표 AI 자리 표시. 연수 `sameCourse`(공문에서 넣을 때 기본 목록 줄에 이음)·`hoursIn`(「2시간」「90분」)·certHours 「n시 m분」 아님,
+  calendar 겹침에서 training 출처 뺌, 학년말 카드 학년도, 교내 연수 시트 고친 칸 유지, 못 맞춘 줄 고른 값 유지, 달력 기초학력 줄 `date`. 채팅 「n번 … 지워줘/고쳐줘」는 메모 아님·`VIEW_W` 다음 주/n월·품의 목록 말, 「이번 주 n요일」. 회의록 처음 쓸 때 지금 회의록 정함.
 - 메뉴 사이 흐름 점검(2026-11-18 「각 정보와 메뉴가 유기적으로 돌아가는지 확인해줘」, 0.36.0): 채팅 intent `budget`·`idea`·교체/보강/메모 → 오늘 수업·전담 → 진도표,
   「예산 얼마 남았어?」(`budget-model chatAnswer`), 떠 있는 버튼 kind `cert`(이수증 → `training.js putCerts`), 기초학력 수업 날은 `calendar closedDays`(재량휴업일 등 — 방학은 아님) 건너뜀,
   인수인계서에 기초학력(`camp-model handoverRows`)·연수 (`tests/unit/fix1118-flow.test.mjs`, e2e `fix1118-flow.mjs`).
@@ -114,7 +119,7 @@
 
 ## 시험
 
-- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1682개 통과)
+- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1707개 통과)
 - e2e 한 파일: `node tests/e2e/<이름>.mjs`
 - e2e 전체: `node tests/e2e/run-all.mjs` (약 170개 파일, 45~50분). 파일마다 다른 포트를 써서 나눠 돌려도 된다. 전체가 도는 동안에는 작업 폴더를 고치지 말고 `.claude/worktrees/` 아래 worktree에서 일한다(그 안에서는 저장소의 node_modules를 그대로 찾는다).
 

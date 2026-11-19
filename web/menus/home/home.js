@@ -32,6 +32,8 @@ let box = null, view = null, picker = null, brief = null, campPick = '', sig = '
 let ye = null; // 학년말 마감 { done, total } (12~2월)
 const visible = () => !!(box && box.isConnected && !box.closest('[hidden]'));
 function year() { let ls = null; try { ls = window.localStorage; } catch (e) {} return ensureYears(ls).current; }
+/* 학년말 카드를 띄울 때인지: 12~2월이고 새 학년도를 아직 시작하지 않았음(체험용 학년도는 오늘이 든 학년도로 봄) */
+const yeSeason = t => { const y = year(); return yearendSeason(t, isDemoYear(y) ? null : y); };
 function aiState() {
   const A = SS().ai;
   const ok = !!(A && A.engineReady && A.engineReady());
@@ -115,9 +117,9 @@ function campHTML(d) {
     ${pick}${sts}
     <div class="hm-card-f">${k.students.length ? '<button type="button" class="btn tonal" data-hm="attAll">남은 칸 모두 출석</button>' : ''}<button type="button" class="btn text" data-hm-go="camp">기초학력 열기</button></div></section>`;
 }
-/* 학년말(12~2월): 마감 점검표 카드(yearend.js — [data-ye-open]이 시트를 엶) */
+/* 학년말(12~2월, 새 학년도를 시작하기 전): 마감 점검표 카드(yearend.js — [data-ye-open]이 시트를 엶) */
 function yeHTML(d) {
-  if (!yearendSeason(d.t)) return '';
+  if (!yeSeason(d.t)) return '';
   return `<section class="hm-ye" aria-label="학년말 마감"><b>학년말 마감</b><span class="muted">${ye ? `${ye.done} / ${ye.total} 다 됐어요` : '세는 중…'}</span>
     <span class="grow"></span><button type="button" class="btn tonal" data-ye-open>점검표 열기</button></section>`;
 }
@@ -161,7 +163,7 @@ async function refresh() {
   const my = ++tok;
   let lines = [];
   try { lines = briefing(await gather(today())); } catch (e) { lines = []; }
-  if (yearendSeason(today())) { try { const s = await yearendState(today()); ye = { done: s.done, total: s.total }; } catch (e) { ye = null; } }
+  if (yeSeason(today())) { try { const s = await yearendState(today()); ye = { done: s.done, total: s.total }; } catch (e) { ye = null; } }
   if (my !== tok || !visible()) return;
   brief = lines;
   draw();

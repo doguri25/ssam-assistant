@@ -2,7 +2,7 @@
    {"reply","actions","choices"} JSON으로 답을 받음. 화면 없이 돌아감(시험).
    AI로 보내는 글(선생님 글·대화·상태)은 모두 이름·전화번호를 가림(safeText). 답의 할 일은 아는 할 일만, 2개까지.
    답 글은 HTML로 넣지 않고 글자를 바꾼 뒤 줄·목록·굵게만 살림(replyHTML) */
-import { INTENTS, INTENT_IDS, LANGS, safeText, handoffText, payloadFor, memoParts, HOW, HOWTO } from './chat-route.js';
+import { INTENTS, INTENT_IDS, LANGS, safeText, handoffText, payloadFor, memoParts, memoAsk, HOW, HOWTO } from './chat-route.js';
 import { maskContacts } from './privacy.js';
 import { guideText } from './chat-knowledge.js';
 
@@ -130,8 +130,11 @@ export function planActions(actions, { raw = '', said = '', question = false } =
     if (!a || !INTENT_IDS.includes(a.intent)) continue;
     if (a.intent === 'memo') {
       if (question || !pm || !pm.body.trim()) continue;
+      // 「3번 메모 보여 줘」는 메모 보기(메모에 넣지 않음), 「… 메모해 줘」는 꼬리를 뺀 글(memoAsk). 다른 부탁(null)은 AI가 메모로 골랐으면 선생님 글 그대로
+      const how = memoAsk(pm.body);
+      if (how && how.view) continue;
       const nos = (a.nos || []).filter(n => pm.nos.includes(n));
-      run.push({ intent: 'memo', payload: { nos: nos.length ? nos : pm.nos, body: pm.body } });
+      run.push({ intent: 'memo', payload: { nos: nos.length ? nos : pm.nos, body: how && how.body ? how.body : pm.body } });
     } else if (question && !ASK_RUN.includes(a.intent)) nav.push(a.intent);
     else run.push({ intent: a.intent, payload: actionPayload(a, { said, question }) });
   }

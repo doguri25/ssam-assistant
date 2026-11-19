@@ -39,8 +39,10 @@ function dayOf(t, today) {
   if (/내일\s*모레/.test(t)) return addDays(today, 2);
   for (const [w, n] of DAYW) if (t.includes(w)) return addDays(today, n);
   const next = /다음\s*주/.test(t), last = /지난\s*주|저번\s*주/.test(t), mon = addDays(today, -((wday(today) + 6) % 7)); // 이번 주 월요일
+  // 「이번 주·금주 월요일」은 이번 주 그 요일(지난 요일이어도 — 다음 주로 넘기지 않음). 주 말이 없는 「월요일」만 다가올 그 요일
+  const thisW = /이번\s*주|금주/.test(t);
   for (const [w, n] of WEEK) if (t.includes(w) || t.includes(w.slice(0, 1) + '욜')) {
-    if (next || last) return addDays(mon, (n + 6) % 7 + (next ? 7 : -7));
+    if (next || last || thisW) return addDays(mon, (n + 6) % 7 + (next ? 7 : last ? -7 : 0));
     return addDays(today, (n - wday(today) + 7) % 7);
   }
   return today;

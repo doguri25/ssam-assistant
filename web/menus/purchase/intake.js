@@ -5,8 +5,9 @@ import { emptyItem, findPersonal, toNumber, plainItemName, plainOfficial, PER_UN
 import { readQuote } from './quote.js';
 import { findItems, isTotalName, totalKey } from '../../core/sheet.js';
 import { readText } from '../../core/files.js';
-import { nameCell, staffName, MASK, maskContacts, peopleNames, stripNames, RRN_RE } from '../../core/privacy.js';
+import { nameCell, staffName, MASK, maskContacts, peopleNames, RRN_RE } from '../../core/privacy.js';
 import { makeRedactor } from '../../core/redact.js';
+import { maskPersons, GIVEN } from '../../core/chat-names.js';
 
 // 세는 말: 없는 말(「체육복 30벌」「간식 420인분」)은 수량 1로 읽혀 합계가 크게 줄었음. 「회·일·단」은 날짜·차례(「제3회」「12일」)와 헷갈려 넣지 않음
 const UNITS = '박스|상자|개|권|자루|세트|장|통|묶음|팩|병|봉|봉지|EA|ea|Ea|명|인분|시간|차시|식|건|매|롤|켤레|벌|쌍|대|부|kg|g|L|ml|m|판|타|다스|캔|포|입|갑|곽|송이|다발|그루|마리|포기|줄|잔|BOX|Box|box|SET|Set|set|PCS|Pcs|pcs|포대|덩이';
@@ -403,10 +404,12 @@ const kinName = n => !KIN_WORD.has(n) && (n.length === 2 ? staffName(n) && !KIN_
 /* 쇼핑몰 주문서·장바구니를 복사하면 딸려 오는 「주문자 남다율」「수령인: 박솔빛」「받는 분 탁보결」「신청자: 탁보결」「구매 요청: 탁보결」:
    이 머리 말 뒤의 이름 모양 낱말 하나도 가림(흔한 이름 목록에 없는 이름도 — 예전에는 그대로 AI로 갔음). 두 글자(「주문자 정보」)는 쌍점 뒤만 */
 const ORDER_HEAD = /(^|[^가-힣])((?:주문|구매|구입|신청|요청)(?:자|인)|주문하신[ \t]*분|수령(?:인|자)|받(?:는|으시는|으실)[ \t]*(?:사람|분)|보내(?:는|시는)[ \t]*(?:사람|분)|(?:구입|구매)[ \t]*요청(?:자|인)?)((?:[ \t]*(?:명|성명|이름))?)([ \t]*[:：][ \t]*|[ \t]+)([가-힣]{2,4}?)(?=(?:님|씨)?(?![가-힣]))/g;
-// 쌍점 없이 띄어 쓴 꼴은 품목 줄(「신청자 안내문 10장 500원」)이 아닐 때만, 「~문·~란」 같은 낱말 끝은 아님
+// 쌍점 없이 띄어 쓴 꼴은 품목 줄(「신청자 안내문 10장 500원」)이 아닐 때만, 「~문·~란」 같은 낱말 끝은 아님.
+// 쌍점 뒤라도 곳·무리·부서 끝말(「수령인: 도서실」「신청자: 전교생」「신청자: 전학년」「수령인: 지원청」「신청자: 연구부」)은 이름이 아님 — 흔한 이름(김은실)은 이름
 const ORDER_NOT = new Set(['정보', '이름', '성명', '주소', '연락처', '전화', '확인', '명단', '전원', '배송', '수령']);
+const ORDER_PLACE = /[실생년청반부]$/;
 const orderName = (n, colon, rest) => !ORDER_NOT.has(n) && (n.length === 2 ? colon && staffName(n)
-  : nameCell(n) && (colon || (!NOT_NAME_END.test(n) && !/문$/.test(n) && !new RegExp(`${QTY.source}|\\d\\s*(?:만\\s*)?원`).test(rest))));
+  : nameCell(n) && (colon ? !ORDER_PLACE.test(n) || GIVEN.has(n.slice(1)) : (!NOT_NAME_END.test(n) && !/문$/.test(n) && !new RegExp(`${QTY.source}|\\d\\s*(?:만\\s*)?원`).test(rest))));
 export const maskNames = t => String(t || '')
   .replace(ORDER_HEAD, (m, pre, head, suf, sp, n, at, all) => (orderName(n, /[:：]/.test(sp), all.slice(at + m.length).split('\n')[0]) ? `${pre}${head}${suf}${sp}${MASK}` : m))
   .replace(ROLE_AFTER, (m, pre, n, sp, role) => (nameCell(n) ? `${pre}${MASK}${sp || ' '}${role}` : m))
@@ -417,8 +420,9 @@ export const maskNames = t => String(t || '')
    자리 표시는 ○○○로(답을 되돌리지 않음). 가리개가 보내지 않는 줄이라도 수량·금액이 있는 품목 줄(「이순신 장영실 정약용 위인전 3권 36,000원」
    「상품번호 1234-5678-9012 색연필 10개」)은 빼지 않고 그 줄의 이름 모양 낱말·긴 번호만 ○○○ — AI 답이 규칙으로 읽은 품목을 통째로 대신해서, 줄을 빼면 그 품목이 조용히 사라졌음.
    주민번호·계좌 말(계좌·예금주)·연락처가 있는 줄은 그대로 뺌.
-   물건 머리 줄(「내용: 6학년 1반 김민준 이서연 박지훈 체험학습비 45,000원」「품목: …」)의 이름 모양 낱말(peopleNames weak)도 가리고,
-   가린 뒤에도 명단 줄로 보이면(이름 모양이 남음) 예전처럼 보내지 않음 — 되살린 줄로 이름이 새지 않게 */
+   물건 머리 줄(「내용: 6학년 1반 김민준 이서연 박지훈 체험학습비 45,000원」「품목: 남다율 탁보결 한가람 상장 …」)의 이름은 「쌤」 채팅 규칙(chat-names maskPersons —
+   흔한 이름 목록·빈칸으로 이은 이름)으로 한 번 더 가림. 물건 머리 줄의 이름 모양 낱말을 모두(peopleNames weak) 가리면 품목 이름(현수막·마이크·안전모·도화지·지점토)이
+   ○○○이 되고, 가린 뒤 명단 줄로 다시 빼면(stripNames) 「지우개, 우드락, 고무판 …」 품목 줄이 통째로 사라졌음(초안·검토 AI의 「- 품목:」 줄도) */
 const LONG_NO = /(?<![\d-])\d{2,6}(?:-\d{2,8}){2,3}(?![\d-])/g;
 const ITEM_LINE = new RegExp(`${QTY.source}|\\d\\s*(?:만\\s*)?원`);
 export const maskForAI = t => {
@@ -427,10 +431,15 @@ export const maskForAI = t => {
     if (x) return x.text;
     const l = ls[k];
     if (RRN_RE.test(l) || /계좌|예금주/.test(l) || hasContact(l) || !ITEM_LINE.test(l)) return null;
-    const weak = [], people = peopleNames(l, { weak });
-    const ns = [...new Set([...people, ...weak, ...rd.names])].filter(n => /^[가-힣]{2,4}$/.test(n)).sort((a, b) => b.length - a.length);
-    const v = ns.reduce((v, n) => v.split(n).join(MASK), l.replace(LONG_NO, m => (m.replace(/\D/g, '').length >= 10 ? MASK : m)));
-    return stripNames(v).dropped ? null : v;
+    const weak = [], ns = [...new Set([...peopleNames(l, { weak }), ...rd.names])].filter(n => /^[가-힣]{2,4}$/.test(n)).sort((a, b) => b.length - a.length);
+    let v = maskPersons(ns.reduce((v, n) => v.split(n).join(MASK), l.replace(LONG_NO, m => (m.replace(/\D/g, '').length >= 10 ? MASK : m)))).text;
+    // 물건 머리 줄의 이름 모양 낱말(weak)은 가린 이름과 빈칸·쉼표로 바로 이어질 때만(「품목: 김하늘 이바다 박솔빛 상장」의 박솔빛 — 「현수막 1개, 마이크 2개」는 아님)
+    for (let k = 0; k < weak.length; k++) {
+      const w = weak.find(x => new RegExp(`(?<=${MASK}[ \\t,，·、]+)${x}(?![가-힣])|(?<![가-힣])${x}(?=[ \\t,，·、]+${MASK})`).test(v));
+      if (!w) break;
+      v = v.replace(new RegExp(`(?<=${MASK}[ \\t,，·、]+)${w}(?![가-힣])|(?<![가-힣])${w}(?=[ \\t,，·、]+${MASK})`, 'g'), MASK);
+    }
+    return v;
   }).filter(x => x != null).join('\n').replace(/〔이름\d+〕|\{\{\d+\}\}/g, MASK);
 };
 

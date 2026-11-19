@@ -9,6 +9,8 @@ const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const str = (v, n) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n);
 export const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
 const num = v => { const n = Number(v); return Number.isFinite(n) && n > 0 && n < 1000 ? Math.round(n * 10) / 10 : null; };
+/* 손으로 넣은 시간 칸(내 필수연수 「시간」·교내 연수 「연수 시간」): 숫자(「2」「1.5」)에 더해 「2시간」「1시간 30분」「90분」「15차시」도(certHours). 못 읽으면 null */
+export const hoursIn = v => num(v) ?? (v == null || typeof v !== 'string' ? null : certHours(v));
 export const newId = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const pad = n => String(n).padStart(2, '0');
 const DAY = d => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d || '')); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 864e5 : null; };
@@ -33,7 +35,7 @@ export const isDone = s => s === 'done' || s === 'sent' || s === 'ok';
 
 export function normItem(v) {
   if (!isObj(v) || !str(v.title, 100)) return null;
-  return { id: typeof v.id === 'string' && v.id ? v.id.slice(0, 40) : newId('tm'), title: str(v.title, 100), hours: num(v.hours), due: isDate(v.due) ? v.due : '',
+  return { id: typeof v.id === 'string' && v.id ? v.id.slice(0, 40) : newId('tm'), title: str(v.title, 100), hours: hoursIn(v.hours), due: isDate(v.due) ? v.due : '',
     where: str(v.where, 60), status: ST.includes(v.status) ? v.status : 'todo', doneDate: isDate(v.doneDate) ? v.doneDate : '', cert: str(v.cert, 120), certNo: codeNorm(v.certNo),
     note: str(v.note, 200), from: str(v.from, 60), at: Number(v.at) || 0 };
 }
@@ -89,6 +91,18 @@ export function bestCourse(courses, text, { one = false } = {}) {
   if (sc.length > 1 && sc[1].whole === sc[0].whole && sc[1].hits === sc[0].hits && sc[1].ratio === sc[0].ratio) return null;
   return sc[0].c;
 }
+/* 공문·쪽지에서 넣는 연수와 같은 연수(내 필수연수 줄·현황판 연수): 같은 공문에서 넣은 것, 이름 열쇠가 같은 것, 없으면
+   아직 공문에 잇지 않은 것 가운데 넣는 이름의 낱말(교육·예방 같은 말을 뺀 것)이 모두 그 이름에 든 것 하나 —
+   「청렴교육」 → 「청렴교육(부패방지)」, 「자살예방교육」 → 「생명존중(자살예방) 교육」(기본 목록 이름). 「학교폭력 사안처리 연수」는 「학교폭력 예방교육」이 아님. 없으면 null */
+export function sameCourse(list, title, from = '') {
+  const l = (list || []).filter(x => x && x.title), k = titleKey(title);
+  const hit = l.find(x => (from && x.from === from) || titleKey(x.title) === k);
+  if (hit) return hit;
+  const ws = [...new Set(words(title))];
+  if (!ws.length) return null;
+  const cands = l.filter(x => !x.from && ws.every(w => titleKey(x.title).includes(w)));
+  return cands.length === 1 ? cands[0] : cands.length ? bestCourse(cands, title) : null;
+}
 /* 글 속 날짜들(2026. 11. 3. · 2026-11-03 · 2026년 11월 3일 · 2026.11.03) → [{ iso, at }] */
 const DATE_RE = /(20\d{2})\s*(?:[.\-/]|년)\s*(\d{1,2})\s*(?:[.\-/]|월)\s*(\d{1,2})\s*(?:일|\.)?/g;
 function datesIn(text) {
@@ -129,7 +143,8 @@ export function certHours(text) {
   if (hm) return num(+hm[1] + +hm[2] / 60);
   const h = /(\d{1,3}(?:\.\d)?)\s*시간/.exec(t);
   if (h) return num(h[1]);
-  const m = /(\d{2,4})\s*분(?![가-힣])/.exec(t);
+  // 「학습시간: 120분」 — 교육 일시·발급 시각의 「14시 30분」「10시 20분」(바로 앞이 「n시」인 분)은 시간이 아님
+  const m = /(?<!\d\s*시\s*)(\d{2,4})\s*분(?![가-힣])/.exec(t);
   if (m) return num(+m[1] / 60);
   const c = /(\d{1,3})\s*차시/.exec(t);
   return c ? num(c[1]) : null;
@@ -223,7 +238,7 @@ export function normBoard(v) {
   const courses = (Array.isArray(o.courses) ? o.courses : []).filter(isObj).map(c => ({ id: typeof c.id === 'string' && c.id ? c.id.slice(0, 40) : newId('tc'), title: str(c.title, 100),
     due: isDate(c.due) ? c.due : '', from: str(c.from, 60), target: (Array.isArray(c.target) ? c.target : []).filter(k => KINDS.includes(k)),
     // inhouse: 교내 자율연수(직접 여는 연수) — 일시·시각·장소·강사·연수 시간
-    inhouse: isObj(c.inhouse) ? { date: isDate(c.inhouse.date) ? c.inhouse.date : '', time: str(c.inhouse.time, 30), place: str(c.inhouse.place, 60), lecturer: str(c.inhouse.lecturer, 60), hours: num(c.inhouse.hours) } : null
+    inhouse: isObj(c.inhouse) ? { date: isDate(c.inhouse.date) ? c.inhouse.date : '', time: str(c.inhouse.time, 30), place: str(c.inhouse.place, 60), lecturer: str(c.inhouse.lecturer, 60), hours: hoursIn(c.inhouse.hours) } : null
   })).filter(c => c.title).slice(0, 40);
   const sid = new Set(staff.map(s => s.id)), cid = new Set(courses.map(c => c.id)), marks = {};
   for (const [c, row] of Object.entries(isObj(o.marks) ? o.marks : {})) {

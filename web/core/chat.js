@@ -14,7 +14,7 @@ import { go, MENUS } from './shell.js';
 import * as ai from './ai.js';
 import { maskContacts } from './privacy.js';
 import { weekday } from './calendar.js';
-import { routeText, payloadFor, isSure, INTENT_IDS, intentLabel, LANGS, langLabel, parseMemo, maskMemo, memoLine, appendMemo, nosText, safeText, handoffText, policyAsk, TOKTOK_NOTE, WRITE_IDS, MEMO_END } from './chat-route.js';
+import { routeText, payloadFor, isSure, INTENT_IDS, intentLabel, LANGS, langLabel, parseMemo, memoAsk, maskMemo, memoLine, appendMemo, nosText, safeText, handoffText, policyAsk, TOKTOK_NOTE, WRITE_IDS, MEMO_END } from './chat-route.js';
 import { assistPrompt, parseAssist, replyHTML, mentionedNos, planActions, offlineWay } from './chat-assist.js';
 import { offlineAnswer } from './chat-knowledge.js';
 import { dataQuestion, answerFor } from './chat-data.js';
@@ -232,8 +232,9 @@ export async function send(text) {
   if (dq && !memoNow && !lessonEdit && !(isSure(r) && WRITE_IDS.includes(r.intent))) { await answerData(dq, me); return; }
   if (isSure(r)) {
     // 관찰 메모는 이름을 가리기 전 글로 넘김(메모에 넣을 때 가리고 가린 수를 알림 — 전화번호만 먼저 가림)
-    const memo = r.intent === 'memo' && parseMemo(maskContacts(raw));
-    await run(r.intent, memo ? { nos: memo.nos, body: memo.body } : r.intent === 'minutes' ? payloadFor('minutes', raw) : r.payload);
+    // 「… 메모해 줘」「메모에 … 넣어 줘」는 넣어 달라는 꼬리를 뺀 글(routeText와 같은 규칙 — memoAsk)
+    const memo = r.intent === 'memo' && parseMemo(maskContacts(raw)), mb = memo && memoAsk(memo.body);
+    await run(r.intent, memo ? { nos: memo.nos, body: mb && mb.body != null ? mb.body : memo.body } : r.intent === 'minutes' ? payloadFor('minutes', raw) : r.payload);
     return;
   }
   await assist({ raw, said, r, me });
@@ -374,6 +375,9 @@ async function run(intent, p = {}) {
     afterGo(); return;
   }
   if (intent === 'purchase') {
+    // 「저장한 품의 템플릿」「최근 품의 보여 줘」는 그 탭(payloadFor view), 「쓰던 품의 이어서」는 새 품의 탭(쓰던 품의 그대로)
+    if (!p.text && p.view === 'templates') { go('purchase', 'templates'); say('품의 › 저장한 템플릿으로 왔어요.'); afterGo(); return; }
+    if (!p.text && p.view === 'recent') { go('purchase', 'recent'); say('품의 › 최근 작성으로 왔어요. [열기]로 그 품의를 다시 열어요.'); afterGo(); return; }
     if (!p.text) { go('purchase', 'new'); say('품의 › 새 품의로 왔어요. 사려는 것을 적어 주세요. 예) 알코올램프 10개 5,000원'); afterGo(); return; }
     (await import('../menus/purchase/purchase.js')).putPurchaseText(p.text);
     say(`품의 넣기 칸에 넣고 초안을 만들어요.${ai.ready() ? '' : ' AI 키가 없으면 품목만 넣어요.'} 에듀파인에는 확인한 뒤 직접 올려 주세요.`);

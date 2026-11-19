@@ -526,7 +526,8 @@ const seat = (ctx, sub) => { const a = alignToPlan(ctx, sub); return { ...a, hou
    다만 앞 진도표 차시가 절반 넘게 남아 있으면(뒤에 다음 학기 줄을 덧붙임·글자 고침) 그대로.
    같은 진도표를 고친 것(차시 날짜가 대부분 앞 진도표에 있음)은 그대로 — 첫 주 줄을 지움, 첫날을 기준일 앞으로 당김 등.
    다만 그 가운데 1·2학기를 합친 진도표(첫날이 기준일 앞, 그 앞 기록 없음)는 기준일을 없애고,
-   합친 진도표에서 앞 학기 줄을 뺀 것(빠진 앞 차시가 새 차시 수의 절반 이상, 첫날 앞 기록 있음)은 다음 학기 진도표 */
+   합친 진도표에서 앞 학기 줄을 뺀 것(빠진 앞 차시가 새 차시 수의 절반 이상, 첫날 앞 기록 있음)은 다음 학기 진도표.
+   체크 기록이 없어도 새 첫날이 앞 진도표의 마지막 날짜 뒤면 다음 학기 진도표(그 첫날) */
 export function termStart(ctx, old, lessons) {
   const list = (lessons || []).filter(isObj), dates = list.map(l => l.from).filter(isDate);
   if (!dates.length) {
@@ -552,7 +553,10 @@ export function termStart(ctx, old, lessons) {
     const dropped = old.lessons.filter(l => l.from && l.from < first).length;
     if (!(early && dropped * 2 >= dates.length)) return null;
   }
-  return early ? first : back ? '' : null;
+  // 새 진도표가 앞 진도표의 마지막 날짜보다 뒤에서 시작하면(겹치는 날짜 없음) 체크 기록이 없어도 다음 학기 진도표 —
+  // 체크 없이 「다음 차시」·진도표대로 맞추기·주간학습안내로만 쓴 교과도 앞 학기 진도 자리(offset·체크 전 실시)를 새 진도표에 잇지 않게
+  const last = [...had].filter(isDate).sort().pop(), after = !!last && first > last;
+  return early || after ? first : back ? '' : null;
 }
 /* 있는 교과의 차시 목록 바꾸기(진도표 파일·AI로 뽑기·고치기 시트): 체크 기록은 그대로. 다음 학기 진도표면 그 첫날(날짜 없으면 오늘)
    앞의 기록은 세지 않고 새 교과처럼 계획 진도에 맞춤. fields: 함께 바꿀 값(이름·총 시수). 저장하지 못하면 null */

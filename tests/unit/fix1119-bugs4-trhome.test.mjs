@@ -47,7 +47,7 @@ test('구글 폼 이수번호 칸의 「없음」「-」「모름」은 이수�
 test('한 달 달력·학년말 마감: 기초학력 줄은 그 프로그램(id)으로 감', async () => {
   const M = await import('../../web/menus/home/month-model.js');
   const it = M.monthItems({ camps: [{ id: 'k2', name: '국어 교실', dates: ['2026-11-24'] }] }, '2026-11', '2026-11-19');
-  assert.deepEqual(it['2026-11-24'][0].route, { to: 'camp', id: 'k2', section: 'att' });
+  assert.deepEqual(it['2026-11-24'][0].route, { to: 'camp', id: 'k2', section: 'att', date: '2026-11-24' }); // 그날 출석 칸(fix1119-bugs6-ui)
   const Y = await import('../../web/menus/home/yearend-model.js');
   const rows = Y.yearendRows({ camps: [{ id: 'k1', name: '수학 교실', docs: [{ label: '수업 확인서', state: 'ready', note: '' }] }, { id: 'k2', name: '국어 교실', docs: [{ label: '결과 보고서', state: 'todo', note: '2칸 비어 있음' }] }] }, new Set());
   assert.deepEqual(rows.find(r => r.id === 'camp').go, { to: 'camp', id: 'k2', section: 'docs' });

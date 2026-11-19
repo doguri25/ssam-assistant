@@ -3,7 +3,7 @@
    하루 한꺼번에([남은 칸 모두 완료]·[이 날 모두 못 함]), 교시마다 [교과 바꾸기](교체·보강 — 그날 기록에만)·[메모](다음 시간 줄에 「지난 시간」) */
 import { onEnter, go } from '../../core/shell.js';
 import { toast } from '../../core/ui.js';
-import { listEvents, addDays, isDate } from '../../core/calendar.js';
+import { listEvents, addDays, isDate, DUE_ONLY } from '../../core/calendar.js';
 import { normName } from './class-import.js';
 import {
   makeCtx, dayView, setMark, setSwap, setMemo, markDay, dayMarks, canMark, missingList, fmtDay, fmtShort, today, unitPos, hasTimetable, extraNames
@@ -62,14 +62,14 @@ function listHTML(ctx) {
   const v = dayView(ctx, date);
   if (v.off) return `<div class="yp-card cls-off"><b>${esc(v.off)}</b><span class="muted">수업이 없는 날이에요.</span></div>`;
   if (!v.slots.length) return '<div class="yp-card"><p class="muted" style="margin:0">이 요일에는 시간표에 수업이 없어요.</p></div>';
-  const ro = !canMark(ctx, date), withEvents = listEvents().some(e => e.date === date && e.source !== 'gongmun');
+  const ro = !canMark(ctx, date), withEvents = listEvents().some(e => e.date === date && !DUE_ONLY.has(e.source));
   return `<ol class="cls-lessons yp-card">${v.slots.map(s => slotHTML(s, ro)).join('')}</ol>${dayActsHTML(ctx, v, withEvents)}`;
 }
 function eventsHTML(ctx) {
   const events = listEvents().filter(e => e.date === date);
   if (!events.length) return '';
-  // 학사일정(행사·연간계획)이 있는 날은 [이 날 모두 못 함]을 칩 옆에 — 공문 기한 줄만 있는 날은 아래 그대로
-  const v = dayView(ctx, date), m = !v.off && canMark(ctx, date) && events.some(e => e.source !== 'gongmun') ? dayMarks(ctx, date) : null;
+  // 학사일정(행사·연간계획)이 있는 날은 [이 날 모두 못 함]을 칩 옆에 — 공문 기한·연수 이수 기한 줄만 있는 날은 아래 그대로
+  const v = dayView(ctx, date), m = !v.off && canMark(ctx, date) && events.some(e => !DUE_ONLY.has(e.source)) ? dayMarks(ctx, date) : null;
   const skip = m && (m.left || m.marked) ? '<button class="btn" type="button" data-day="skip">이 날 모두 못 함</button>' : '';
   return `<div class="cls-events">${events.map(e => `<span class="cls-chip">${esc(e.title)}</span>`).join('')}${skip}</div>`;
 }

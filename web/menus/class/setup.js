@@ -167,9 +167,15 @@ async function importTt(file) {
 }
 function ttPrompt(info, text) {
   return `[시간표 읽기]\n아래는 학교 시간표 파일의 글이에요. ${info.grade}학년 ${info.room}반의 시간표만 읽어 주세요.\n\n`
-    + '규칙:\n- cells는 요일 5개(월~금), 요일마다 1교시부터 교시 순서대로 과목 이름\n- 빈 시간은 ""\n- periods는 교시 수(4~7)\n- 파일에 없는 과목은 지어내지 않음\n\n'
+    + '규칙:\n- cells는 요일 5개(월~금), 요일마다 1교시부터 교시 순서대로 과목 이름(괄호 안 교사 이름·자리 표시는 빼고 과목 이름만)\n- 빈 시간은 ""\n- periods는 교시 수(4~7)\n- 파일에 없는 과목은 지어내지 않음\n\n'
     + '답은 JSON 하나만: {"periods":6,"cells":[["국어","수학","사회","과학","체육",""],["…"],["…"],["…"],["…"]]}\n\n'
     + `시간표 글:\n${text}`;
+}
+/* AI가 읽은 시간표 칸의 자리 표시(가려 보낸 전담 교사 이름)는 되돌리고, 되돌리지 못한 것(○○○)은 괄호째 뺌 — 「영어(〔이름1〕)」가 시간표·주간학습안내에 남지 않게 */
+export function ttBack(v, back) {
+  if (!v || typeof v !== 'object' || !Array.isArray(v.cells)) return v;
+  const cell = c => (typeof c === 'string' ? back(c).replace(/\(\s*(?:○○○\s*)+\)|○○○/g, '').trim() : c);
+  return { ...v, cells: v.cells.map(r => (Array.isArray(r) ? r.map(cell) : r)) };
 }
 async function runTtAi() {
   if (!ai.ready()) { toast(AI_KEY); return; }
@@ -177,7 +183,8 @@ async function runTtAi() {
   const info = getInfo();
   ttMsg = { ...ttMsg, busy: true }; drawTtMsg();
   try {
-    const v = await ai.generateJSON(ttPrompt(info, hideSrc(lastTt).text), { valid: x => !!normTimetableAI(x) });
+    const src = hideSrc(lastTt);
+    const v = ttBack(await ai.generateJSON(ttPrompt(info, src.text), { valid: x => !!normTimetableAI(x) }), src.back);
     ttMsg = null;
     putTimetable(normTimetableAI(v), 'AI가 읽은 시간표로 바꿔요.', () => { changed('ttAi'); if (visible()) render(); toast('AI가 읽은 시간표를 넣었어요. 칸을 확인해 주세요', 5000); });
   } catch (err) {

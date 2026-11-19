@@ -78,6 +78,8 @@ export function closedDays() {
 /* ---------- 겹침과 추천 ---------- */
 const DAY = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
 
+/* 기한만 적은 일정의 출처(공문 기한·할 일, 필수연수 이수 기한) — 그날을 차지하지 않음 */
+export const DUE_ONLY = new Set(['gongmun', 'training']);
 /* 그날 행사·일정을 잡기 어려운 이유들. 빈 배열이면 괜찮은 날 */
 export function dayIssues(date, { breaks = [], events = [], source = null } = {}) {
   if (!isDate(date)) return [];
@@ -86,8 +88,8 @@ export function dayIssues(date, { breaks = [], events = [], source = null } = {}
   if (w === 0 || w === 6) out.push(DAY[w]);
   if (HOLIDAYS[date]) out.push(`공휴일(${HOLIDAYS[date]})`);
   for (const b of breaks || []) if (b && b.from <= date && date <= b.to) { out.push(String(b.label || '').trim() || '방학·재량휴업일'); break; }
-  // 공문 제출 기한·할 일(source gongmun)은 그날을 차지하는 일정이 아니라 겹침으로 세지 않음
-  for (const e of events || []) if (e && e.date === date && e.source !== source && e.source !== 'gongmun') out.push(`「${e.title}」 일정과 겹쳐요`);
+  // 공문 제출 기한·할 일(source gongmun)과 필수연수 이수 기한(source training)은 그날을 차지하는 일정이 아니라 겹침으로 세지 않음
+  for (const e of events || []) if (e && e.date === date && e.source !== source && !DUE_ONLY.has(e.source)) out.push(`「${e.title}」 일정과 겹쳐요`);
   return out;
 }
 

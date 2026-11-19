@@ -5,6 +5,7 @@ import { isDate, schoolYearOf, yearOfMonth } from '../../core/calendar.js';
 import { getSchool } from '../../core/settings.js';
 import { maskContacts, maskStaff, staffName, nameCell, MASK, colonNames, maskKnown } from '../../core/privacy.js';
 import { accountLine } from '../../core/redact.js';
+import { GIVEN } from '../../core/chat-names.js';
 import { normRv } from './plan-rv.js';
 import { parseOutline } from './classplan-model.js';
 import { isTotalName } from '../../core/sheet.js';
@@ -168,10 +169,13 @@ export function normDraft(v) {
 export const textForAI = s => maskStaff(maskContacts(s)).text;
 /* 계획 자료 글(작년 계획서·작년 결과·지침·참고 공문·작년 설문 — 개인정보 열·명단 줄을 뺀 stripPersonal 글) → AI로 보낼 글:
    계좌 줄은 빼고(강사비 입금 계좌), 교직원 이름·연락처(textForAI)와 맡은 일 머리 쌍점 뒤 이름(「진행: 남다율, 사진 기록: 탁보결」 — 글 다른 곳의 「탁보결과 협의」도)을 ○○○로.
-   쪽지·공문의 cleanSheet(조사 붙은 이름 maskJosaNames·「이바다 기록 담당」 규칙)는 쓰지 않음 — 「성교육을」「한글날을」「우수상 발표」를 이름으로 배워 글 전체에서 가렸음 */
+   쪽지·공문의 cleanSheet(조사 붙은 이름 maskJosaNames·「이바다 기록 담당」 규칙)는 쓰지 않음 — 「성교육을」「한글날을」「우수상 발표」를 이름으로 배워 글 전체에서 가렸음.
+   쌍점 뒤 무리·작품·곳 낱말(「사진: 방송반」「기록: 기자단」「발표: 우수작·우수상」「사회: 반대표」「사서: 도서실」)은 배우지 않음 — 배우면 글 곳곳의 「방송반 협조」「우수작 전시」까지 ○○○이 됐음.
+   흔한 이름(김은실)은 그대로 배움 */
+const GROUP_END = /[반단작회실표상장]$/;
 export const sourceForAI = s => {
   const t = textForAI(String(s == null ? '' : s).split('\n').filter(l => !accountLine(l)).join('\n'));
-  return maskKnown(t, colonNames(t)).text;
+  return maskKnown(t, colonNames(t).filter(w => !GROUP_END.test(w) || GIVEN.has(w.slice(1)))).text;
 };
 /* 담당자 칸: 부서·직함은 두고 교직원 이름과 전화번호는 ○○○로 (「독서교육부 박하늘」 → 「독서교육부 ○○○」). 「~부·~실·~과·~팀·~반」 낱말과 직함은 이름이 아님 */
 const NOT_NAME = /^(주무관|기간제|실무사|담당자?)$|[부실과팀반]$/;

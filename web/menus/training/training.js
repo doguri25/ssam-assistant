@@ -19,6 +19,9 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 const pad = n => String(n).padStart(2, '0');
 export const today = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const md = d => (T.isDate(d) ? `${+d.slice(5, 7)}. ${+d.slice(8, 10)}.` : '');
+// 시간 칸에 쓴 글을 읽지 못하면(「두 시간」 등) 말없이 버리지 않고 알림 — 「2」「1.5」「2시간」「90분」은 읽음(T.hoursIn)
+const badHours = v => !!String(v == null ? '' : v).trim() && T.hoursIn(String(v)) == null;
+const HOURS_MSG = '시간은 숫자로 넣어 주세요(예: 2, 1.5, 2시간, 90분)';
 const FULL = '저장 공간이 모자라 저장하지 못했어요. 설정 › 백업에서 지난 자료를 내려받고 정리해 주세요.';
 const BOARD_ACCEPT = '.pdf,.hwp,.hwpx,.docx,.txt,image/*,.zip';
 const CERT_ACCEPT = BOARD_ACCEPT;
@@ -54,9 +57,9 @@ function itemHTML(x, t) {
 }
 function pendHTML(list, items) {
   if (!list.length) return '';
-  const opts = items.map(x => `<option value="${esc(x.id)}">${esc(x.title)}</option>`).join('');
+  const opts = p => items.map(x => `<option value="${esc(x.id)}"${p.pick === x.id ? ' selected' : ''}>${esc(x.title)}</option>`).join('');
   return `<div class="yp-card tr-pend"><h3>어느 연수 이수증인지 골라 주세요</h3><ul class="tr-pend-list">${list.map((p, i) => `<li>
-    <span class="tr-file">${esc(p.name)}</span><select class="field" data-tr-pick="${i}" aria-label="${esc(p.name)} 연수"><option value="">연수 고르기</option>${opts}</select>
+    <span class="tr-file">${esc(p.name)}</span><select class="field" data-tr-pick="${i}" aria-label="${esc(p.name)} 연수"><option value="">연수 고르기</option>${opts(p)}</select>
     <button class="btn tiny primary" type="button" data-tr="pendPut" data-i="${i}">넣기</button><button class="btn text tiny" type="button" data-tr="pendDrop" data-i="${i}">버리기</button></li>`).join('')}</ul></div>`;
 }
 function renderMine() {
@@ -94,6 +97,7 @@ function itemSheet(x = {}) {
     sh.querySelector('#trItemOk').addEventListener('click', () => {
       const title = sh.querySelector('#trTitle').value.trim();
       if (!title) { toast('연수 이름을 넣어 주세요'); return; }
+      if (badHours(sh.querySelector('#trHours').value)) { toast(HOURS_MSG); sh.querySelector('#trHours').focus(); return; }
       const v = { ...x, title, due: sh.querySelector('#trDue').value, hours: sh.querySelector('#trHours').value, where: sh.querySelector('#trWhere').value, at: x.at || Date.now() };
       if (x.id) Object.assign(v, { status: sh.querySelector('#trStatus').value, doneDate: sh.querySelector('#trDone').value, certNo: sh.querySelector('#trCertNo').value, note: sh.querySelector('#trNote').value });
       const list = T.listMine().filter(y => y.id !== x.id);
@@ -266,6 +270,7 @@ const inhouseHTML = h => `<fieldset class="tr-in"><label class="chk"><input type
   <div class="row tr-two"><label class="yp-f"><span class="lab">장소</span><input class="field" data-tr-inf="place" value="${esc((h && h.place) || '')}" autocomplete="off"></label>
     <label class="yp-f"><span class="lab">강사</span><input class="field" data-tr-inf="lecturer" value="${esc((h && h.lecturer) || '')}" autocomplete="off"></label>
     <label class="yp-f"><span class="lab">연수 시간</span><input class="field" data-tr-inf="hours" inputmode="decimal" value="${esc((h && h.hours) || '')}" placeholder="2" autocomplete="off"></label></div></div></fieldset>`;
+const badInHours = sh => { const h = inhouseOf(sh); if (!h || !badHours(h.hours)) return false; toast(HOURS_MSG); const f = sh.querySelector('[data-tr-inf="hours"]'); if (f) f.focus(); return true; };
 const inhouseOf = sh => { const on = sh.querySelector('[data-tr-in]'); if (!on || !on.checked) return null; const v = k => (sh.querySelector(`[data-tr-inf="${k}"]`) || {}).value || ''; return { date: v('date'), time: v('time'), place: v('place'), lecturer: v('lecturer'), hours: v('hours') }; };
 document.addEventListener('change', e => { const t = e.target.closest && e.target.closest('[data-tr-in]'); if (!t) return; const f = t.closest('.tr-in') && t.closest('.tr-in').querySelector('.tr-in-f'); if (f) f.hidden = !t.checked; });
 function courseAddSheet() {
@@ -279,6 +284,7 @@ function courseAddSheet() {
     sh.querySelector('#trCOk').addEventListener('click', () => {
       const title = sh.querySelector('#trCTitle').value.trim();
       if (!title) { toast('연수 이름을 넣어 주세요'); return; }
+      if (badInHours(sh)) return;
       const b = T.getBoard();
       if (putBoard({ ...b, courses: [...b.courses, { id: T.newId('tc'), title, due: sh.querySelector('#trCDue').value, target: targetOf(sh), inhouse: inhouseOf(sh) }] })) { SS().closeSheet(); render(); }
     });
@@ -302,22 +308,11 @@ function courseSheet(cid) {
       <button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="trCsOk">저장</button></div></div>`, sh => {
     sh.addEventListener('change', e => { const s = e.target.closest('[data-tr-cs]'); if (s) { const k = CSS.escape(s.dataset.trCs), n = sh.querySelector(`[data-tr-csn="${k}"]`), cd = sh.querySelector(`[data-tr-csc="${k}"]`); if (n) n.hidden = s.value !== 'back'; if (cd) cd.hidden = !(s.value === 'sent' || s.value === 'ok'); } });
     sh.querySelector('#trCsAllOk').addEventListener('click', () => sh.querySelectorAll('[data-tr-cs]').forEach(s => { if (s.value === 'sent') s.value = 'ok'; }));
-    // 교내 연수: 대상 모두 「확인」(이수일 = 연수 날)으로 저장하고 다시 열어 빠진 사람만 고치게
-    const allIn = sh.querySelector('#trCsAllIn');
-    if (allIn) allIn.addEventListener('click', () => { if (putBoard(T.allPresent(T.getBoard(), cid))) { SS().closeSheet(); render(); courseSheet(cid); toast('대상 모두 참석으로 했어요. 빠진 분만 「미제출」로 바꿔 주세요.', 5000); } });
-    sh.querySelector('#trCsMiss').addEventListener('click', () => {
-      const names = T.missingStaff(T.getBoard(), cid).map(s => s.name);
-      if (!names.length) { toast('미제출한 사람이 없어요'); return; }
-      copyText(names.join(', ')); toast(`미제출 ${names.length}명을 복사했어요(이 컴퓨터 안에서만)`);
-    });
-    sh.querySelector('#trCsDel').addEventListener('click', () => {
-      if (!confirm(`「${c.title}」 연수와 그 제출 기록을 지울까요?`)) return;
-      const cur = T.getBoard(), marks = { ...cur.marks }; delete marks[cid];
-      if (putBoard({ ...cur, courses: cur.courses.filter(x => x.id !== cid), marks })) { dropFiles(cur.staff.map(s => [cid, s.id])); SS().closeSheet(); render(); }
-    });
-    sh.querySelector('#trCsOk').addEventListener('click', () => {
+    /* 시트에 고친 것(연수 이름·기한·대상·교내 연수 칸·사람마다 상태/반려 사유/이수번호)을 판에 담음 → { b, gone(미제출로 돌린 칸) }. 연수 이름이 비었거나 시간 칸을 읽지 못하면 알리고 null */
+    const collect = () => {
       const title = sh.querySelector('#trCsTitle').value.trim();
-      if (!title) { toast('연수 이름을 넣어 주세요'); return; }
+      if (!title) { toast('연수 이름을 넣어 주세요'); return null; }
+      if (badInHours(sh)) return null;
       let cur = T.getBoard();
       cur = { ...cur, courses: cur.courses.map(x => (x.id === cid ? { ...x, title, due: sh.querySelector('#trCsDue').value, target: targetOf(sh), inhouse: inhouseOf(sh) } : x)) };
       const gone = [];
@@ -330,7 +325,29 @@ function courseSheet(cid) {
           if (!s.value) gone.push([cid, sid]);
         }
       });
-      if (putBoard(cur)) { if (gone.length) dropFiles(gone); SS().closeSheet(); render(); }
+      return { b: cur, gone };
+    };
+    // 교내 연수: 시트에 고친 칸(장소·강사·날짜 등)을 담아 대상 모두 「확인」(이수일 = 연수 날)으로 저장하고 다시 열어 빠진 사람만 고치게
+    const allIn = sh.querySelector('#trCsAllIn');
+    if (allIn) allIn.addEventListener('click', () => {
+      const r = collect();
+      if (!r) return;
+      if (putBoard(T.allPresent(r.b, cid))) { if (r.gone.length) dropFiles(r.gone); SS().closeSheet(); render(); courseSheet(cid); toast('대상 모두 참석으로 했어요. 빠진 분만 「미제출」로 바꿔 주세요.', 5000); }
+    });
+    sh.querySelector('#trCsMiss').addEventListener('click', () => {
+      const names = T.missingStaff(T.getBoard(), cid).map(s => s.name);
+      if (!names.length) { toast('미제출한 사람이 없어요'); return; }
+      copyText(names.join(', ')); toast(`미제출 ${names.length}명을 복사했어요(이 컴퓨터 안에서만)`);
+    });
+    sh.querySelector('#trCsDel').addEventListener('click', () => {
+      if (!confirm(`「${c.title}」 연수와 그 제출 기록을 지울까요?`)) return;
+      const cur = T.getBoard(), marks = { ...cur.marks }; delete marks[cid];
+      if (putBoard({ ...cur, courses: cur.courses.filter(x => x.id !== cid), marks })) { dropFiles(cur.staff.map(s => [cid, s.id])); SS().closeSheet(); render(); }
+    });
+    sh.querySelector('#trCsOk').addEventListener('click', () => {
+      const r = collect();
+      if (!r) return;
+      if (putBoard(r.b)) { if (r.gone.length) dropFiles(r.gone); SS().closeSheet(); render(); }
     });
   });
 }
@@ -586,9 +603,21 @@ document.addEventListener('click', async e => {
     boardPend.splice(i, 1); render();
   }
 });
+/* 못 맞춘 이수증 줄에서 고른 사람·연수·고친 이수번호를 적어 둠 — 한 줄 [넣기]·[버리기]·현황판 칸 누르기로 다시 그려도 다른 줄 고른 것이 그대로 */
+function notePend(el) {
+  const d = el.dataset || {};
+  if (d.trPsid != null) { if (boardPend[+d.trPsid]) boardPend[+d.trPsid].sid = el.value; }
+  else if (d.trPcid != null) { if (boardPend[+d.trPcid]) boardPend[+d.trPcid].cid = el.value; }
+  else if (d.trPcode != null) { if (boardPend[+d.trPcode]) boardPend[+d.trPcode].code = el.value; }
+  else if (d.trPick != null) { if (minePend[+d.trPick]) minePend[+d.trPick].pick = el.value; }
+  else return false;
+  return true;
+}
+document.addEventListener('input', e => { if (inPage(e)) notePend(e.target); });
 document.addEventListener('change', e => {
   if (!inPage(e)) return;
   const el = e.target;
+  if (notePend(el)) return;
   if (el.id === 'trMineFiles' || /^trCert-/.test(el.id || '')) {
     const fs = [...el.files], only = el.id === 'trMineFiles' ? null : el.id.slice('trCert-'.length); el.value = '';
     if (fs.length) addMineCerts(fs, only);
@@ -611,7 +640,8 @@ export function addFromGongmun(doc, where = 'mine') {
   const g = T.fromGongmun(doc);
   if (where === 'board') return addCourseFrom(g);
   else {
-    const list = T.listMine(), same = list.find(x => x.from === g.from || T.titleKey(x.title) === T.titleKey(g.title));
+    // 같은 연수: 같은 공문·같은 이름, 아니면 기본 목록 「청렴교육(부패방지)」처럼 공문 쪽 이름(「청렴교육」)이 든 줄(T.sameCourse)
+    const list = T.listMine(), same = T.sameCourse(list, g.title, g.from);
     if (!same) {
       if (!T.saveMine([...list, { title: g.title, due: g.due, from: g.from, at: Date.now() }])) { toast(FULL, 6000); return false; }
       toast(`내 필수연수에 「${g.title}」을 넣었어요`);
@@ -629,7 +659,7 @@ export function addCourseFrom({ title = '', due = '', from = '' } = {}) {
   const t = T.courseTitle(title) || title, b = T.getBoard();
   if (!t) { toast('연수 이름이 없어요'); return false; }
   const d = T.isDate(due) ? due : '';
-  const same = b.courses.find(c => (from && c.from === from) || T.titleKey(c.title) === T.titleKey(t));
+  const same = T.sameCourse(b.courses, t, from);
   if (!same) {
     if (!putBoard({ ...b, courses: [...b.courses, { id: T.newId('tc'), title: t, due: d, from }] })) return false;
     toast(`연수 현황판에 「${t}」을 넣었어요${b.staff.length ? '' : ' — 교직원 명단을 넣어 주세요'}`);
