@@ -49,6 +49,10 @@
     (단위 `fix1118-training.test.mjs` 끝 3개, e2e `fix1119-training-collect.mjs`).
   - 수합 더하기(2026-11-19 「더 구현할 방법이 있다면 추가해 줘」): 쪽지 작성 연수 안내 → `training.js addCourseFrom`(공문 처리 [연수 현황판에 넣기]도), `personalText`(사람별 미제출),
     `formGuide`(구글 폼 만들기 안내), 「쌤」 버튼 .zip → kind `cert`(ask) → 현황판 `expand` (e2e `fix1119-training-more.mjs`).
+- 학년말 마감·교내 자율연수·작게 손볼 것(2026-11-19 「1,6 그리고 작게 손볼것을 추가하고 멀티에이전트로 버그를 찾아 수정하고 빌드 배포해줘」, 릴리즈 전): 스펙 `docs/superpowers/specs/2026-11-19-yearend-design.md`.
+  학년말 마감 `web/menus/home/yearend-model.js`(줄 규칙)·`yearend.js`(모으기 `gatherYearend`, 시트 `openYearend`, `[data-ye-open]`, 저장 `yearend:done`), 기재 점검 요약 `check.js checkSummary`,
+  오늘 화면 카드(12~2월)·설정 › 학년도·채팅 intent `yearend`. 교내 연수 `course.inhouse`·`inhouseNotice`·`signSheetDoc`·`allPresent`·`inhouseReportDoc`, 현황판 공유 `exportBoard`·`parseBoardFile`·`mergeBoards`,
+  쪽지 회신 기한 `message-model deadlineLines → briefing({ messages })` (`tests/unit/fix1119-yearend.test.mjs`, e2e `fix1119-yearend.mjs`).
 - 메뉴 사이 흐름 점검(2026-11-18 「각 정보와 메뉴가 유기적으로 돌아가는지 확인해줘」, 0.36.0): 채팅 intent `budget`·`idea`·교체/보강/메모 → 오늘 수업·전담 → 진도표,
   「예산 얼마 남았어?」(`budget-model chatAnswer`), 떠 있는 버튼 kind `cert`(이수증 → `training.js putCerts`), 기초학력 수업 날은 `calendar closedDays`(재량휴업일 등 — 방학은 아님) 건너뜀,
   인수인계서에 기초학력(`camp-model handoverRows`)·연수 (`tests/unit/fix1118-flow.test.mjs`, e2e `fix1118-flow.mjs`).
@@ -68,7 +72,7 @@
 
 ## 시험
 
-- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1597개 통과)
+- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1601개 통과)
 - e2e 한 파일: `node tests/e2e/<이름>.mjs`
 - e2e 전체: `node tests/e2e/run-all.mjs` (약 170개 파일, 45~50분). 파일마다 다른 포트를 써서 나눠 돌려도 된다. 전체가 도는 동안에는 작업 폴더를 고치지 말고 `.claude/worktrees/` 아래 worktree에서 일한다(그 안에서는 저장소의 node_modules를 그대로 찾는다).
 

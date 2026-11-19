@@ -332,6 +332,11 @@ const tell = (st, words) => say(words[st] || words.error || '하지 못했어요
 /* 할 일 하기: 분명하면 그 메뉴로 가서 칸을 채우고 바로 시작(저장·결재·상신은 선생님이 직접) */
 async function run(intent, p = {}) {
   if (NAV[intent]) { const [m, t, msg] = NAV[intent]; go(m, t); say(msg); afterGo(); return; }
+  if (intent === 'yearend') {
+    (await import('../menus/home/yearend.js')).openYearend();
+    say('학년말 마감 점검표를 열었어요. 위에서부터 차례로 [가기]로 챙기면 돼요.');
+    afterGo(); return;
+  }
   if (intent === 'idea') {
     // 평가 › 활동지의 [수업 아이디어](activity.js data-ac="idea")까지
     go('evaluate', 'activity');

@@ -211,6 +211,8 @@ const VIEWS = {
       (demo ? `<p class="banner warn yr-demo" style="margin:0 0 8px"><span class="grow">3분 둘러보기 중이에요. 선생님 자료${Number.isInteger(from) ? `(${from}학년도)` : ''}는 보관함에 그대로 있어요. 백업·불러오기·새 학년도·학년도 옮기기는 체험을 끝낸 뒤에 해 주세요.</span>
         <button class="btn primary" type="button" data-tour="exit">체험 끝내기</button></p>` : '') +
       card('지금 학년도', `<p class="set-big">${curName}</p><p class="muted" style="margin:0">자료 ${kb(snapSize(snapshot(safeLS())))} · ${usageLine()}</p>${usageWarn()}`) +
+      card('학년말 마감', `<p class="muted" style="margin:0">생활기록부 글·기재 점검·평가·진도·기초학력 문서·연수·예산·공문·인수인계서·백업·새 학년도를 한 점검표로 챙겨요(12~2월에는 오늘 화면에도 떠요).</p>
+        <div class="row"><button class="btn" type="button" data-ye-open>학년말 마감 도우미</button></div>`) +
       card('백업 파일', `<p class="muted" style="margin:0">지금 학년도와 보관한 학년도 자료를 파일 하나로 저장해요(AI 키는 넣지 않아요). 앱 안의 보관함은 이 컴퓨터에만 있어서, 컴퓨터를 바꾸거나 프로그램을 지우면 사라져요. 백업 파일을 만들어 두세요.</p>
         <p class="muted" style="margin:0">${backupLine()}</p>
         <div class="row"><button class="btn primary" type="button" data-set="backup">백업 파일 만들기</button><button class="btn" type="button" data-set="restore" data-drop-pick>백업 파일 불러오기</button></div>

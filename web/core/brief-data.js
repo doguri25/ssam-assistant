@@ -9,9 +9,12 @@ const pad2 = n => String(n).padStart(2, '0');
 export const today = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
 
 export async function gather(t = today()) {
-  const mods = await Promise.all(['../menus/etc/gongmun-model.js', '../menus/plan/event-model.js', '../menus/evaluate/unit/unit-model.js', '../menus/evaluate/activity/activity-model.js', '../menus/etc/minutes-model.js', '../menus/purchase/budget-model.js', './years.js', '../menus/training/training-model.js']
+  const mods = await Promise.all(['../menus/etc/gongmun-model.js', '../menus/plan/event-model.js', '../menus/evaluate/unit/unit-model.js', '../menus/evaluate/activity/activity-model.js', '../menus/etc/minutes-model.js', '../menus/purchase/budget-model.js', './years.js', '../menus/training/training-model.js', '../menus/etc/message-model.js']
     .map(p => import(p).catch(() => null)));
-  const [gm, evm, um, am, mm, bm, ym, tm] = mods;
+  const [gm, evm, um, am, mm, bm, ym, tm, msg] = mods;
+  // 보낸 쪽지의 신청·회신 기한(스펙 2026-11-19-yearend-design §3)
+  let messages = [];
+  try { messages = msg ? msg.deadlineLines(msg.listMessages(), t) : []; } catch (e) { messages = []; }
   // 필수연수 기한·연수 현황판 미제출(스펙 2026-11-18-training-design)
   let trainings = [];
   try { trainings = tm ? tm.briefLines({ mine: tm.listMine(), board: tm.getBoard(), today: t }) : []; } catch (e) { trainings = []; }
@@ -24,7 +27,7 @@ export async function gather(t = today()) {
   const grs = (Array.isArray(ids) ? ids : []).slice(0, 3).map(id => { const b = get('gr:' + id, null); return b && typeof b === 'object' ? { id, title: b.title, students: Array.isArray(b.students) ? b.students : [] } : null; }).filter(Boolean);
   // 금요일: 다음 주 주간학습안내를 이미 쓰기 시작했는지(글이 있는 칸)
   const w = get('class:weekly:' + addDays(t, 3), null), filled = v => (typeof v === 'string' ? !!v.trim() : v && typeof v === 'object' ? Object.values(v).some(filled) : false);
-  return { today: t, budgets, trainings, docs: gm ? gm.listDocs() : [], meetings: mm ? mm.listMinutes() : [], events: listEvents(), plans: evm ? evm.listEventPlans() : [], units, activities, grs, weekly: { started: !!(w && (filled(w.notes) || filled(w.cells))) } };
+  return { today: t, budgets, trainings, messages, docs: gm ? gm.listDocs() : [], meetings: mm ? mm.listMinutes() : [], events: listEvents(), plans: evm ? evm.listEventPlans() : [], units, activities, grs, weekly: { started: !!(w && (filled(w.notes) || filled(w.cells))) } };
 }
 
 async function optional(path, name) {
@@ -50,6 +53,10 @@ export async function goRoute(r) {
   else if (r.to === 'purchase') go('purchase', 'recent');
   else if (r.to === 'budget') go('purchase', 'budget');
   else if (r.to === 'training') go('training', r.tab === 'board' ? 'board' : 'mine');
+  else if (r.to === 'check') go('evaluate', 'check');
+  else if (r.to === 'board') go('evaluate', 'board');
+  else if (r.to === 'handover') go('etc', 'handover');
+  else if (r.to === 'message') go('etc', 'message');
   else if (r.to === 'multi') { const fn = await optional('../menus/etc/multi.js', 'openMulti'); if (fn) fn(r.view); else go('etc', 'multi'); }
   else if (r.to === 'camp') { const fn = await optional('../menus/class/camp.js', 'openCamp'); if (fn) fn(r.section); else go('class', 'camp'); }
   else if (r.to === 'settings') go('settings', r.tab);

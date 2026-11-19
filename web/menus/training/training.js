@@ -134,7 +134,10 @@ function boardHTML(b, t) {
     return `<div class="yp-card tr-course" data-tr-course="${esc(c.id)}"><div class="tr-c-head"><b>${esc(c.title)}</b>${c.due ? ` <span class="muted">기한 ${md(c.due)}</span> ${ddHTML(c.due, t)}` : ''}</div>
       <div class="tr-bar" aria-hidden="true"><i style="width:${s.rate}%"></i></div>
       <p class="tr-c-num">제출·확인 ${s.sent + s.ok}/${s.total}명 (${s.rate}%) · 미제출 ${s.none}명${s.back ? ` · 반려 ${s.back}명` : ''}${c.target.length ? ` <span class="muted">· 대상 ${esc(T.targetLabel(c))}</span>` : ''}</p>
-      <div class="row"><button class="btn text tiny" type="button" data-tr="course" data-id="${esc(c.id)}">자세히</button><button class="btn text tiny" type="button" data-tr="nudge" data-id="${esc(c.id)}">독려 쪽지</button></div></div>`;
+      ${c.inhouse ? `<p class="muted tr-c-in">교내 연수${c.inhouse.date ? ` · ${md(c.inhouse.date)}${c.inhouse.time ? ` ${esc(c.inhouse.time)}` : ''}` : ''}${c.inhouse.place ? ` · ${esc(c.inhouse.place)}` : ''}</p>` : ''}
+      <div class="row"><button class="btn text tiny" type="button" data-tr="course" data-id="${esc(c.id)}">자세히</button>${c.inhouse
+        ? `<button class="btn text tiny" type="button" data-tr="inNotice" data-id="${esc(c.id)}">안내 쪽지</button><button class="btn text tiny" type="button" data-tr="inSign" data-id="${esc(c.id)}">출석 서명부</button><button class="btn text tiny" type="button" data-tr="inReport" data-id="${esc(c.id)}">결과 보고</button>`
+        : `<button class="btn text tiny" type="button" data-tr="nudge" data-id="${esc(c.id)}">독려 쪽지</button>`}</div></div>`;
   }).join('');
   const th = b.courses.map(c => `<th scope="col"><button class="btn text tiny tr-th" type="button" data-tr="course" data-id="${esc(c.id)}">${esc(c.title)}</button></th>`).join('');
   const rows = b.staff.map(s => `<tr><th scope="row">${esc(s.name)}</th><td class="muted">${esc(s.kind)}</td><td class="muted">${esc(s.dept)}</td>${b.courses.map(c => {
@@ -177,10 +180,11 @@ function renderBoard() {
     <div class="m-head-act"><button class="btn" type="button" data-tr="staff">명단 ${b.staff.length ? `고치기 (${b.staff.length}명)` : '넣기'}</button><button class="btn" type="button" data-tr="addCourse">+ 연수 더하기</button>
       ${b.staff.length && b.courses.length ? `<button class="btn text" type="button" data-tr="formGuide">구글 폼 만들기 안내</button><button class="btn" type="button" data-tr="form" data-drop-pick>구글 폼 응답 넣기</button>
       <button class="btn primary" type="button" data-tr="bcerts" data-drop-pick${busy ? ' disabled' : ''}>${busy ? '<span class="spin"></span>읽는 중…' : '이수증 한꺼번에 넣기'}</button>` : ''}
-      <input type="file" id="trBoardFiles" hidden multiple accept="${BOARD_ACCEPT}"><input type="file" id="trStaffFile" hidden accept=".xlsx,.csv"><input type="file" id="trFormFile" hidden accept=".xlsx,.csv"></div></div>`;
+      ${b.staff.length ? '<button class="btn text" type="button" data-tr="share">현황판 내보내기</button>' : ''}<button class="btn text" type="button" data-tr="import" data-drop-pick>현황판 가져오기</button>
+      <input type="file" id="trBoardFiles" hidden multiple accept="${BOARD_ACCEPT}"><input type="file" id="trStaffFile" hidden accept=".xlsx,.csv"><input type="file" id="trFormFile" hidden accept=".xlsx,.csv"><input type="file" id="trImportFile" hidden accept=".json,application/json"></div></div>`;
   box.innerHTML = `<div class="m-page tr-page">${head}${b.staff.length ? boardHTML(b, t) : `<div class="empty"><h3>먼저 교직원 명단을 넣어 주세요</h3>
     <p>한 줄에 한 명씩 붙여 넣거나(엑셀에서 「이름·부서」 두 칸을 복사해도 돼요) 명단 엑셀 파일을 넣어요. 명단은 이 컴퓨터에만 두고 AI로 보내지 않아요.</p>
-    <div class="row" style="justify-content:center"><button class="btn primary" type="button" data-tr="staff">명단 넣기</button></div></div>`}</div>`;
+    <div class="row" style="justify-content:center"><button class="btn primary" type="button" data-tr="staff">명단 넣기</button><button class="btn" type="button" data-tr="import">현황판 파일 가져오기</button></div></div>`}</div>`;
 }
 const putBoard = b => { if (!T.saveBoard(b)) { toast(FULL, 6000); return false; } return true; };
 
@@ -255,19 +259,28 @@ function addStaff(list) {
 /* 연수 대상: 아무것도 고르지 않으면 전 교직원 */
 const targetHTML = cur => `<fieldset class="tr-target"><legend class="lab">대상 <span class="muted">(고르지 않으면 전 교직원)</span></legend>${T.KINDS.map(k => `<label class="chk"><input type="checkbox" data-tr-tg value="${k}"${cur.includes(k) ? ' checked' : ''}> ${k}</label>`).join('')}</fieldset>`;
 const targetOf = sh => [...sh.querySelectorAll('[data-tr-tg]:checked')].map(x => x.value);
+/* 교내 자율연수(직접 여는 연수): 켜면 일시·시각·장소·강사·연수 시간 */
+const inhouseHTML = h => `<fieldset class="tr-in"><label class="chk"><input type="checkbox" data-tr-in${h ? ' checked' : ''}> 교내 연수(직접 여는 연수) — 안내 쪽지·출석 서명부·결과 보고를 만들어요</label>
+  <div class="tr-in-f"${h ? '' : ' hidden'}><div class="row tr-two"><label class="yp-f"><span class="lab">날짜</span><input class="field" type="date" data-tr-inf="date" value="${esc((h && h.date) || '')}"></label>
+    <label class="yp-f"><span class="lab">시각</span><input class="field" data-tr-inf="time" value="${esc((h && h.time) || '')}" placeholder="15:00~16:30" autocomplete="off"></label></div>
+  <div class="row tr-two"><label class="yp-f"><span class="lab">장소</span><input class="field" data-tr-inf="place" value="${esc((h && h.place) || '')}" autocomplete="off"></label>
+    <label class="yp-f"><span class="lab">강사</span><input class="field" data-tr-inf="lecturer" value="${esc((h && h.lecturer) || '')}" autocomplete="off"></label>
+    <label class="yp-f"><span class="lab">연수 시간</span><input class="field" data-tr-inf="hours" inputmode="decimal" value="${esc((h && h.hours) || '')}" placeholder="2" autocomplete="off"></label></div></div></fieldset>`;
+const inhouseOf = sh => { const on = sh.querySelector('[data-tr-in]'); if (!on || !on.checked) return null; const v = k => (sh.querySelector(`[data-tr-inf="${k}"]`) || {}).value || ''; return { date: v('date'), time: v('time'), place: v('place'), lecturer: v('lecturer'), hours: v('hours') }; };
+document.addEventListener('change', e => { const t = e.target.closest && e.target.closest('[data-tr-in]'); if (!t) return; const f = t.closest('.tr-in') && t.closest('.tr-in').querySelector('.tr-in-f'); if (f) f.hidden = !t.checked; });
 function courseAddSheet() {
   const have = new Set(T.getBoard().courses.map(c => T.titleKey(c.title)));
   const opts = T.DEFAULTS.filter(n => !have.has(T.titleKey(n))).map(n => `<option value="${esc(n)}">`).join('');
   SS().openSheet(`<div id="trCourseAdd"><h3>연수 더하기</h3>
     <label class="yp-f"><span class="lab">연수 이름</span><input class="field" id="trCTitle" list="trCDefaults" autocomplete="off" placeholder="예) 성희롱·성폭력 예방교육"><datalist id="trCDefaults">${opts}</datalist></label>
     <label class="yp-f"><span class="lab">제출 기한</span><input class="field" id="trCDue" type="date"></label>
-    ${targetHTML([])}
+    ${targetHTML([])}${inhouseHTML(null)}
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="trCOk">더하기</button></div></div>`, sh => {
     sh.querySelector('#trCOk').addEventListener('click', () => {
       const title = sh.querySelector('#trCTitle').value.trim();
       if (!title) { toast('연수 이름을 넣어 주세요'); return; }
       const b = T.getBoard();
-      if (putBoard({ ...b, courses: [...b.courses, { id: T.newId('tc'), title, due: sh.querySelector('#trCDue').value, target: targetOf(sh) }] })) { SS().closeSheet(); render(); }
+      if (putBoard({ ...b, courses: [...b.courses, { id: T.newId('tc'), title, due: sh.querySelector('#trCDue').value, target: targetOf(sh), inhouse: inhouseOf(sh) }] })) { SS().closeSheet(); render(); }
     });
   });
 }
@@ -278,16 +291,19 @@ function courseSheet(cid) {
   SS().openSheet(`<div id="trCourseSheet"><h3>${esc(c.title)}</h3>
     <div class="row tr-two"><label class="yp-f"><span class="lab">연수 이름</span><input class="field" id="trCsTitle" value="${esc(c.title)}" autocomplete="off"></label>
       <label class="yp-f"><span class="lab">제출 기한</span><input class="field" id="trCsDue" type="date" value="${esc(c.due)}"></label></div>
-    ${targetHTML(c.target)}
+    ${targetHTML(c.target)}${inhouseHTML(c.inhouse)}
     <ul class="tr-cs-list">${T.targetStaff(b, c).map(s => { const m = T.markOf(b, cid, s.id); return `<li><span>${esc(s.name)}${s.dept ? ` <span class="muted">${esc(s.dept)}</span>` : ''}</span>
       <select class="field" data-tr-cs="${esc(s.id)}" aria-label="${esc(s.name)} 상태">${opt(m && m.s)}</select>
       <input class="field tr-cs-note" data-tr-csn="${esc(s.id)}" value="${esc((m && m.note) || '')}" placeholder="반려 사유" aria-label="${esc(s.name)} 반려 사유"${m && m.s === 'back' ? '' : ' hidden'}>
       ${m && m.file ? `<span class="muted tr-file">${esc(m.file)}</span>` : ''}</li>`; }).join('')}</ul>
-    <div class="row"><button class="btn text" type="button" id="trCsAllOk">제출한 사람 모두 확인</button><button class="btn text" type="button" id="trCsMiss">미제출 명단 복사</button>
+    <div class="row">${c.inhouse ? '<button class="btn text" type="button" id="trCsAllIn">모두 참석으로</button>' : ''}<button class="btn text" type="button" id="trCsAllOk">제출한 사람 모두 확인</button><button class="btn text" type="button" id="trCsMiss">미제출 명단 복사</button>
       <button class="btn text" type="button" id="trCsDel">연수 지우기</button><span class="grow"></span>
       <button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="trCsOk">저장</button></div></div>`, sh => {
     sh.addEventListener('change', e => { const s = e.target.closest('[data-tr-cs]'); if (s) { const n = sh.querySelector(`[data-tr-csn="${CSS.escape(s.dataset.trCs)}"]`); if (n) n.hidden = s.value !== 'back'; } });
     sh.querySelector('#trCsAllOk').addEventListener('click', () => sh.querySelectorAll('[data-tr-cs]').forEach(s => { if (s.value === 'sent') s.value = 'ok'; }));
+    // 교내 연수: 대상 모두 「확인」(이수일 = 연수 날)으로 저장하고 다시 열어 빠진 사람만 고치게
+    const allIn = sh.querySelector('#trCsAllIn');
+    if (allIn) allIn.addEventListener('click', () => { if (putBoard(T.allPresent(T.getBoard(), cid))) { SS().closeSheet(); render(); courseSheet(cid); toast('대상 모두 참석으로 했어요. 빠진 분만 「미제출」로 바꿔 주세요.', 5000); } });
     sh.querySelector('#trCsMiss').addEventListener('click', () => {
       const names = T.missingStaff(T.getBoard(), cid).map(s => s.name);
       if (!names.length) { toast('미제출한 사람이 없어요'); return; }
@@ -302,7 +318,7 @@ function courseSheet(cid) {
       const title = sh.querySelector('#trCsTitle').value.trim();
       if (!title) { toast('연수 이름을 넣어 주세요'); return; }
       let cur = T.getBoard();
-      cur = { ...cur, courses: cur.courses.map(x => (x.id === cid ? { ...x, title, due: sh.querySelector('#trCsDue').value, target: targetOf(sh) } : x)) };
+      cur = { ...cur, courses: cur.courses.map(x => (x.id === cid ? { ...x, title, due: sh.querySelector('#trCsDue').value, target: targetOf(sh), inhouse: inhouseOf(sh) } : x)) };
       const gone = [];
       sh.querySelectorAll('[data-tr-cs]').forEach(s => {
         const sid = s.dataset.trCs, old = T.markOf(cur, cid, sid), note = (sh.querySelector(`[data-tr-csn="${CSS.escape(sid)}"]`) || {}).value || '';
@@ -359,6 +375,43 @@ async function staffFile(f) {
   } catch (e) { toast('명단 파일을 읽지 못했어요. 엑셀(.xlsx)이나 CSV로 넣어 주세요.'); }
 }
 
+/* 교내 연수 안내 쪽지(AI 없이) — 복사·쪽지 작성에서 다듬기 */
+function inNoticeSheet(cid) {
+  const c = T.getBoard().courses.find(x => x.id === cid);
+  if (!c) return;
+  const text = T.inhouseNotice(c);
+  SS().openSheet(`<div id="trInNotice"><h3>안내 쪽지 — ${esc(c.title)}</h3><textarea class="field" id="trInNoticeText" rows="13">${esc(text)}</textarea>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" id="trInNoticeMsg">쪽지 작성에서 다듬기</button><button class="btn primary" type="button" id="trInNoticeCopy">복사</button></div></div>`, sh => {
+    sh.querySelector('#trInNoticeCopy').addEventListener('click', () => { copyText(sh.querySelector('#trInNoticeText').value); toast('안내 쪽지를 복사했어요'); });
+    sh.querySelector('#trInNoticeMsg').addEventListener('click', async () => { const v = sh.querySelector('#trInNoticeText').value; SS().closeSheet(); try { (await import('../etc/message.js')).putMessageFiles([], { text: v }); } catch (e) { go('etc', 'message'); } });
+  });
+}
+/* 교내 연수 결과 보고: 주요 내용을 적어 한글·워드·PDF로(AI 없이) */
+function inReportSheet(cid) {
+  const c = T.getBoard().courses.find(x => x.id === cid);
+  if (!c) return;
+  SS().openSheet(`<div id="trInReport"><h3>교내 연수 결과 보고 — ${esc(c.title)}</h3><p class="muted" style="margin:0">일시·장소·강사·참석(현황판의 확인)은 채워 넣어요. 주요 내용만 한 줄에 하나씩 적어 주세요.</p>
+    <textarea class="field" id="trInSum" rows="5" placeholder="예) 학교폭력 사안 처리 절차 안내&#10;사례 나누기"></textarea>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>닫기</button>${exportButton('id="trInRepGo"', { cls: 'primary' })}</div></div>`, sh => {
+    sh.querySelector('#trInRepGo').addEventListener('click', async () => {
+      const doc = T.inhouseReportDoc(T.getBoard(), cid, { summary: sh.querySelector('#trInSum').value, year: yearNow(), school: getSchool().name });
+      try { const m = await exportDoc(doc, doc.title); if (m) toast(m, 5000); } catch (e) { toast('문서를 만들지 못했어요'); }
+    });
+  });
+}
+/* 현황판 가져오기: 비어 있으면 그대로, 있으면 합치기·바꾸기 물음(이수증 파일은 들어 있지 않음) */
+async function importBoard(f) {
+  let nb;
+  try { nb = T.parseBoardFile(await f.text()); } catch (e) { nb = null; }
+  if (!nb) { toast('쌤비서 연수 현황판 파일(.ssam-training.json)이 아니에요'); return; }
+  const cur = T.getBoard(), put = (b, msg) => { if (putBoard(b)) { render(); toast(msg, 5000); } };
+  if (!cur.staff.length && !cur.courses.length) { put(nb, `현황판을 가져왔어요(교직원 ${nb.staff.length}명 · 연수 ${nb.courses.length}개)`); return; }
+  SS().openSheet(`<div id="trImport"><h3>현황판 가져오기</h3><p class="muted" style="margin:0">가져올 파일: 교직원 ${nb.staff.length}명 · 연수 ${nb.courses.length}개. 지금 현황판(교직원 ${cur.staff.length}명 · 연수 ${cur.courses.length}개)과 어떻게 할까요?</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn" type="button" id="trImpReplace">바꾸기</button><button class="btn primary" type="button" id="trImpMerge">합치기</button></div></div>`, sh => {
+    sh.querySelector('#trImpMerge').addEventListener('click', () => { SS().closeSheet(); put(T.mergeBoards(T.getBoard(), nb), '합쳤어요(같은 이름·연수는 하나로, 상태는 더 나아간 것으로)'); });
+    sh.querySelector('#trImpReplace').addEventListener('click', () => { if (!confirm('지금 현황판을 가져온 파일로 바꿀까요? 지금 제출 기록은 없어져요.')) return; SS().closeSheet(); put(nb, '가져온 현황판으로 바꿨어요'); });
+  });
+}
 /* 구글 폼 응답(CSV·엑셀): 이름·연수·파일 주소·날짜로 「제출」. 연수 열이 없고 연수가 여럿이면 어느 연수인지 물음 */
 async function formFile(f) {
   let rows;
@@ -471,6 +524,14 @@ document.addEventListener('click', async e => {
     copyText(T.statsTsv(T.getBoard(), c)); toast('구분별 실적 표를 복사했어요. 공문 양식의 표나 엑셀에 붙여 넣으세요.', 5000);
   }
   else if (a === 'zip') { const c = finCids(); if (!c.length) { toast('연수를 골라 주세요'); return; } saveBundle(c); }
+  else if (a === 'inNotice') inNoticeSheet(id);
+  else if (a === 'inSign') { const doc = T.signSheetDoc(T.getBoard(), id, { school: getSchool().name }); exportDoc(doc, doc.title).then(m => m && toast(m, 5000)).catch(() => toast('문서를 만들지 못했어요')); }
+  else if (a === 'inReport') inReportSheet(id);
+  else if (a === 'share') {
+    saveFile(`연수 현황판(${today()}).ssam-training.json`, new TextEncoder().encode(T.exportBoard(T.getBoard(), yearNow())), 'application/json')
+      .then(n => toast(`현황판을 내보냈어요(이수증 파일은 빼고): ${n}`, 5000)).catch(() => toast('저장하지 못했어요'));
+  }
+  else if (a === 'import') { const f = box.querySelector('#trImportFile'); if (f) f.click(); }
   else if (a === 'personal') {
     const t = T.personalText(T.getBoard(), finCids());
     if (!t) { toast('고른 연수에 미제출한 사람이 없어요'); return; }
@@ -504,6 +565,7 @@ document.addEventListener('change', e => {
   } else if (el.id === 'trBoardFiles') { const fs = [...el.files]; el.value = ''; if (fs.length) addBoardCerts(fs); }
   else if (el.id === 'trStaffFile') { const f = el.files[0]; el.value = ''; if (f) staffFile(f); }
   else if (el.id === 'trFormFile') { const f = el.files[0]; el.value = ''; if (f) formFile(f); }
+  else if (el.id === 'trImportFile') { const f = el.files[0]; el.value = ''; if (f) importBoard(f); }
 });
 
 /* 떠 있는 버튼(inbox 'cert'): 이수증 여러 장이고 현황판에 명단이 있으면 현황판에 한꺼번에, 아니면 내 필수연수에 */

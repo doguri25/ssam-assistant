@@ -78,6 +78,15 @@ async function load() {
   C.loading = false;
   draw();
 }
+/* 학년말 마감 도우미(home/yearend.js): 화면 없이 지금 글 점검 — { texts(글 수), open(그대로 두기 뺀 고칠 곳), gaps(글이 없는 학생 곳마다), writers(학생 수) } */
+export async function checkSummary() {
+  let items = [];
+  try { const b = SS().evalCheck; if (b) items = await b.items(); } catch (e) {}
+  try { items = items.concat(unitItems()); } catch (e) {}
+  const res = checkItems(items.map(x => ({ id: x.ref, text: x.text, who: x.who, group: x.group, limit: x.limit })));
+  const v = buildView({ items, res, keep: readKeep() }), w = missingWriters(v.shown, rosterAllowed());
+  return { texts: items.length, open: v.counts[''] || 0, gaps: w.gaps, writers: w.total };
+}
 const item = ref => C.items.find(x => x.ref === ref);
 const issuesOf = ref => { const r = C.res && C.res.list.find(x => x.id === ref); return r ? r.issues : []; };
 // 그대로 두지 않은 곳의 수(모든 화면) — 고친 수를 셀 때

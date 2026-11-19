@@ -8,6 +8,8 @@ import { get, FULL_MSG } from '../../core/store.js';
 import { toast } from '../../core/ui.js';
 import { briefing } from '../../core/briefing.js';
 import { gather, goRoute, today } from '../../core/brief-data.js';
+import { yearendSeason } from './yearend-model.js';
+import { yearendState } from './yearend.js';
 import { ensureYears, isDemoYear } from '../../core/years.js';
 import { listDocs } from '../etc/gongmun-model.js';
 import { listMinutes } from '../etc/minutes-model.js';
@@ -27,6 +29,7 @@ const MARK = { O: ['○', '출석'], X: ['/', '결석'], '': ['—', '아직'], 
 const NEXT_WORD = { O: '결석', X: '빈칸', '': '출석', mixed: '출석' };
 
 let box = null, view = null, picker = null, brief = null, campPick = '', sig = '', tok = 0, shown = '';
+let ye = null; // 학년말 마감 { done, total } (12~2월)
 const visible = () => !!(box && box.isConnected && !box.closest('[hidden]'));
 function year() { let ls = null; try { ls = window.localStorage; } catch (e) {} return ensureYears(ls).current; }
 function aiState() {
@@ -112,6 +115,12 @@ function campHTML(d) {
     ${pick}${sts}
     <div class="hm-card-f">${k.students.length ? '<button type="button" class="btn tonal" data-hm="attAll">남은 칸 모두 출석</button>' : ''}<button type="button" class="btn text" data-hm-go="camp">기초학력 열기</button></div></section>`;
 }
+/* 학년말(12~2월): 마감 점검표 카드(yearend.js — [data-ye-open]이 시트를 엶) */
+function yeHTML(d) {
+  if (!yearendSeason(d.t)) return '';
+  return `<section class="hm-ye" aria-label="학년말 마감"><b>학년말 마감</b><span class="muted">${ye ? `${ye.done} / ${ye.total} 다 됐어요` : '세는 중…'}</span>
+    <span class="grow"></span><button type="button" class="btn tonal" data-ye-open>점검표 열기</button></section>`;
+}
 function contHTML(d) {
   if (brief === null) return '<section class="hm-cont" aria-labelledby="hmContH"><h3 id="hmContH">이어서 하기</h3><p class="muted hm-none"><span class="spin"></span>세는 중…</p></section>';
   if (!d.rows.length) return '';
@@ -135,7 +144,7 @@ function draw() {
   const d = data();
   sig = sigOf(d);
   const html = `<div class="m-page hm-page">${headHTML(d)}${dropHTML()}
-    ${d.blank ? startHTML() : `<div class="hm-cards">${gmHTML(d)}${lessonHTML(d)}${campHTML(d)}</div>${contHTML(d)}`}</div>`;
+    ${d.blank ? startHTML() : `<div class="hm-cards">${gmHTML(d)}${lessonHTML(d)}${campHTML(d)}</div>${yeHTML(d)}${contHTML(d)}`}</div>`;
   // 바뀐 것이 없으면 그대로 둠(들어올 때·브리핑을 다 모았을 때 같은 내용으로 다시 그려 끌어 오던 칸·누르던 단추가 바뀌지 않게)
   if (html === shown && view.firstChild) return;
   shown = html;
@@ -152,6 +161,7 @@ async function refresh() {
   const my = ++tok;
   let lines = [];
   try { lines = briefing(await gather(today())); } catch (e) { lines = []; }
+  if (yearendSeason(today())) { try { const s = await yearendState(today()); ye = { done: s.done, total: s.total }; } catch (e) { ye = null; } }
   if (my !== tok || !visible()) return;
   brief = lines;
   draw();

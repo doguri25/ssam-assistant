@@ -106,3 +106,15 @@
   .hm-drop .btn{flex:1 1 100%}
 }
 @media (prefers-reduced-motion:reduce){.hm-drop,.hm-att-btn{transition:none}}
+/* 학년말 마감 도우미(yearend.js) — 오늘 화면 카드·점검표 시트 */
+.hm-ye{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;padding:10px 14px;border:1px solid var(--line);border-radius:var(--r-m,10px);background:var(--surface);margin:10px 0 0}
+.hm-ye b{font-size:15px}
+.ye-list{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:60vh;overflow:auto}
+.ye-row{display:flex;gap:8px;align-items:flex-start;padding:6px 4px;border-bottom:1px solid var(--line)}
+.ye-ic{flex:0 0 22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;background:var(--line)}
+.ye-done .ye-ic{background:#e3f4e8;color:#1f6b3a}
+.ye-todo .ye-ic{background:#fdecd8;color:#9a4f06}
+.ye-t{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ye-t .muted{font-size:13px;word-break:keep-all}
+.ye-act{flex-wrap:wrap;gap:2px}
+.ye-none{opacity:.7}

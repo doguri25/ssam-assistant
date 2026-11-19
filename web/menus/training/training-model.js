@@ -178,7 +178,10 @@ export function normBoard(v) {
     .filter(s => s.name).slice(0, 300);
   // target: 연수 대상 구분(비면 전 교직원)
   const courses = (Array.isArray(o.courses) ? o.courses : []).filter(isObj).map(c => ({ id: typeof c.id === 'string' && c.id ? c.id.slice(0, 40) : newId('tc'), title: str(c.title, 100),
-    due: isDate(c.due) ? c.due : '', from: str(c.from, 60), target: (Array.isArray(c.target) ? c.target : []).filter(k => KINDS.includes(k)) })).filter(c => c.title).slice(0, 40);
+    due: isDate(c.due) ? c.due : '', from: str(c.from, 60), target: (Array.isArray(c.target) ? c.target : []).filter(k => KINDS.includes(k)),
+    // inhouse: 교내 자율연수(직접 여는 연수) — 일시·시각·장소·강사·연수 시간
+    inhouse: isObj(c.inhouse) ? { date: isDate(c.inhouse.date) ? c.inhouse.date : '', time: str(c.inhouse.time, 30), place: str(c.inhouse.place, 60), lecturer: str(c.inhouse.lecturer, 60), hours: num(c.inhouse.hours) } : null
+  })).filter(c => c.title).slice(0, 40);
   const sid = new Set(staff.map(s => s.id)), cid = new Set(courses.map(c => c.id)), marks = {};
   for (const [c, row] of Object.entries(isObj(o.marks) ? o.marks : {})) {
     if (!cid.has(c) || !isObj(row)) continue;
@@ -387,6 +390,79 @@ export function formGuide(b, year) {
     '3. 응답 탭 › 스프레드시트에 연결 › 파일 › 다운로드 › CSV(또는 엑셀) → 연수 현황판 [구글 폼 응답 넣기]',
     '4. 이수증 파일: 구글 드라이브의 「(파일 응답)」 폴더를 오른쪽 클릭 › 다운로드(ZIP) → [이수증 한꺼번에 넣기]',
     '   (구글 폼은 파일 이름 끝에 「- 응답자 이름」을 붙여 저장해서 이름으로 맞춰요)'].join('\n');
+}
+/* ---------- 교내 자율연수(스펙 2026-11-19-yearend-design §2) ---------- */
+/* 안내 쪽지(AI 없이): 「[연수 안내] ○○」 일시·장소·대상·강사 */
+export function inhouseNotice(c) {
+  const h = c.inhouse || {};
+  return [`[연수 안내] ${c.title}`, '', '안녕하세요 선생님.', `교내 자율연수 「${c.title}」을 다음과 같이 안내드립니다.`, '',
+    ...(h.date ? [`□ 일시: ${dotDate(h.date)}${h.time ? ` ${h.time}` : ''}`] : []), ...(h.place ? [`□ 장소: ${h.place}`] : []),
+    `□ 대상: ${targetLabel(c)}`, ...(h.lecturer ? [`□ 강사: ${h.lecturer}`] : []), ...(h.hours ? [`□ 연수 시간: ${h.hours}시간`] : []),
+    '', '많은 참석 부탁드립니다.', '', '감사합니다.'].join('\n');
+}
+/* 출석 서명부(한글·워드·PDF): 연번·부서·이름·서명 — 대상 교직원 */
+export function signSheetDoc(b, cid, { school = '' } = {}) {
+  const c = b.courses.find(x => x.id === cid), h = (c && c.inhouse) || {};
+  const head = [h.date ? `일시: ${dotDate(h.date)}${h.time ? ` ${h.time}` : ''}` : '', h.place ? `장소: ${h.place}` : '', h.lecturer ? `강사: ${h.lecturer}` : ''].filter(Boolean).join('   ');
+  return { title: `${c.title} 출석 서명부`, blocks: [...(school ? [{ type: 'c', text: school }] : []), ...(head ? [{ type: 'p', text: head }] : []),
+    { type: 'table', head: true, widths: [0.6, 1.6, 1.6, 2.2], rows: [['연번', '부서', '이름', '서명'], ...targetStaff(b, c).map((s, i) => [String(i + 1), s.dept, s.name, ''])] }] };
+}
+/* [모두 참석으로]: 대상 모두 「확인」(이수일 = 연수 날, 시간 = 연수 시간), 반려·확인은 그대로 → 새 판 */
+export function allPresent(b, cid) {
+  const c = b.courses.find(x => x.id === cid);
+  if (!c) return b;
+  let out = b;
+  for (const s of targetStaff(b, c)) { const m = markOf(out, cid, s.id); if (!m || m.s === 'sent') out = setMark(out, cid, s.id, 'ok', { date: (c.inhouse && c.inhouse.date) || (m && m.date) || '', hours: (c.inhouse && c.inhouse.hours) || (m && m.hours) || null }); }
+  return out;
+}
+/* 교내 연수 운영 결과 보고(내부결재 본문 + 붙임 출석 표). summary: 선생님이 적은 주요 내용 */
+export function inhouseReportDoc(b, cid, { summary = '', year, school = '' } = {}) {
+  const c = b.courses.find(x => x.id === cid), h = (c && c.inhouse) || {}, st = courseStats(b, cid);
+  const P = text => ({ type: 'p', text }), miss = missingStaff(b, cid).length;
+  const lines = String(summary || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+  return { title: `${year}학년도 교내 자율연수(${c.title}) 운영 결과 보고`, blocks: [
+    P(`1. ${school ? `${school} ` : ''}교내 자율연수 「${c.title}」 운영 결과를 다음과 같이 보고합니다.`),
+    P(`  가. 일시: ${h.date ? `${dotDate(h.date)}${h.time ? ` ${h.time}` : ''}` : ''}`), P(`  나. 장소: ${h.place || ''}`), P(`  다. 강사: ${h.lecturer || ''}`),
+    P(`  라. 대상·참석: ${targetLabel(c)} ${st.total}명 중 ${st.done}명 참석(${st.rate}%)${h.hours ? ` · 연수 시간 ${h.hours}시간` : ''}`),
+    P('  마. 주요 내용'), ...(lines.length ? lines.map(l => P(`    - ${l.replace(/^[-·•]\s*/, '')}`)) : [P('    - ')]),
+    P(`  바. 불참: ${miss ? `${miss}명 — 개별 안내 후 이수하도록 함` : '없음'}`),
+    P('붙임  출석부 1부.  끝.'),
+    { type: 'break' }, { type: 'h', text: '붙임. 출석부' },
+    { type: 'table', head: true, rows: [['연번', '부서', '이름', '참석'], ...targetStaff(b, c).map((s, i) => [String(i + 1), s.dept, s.name, cellText(b, c, s, { report: true }).replace(/^이수/, '참석').replace(/^미이수$/, '불참')])] }] };
+}
+
+/* ---------- 현황판 공유(내보내기·가져오기 — 이수증 파일은 빼고) ---------- */
+export const BOARD_FILE = 'training-board';
+export const exportBoard = (b, year) => JSON.stringify({ app: 'ssam', kind: BOARD_FILE, version: 1, year, at: new Date().toISOString(), board: normBoard(b) }, null, 1);
+/* 파일 글 → 현황판(아니면 null). 보관 표시(kept)는 그 기기 파일이라 뺌 */
+export function parseBoardFile(text) {
+  let v;
+  try { v = JSON.parse(String(text || '').replace(/^\uFEFF/, '')); } catch (e) { return null; }
+  if (!isObj(v) || v.kind !== BOARD_FILE || !isObj(v.board)) return null;
+  const b = normBoard(v.board);
+  for (const row of Object.values(b.marks)) for (const m of Object.values(row)) m.kept = false;
+  return b;
+}
+const RANK_MARK = { back: 1, sent: 2, ok: 3 };
+/* 합치기: 같은 이름·부서는 한 사람, 같은 연수 이름은 한 연수, 칸은 더 나아간 상태(확인 > 제출 > 반려) */
+export function mergeBoards(a, b) {
+  const out = normBoard(a), sMap = new Map(), cMap = new Map();
+  for (const s of b.staff) {
+    const hit = out.staff.find(x => x.name === s.name && x.dept === s.dept);
+    if (hit) sMap.set(s.id, hit.id); else { const id = out.staff.some(x => x.id === s.id) ? newId('st') : s.id; out.staff.push({ ...s, id }); sMap.set(s.id, id); }
+  }
+  for (const c of b.courses) {
+    const hit = out.courses.find(x => titleKey(x.title) === titleKey(c.title));
+    if (hit) { cMap.set(c.id, hit.id); if (!hit.due && c.due) hit.due = c.due; if (!hit.inhouse && c.inhouse) hit.inhouse = c.inhouse; }
+    else { const id = out.courses.some(x => x.id === c.id) ? newId('tc') : c.id; out.courses.push({ ...c, id }); cMap.set(c.id, id); }
+  }
+  for (const [cid, row] of Object.entries(b.marks)) for (const [sid, m] of Object.entries(row)) {
+    const c2 = cMap.get(cid), s2 = sMap.get(sid);
+    if (!c2 || !s2) continue;
+    const old = markOf(out, c2, s2);
+    if (!old || RANK_MARK[m.s] > RANK_MARK[old.s]) (out.marks[c2] = out.marks[c2] || {})[s2] = { ...m, kept: old ? old.kept : false };
+  }
+  return normBoard(out);
 }
 /* 공문 → 결과 보고 「관련」 줄: 「발신 문서번호(2026. 11. 2.) 「제목」」 */
 export function relatedOf(doc) {
