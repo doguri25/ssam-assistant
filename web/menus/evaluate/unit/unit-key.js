@@ -11,10 +11,13 @@ const num = s => { const m = /^\s*(\d+(?:\.\d+)?)\s*(점)?\s*$/.exec(String(s));
 // 문항 번호 칸: 「1」·「1.」·「1번」
 const itemNo = s => { const m = /^(\d{1,2})\s*(?:\.|번)?$/.exec(String(s).trim()); return m ? Number(m[1]) : null; };
 
+/* 채점 기준 칸을 채운 자리 표시(「-」「―」「ㅡ」「없음」「해당 없음」「정답 시 10점」): 기준이 없는 것과 같음 — 고르기·단답 문항을 서술형으로 보지 않게 */
+const NO_CRITERIA = /^(?:[-‐‑‒–—―ㅡ·ㆍ\s]*|(?:해당\s*)?없음|정답\s*(?:시|이면|일\s*때)?\s*\d+(?:\.\d+)?\s*점)$/;
+const hasCriteria = c => { const s = String(c || '').trim(); return !!s && !NO_CRITERIA.test(s); };
 /* 문항 유형 짐작 (스펙 3.1 차례) */
 export function itemType(answer, criteria) {
   const a = String(answer || '').trim();
-  if (/^\(\s*예\s*\)/.test(a) || String(criteria || '').trim()) return 'essay';
+  if (/^\(\s*예\s*\)/.test(a) || hasCriteria(criteria)) return 'essay';
   const bare = a.replace(/[\s,·/]|및/g, '');
   if (bare && [...bare].every(c => CIRCLED.includes(c))) return 'choice';
   if (/^(\(\s*\d+\s*\)\s*[○◯Oo]\s*)+$/.test(a)) return 'choice';
@@ -26,12 +29,19 @@ export function itemType(answer, criteria) {
 export const keyTotal = items => (items || []).reduce((s, i) => s + (Number(i.points) || 0), 0);
 
 const SUBJ = /^(국어|수학|사회|과학|도덕|영어|음악|미술|체육|실과|통합)$/;
+// 줄 안의 교과 낱말(「2026학년도 3-2 수학 단원평가」의 수학, 「국어과」도)
+const SUBJ_WORD = /(?<![가-힣])(국어|수학|사회|과학|도덕|영어|음악|미술|체육|실과|통합)(?:과)?(?![가-힣])/;
+// 묻는 말(「1. 다음 중 … 것입니까? ( )」「2. 계산하시오.」, 바로 아래 줄이 보기 ①·㉠)은 단원 줄이 아님
+const BLANK_TAIL = /\(\s*[,\s]*\)\s*$/;
+const askCell = (c, next) => BLANK_TAIL.test(c) || /(?:[?？]|시오\.?|세요\.|봅시다\.)$/.test(c.replace(BLANK_TAIL, '').trim()) || /^[①-⑩㉠-㉭㉮-㉻]/.test(next);
 /* 머리에서 교과·학년-학기·단원 찾기 (따로 떨어진 줄 「도덕」·「3-2」·「4. 단원 이름」, 『과학』, 표 칸 「3. 동물의 생활」) */
 function looseMeta(lines) {
-  const head = lines.slice(0, 12).flatMap(l => cells(l)).filter(Boolean);
+  const rows = lines.slice(0, 12).map(l => cells(l).filter(Boolean));
+  const head = rows.flat();
   const subj = head.find(c => SUBJ.test(c)) || (/『\s*([가-힣]+)\s*』/.exec(head.join(' ')) || [])[1] || '';
   const gt = head.map(c => /^(\d)\s*-\s*([12])$/.exec(c)).find(Boolean);
-  const un = head.map(c => /^(\d{1,2})\.\s*([가-힣][^①-⑩|]*)$/.exec(c)).find(Boolean);
+  const nextLine = i => (lines.slice(i + 1).find(l => String(l).trim()) || '').trim();
+  const un = rows.flatMap((cs, i) => cs.map(c => (askCell(c, nextLine(i)) ? null : /^(\d{1,2})\.\s*([가-힣][^①-⑩|]*)$/.exec(c)))).find(Boolean);
   return { subject: subj, grade: gt ? Number(gt[1]) : null, term: gt ? Number(gt[2]) : null, unitNo: un ? Number(un[1]) : null, unitName: un ? un[2].trim() : '' };
 }
 
@@ -41,7 +51,8 @@ function keyMeta(lines) {
   const l = looseMeta(lines);
   return {
     term: m(/([12])\s*학기/) ?? l.term,
-    grade: m(/\(\s*(\d)\s*\)\s*학년/) ?? m(/(\d)\s*학년/) ?? l.grade,
+    // 「2026학년도」의 6은 학년이 아님(평가 계획 읽기 evaluate.js gradeFrom과 같은 규칙)
+    grade: m(/\(\s*(\d)\s*\)\s*학년/) ?? m(/(?<!\d)([1-6])\s*학년(?!도)/) ?? l.grade,
     subject: m(/\(\s*([가-힣]+)\s*\)\s*과/, String) || l.subject,
     unitNo: m(/(\d+)\s*단원/) ?? l.unitNo,
     round: m(/\(\s*(\d+)\s*회\s*\)/) ?? m(/(\d+)\s*회/)
@@ -235,10 +246,12 @@ export function parsePaper(text) {
   const lines = String(text || '').split('\n').map(l => l.trim());
   const head = lines.slice(0, 4).join(' ');
   const sg = /([가-힣]+)\s*(\d)\s*-\s*([12])/.exec(head);
+  // 「수학 3-2」: 「3-2」 바로 앞 낱말이 교과일 때만 그 낱말. 「2026학년도 3-2 수학」「초등 3-2 과학」은 머리의 교과 낱말(없으면 따로 떨어진 줄)
+  const sgSubj = sg ? (SUBJ.test(sg[1]) ? sg[1] : (SUBJ_WORD.exec(head) || [])[1] || '') : '';
   const un = /(\d+)\.\s*([^|(]+?)\s*\(\s*(\d+)\s*회\s*\)/.exec(head);
   const l = looseMeta(lines), rd = /(\d+)\s*회/.exec(lines.slice(0, 4).join(' '));
   const meta = {
-    subject: sg ? sg[1] : l.subject, grade: sg ? Number(sg[2]) : l.grade, term: sg ? Number(sg[3]) : l.term,
+    subject: sgSubj || l.subject, grade: sg ? Number(sg[2]) : l.grade, term: sg ? Number(sg[3]) : l.term,
     unitNo: un ? Number(un[1]) : l.unitNo, unitName: un ? un[2].trim() : l.unitName, round: un ? Number(un[3]) : rd ? Number(rd[1]) : null
   };
   const counts = [questionsAlone(lines), questionsLead(lines)];

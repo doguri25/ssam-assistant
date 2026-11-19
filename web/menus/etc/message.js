@@ -12,7 +12,7 @@ import { keepFiles } from '../../core/keep-files.js';
 import { schoolYearOf } from '../../core/calendar.js';
 import { cleanSheet } from '../evaluate/activity/activity-read.js';
 import { KINDS, messagePrompt, normMessage, composeMessage, keepFields, moveStart } from './message-ai.js';
-import { getSender, setSender, getDraft, saveDraft, clearDraft, listMessages, pushMessage, removeMessage, newMessageId, MAX_MESSAGES } from './message-model.js';
+import { getSender, setSender, getDraft, saveDraft, clearDraft, listMessages, pushMessage, removeMessage, newMessageId, MAX_MESSAGES, placeFiles, readsAfterAdd, aiFilled } from './message-model.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SS = () => window.SSAM || {};
@@ -35,7 +35,7 @@ function compose(force = false, x = cur()) {
 }
 function persist(x = cur()) {
   if (x === cur()) saveDraft(x);
-  if (hasContent(x) && !gone.has(x.id)) pushMessage({ id: x.id, title: x.title, kind: x.m.kind, m: x.m, len: x.len, attach: x.attach.map(a => ({ name: a.name, on: a.on })), body: x.body, edited: x.edited, again: !!x.again });
+  if (hasContent(x) && !gone.has(x.id)) pushMessage({ id: x.id, title: x.title, kind: x.m.kind, m: x.m, len: x.len, attach: x.attach.map(a => ({ name: a.name, on: a.on })), body: x.body, edited: x.edited, again: !!x.again, touched: x.touched || [] });
 }
 
 /* ---------- 붙임 파일 (Windows 앱): 다운로드 폴더에 모아 클립보드 파일 복사·끌어 놓기·경로 복사·폴더 열기
@@ -194,14 +194,19 @@ function live() {
 
 /* ---------- 넣기·읽기 ---------- */
 const setState = m => { M.msg = m; const el = box && box.querySelector('#msgState'); if (el) el.textContent = m; };
-/* M.files[i]는 붙임 x.attach[i]의 파일. 파일이 없는(다시 연·새로 고친) 붙임과 이름이 같으면 그 자리에 넣고, 아니면 붙임을 더함 */
+/* M.files[i]는 붙임 x.attach[i]의 파일. 파일이 없는(다시 연·새로 고친) 붙임과 이름이 같으면 그 자리에 넣고, 아니면 붙임을 더함 → { filled, added } */
 function addFiles(files) {
-  const x = cur();
-  for (const f of files) {
-    const i = x.attach.findIndex((a, k) => !M.files[k] && a.name === baseName(f.name));
-    if (i >= 0) M.files[i] = f;
-    else { x.attach.push({ name: baseName(f.name), on: true }); M.files[x.attach.length - 1] = f; }
-  }
+  const r = placeFiles(cur().attach, k => !!M.files[k], files, baseName);
+  for (const [i, f] of r.slots) M.files[i] = f;
+  return r;
+}
+/* 파일 고르기·끌어 놓기: 붙임에 넣고 읽기. 쪽지를 쓴 파일·글이 화면에 없으면(새로 고친 뒤·[열기] 뒤) 읽지 않음 — 넣은 파일만 읽어 써 둔 쪽지를 덮지 않게(readsAfterAdd) */
+function putFiles(fs) {
+  const x = cur(), held = x.attach.every((a, k) => !!M.files[k]) && (x.attach.length > 0 || !!M.paste.trim());
+  const r = addFiles(fs);
+  render();
+  if (readsAfterAdd(r, { filled: aiFilled(x.m, x.touched || []), held })) { readAll(); return; }
+  toast(`붙임 파일 ${r.filled + r.added}개를 넣었어요. 이 파일로 칸을 다시 채우려면 [쪽지 쓰기]를 눌러 주세요.`, 6000);
 }
 /* 쓰던 쪽지를 바꿈([새 쪽지]·[열기]·[다시 안내]·공문 처리 [쪽지]): 읽던 쪽지는 다 읽으면 최근 쪽지에만 넣고, 새 쪽지는 바로 읽을 수 있게 */
 let readTok = 0;
@@ -295,8 +300,8 @@ document.addEventListener('click', e => {
     const again = !!op.dataset.msgAgain;
     // AI가 읽는 중인 쪽지를 다시 열면 그 쪽지를 「읽는 중」 그대로(읽기가 이 화면에 이어짐 — 두 번 읽지 않게, 다 읽으면 이 화면에)
     if (!again && reading && reading.id === r.id) { if (reading !== x) { d = reading; readTok = readingTok; M.busy = true; M.msg = '읽는 중…'; M.files = []; saveDraft(d); } render(); return; }
-    M.files = [];
-    switchDraft({ id: again ? newMessageId() : r.id, m: r.m, len: r.len, attach: r.attach.map(a => ({ ...a })), edited: false, body: '', title: '', again: again || r.again });
+    M.files = []; M.paste = ''; // 넣기 칸의 글은 앞 쪽지 것(다시 읽을 때 연 쪽지를 그 글로 덮지 않게)
+    switchDraft({ id: again ? newMessageId() : r.id, m: r.m, len: r.len, attach: r.attach.map(a => ({ ...a })), edited: false, body: '', title: '', again: again || r.again, touched: [...(r.touched || [])] });
     if (!again && r.edited && r.body) { d.body = r.body; d.title = r.title; d.edited = true; } else compose(true);
     persist(); render(); return;
   }
@@ -316,7 +321,7 @@ document.addEventListener('click', e => {
 document.addEventListener('change', e => {
   if (!mine(e)) return;
   const el = e.target, x = cur();
-  if (el.id === 'msgFile') { const fs = [...el.files]; el.value = ''; if (fs.length) { addFiles(fs); render(); readAll(); } return; }
+  if (el.id === 'msgFile') { const fs = [...el.files]; el.value = ''; if (fs.length) putFiles(fs); return; }
   if (el.dataset.att != null) {
     const i = +el.dataset.att, at = x.attach[i];
     if (!at) return;
@@ -375,7 +380,7 @@ document.addEventListener('drop', e => {
   const fs = [...((e.dataTransfer && e.dataTransfer.files) || [])];
   // 방금 이 화면에서 끌어 낸 붙임을 도로 놓았으면 넣지 않음(한 번만 거름 — 다시 놓으면 넣음)
   if (M.dragOut && Date.now() - M.dragOut < 60000 && fs.length && saved && fs.every(f => saved.paths.some(p => p.split(/[\\/]/).pop() === f.name))) { M.dragOut = 0; return; }
-  if (fs.length) { addFiles(fs); render(); readAll(); }
+  if (fs.length) putFiles(fs);
   else { const t = e.dataTransfer && e.dataTransfer.getData('text/plain'); if (t) { M.paste = t; const p = box.querySelector('#msgPaste'); if (p) p.value = t; } }
 });
 

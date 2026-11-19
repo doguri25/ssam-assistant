@@ -3,7 +3,7 @@
 import { toast } from '../../core/ui.js';
 import { introHTML } from '../../core/ui-parts.js';
 import { currentYear } from '../../core/years.js';
-import { listRecent } from './library.js';
+import { listRecent, setRecentProject } from './library.js';
 import { TYPES } from './rules.js';
 import * as B from './budget-model.js';
 
@@ -71,7 +71,9 @@ export function projectSheet({ id = '', name = '', amount = '', due = '', planKe
     sh.querySelector('#bdOk').addEventListener('click', () => {
       const n = sh.querySelector('#bdName').value.trim();
       if (!n) { toast('사업 이름을 넣어 주세요'); return; }
-      const p = B.saveProject({ id, name: n, amount: sh.querySelector('#bdAmount').value, due: sh.querySelector('#bdDue').value, ...(planKey != null ? { planKey } : {}) });
+      const amt = sh.querySelector('#bdAmount').value;
+      if (amt.trim() && !B.toWon(amt)) { toast('예산을 숫자로 넣어 주세요. 예) 500,000 또는 50만원'); return; }
+      const p = B.saveProject({ id, name: n, amount: amt, due: sh.querySelector('#bdDue').value, ...(planKey != null ? { planKey } : {}) });
       SS().closeSheet();
       B.refreshAlerts(currentYear(), today());
       if (done) done(p);
@@ -112,5 +114,11 @@ document.addEventListener('click', e => {
 document.addEventListener('change', e => {
   if (!inPage(e)) return;
   const s = e.target.closest('[data-bd-move]');
-  if (s) { B.setLineProject(s.dataset.bdMove, s.value); renderBudget(); }
+  if (!s) return;
+  // 품의 쪽(최근 작성·지금 쓰는 품의 — purchase.js가 받음)도 그 사업으로. 장부만 바꾸면 그 품의를 고치거나 [열기]할 때 예전 사업으로 되돌아갔음
+  const id = s.dataset.bdMove, project = s.value;
+  B.setLineProject(id, project);
+  setRecentProject(id, project);
+  document.dispatchEvent(new CustomEvent('ssam:budget-move', { detail: { id, project } }));
+  renderBudget();
 });

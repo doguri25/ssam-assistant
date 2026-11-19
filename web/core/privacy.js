@@ -15,7 +15,10 @@ const COMMON = new Set(['이야기', '우리반', '우리말', '우리들', '도
   '전염병', '연장전', '주관식', '방학중', '오전중', '오후중', '진행중', '공사중', '기간중', '최대치', '최소치', '최고치', '최저치', '연필심', '이월분', '원단위',
   '우체국', '진주성', '공산성', '연수원', '유치원', '변경안', '신설안', '명령조', '경어조', '구어조', '문어조', '기본조', '강약조', '홍보지', '정보지', '안내지',
   '이번호', '지난호', '소규모', '민원인', '지역민', '장마철', '소재지', '주소지',
-  '강낭콩', '봉선화', '반대편', '육성회', '마무리', '금요일', '공휴일', '기념일', '서술형', '공문철', '원어민', '지도안', '위인전']);
+  '강낭콩', '봉선화', '반대편', '육성회', '마무리', '금요일', '공휴일', '기념일', '서술형', '공문철', '원어민', '지도안', '위인전',
+  // 직함 뒤에 흔히 오는 세 글자 낱말(「선생님 한마디」「강사 소개말」「담당 연락망」 — 직함 뒤 이름으로 가려졌음)
+  '한마디', '도움말', '인사말', '소개말', '지시문', '주제어', '연락망', '강의안', '강의록', '장학금', '조례안', '조회대',
+  '인력풀', '강의료', '한마당', '예산안']);
 // 전화번호: 0으로 시작하는 국번(앞에 숫자가 붙지 않음) — 「1200000 1150000」「3000 4000 5000」 같은 금액·숫자 줄은 아님
 const PHONE = /(?<!\d)\(?0\d{1,2}\)?[-.\s)]{0,2}\d{3,4}[-.\s]?\d{4}/;
 
@@ -150,10 +153,16 @@ const roleWord = w => cellName(w) && personWord(w) && !/별$/.test(w) && (!(/[�
 // 맡은 일 머리 쌍점 뒤(「사회: 이규리」「기록: 박해리」「촬영: 김샛별」) — 이름 자리라서 끝 글자 규칙을 넓게(낱말 끝 -문·-별만 빼고, 한별·샛별·은별은 이름)
 const colonWord = w => cellName(w) && personWord(w) && (!/[문별]$/.test(w) || /[한샛은새하]별$/.test(w) || (/문$/.test(w) && NAME_MID.test(w[1])));
 const ROLE_COLON = /(?:사회자?|기록자?|촬영|발표자?|진행자?|도우미|심판|반주|인솔|인솔자|사진|사서|후보자?)\s*[:：]\s*([가-힣]{3}(?:\s*[,，·、]\s*[가-힣]{3}(?![가-힣]|\s*[:：]))*)(?![가-힣])|사서\s+([가-힣]{3})(?![가-힣])/g;
+/* 맡은 일 머리 뒤 이름만(「사회: 탁보결, 기록: 남다율」「도우미: 박솔빛, 이바다」「사서 탁보결」) → [이름] — roleNames의 「이바다 기록 담당」 같은 낱말 앞 규칙은 뺌(「우수상 발표」) */
+export const colonNames = text => {
+  const out = new Set();
+  for (const m of String(text || '').matchAll(ROLE_COLON)) for (const x of (m[1] || m[2] || '').split(/[,，·、]/).map(y => y.trim())) if (colonWord(x)) out.add(x);
+  return [...out];
+};
 export const roleNames = (text, known = []) => {
   const t = String(text || ''), out = new Set([...new Set(words(t))].filter(w => roleWord(w) && personUse(w, t)));
   // 맡은 일 머리 뒤(「사회: 탁보결, 기록: 남다율」「도우미: 박솔빛, 이바다」「사서 탁보결」)
-  for (const m of t.matchAll(ROLE_COLON)) for (const x of (m[1] || m[2] || '').split(/[,，·、]/).map(y => y.trim())) if (colonWord(x)) out.add(x);
+  for (const x of colonNames(t)) out.add(x);
   // 맡은 일 말 앞 이름에 쉼표로 이어진 이름(「(이바다, 남다율 인솔)」)
   for (const w of new Set([...out, ...[...new Set(words(t))].filter(w => cellName(w) && personUse(w, t)), ...known])) for (const m of t.matchAll(new RegExp(`((?:[가-힣]{3}\\s*[,，·、]\\s*)+)${w}(?![가-힣])`, 'g'))) for (const x of m[1].split(/[,，·、]/).map(y => y.trim())) if (roleWord(x)) out.add(x);
   return [...out];
@@ -330,6 +339,10 @@ export function maskPeopleList(text) {
 // colonOnly: 직함 뒤 이름은 쌍점 뒤면 예전대로, 띄어쓰기만이면 세 글자 이름 모양에 조사가 없거나 사람 조사일 때만
 // (「강사 박솔빛」「담당 이바다에게」는 가림 — 「선생님 설명을」「부장 선거」「담당 구역」은 아님, 활동지·창체·행사 칸 글)
 const COLON_ONLY_J = /^(?:이|가|께|께서|에게|한테|에게서|한테서|은|는|와|과|랑|이랑|하고|의)?$/;
+// 강사·담당·주무관·부장·문의 뒤(선생님은 아님 — 「선생님 목소리를」)는 을·를·도·만·로도(「강사 박솔빛을 모시고」「부장 탁보결을 중심으로」「강사 남다율도」)
+const COLON_ONLY_J2 = /^(?:을|를|도|만|로|으로|부터)$/;
+// 이름 끝에 오지 않는 글자(「선생님 한마디·도움말·주제어·연락망·강의록」)
+const COLON_ONLY_END = /[말디어망록]$/;
 export function maskStaff(text, { colonOnly = false } = {}) {
   const p = maskPeopleList(text);
   let masked = p.masked;
@@ -338,7 +351,8 @@ export function maskStaff(text, { colonOnly = false } = {}) {
     .replace(STAFF_BEFORE, (m, pre, w, off, str) => {
       const r = staffJosa(w, str.slice(0, off + pre.length), str.slice(off + m.length));
       if (!r || (/^인솔/.test(pre) && !insolName(w.slice(0, w.length - r[1].length), str.slice(off + m.length)))) return m;
-      if (colonOnly && !/[:：]/.test(pre) && !(r[0].length >= 3 && plainOk(r[0]) && roleWord(r[0]) && COLON_ONLY_J.test(r[1]))) return m;
+      if (colonOnly && !/[:：]/.test(pre) && !(r[0].length >= 3 && plainOk(r[0]) && roleWord(r[0]) && !COLON_ONLY_END.test(r[0])
+        && (COLON_ONLY_J.test(r[1]) || (!/^선생님/.test(pre) && COLON_ONLY_J2.test(r[1]))))) return m;
       return (masked++, pre + MASK + r[1]);
     })
     .replace(INSOL_SPACE, (m, pre, w) => (plainOk(w) && staffName(w) && personWord(w) && (!colonOnly || roleWord(w)) && !INSOL_GROUP.has(w) && !(TWO_WORD.has(w.slice(0, 2)) && /[은는이가을를]$/.test(w)) ? (masked++, pre + MASK) : m));

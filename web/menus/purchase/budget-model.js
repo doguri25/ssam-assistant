@@ -8,7 +8,16 @@ const DEMO_YEAR = 9999; // core/years.js DEMO_YEAR
 const P = 'budget:projects', L = 'budget:ledger', ALERTS = 'budget:alerts', MIG = 'budget:migrated';
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const str = (v, n = 120) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n);
-const money = v => { const n = Math.round(Number(String(v == null ? '' : v).replace(/[,\s원₩]/g, ''))); return Number.isFinite(n) && n > 0 ? n : 0; };
+/* 「500,000」「1,500,000원」「50만원」「150만 원」「1만 5천원」「1.5만」 → 원. 예전에는 「만」을 못 읽어 예산이 말없이 0원으로 저장됐음 */
+const MAN = /^[₩￦\s]*(\d[\d,]*(?:\.\d+)?)\s*만(?:\s*(\d[\d,]*)\s*(천)?)?\s*원?\s*$/;
+const money = v => {
+  const t = String(v == null ? '' : v), m = MAN.exec(t);
+  const n = m ? Math.round(Number(m[1].replace(/,/g, '')) * 10000 + (m[2] ? Number(m[2].replace(/,/g, '')) * (m[3] ? 1000 : 1) : 0))
+    : Math.round(Number(t.replace(/[,\s원₩￦]/g, '')));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+/* 칸에 쓴 금액 → 원(못 읽으면 0) — 예산 탭 시트가 「숫자로 넣어 주세요」를 띄울 때 씀 */
+export const toWon = money;
 const isDay = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
 const newId = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const won = n => Number(n || 0).toLocaleString('ko-KR');

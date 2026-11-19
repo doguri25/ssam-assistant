@@ -18,8 +18,9 @@ import { listEvents as listCalendar, setEvents, removeEvents, dayIssues, suggest
 import { summarize, formText, stripPersonal, readStripped, personalMsg } from '../../core/survey.js';
 import { qrPng } from '../../core/qr.js';
 import { readTable } from '../../core/sheet.js';
-import { listPlans, planText, textForAI } from './year-model.js';
+import { listPlans, planText, textForAI, sourceForAI } from './year-model.js';
 import { maskStaff, maskContacts } from '../../core/privacy.js';
+import { maskPersons } from '../../core/chat-names.js';
 import { putReportSources } from './report.js';
 import { putLetterDraft } from '../etc/letter.js';
 import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
@@ -33,8 +34,8 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 const won = n => Number(n || 0).toLocaleString('ko-KR');
 const fmtDay = d => `${+d.slice(5, 7)}월 ${+d.slice(8, 10)}일(${'일월화수목금토'[weekday(d)]})`;
 /* AI로 보내는 행사 칸(행사명·목적·대상·장소·예산): 전화번호·직함 앞뒤 교직원 이름은 ○○○로(「한가람 선생님 정년퇴임 기념식」).
-   짧은 칸 글이라 직함 뒤는 쌍점 뒤·세 글자 이름만(「부장 선거」는 그대로) */
-const evAI = v => maskStaff(maskContacts(String(v == null ? '' : v)), { colonOnly: true }).text.trim();
+   짧은 칸 글이라 직함 뒤는 쌍점 뒤·세 글자 이름만(「부장 선거」는 그대로). 사람 이름(「강사 김솔」「담당 이산」「강사 남다율도」)은 창체 칸(gr-bundle maskAI)처럼 maskPersons로 먼저 */
+const evAI = v => maskStaff(maskPersons(maskContacts(String(v == null ? '' : v))).text, { colonOnly: true }).text.trim();
 const kindName = id => (KINDS.find(k => k[0] === id) || KINDS[3])[1];
 
 let box = null, curTab = null;
@@ -259,7 +260,7 @@ function refSheet(r) {
 const refNotesHTML = (list, stale) => (list && list.length ? `<div class="banner info ev-refnotes"><span class="grow"><b>참고 자료에서 반영한 것</b>${stale ? '<span class="muted"> · 참고 자료를 바꿨어요. 다시 만들면 바뀐 자료가 반영돼요</span>' : ''}<ul>${list.map(x => `<li>${esc(x)}</li>`).join('')}</ul></span></div>` : '');
 // 예전에 거르지 않고 저장한 참고 자료도 AI에는 이름·전화번호를 빼고 보냄
 // 직함 앞뒤 교직원 이름(「박하늘 선생님」「이바다 교사」)도 ○○○로
-const refsPart = e => { const b = refsBlock(e.refs.map(r => ({ ...r, text: textForAI(stripPersonal(r.text).text) }))); return b ? `\n참고 자료(상위 계획·교육청 공문 등):\n${b}\n` : ''; };
+const refsPart = e => { const b = refsBlock(e.refs.map(r => ({ ...r, text: sourceForAI(stripPersonal(r.text).text) }))); return b ? `\n참고 자료(상위 계획·교육청 공문 등):\n${b}\n` : ''; };
 const refsRule = e => (e.refs.length ? '- 참고 자료의 요구 사항(날짜·대상·필수 활동·안전 기준·제출할 것 등)을 지키고, 반영한 것을 refNotes에 짧게 씀(3~6개). 참고 자료에 없는 사실은 지어내지 않음\n' : '');
 
 function memosHTML() {
@@ -574,7 +575,7 @@ function optionsPrompt(e) {
   return `[행사 구성안]\n학교 행사 계획을 돕는 도우미예요. 아래 행사의 구성안을 ${hasLast ? '3' : '2'}개 만들어 주세요.\n\n`
     + `종류: ${kindName(e.kind)}\n행사명: ${evAI(e.name)}\n목적: ${evAI(e.purpose) || '(없음)'}\n대상: ${evAI(e.grades)}\n날짜: ${e.date}\n장소: ${evAI(e.place)} (${e.outdoor ? '야외' : '실내'})\n예산: ${evAI(e.budget) || '(정하지 않음)'}\n`
     + `학교: ${s.name || '(학교명 없음)'}, 학급 ${s.classes || '-'}개, 학생 ${s.students || '-'}명\n`
-    + (hasLast ? `\n작년 설문 결과:\n"""\n${textForAI(stripPersonal(e.lastSurvey).text).slice(0, 8000)}\n"""\n` : '')
+    + (hasLast ? `\n작년 설문 결과:\n"""\n${sourceForAI(stripPersonal(e.lastSurvey).text).slice(0, 8000)}\n"""\n` : '')
     + refsPart(e)
     + '\n규칙:\n'
     + (hasLast ? '- 첫 안은 label "보완안": 작년 설문의 아쉬운 점을 고친 안. 나머지는 label "새로운 안": 새 활동을 넣은 안\n' : '- 작년 자료가 없으니 보완안은 만들지 마세요. 모두 label "새로운 안"\n')

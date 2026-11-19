@@ -99,9 +99,25 @@ await run('handover', [
     const on = await page.$$eval(`${P} [data-ho-pick][data-g="duties"]`, els => els.filter(e => e.checked).map(e => e.closest('label').textContent.trim()));
     assert(on.length === 1 && on[0].startsWith('과학 교육'), JSON.stringify(on));
   }],
-  ['[AI로 정리](제한 없음): 고른 1~5만 보냄(이름·전화번호·뺀 업무 없음, 3~6줄) → 「다음 담당자에게」에 줄로', async () => {
+  ['[AI로 정리](제한 없음): 써 둔 글이 있으면 먼저 물음 — [그만두기]면 그대로·AI 안 부름, [아래에 더하기]면 쓴 글 아래에', async () => {
+    await page.fill(`${P} #hoNote`, '- 과학실 열쇠는 행정실 금고에 있어요.');
+    await page.click(`${P} [data-ho="ai"]`);
+    await page.waitForSelector('#sheetRoot [data-ho-ask="add"]');
+    await page.click('#sheetRoot [data-close]');
+    await page.waitForTimeout(200);
+    assert(reqs.length === 0 && (await page.inputValue(`${P} #hoNote`)) === '- 과학실 열쇠는 행정실 금고에 있어요.', '그만두기: ' + reqs.length);
+    await page.click(`${P} [data-ho="ai"]`);
+    await page.click('#sheetRoot [data-ho-ask="add"]');
+    await page.waitForFunction(() => document.querySelector('.ho-box #hoNote').value.includes('- 3월'));
+    const both = await page.inputValue(`${P} #hoNote`);
+    assert(both.startsWith('- 과학실 열쇠는 행정실 금고에 있어요.\n- 3월') && !reqs[0].includes('과학실 열쇠'), both);
+    assert((await saved()).note === both, '저장');
+    reqs.length = 0;
+  }],
+  ['[AI로 정리](제한 없음): 고른 1~5만 보냄(이름·전화번호·뺀 업무 없음, 3~6줄) → [바꾸기]면 「다음 담당자에게」를 그 줄로', async () => {
     await page.fill(`${P} #hoNote`, '쓰던 메모');
     await page.click(`${P} [data-ho="ai"]`);
+    await page.click('#sheetRoot [data-ho-ask="replace"]');
     await page.waitForFunction(() => document.querySelector('.ho-box #hoNote').value.startsWith('- 3월'));
     assert(reqs.length === 1, `AI 요청 ${reqs.length}번`);
     const q = reqs[0];
@@ -131,6 +147,7 @@ await run('handover', [
   ['몇 쪽으로 1쪽에서 [AI로 정리]: 2~3줄로 부탁하고 3줄까지만 받음, 고쳐 쓰면 문서에도', async () => {
     await page.selectOption(`${P} #hoPages`, '1');
     await page.click(`${P} [data-ho="ai"]`);
+    await page.click('#sheetRoot [data-ho-ask="replace"]'); // 앞에서 정리한 글이 있어 물음
     await page.waitForFunction(n => document.querySelector('.ho-box #hoNote').value.split('\n').length === n, 3);
     assert(reqs.length === 2, `AI 요청 ${reqs.length}번`);
     assert(reqs[1].includes('2~3줄') && reqs[1].includes('1쪽에 맞추므로 3줄을 넘기지 않습니다'), reqs[1].slice(0, 300));

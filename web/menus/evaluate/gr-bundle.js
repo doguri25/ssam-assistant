@@ -12,8 +12,9 @@ const SS = () => window.SSAM || {};
 SS().bundleBoxHTML = bundleBoxHTML;
 // 설정 칸을 다시 그려도 「한꺼번에 넣기」 파일 칸은 그대로(evaluate.js가 씀)
 SS().keepFiles = keepFiles;
-// 행특 메모 한꺼번에 넣기·AI로 보내는 메모의 이름 칸 빼기(evaluate.js가 씀)
-SS().memoNames = { rows: memoRows, forAI: memoForAI, hide: s => maskContacts(maskPersons(String(s || '')).text) };
+// 행특 메모 한꺼번에 넣기·AI로 보내는 메모의 이름 칸 빼기(evaluate.js가 씀).
+// hide: AI로 보내는 메모 속 친구 이름 — 행특 메모 규칙(memo: 목록 밖 이름 + 을·를·과·와도, 「쌤」 채팅의 메모 저장 maskMemo와 같게)
+SS().memoNames = { rows: memoRows, forAI: memoForAI, hide: s => maskContacts(maskPersons(String(s || ''), { memo: true }).text) };
 // [정답표 파일]로 넣은 한글 정답표 글도 한꺼번에 넣기처럼 이름 칸(「이름: 김민수」)만 가림(evaluate.js가 씀)
 SS().maskNames = maskNameFields;
 // AI로 보내는 선생님 글(창체 활동 등): 사람 이름·교직원 이름(명단 포함)·연락처를 ○○○로 — 짧은 칸 글이라 직함 뒤는 쌍점 뒤·세 글자 이름만(「부장 선거」「선생님 설명을」은 그대로)

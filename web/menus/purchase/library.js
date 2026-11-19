@@ -16,6 +16,13 @@ export function pushRecent(entry) {
   return set(RECENT, [e, ...listRecent().filter(x => x.id !== e.id)].slice(0, 20));
 }
 export const deleteRecent = id => set(RECENT, listRecent().filter(x => x.id !== id));
+/* 예산 탭에서 그 품의 줄의 사업을 바꿈: 최근 작성의 품의도 그 사업으로(선생님이 고른 것 — 자리·시각은 그대로).
+   그대로 두면 그 품의를 [열기]할 때 예전 사업으로 장부를 덮어썼음 */
+export function setRecentProject(id, project) {
+  const list = listRecent();
+  if (!list.some(x => x.id === id)) return false;
+  return set(RECENT, list.map(x => (x.id === id ? { ...x, form: { ...x.form, projectId: String(project || ''), projectSet: true } } : x)));
+}
 
 /* ---------- 저장한 템플릿 ---------- */
 const normTpl = x => (isObj(x) && typeof x.id === 'string' && isObj(x.form) ? { id: x.id, name: String(x.name || '이름 없는 템플릿').slice(0, 60), savedAt: Number(x.savedAt) || 0, form: x.form } : null);

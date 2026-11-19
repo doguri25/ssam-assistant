@@ -96,6 +96,12 @@ function syncProject() {
   if (!st.form.projectSet) st.form.projectId = BM.matchProject(st.form, ps);
   else if (st.form.projectId && !ps.some(p => p.id === st.form.projectId)) { st.form.projectId = ''; st.form.projectSet = false; }
 }
+// 예산 탭에서 지금 쓰는 품의 줄의 사업을 바꾸면(budget.js) 이 품의도 그 사업으로(선생님이 고른 것) — 그대로 두면 다음 save()가 장부를 예전 사업으로 되돌렸음
+document.addEventListener('ssam:budget-move', e => {
+  const d = (e && e.detail) || {};
+  if (!d.id || d.id !== st.id) return;
+  st.form.projectId = String(d.project || ''); st.form.projectSet = true; set(CUR_KEY, st);
+});
 // 초안이 있는 품의는 장부에 한 줄(같은 품의 id로 덮어씀 — 올린 줄은 금액을 굳혀 둠)
 function syncLedger() {
   if (st.draft) BM.upsertDraft({ id: st.id, project: st.form.projectId || '', title: st.draft.title, kind: st.form.type, amount: sumItems(st.form.items), date: dayToday() });

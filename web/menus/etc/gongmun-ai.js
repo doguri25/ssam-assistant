@@ -16,6 +16,9 @@ const KIND_IDS = KINDS.map(k => k[0]);
 const PHONE = /0\d{1,2}[-.\s)]?\d{3,4}[-.\s]?\d{4}/g, EMAIL = /[\w.+-]+@[\w-]+\.[\w.]+/g;
 const clean = (v, n) => String(v == null ? '' : v).replace(PHONE, '').replace(EMAIL, '').replace(/\(\s*\)/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
 export const MAX_TEXT = 8000;
+/* 넣은 공문의 처음 제목(AI가 읽기 전·AI 키 없을 때): 파일이면 확장자를 뺀 파일 이름, 붙여 넣은 글이면 그 첫 줄 그대로
+   (글 줄의 마지막 점은 확장자가 아님 — 「2026. 12. 4.(금) …」「(초.중.고)」가 잘리지 않게) */
+export const firstTitle = (fileName, line) => (fileName ? String(fileName).replace(/\.[^.]+$/, '').trim() || '공문' : String(line || '').trim() || '붙여 넣은 공문');
 
 export function gongmunPrompt({ name = '', text = '', today = '', year } = {}) {
   return ['[공문 처리]',

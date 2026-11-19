@@ -104,7 +104,8 @@ await run('message', [
     await page.waitForFunction(() => window.__calls.some(c => c[0] === 'note_open_dir'));
     assert((await page.evaluate(() => window.__calls.find(c => c[0] === 'note_open_dir')[1].dir)) === 'C:/붙임', '폴더');
   }],
-  ['I3 새로고침 뒤 붙임 파일을 하나만 다시 넣으면 그 이름의 붙임에 들어가고(늘지 않음) 그 파일만 복사', async () => {
+  ['I3 새로고침 뒤 붙임 파일을 하나만 다시 넣으면 그 이름의 붙임에 들어가고(늘지 않음) 그 파일만 복사 — 그 파일만 다시 읽어 쪽지를 덮지 않음(AI 안 부름)', async () => {
+    const body0 = await page.inputValue(`${P} #msgBody`), n1 = msgs().length;
     await page.reload(); await page.waitForTimeout(500);
     await page.evaluate(() => { window.__calls = []; window.__TAURI__ = { core: { invoke: async (cmd, args) => { window.__calls.push([cmd, JSON.parse(JSON.stringify(args))]); return cmd === 'note_save_attachments' ? { dir: 'C:/붙임', paths: args.files.map(f => 'C:/붙임/' + f.name) } : null; } } }; });
     await page.click('nav.app-side [data-menu-go="etc"]');
@@ -114,6 +115,8 @@ await run('message', [
     await page.waitForFunction(() => !document.querySelector('[data-msg="read"][disabled]'));
     await page.waitForTimeout(300);
     assert(await page.locator(`${P} [data-att]`).count() === n0, '붙임이 늘어남');
+    assert(msgs().length === n1 && (await page.inputValue(`${P} #msgBody`)) === body0, '다시 넣은 붙임만 읽어 쪽지를 덮음: AI ' + (msgs().length - n1));
+    assert((await page.textContent('#toast')).includes('[쪽지 쓰기]'), await page.textContent('#toast'));
     await page.click(`${P} [data-msg="copyFiles"]`);
     await page.waitForFunction(() => window.__calls.some(c => c[0] === 'note_save_attachments'));
     const f = (await page.evaluate(() => window.__calls.find(c => c[0] === 'note_save_attachments')))[1].files;

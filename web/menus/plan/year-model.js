@@ -3,7 +3,8 @@
 import { get, set } from '../../core/store.js';
 import { isDate, schoolYearOf, yearOfMonth } from '../../core/calendar.js';
 import { getSchool } from '../../core/settings.js';
-import { maskContacts, maskStaff, staffName, nameCell, MASK } from '../../core/privacy.js';
+import { maskContacts, maskStaff, staffName, nameCell, MASK, colonNames, maskKnown } from '../../core/privacy.js';
+import { accountLine } from '../../core/redact.js';
 import { normRv } from './plan-rv.js';
 import { parseOutline } from './classplan-model.js';
 import { isTotalName } from '../../core/sheet.js';
@@ -165,6 +166,13 @@ export function normDraft(v) {
 /* ---------- AI로 보내는 글 ---------- */
 /* 선생님이 친 칸(목표·예산): 전화번호·전자 우편과 직함 앞뒤 교직원 이름(「문의 박하늘」「김솔 선생님」)은 ○○○로 */
 export const textForAI = s => maskStaff(maskContacts(s)).text;
+/* 계획 자료 글(작년 계획서·작년 결과·지침·참고 공문·작년 설문 — 개인정보 열·명단 줄을 뺀 stripPersonal 글) → AI로 보낼 글:
+   계좌 줄은 빼고(강사비 입금 계좌), 교직원 이름·연락처(textForAI)와 맡은 일 머리 쌍점 뒤 이름(「진행: 남다율, 사진 기록: 탁보결」 — 글 다른 곳의 「탁보결과 협의」도)을 ○○○로.
+   쪽지·공문의 cleanSheet(조사 붙은 이름 maskJosaNames·「이바다 기록 담당」 규칙)는 쓰지 않음 — 「성교육을」「한글날을」「우수상 발표」를 이름으로 배워 글 전체에서 가렸음 */
+export const sourceForAI = s => {
+  const t = textForAI(String(s == null ? '' : s).split('\n').filter(l => !accountLine(l)).join('\n'));
+  return maskKnown(t, colonNames(t)).text;
+};
 /* 담당자 칸: 부서·직함은 두고 교직원 이름과 전화번호는 ○○○로 (「독서교육부 박하늘」 → 「독서교육부 ○○○」). 「~부·~실·~과·~팀·~반」 낱말과 직함은 이름이 아님 */
 const NOT_NAME = /^(주무관|기간제|실무사|담당자?)$|[부실과팀반]$/;
 const ownerWord = w => !NOT_NAME.test(w) && (w.length === 4 ? nameCell(w) : /^[가-힣]{2,3}$/.test(w) && staffName(w));

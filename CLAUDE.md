@@ -4,7 +4,7 @@
 
 ## 지금 상태 (2026-11-19)
 
-- 최신 릴리즈는 **v0.37.1**(두 번째 버그 찾기 25건). 그 앞 v0.37.0(학년말 마감 도우미, 교내 자율연수, 쪽지 회신 기한·현황판 공유, 버그 25건), v0.36.0(연수 메뉴·이수증 수합, 학급 탭 손보기, 메뉴 사이 연결). main은 그 릴리즈 커밋, 작업 브랜치 `claude/wonderful-johnson-lqb8em`은 그 뒤 선생님 요청(아래 2026-11-19 「1,2 … 6 한달 달력」)과 세 번째·네 번째 버그 찾기(34건·34건)가 더 있다(릴리즈 안 함).
+- 최신 릴리즈는 **v0.38.0**(한 달 달력·이수증은 이수번호만·교직원 이름 가리기·오늘 화면 출석 물음, 세 번째~다섯 번째 버그 찾기 94건). 그 앞 v0.37.1(두 번째 버그 찾기 25건), v0.37.0(학년말 마감 도우미, 교내 자율연수, 쪽지 회신 기한·현황판 공유, 버그 25건), v0.36.0(연수 메뉴·이수증 수합, 학급 탭 손보기, 메뉴 사이 연결). main과 작업 브랜치 `claude/wonderful-johnson-lqb8em`은 그 릴리즈 커밋.
   - 0.34.1: 남은 한계 고침 — 기준표 칸 글은 AI로 갈 때 이름을 ○○○로(`rubric-model.js aiCell`), 「김정대로 바꿔 줘」(privacy `DAERO`·`roGivenName`),
     물건 머리 줄의 이름은 다른 줄에서 사람으로 쓰일 때 배움(privacy `personUse`), 품의 「총 30자루 15,000원」(`tests/unit/fix1117-limits.test.mjs`).
   - 수준별 기준표(루브릭): 설계 `docs/superpowers/specs/2026-11-16-rubric-design.md`, 계획 `docs/superpowers/plans/2026-11-16-rubric.md`.
@@ -65,7 +65,7 @@
   기초학력 `closedDays`는 방학·한 주 넘는 휴업 기간 빼고·날짜 넣기 같은 시각이면 교시 수 그대로·날마다 한 덩어리는 periods null·`longMergeDates`(1000자 넘는 날은 합치지 않음)·오늘 화면 카드 `shownName`·빈 칸으로 셈,
   연수 `STAFF_H`·`parseStaffLines`(서로 부르지 않음)·`nameTok`(looksLikeName·`ROLE_TOK`)·`certDate` 끝나지 않은 기간은 마지막에 첫날·폼 다시 넣기는 같은 주소면 그대로·`mergeBoards` 반려는 `at`·`lecturerNames`,
   채팅 `WRITE_IDS`(쓰기 명령이면 dataQuestion 안 함)·붙여 넣은 글은 오늘 수업·진도표 예전 규칙만·다른 메뉴 일이 분명하면 화면 가기 물러남, 이수증 본문 말 넓힘·사진 이수증도 물음, 쪽지 마감 줄 한 번.
-- 선생님 요청(2026-11-19 「1,2 이수증 파일은 스캔해서 코드만 받게 해줘 … 6 한달 달력 넣어주고 멀티에이전트를 돌려서 버그를 찾아내어 수정해줘」, 릴리즈 안 함):
+- 선생님 요청(2026-11-19 「1,2 이수증 파일은 스캔해서 코드만 받게 해줘 … 6 한달 달력 넣어주고 멀티에이전트를 돌려서 버그를 찾아내어 수정해줘」, 0.38.0):
   1) 교직원 이름 가리기: 연수 현황판 명단 이름은 어느 길에서든(`privacy knownStaff`·`maskKnown` — stripNames·maskStaff·`chat-names maskPersons`가 부름, 저장값 비교는 `store.getRaw`),
      「미제출:」「아직 안 낸 분:」「참석자:」 뒤 목록(`LIST_HEAD`·`maskPeopleList`), 쪽지·가정통신문·공문 처리·결과 보고의 `cleanSheet`도 maskStaff.
   2) 오늘 화면 기초학력 출석: 결석이 섞인 학생을 누르면 먼저 물음(`home-model absentOn`).
@@ -73,7 +73,7 @@
      연수 이름 시트·못 맞춘 줄에서 이수번호 넣기, 구글 폼 「이수번호」 칸·만들기 안내, 결과 보고 명단·엑셀 명단표에 이수번호, 붙임 2는 kept가 있을 때만 (`tests/unit/fix1119-asks.test.mjs`).
   6) 한 달 달력: 스펙 `docs/superpowers/specs/2026-11-19-month-calendar-design.md`. `web/menus/home/month-model.js`(칸·그날 할 것)·`month.js`(`gatherMonth`, 시트 `openMonth`, `[data-month-open]`),
      오늘 화면 머리·공문 기한 카드 단추, 채팅 intent `month`(「12월 일정」은 그 학년도 달) (`tests/unit/fix1119-month.test.mjs`, e2e `fix1119-month.mjs`).
-  세 번째 멀티에이전트 버그 찾기(같은 요청의 「멀티에이전트를 돌려서 버그를 찾아내어 수정해줘」, 릴리즈 안 함): 5 영역(새 기능·평가·계획/품의·기타·core) 찾기+검증, 확인된 34건 모두 고침(`tests/unit/fix1119-bugs3.test.mjs`).
+  세 번째 멀티에이전트 버그 찾기(같은 요청의 「멀티에이전트를 돌려서 버그를 찾아내어 수정해줘」, 0.38.0): 5 영역(새 기능·평가·계획/품의·기타·core) 찾기+검증, 확인된 34건 모두 고침(`tests/unit/fix1119-bugs3.test.mjs`).
      이름 가리기 `knownRe`(세 글자 넘는 명단 이름은 뒤 글자를 보지 않음)·`LIST_WHO`/`LIST_HEAD`(「미제출(2명):」「미제출 선생님:」「- 」)·`LIST_BARE`(「미제출자 남다율, 탁보결」)·`maskListBody` 항목마다,
      `cleanSheet(text, { staff })` — 쪽지·공문·가정통신문·결과 보고(기본)는 maskStaff 다음 makeRedactor(조사·맡은 일·괄호·배운 이름), 활동지(`staff: false`)는 직함 뒤 이름을 쌍점 뒤만(`maskStaff colonOnly`),
      파일 이름 `gongmun-ai maskName`, 인수인계서 `cleanText`(roleNames·maskJosaNames·maskPersons)·`nameTokens`(부서 끝말은 아님), 다면평가 줄글 `multi-ai maskDraft`, 품의 `intake maskForAI`(redactText — maskNames 규칙은 줄을 넘지 않음),
@@ -82,13 +82,19 @@
      단원평가 결과·평어는 같은 교과에 진짜 평가가 있으면 예시 뺌, 품의 수량 칸 단위(`sheet QTY_CELL`·`intake packCell`)·「전체 N명」·「45,000원 × 2」·포장 단위 BOX/SET/pcs/포대·견적서 아래 줄, 연간계획 합계 줄,
      채팅 `MEMO_END` 메모 먼저·`VIEW_W` 보기 말은 그 탭만·달력 해(`year`·`rel`)·후보 버튼/AI 할 일의 달·`dayOf` 다음 주/지난주·날짜·내일모레, 체험 중 `refreshAlerts` 안 함,
      연수 폼 응답 CSV는 `cert`(현황판 formFile), 백업 불러오기는 지금 학년도와 다르면 물음·백업보다 새 보관 자료는 미리 체크 안 함(`parseBackup createdAt`).
-- 네 번째 멀티에이전트 버그 찾기(2026-11-19 「멀티에이전트로 버그를 찾아 수정해줘. 없으면 넘어가고」, 릴리즈 안 함): 5 영역(세 번째 고침의 회귀·학급·연수/오늘 화면·파일/AI 답·채팅/학년도) 찾기+검증, 확인 34건 모두 고침
+- 네 번째 멀티에이전트 버그 찾기(2026-11-19 「멀티에이전트로 버그를 찾아 수정해줘. 없으면 넘어가고」, 0.38.0): 5 영역(세 번째 고침의 회귀·학급·연수/오늘 화면·파일/AI 답·채팅/학년도) 찾기+검증, 확인 34건 모두 고침
   (`tests/unit/fix1119-bugs4r3.test.mjs`·`-class`·`-trhome`·`-files`, e2e `fix1119-bugs4-files.mjs`).
   이름 가리기 `listCuts` 호칭(`TITLE3` — 선생님·어머니·주무관은 이름 아님, 이름 뒤 호칭은 건너뛰어 이음)·땅/시설 끝말(`PLACE_END`)·괄호 건너뛰기(`PAREN`)·화살표·빈칸으로 이은 이름(strong 2개 넘게)·「바다」(`DA_NAMES`)·번호 옆 이름,
   `personWord` 직함+님은 아님, `LIST_DECOR`(「1학년 김솔」), 활동지·창체·행사 칸은 `maskStaff colonOnly`가 쌍점 없이도 세 글자 이름+사람 조사는 가림, 품의 `maskForAI`는 품목 줄을 빼지 않고 이름·긴 번호만 가림,
   `rowItem` 포장 단위 칸은 남은 수가 하나이거나 곱이 금액과 맞을 때만 수량. 학급 기초학력 요일 범위·전각 물결표, 진도표 기간 칸 날짜 꼴, 준비 AI 글 가림, 오늘 수업 메모.
   연수 「부서 ⇥ 이름」 명단·미제출로 돌릴 때 이수번호 물음·지난 학년도 현황판 가져오기 물음·결과 보고 인원·폼 「없음」, 달력 기초학력 줄. .hwpx 탭·줄바꿈·머리말, .docx 글상자·지운 글, .xlsx 날짜, UTF-16 글, `parseJSON` 짝 괄호.
   채팅 번역에 붙여 넣은 글(먼저 가정통신문), AI가 고른 회의록은 가리기 전 글, 문제지 머리 「번호( ) 이름( )」은 명단 아님, 시간표 어제·다음 주·2월에 묻는 3월, 「3교시 보강 넣기」는 오늘 수업, 1·2월에 묻는 1·2월.
+- 다섯 번째 멀티에이전트 버그 찾기(2026-11-19 「다시 멀티에이전트로 버그 잡아주고 커밋 릴리즈해줘」, 0.38.0): 5 영역(네 번째 고침의 회귀·AI로 보내는 길 전수·평가·계획/품의·문서/학급 화면) 찾기+검증, 확인 27건(겹친 1건) 모두 고침
+  (`tests/unit/fix1119-bugs5-r4`·`-ai`·`-eval`·`-planbuy`·`-etc.test.mjs`, e2e `fix1119-bugs5-budget-move.mjs`·`handover.mjs`·`message.mjs` 단계 더함).
+  품의 `maskForAI` 되살린 줄은 weak 낱말도 가리고 이름이 남으면 뺌·`rowItem` 금액 20% 안 맞으면도 포장 칸 수량·「원」 없는 산출 근거·주문자/수령인 뒤 이름·괄호 안 규격, 예산 탭에서 옮긴 사업 유지·「50만원」, 원천징수 끝수,
+  `chat-names` EXCEPT(원주율·반지름…)·EXCEPT2 「인솔」·`PAREN_CUE`(직함(이름)·이름(직함))·memo 「…해」 동사, 행특 메모 `maskPersons(…, { memo: true })`, 행사 `evAI`·활동지 colonOnly(선생님 한마디 등),
+  학급운영계획 AI 글·연간계획/행사 참고 글 `sourceForAI`·결과 보고 파일 이름, 기초학력 「월-수-금」·관찰 메모 이름, 단원평가 정답지 학년·교과·단원·채점 기준 칸,
+  쪽지 붙임 다시 넣기는 그 파일만 읽음, 인수인계서 [AI로 정리]는 써 둔 글이 있으면 물음, 공문 제목 점.
 - 메뉴 사이 흐름 점검(2026-11-18 「각 정보와 메뉴가 유기적으로 돌아가는지 확인해줘」, 0.36.0): 채팅 intent `budget`·`idea`·교체/보강/메모 → 오늘 수업·전담 → 진도표,
   「예산 얼마 남았어?」(`budget-model chatAnswer`), 떠 있는 버튼 kind `cert`(이수증 → `training.js putCerts`), 기초학력 수업 날은 `calendar closedDays`(재량휴업일 등 — 방학은 아님) 건너뜀,
   인수인계서에 기초학력(`camp-model handoverRows`)·연수 (`tests/unit/fix1118-flow.test.mjs`, e2e `fix1118-flow.mjs`).
@@ -108,7 +114,7 @@
 
 ## 시험
 
-- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1651개 통과)
+- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1682개 통과)
 - e2e 한 파일: `node tests/e2e/<이름>.mjs`
 - e2e 전체: `node tests/e2e/run-all.mjs` (약 170개 파일, 45~50분). 파일마다 다른 포트를 써서 나눠 돌려도 된다. 전체가 도는 동안에는 작업 폴더를 고치지 말고 `.claude/worktrees/` 아래 worktree에서 일한다(그 안에서는 저장소의 node_modules를 그대로 찾는다).
 

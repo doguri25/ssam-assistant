@@ -5,7 +5,7 @@ import { emptyItem, findPersonal, toNumber, plainItemName, plainOfficial, PER_UN
 import { readQuote } from './quote.js';
 import { findItems, isTotalName, totalKey } from '../../core/sheet.js';
 import { readText } from '../../core/files.js';
-import { nameCell, staffName, MASK, maskContacts, peopleNames, RRN_RE } from '../../core/privacy.js';
+import { nameCell, staffName, MASK, maskContacts, peopleNames, stripNames, RRN_RE } from '../../core/privacy.js';
 import { makeRedactor } from '../../core/redact.js';
 
 // 세는 말: 없는 말(「체육복 30벌」「간식 420인분」)은 수량 1로 읽혀 합계가 크게 줄었음. 「회·일·단」은 날짜·차례(「제3회」「12일」)와 헷갈려 넣지 않음
@@ -20,7 +20,9 @@ export const hasContact = v => CONTACT.test(String(v == null ? '' : v));
 /* 산출 근거 꼴 「품명 단가원*수량단위(*수량단위)=금액원」 → 품목들(2026-11-17 선생님: 계획서 예산 표의 산출 근거 칸).
    한 칸·한 줄에 여러 개(「인화지 37,000원*8개=296,000원 전시 용품 11,000원*31학급=341,000원」)도 나눔. 단위는 아무 말이나(학급·식·세트).
    글이 이 꼴로만 되어 있을 때만(남는 글에 숫자가 없을 때) 품목들, 아니면 null. 품명이 없으면(「4,500원×8개=36,000원」) name(줄의 품명) */
-const BASIS = /(?:([^\s=][^=]*?)\s*)?(?<![\d,.])(\d[\d,]*)\s*원\s*[*×xX✕]\s*(\d[\d,]*(?:\.\d+)?)\s*([가-힣A-Za-z]{0,4})\s*(?:[*×xX✕]\s*(\d[\d,]*(?:\.\d+)?)\s*([가-힣A-Za-z]{0,4})\s*)?=\s*\d[\d,]*\s*원/g;
+// 단가 뒤 「원」은 없어도 됨(「간식 2,500×120명=300,000원」 — 계획서·메모에 흔함. 예전에는 끝 금액을 단가로 읽어 합계가 120배가 됐음).
+// 「원」이 없으면 단가 × 수량(× 수량)이 끝 금액과 맞을 때만(「5×0.9m=45,000원」 같은 규격은 아님)
+const BASIS = /(?:([^\s=][^=]*?)\s*)?(?<![\d,.])(\d[\d,]*)\s*(원\s*)?[*×xX✕]\s*(\d[\d,]*(?:\.\d+)?)\s*([가-힣A-Za-z]{0,4})\s*(?:[*×xX✕]\s*(\d[\d,]*(?:\.\d+)?)\s*([가-힣A-Za-z]{0,4})\s*)?=\s*(\d[\d,]*)\s*원/g;
 const LEAD = /^[\s,·•\-–/:;+]+|[\s,·:;+]+$/g;
 const SIZE = /^\d[\d.,]*\s*(?:ml|mL|L|l|g|kg|mm|cm|m|인치|매|장|호|평)?$/;
 export function basisItems(text, name = '') {
@@ -31,8 +33,9 @@ export function basisItems(text, name = '') {
     const own = String(m[1] || '').replace(LEAD, '').trim(), size = SIZE.test(own);
     const nm = /[가-힣A-Za-z]/.test(own) && !size ? own : String(name || '').trim();
     if (!/[가-힣A-Za-z]/.test(nm)) return null;
-    const q1 = toNumber(m[3]), q2 = m[5] ? toNumber(m[5]) : null, times = q2 ? `${m[3]}${m[4]}×${m[5]}${m[6]}` : '';
-    out.push({ ...emptyItem(), name: plainItemName(nm), spec: [size ? own : '', times].filter(Boolean).join(' '), unit: q2 ? '' : m[4], qty: String((q2 ? q1 * q2 : q1) || 1), price: String(Math.round(toNumber(m[2]))) });
+    const p = toNumber(m[2]), q1 = toNumber(m[4]), q2 = m[6] ? toNumber(m[6]) : null, times = q2 ? `${m[4]}${m[5]}×${m[6]}${m[7]}` : '';
+    if (!m[3]) { const t = toNumber(m[8]), got = p * q1 * (q2 || 1); if (!(t > 0) || Math.abs(got - t) > Math.max(1, t * 0.001)) return null; }
+    out.push({ ...emptyItem(), name: plainItemName(nm), spec: [size ? own : '', times].filter(Boolean).join(' '), unit: q2 ? '' : m[5], qty: String((q2 ? q1 * q2 : q1) || 1), price: String(Math.round(p)) });
     left = left.replace(m[0], ' ');
   }
   return out.length && !/\d/.test(left) ? out : null;
@@ -87,11 +90,37 @@ const koWon = s => String(s).replace(KO_AMT, (m, head, tail) => {
   if (tail) { const t = +tail.replace(',', ''); if (t >= last) return m; n += t; }
   return `${Math.round(n)}원`;
 });
+/* 크기(「5m×0.9m」「60×180cm」「120x60x75cm」): 규격 하나로 떼어 냄. 예전에는 크기 낱말만 규격으로 뽑고 남은 「( × )」가 품명에 남았고(「현수막( )」),
+   수량이 따로 없으면 「0.9m」를 수량으로 읽어 합계가 틀렸음(45,000원 → 40,500원) */
+const DIM = /(?<![\d.,])(?:\d[\d,]*(?:\.\d+)?\s*(?:mm|cm|m)?\s*[×xX*✕]\s*)+\d[\d,]*(?:\.\d+)?\s*(?:mm|cm|m)(?![A-Za-z가-힣])/;
+/* 단가 뒤 「원」 없이 곱한 수(「다과 5,000×20명」「색연필 @1,000 x 10개」 — × 뒤 수에 세는 말): × 앞 수가 단가, × 뒤가 수량.
+   예전에는 × 뒤 수를 단가로 읽어(20원 × 5,000명) 산출 근거 글이 틀렸음 */
+const BARE_PQ = new RegExp(`(^|[\\s@(（:：])@?\\s*(\\d[\\d,]*)\\s*[×xX*✕]\\s*(?=((?:\\d{1,3}(?:,\\d{3})+|\\d+(?:\\.\\d+)?))\\s*(?:${UNITS})(?![가-힣A-Za-z]))`);
+const near = (a, b) => Math.abs(a - b) <= Math.max(1, b * 0.001);
 function parseLine(raw) {
   // 줄 머리: 「-」「1.」「1)」「(1)」, 계획·공문에서 옮긴 「가.」「나)」「(다)」「①」(뒤에 빈칸이 올 때만 — 「가위」「나무」는 이름)
   let s = dropContext(String(raw).replace(/^\s*(?:[-•·*▪◦]|\d+[).]|\(\d+\)|[가-하][.)](?=\s)|\([가-하]\)|[①-⑳])\s*/, '').trim());
   if (!s) return null;
-  let price = null, total = null;
+  let dims = '';
+  const dm = DIM.exec(s);
+  if (dm) { dims = dm[0].replace(/\s+/g, '').replace(/[xX*✕]/g, '×'); s = `${s.slice(0, dm.index)} ${s.slice(dm.index + dm[0].length)}`; }
+  let price = null, total = null, bareP = null;
+  const bp = BARE_PQ.exec(s);
+  if (bp) {
+    // 「간식 2,500×120명=300,000원」(쉼표로 이은 조각 안에서도): 산출 근거 꼴로 읽음
+    const b = basisItems(s);
+    if (b && b.length === 1) return { it: { ...b[0], spec: [dims, b[0].spec].filter(Boolean).join(' ') }, stated: null };
+    const p0 = toNumber(bp[2]), q0 = toNumber(bp[3]), eq = /=\s*(\d[\d,]*)\s*(?:원(?![가-힣]))?/.exec(s);
+    const wons = [...s.slice(0, eq ? eq.index : s.length).matchAll(WON)].map(m => money(m[1], m[2] || m[3]));
+    // 단가 × 수량이 적은 금액과 맞지 않으면(「… = 310,000원」) 어느 수가 단가인지 몰라 못 읽은 줄로(AI·선생님이 봄)
+    if (eq && !near(p0 * q0, toNumber(eq[1]))) return null;
+    if (wons.length && !wons.some(w => near(p0 * q0, w) || near(p0, w))) return null;
+    if (p0 >= 10) {
+      bareP = p0;
+      if (eq) s = s.slice(0, eq.index) + ' ' + s.slice(eq.index + eq[0].length);
+      s = s.slice(0, bp.index) + bp[1].replace(/@/g, ' ') + ' ' + s.slice(bp.index + bp[0].length);
+    }
+  }
   // 「볼펜 총 30자루 15,000원」: 수량 앞 「총」은 모두 합한 수량(총액이 아님) — 그 줄에 금액이 하나면 그 금액이 총액(단가 = 금액 ÷ 수량)
   // 「간식 전체 420명 2,500원」의 「전체」는 수량을 꾸미는 말(총액도, 모두 합한 수량도 아님 — 2,500원은 단가)이라 빼기만 함
   const all = new RegExp(`(?:^|\\s)총\\s*(?=(?:\\d{1,3}(?:,\\d{3})+|\\d+(?:\\.\\d+)?)\\s*(?:${UNITS})(?![가-힣A-Za-z]))`).exec(s);
@@ -105,8 +134,10 @@ function parseLine(raw) {
   if (total != null) for (const m of [...s.matchAll(WON)]) s = s.replace(m[0], ' ');
   if (total == null) {
     const wons = [...s.matchAll(WON)];
-    const times = /[×xX*]\s*([\d,]+(?:\.\d+)?)\s*(만)?\s*원?/.exec(s);
-    if (wons.length) {
+    // × 뒤 수에 세는 말이 붙으면(「×20명」) 단가가 아니라 수량(QTY가 읽음)
+    const times = new RegExp(`[×xX*]\\s*([\\d,]+(?:\\.\\d+)?)(?![\\d,.])(?!\\s*(?:${UNITS})(?![가-힣A-Za-z]))\\s*(만)?\\s*원?`).exec(s);
+    if (bareP != null) { for (const m of wons) s = s.replace(m[0], ' '); price = bareP; }
+    else if (wons.length) {
       // 「현수막 45,000원 × 2」「현수막 2 × 45,000원」: 세는 말 없이 금액에 바로 곱한 수(금액 바로 뒤·앞만 — 「30x40」「30 x 40」 같은 규격은 아님)
       const ta = /(원)\s*[×xX*✕]\s*(\d[\d,]*(?:\.\d+)?)(?![\d,.]|\s*[가-힣A-Za-z%])/.exec(s)
         || /(?:^|\s)(\d[\d,]*(?:\.\d+)?)\s*[×xX*✕]\s*(?=\d[\d,]*(?:\.\d+)?\s*(?:만\s*)?원)/.exec(s);
@@ -127,6 +158,7 @@ function parseLine(raw) {
     for (const m of [...qs].reverse()) if (m === q || (pack.length && MEASURE.test(m[2]))) s = s.slice(0, m.index) + ' ' + s.slice(m.index + m[0].length);
   }
   if (!q && times0) qty = times0;
+  if (dims) spec = [dims, spec].filter(Boolean).join(' ');
   if (price == null && total == null) {
     const bare = /(?:^|\s)([\d,]{2,})\s*$/.exec(s);
     if (bare) { price = money(bare[1]); s = s.slice(0, bare.index); }
@@ -142,7 +174,8 @@ function parseLine(raw) {
   const per = new RegExp(`(?:^|\\s|\\()\\s*(?:\\d+\\s*)?(${PER_UNIT})\\s*당`).exec(s);
   if (!unit && per) unit = per[1] === '인' ? '명' : per[1];
   // 「내가 필요한 책」·「A4 용지 사주세요」 같은 1인칭·구어는 품명에서 뺌, 금액 뒤 「짜리」(「5천원짜리 공책」)도
-  const name = plainItemName(s.replace(/[=@×*]|\(\s*\)|\[\s*\]/g, ' ').replace(/(^|\s)(?:x|X|각|개당|단가|금액|씩|짜리)(?=\s|$)/g, ' ')
+  // 기호를 먼저 지우고 빈 괄호를 지움(한 번에 하면 「( × )」가 「( )」로 품명에 남았음)
+  const name = plainItemName(s.replace(/[=@×*✕]/g, ' ').replace(/(^|\s)(?:x|X|각|개당|단가|금액|씩|짜리)(?=\s|$)/g, ' ').replace(/\(\s*\)|（\s*）|\[\s*\]/g, ' ')
     .replace(/(^|\s)[,，;]+(?=\s|$)/g, ' ').replace(/[,:\-–·]+\s*$/, '').replace(/\s+/g, ' ').trim());
   if (!name || price == null || !Number.isFinite(price)) return null;
   if (!unit && SHIP.test(name)) unit = '건';
@@ -207,10 +240,14 @@ function rowItem(cells) {
   const rest = cells.slice(at + 1).filter(Boolean);
   const nums = rest.filter(c => NUM_CELL.test(c)).map(toNumber);
   if (!nums.length) return null;
-  // 포장 단위 칸을 수량으로 보는 것은 남은 수가 단가 하나일 때(「색종이 | 10묶음 | 3,000」)나 그 수 × 단가가 금액과 맞을 때(「현수막 | 2개 | 45,000 | 90,000」)만.
-  // 「품명 | 규격 | 수량 | 단가」의 규격 칸이 「12자루」「1000개」「1식」이면(「색연필 | 12자루 | 30 | 4,500」) 그 칸은 규격, 수 둘이 수량·단가
+  // 포장 단위 칸을 수량으로 보는 것은 남은 수가 단가 하나일 때(「색종이 | 10묶음 | 3,000」)나 그 수 × 단가가 금액과 대충 맞을 때
+  // (「현수막 | 2개 | 45,000 | 90,000」 — 부가세 포함·할인·끝수로 금액이 딱 맞지 않는 「2개 | 45,000 | 99,000」「3세트 | 3,333 | 10,000」도).
+  // 「품명 | 규격 | 수량 | 단가」의 규격 칸이 「12자루」「1000개」「1식」이면(「색연필 | 12자루 | 30 | 4,500」) 그 칸은 규격, 수 둘이 수량·단가.
+  // 수가 셋 넘게 있으면(「면장갑 | 10켤레 | 3 | 8,000 | 24,000」) 수량 × 단가가 금액과 맞는 쪽으로
   const qc0 = rest.map(packCell).find(Boolean), q0 = qc0 ? toNumber(qc0[1]) : 0;
-  const qc = qc0 && (nums.length === 1 || Math.abs(q0 * nums[0] - nums[1]) < 1) ? qc0 : null;
+  const near = (a, b, tol) => Math.abs(a - b) <= Math.max(1, tol * Math.abs(b));
+  const packFit = nums.length >= 2 && near(q0 * nums[0], nums[1], 0.2), specFit = nums.length >= 3 && near(nums[0] * nums[1], nums[2], 0.2);
+  const qc = qc0 && (nums.length === 1 || (packFit && !(specFit && !near(q0 * nums[0], nums[1], 0))) || (nums.length >= 3 && !specFit)) ? qc0 : null;
   const pack = c => qc && packCell(c);
   const name = cells[at], texts = rest.filter(c => !NUM_CELL.test(c) && !UNIT_CELL.test(c) && !pack(c));
   const unit = rest.find(c => UNIT_CELL.test(c)) || (qc ? qc[2] : '');
@@ -363,7 +400,15 @@ const KIN_WORD = new Set(['유치원', '한마당', '인원수', '문화원', '�
 // 두 글자는 「김솔 학생」처럼 이름 뒤에서만, 흔한 낱말(전체·우수·장애·전학 학생 …)은 빼고
 const KIN_TWO = new Set(['장애', '전학', '임원', '도움', '소수', '육상', '진급', '우수', '신입', '모범', '유학', '지각', '조퇴', '정원', '구매', '해당', '대상', '참가', '희망', '일반', '수상', '입상', '선수', '부진', '결석', '탈북', '귀국', '다문', '저소', '위기', '관심', '상담', '교내', '교외', '기숙', '통학', '도보', '급식', '방학', '학년', '학급', '체험', '참여', '모집', '선착', '신청', '지역', '마을', '인근', '근처', '소속', '재학', '졸업', '입학', '예비', '성인', '학부', '한반']);
 const kinName = n => !KIN_WORD.has(n) && (n.length === 2 ? staffName(n) && !KIN_TWO.has(n) : nameCell(n) && !NOT_NAME_END.test(n));
+/* 쇼핑몰 주문서·장바구니를 복사하면 딸려 오는 「주문자 남다율」「수령인: 박솔빛」「받는 분 탁보결」「신청자: 탁보결」「구매 요청: 탁보결」:
+   이 머리 말 뒤의 이름 모양 낱말 하나도 가림(흔한 이름 목록에 없는 이름도 — 예전에는 그대로 AI로 갔음). 두 글자(「주문자 정보」)는 쌍점 뒤만 */
+const ORDER_HEAD = /(^|[^가-힣])((?:주문|구매|구입|신청|요청)(?:자|인)|주문하신[ \t]*분|수령(?:인|자)|받(?:는|으시는|으실)[ \t]*(?:사람|분)|보내(?:는|시는)[ \t]*(?:사람|분)|(?:구입|구매)[ \t]*요청(?:자|인)?)((?:[ \t]*(?:명|성명|이름))?)([ \t]*[:：][ \t]*|[ \t]+)([가-힣]{2,4}?)(?=(?:님|씨)?(?![가-힣]))/g;
+// 쌍점 없이 띄어 쓴 꼴은 품목 줄(「신청자 안내문 10장 500원」)이 아닐 때만, 「~문·~란」 같은 낱말 끝은 아님
+const ORDER_NOT = new Set(['정보', '이름', '성명', '주소', '연락처', '전화', '확인', '명단', '전원', '배송', '수령']);
+const orderName = (n, colon, rest) => !ORDER_NOT.has(n) && (n.length === 2 ? colon && staffName(n)
+  : nameCell(n) && (colon || (!NOT_NAME_END.test(n) && !/문$/.test(n) && !new RegExp(`${QTY.source}|\\d\\s*(?:만\\s*)?원`).test(rest))));
 export const maskNames = t => String(t || '')
+  .replace(ORDER_HEAD, (m, pre, head, suf, sp, n, at, all) => (orderName(n, /[:：]/.test(sp), all.slice(at + m.length).split('\n')[0]) ? `${pre}${head}${suf}${sp}${MASK}` : m))
   .replace(ROLE_AFTER, (m, pre, n, sp, role) => (nameCell(n) ? `${pre}${MASK}${sp || ' '}${role}` : m))
   .replace(ROLE_BEFORE, (m, role, sp, n) => (nameCell(n) ? `${role}${sp}${MASK}` : m))
   .replace(KIN_AFTER, (m, pre, n, sp, who) => (kinName(n) ? `${pre}${MASK}${sp || ' '}${who}` : m))
@@ -371,7 +416,9 @@ export const maskNames = t => String(t || '')
 /* AI로 가는 품의 글: maskNames(직함·학생 옆 이름) 다음 core/redact.js 가리개(쉼표·가운뎃점으로 이은 이름, 「수상자: …」 목록, 맡은 일 말 앞 이름, 명단 줄 빼기)를 한 번 더.
    자리 표시는 ○○○로(답을 되돌리지 않음). 가리개가 보내지 않는 줄이라도 수량·금액이 있는 품목 줄(「이순신 장영실 정약용 위인전 3권 36,000원」
    「상품번호 1234-5678-9012 색연필 10개」)은 빼지 않고 그 줄의 이름 모양 낱말·긴 번호만 ○○○ — AI 답이 규칙으로 읽은 품목을 통째로 대신해서, 줄을 빼면 그 품목이 조용히 사라졌음.
-   주민번호·계좌 말(계좌·예금주)·연락처가 있는 줄은 그대로 뺌 */
+   주민번호·계좌 말(계좌·예금주)·연락처가 있는 줄은 그대로 뺌.
+   물건 머리 줄(「내용: 6학년 1반 김민준 이서연 박지훈 체험학습비 45,000원」「품목: …」)의 이름 모양 낱말(peopleNames weak)도 가리고,
+   가린 뒤에도 명단 줄로 보이면(이름 모양이 남음) 예전처럼 보내지 않음 — 되살린 줄로 이름이 새지 않게 */
 const LONG_NO = /(?<![\d-])\d{2,6}(?:-\d{2,8}){2,3}(?![\d-])/g;
 const ITEM_LINE = new RegExp(`${QTY.source}|\\d\\s*(?:만\\s*)?원`);
 export const maskForAI = t => {
@@ -380,8 +427,10 @@ export const maskForAI = t => {
     if (x) return x.text;
     const l = ls[k];
     if (RRN_RE.test(l) || /계좌|예금주/.test(l) || hasContact(l) || !ITEM_LINE.test(l)) return null;
-    const ns = [...new Set([...peopleNames(l), ...rd.names])].filter(n => /^[가-힣]{2,4}$/.test(n)).sort((a, b) => b.length - a.length);
-    return ns.reduce((v, n) => v.split(n).join(MASK), l.replace(LONG_NO, m => (m.replace(/\D/g, '').length >= 10 ? MASK : m)));
+    const weak = [], people = peopleNames(l, { weak });
+    const ns = [...new Set([...people, ...weak, ...rd.names])].filter(n => /^[가-힣]{2,4}$/.test(n)).sort((a, b) => b.length - a.length);
+    const v = ns.reduce((v, n) => v.split(n).join(MASK), l.replace(LONG_NO, m => (m.replace(/\D/g, '').length >= 10 ? MASK : m)));
+    return stripNames(v).dropped ? null : v;
   }).filter(x => x != null).join('\n').replace(/〔이름\d+〕|\{\{\d+\}\}/g, MASK);
 };
 

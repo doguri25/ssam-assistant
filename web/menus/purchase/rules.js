@@ -118,8 +118,10 @@ export const INCOME = [['other', '기타소득(일시 강의)'], ['business', '�
 export function withholding(amount, income) {
   const a = Math.round(toNumber(amount));
   if (income === 'staff') return { tax: null, net: null, note: '근로소득으로 행정실에서 계산해요' };
-  const rate = income === 'business' ? 0.033 : (a > 125000 ? 0.088 : 0);
-  const tax = Math.floor(a * rate / 10) * 10;
+  // 정수로 셈: 소득세(사업 3%, 기타 = 필요경비 60%를 뺀 20% = 8%)와 지방소득세(소득세의 10%)를 따로 10원 아래 버림.
+  // 예전에는 a × 0.088의 소수 오차로 10원 덜 뗐음(180,000원 → 15,830원, 맞는 값 15,840원)
+  const it = income === 'business' ? Math.floor(a * 3 / 1000) * 10 : a > 125000 ? Math.floor(a * 8 / 1000) * 10 : 0;
+  const tax = it + Math.floor(it / 100) * 10;
   return { tax, net: a - tax, note: income === 'business' ? '사업소득 3.3%' : a > 125000 ? '기타소득 8.8%' : '기타소득 125,000원 이하 · 떼지 않음' };
 }
 

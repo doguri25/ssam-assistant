@@ -6,6 +6,7 @@ import { isDate, weekday, yearOfMonth, addDays, HOLIDAYS, closedDays } from '../
 import { toAlias, aliasMap, attStats, hoursTotal, campDates, sortSessions, expandDates, periodSlots, normTime, newSession, REPORT_HEADS, REPORT_KINDS } from './camp-model.js';
 import { DOC_LABEL } from './camp-docs.js';
 import { growthLines } from './camp-growth.js';
+import { maskPersons } from '../../core/chat-names.js';
 
 const str = v => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
@@ -38,30 +39,42 @@ export function findRange(text, { year, today } = {}) {
   return isDate(from) && isDate(to) && from <= to ? { from, to } : null;
 }
 const WD = { 일: 0, 월: 1, 화: 2, 수: 3, 목: 4, 금: 5, 토: 6 };
-/* 요일 범위 「월~목」「월요일~금요일」「(월)~(금)」「월요일부터 목요일까지」 — 앞 글자가 숫자인 것(「1월~3월」)·날짜 범위(「1. 11.(월) ~ 1. 22.(금)」)는 아님 */
-const SPAN = /\(?([일월화수목금토])\)?(?:요일)?\s*(?:[~∼〜～–-]|부터)\s*\(?([일월화수목금토])\)?(?:요일)?(?:까지|마다|에만|에|만)?(?![가-힣])/g;
-/* 「평일」→ 월~금, 「월수금」「화, 목」「수요일」 → 그 요일들, 「월~목」「월요일~금요일」 → 그 사이 요일 모두, 없으면 null(「수학」「화목한」「1월 8일」은 요일이 아님) */
+/* 요일 범위 「월~목」「월요일~금요일」「(월)~(금)」「월요일부터 목요일까지」 — 앞 글자가 숫자인 것(「1월~3월」)·날짜 범위(「1. 11.(월) ~ 1. 22.(금)」)는 아님.
+   첫 요일 글자 앞이 한글이면(「운영 요일 - 화, 목」「교육일 - 화」의 「일」) 요일이 아님. 줄표로 셋 넘게 이은 것(「월-수-금」)은 범위가 아니라 목록 */
+const SPAN = /(?<![가-힣])\(?([일월화수목금토])\)?(?:요일)?\s*([~∼〜～–-]|부터)\s*\(?([일월화수목금토])\)?(?:요일)?(?:까지|마다|에만|에|만)?(?![가-힣])/g;
+const DASH_DAY = /^\s*[–-]\s*\(?[일월화수목금토]\)?(?:요일)?(?![가-힣])/, DAY_DASH = /(?<![가-힣])\(?[일월화수목금토]\)?(?:요일)?\s*[–-]\s*$/;
+/* 「평일」→ 월~금, 「월수금」「화, 목」「월-수-금」「수요일」 → 그 요일들, 「월~목」「월요일~금요일」 → 그 사이 요일 모두(「월~수, 금」「월, 수~금」처럼 범위에 이은 요일도),
+   없으면 null(「수학」「화목한」「1월 8일」은 요일이 아님) */
 export function findWeekdays(text) {
-  let t = String(text == null ? '' : text);
+  const t = String(text == null ? '' : text);
   if (/평일|주중/.test(t)) return [1, 2, 3, 4, 5];
-  const days = new Set();
-  t = t.replace(SPAN, (m, a, b, at, all) => {
-    if (at > 0 && /\d/.test(all[at - 1])) return m;
+  const days = new Set(), items = [];
+  for (const m of t.matchAll(SPAN)) {
+    const at = m.index, [, a, sep, b] = m;
+    if (at > 0 && /\d/.test(t[at - 1])) continue;
+    if (/[–-]/.test(sep) && (DASH_DAY.test(t.slice(at + m[0].length)) || DAY_DASH.test(t.slice(0, at)))) continue;
     const x = WD[a], y = WD[b];
-    if (x > y) return m;
-    for (let d = x; d <= y; d++) days.add(d);
-    return ' '.repeat(m.length);
-  });
-  const toks = [...t.matchAll(/[가-힣]+/g)].map(m => ({ w: m[0], i: m.index, e: m.index + m[0].length }));
+    if (x > y) continue;
+    const ds = [];
+    for (let d = x; d <= y; d++) ds.push(d);
+    items.push({ days: ds, yoil: true, i: at, e: at + m[0].length });
+  }
+  const inSpan = i => items.some(s => i >= s.i && i < s.e);
+  for (const tk of t.matchAll(/[가-힣]+/g)) {
+    if (inSpan(tk.index)) continue;
+    const m = /^([일월화수목금토]{1,7})(요일)?(?:마다|에|에만|만|부터|까지)?$/.exec(tk[0]);
+    // 「1월」「8일」처럼 숫자 바로 뒤 한 글자는 날짜
+    const ok = m && !(m[1].length === 1 && !m[2] && tk.index > 0 && /\d/.test(t[tk.index - 1]));
+    items.push(ok ? { days: [...m[1]].map(c => WD[c]), yoil: !!m[2], i: tk.index, e: tk.index + tk[0].length } : { stop: true, i: tk.index, e: tk.index + tk[0].length });
+  }
+  items.sort((p, q) => p.i - q.i);
+  // 쉼표·가운뎃점·「및」·줄표로 이은 요일 묶음: 둘 넘게 있거나 「요일」·범위가 있으면 그 요일들
   let run = [], end = -1;
   const flush = () => { const all = run.flatMap(r => r.days); if (all.length >= 2 || run.some(r => r.yoil)) all.forEach(d => days.add(d)); run = []; };
-  for (const tk of toks) {
-    const m = /^([일월화수목금토]{1,7})(요일)?(?:마다|에|에만|만|부터|까지)?$/.exec(tk.w);
-    // 「1월」「8일」처럼 숫자 바로 뒤 한 글자는 날짜
-    const ok = m && !(m[1].length === 1 && !m[2] && tk.i > 0 && /\d/.test(t[tk.i - 1]));
-    if (!ok) { flush(); continue; }
-    if (run.length && !/^[\s,·、/및]*$/.test(t.slice(end, tk.i))) flush();
-    run.push({ days: [...m[1]].map(c => WD[c]), yoil: !!m[2] }); end = tk.e;
+  for (const it of items) {
+    if (it.stop) { flush(); continue; }
+    if (run.length && !/^[\s,·、/및–-]*$/.test(t.slice(end, it.i))) flush();
+    run.push(it); end = it.e;
   }
   flush();
   return days.size ? [...days].sort((a, b) => a - b) : null;
@@ -173,6 +186,8 @@ const campLine = camp => {
 };
 const attLine = (camp, st) => { const a = attStats(camp, st.id); return `출석 ${a.present}/${a.total}회${a.absent ? `(결석 ${a.absent}회)` : ''}`; };
 const oneLine = s => str(s).replace(/\s*\n\s*/g, ' ').replace(/\s+/g, ' ').trim();
+// 학생 메모·관찰 글: 캠프 학생은 학생A(toAlias), 캠프 밖 다른 학생 이름은 행특 메모 넓이로(「탁보결과 짝 활동」「남다율을 도와」 — chat-names memo)
+const memoAlias = (t, camp) => maskPersons(toAlias(t, camp), { memo: true }).text;
 /* ids: 쓸 학생 id(고친 칸은 빼고 부르는 쪽이 고름) */
 export function obsPrompt(camp, ids) {
   const al = aliasMap(camp), pick = camp.students.filter(s => ids.includes(s.id));
@@ -182,7 +197,7 @@ export function obsPrompt(camp, ids) {
     `지도 내용(간추림): ${contentSummary(camp)}`,
     '',
     '[학생]',
-    ...pick.map(st => `- ${al[st.id]}: ${attLine(camp, st)} · 선생님 메모: ${clip(oneLine(toAlias(camp.memo[st.id], camp)), 400) || '(없음)'}`),
+    ...pick.map(st => `- ${al[st.id]}: ${attLine(camp, st)} · 선생님 메모: ${clip(oneLine(memoAlias(camp.memo[st.id], camp)), 400) || '(없음)'}`),
     '',
     '규칙:',
     '- 학생마다 2~4문장. 문장 끝은 「~함.」「~임.」「~보임.」 꼴로, 개조식·번호·줄바꿈 없이 이어 씁니다.',
@@ -224,7 +239,7 @@ const KIND_NOTE = {
 export function reportPrompt(camp, layout = null) {
   const heads = reportHeads(camp, layout), al = aliasMap(camp);
   const kind = (REPORT_KINDS.find(k => k[0] === camp.report.kind) || REPORT_KINDS[0])[1];
-  const obs = camp.students.map(st => [al[st.id], clip(oneLine(toAlias(camp.obs[st.id], camp)), 200)]).filter(([, t]) => t);
+  const obs = camp.students.map(st => [al[st.id], clip(oneLine(memoAlias(camp.obs[st.id], camp)), 200)]).filter(([, t]) => t);
   // 사전·사후 점수(단원평가 영역 점수율·직접 넣은 점수): 학생A · 수학 수와 연산 45% → 78%(+33)
   const growth = camp.growth ? growthLines(camp) : [], outcome = heads.find(h => /성과|결과/.test(h)) || '운영 성과';
   return ['[기초학력 결과 보고서]',

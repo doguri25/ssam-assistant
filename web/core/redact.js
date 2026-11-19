@@ -17,6 +17,8 @@ const SECRET = new RegExp(`${INTL_RE.source}|${PHONE.source}|${EMAIL.source}`, '
 const ACCOUNT_WORD = /계좌|예금주/;
 const ACCOUNT_NO = /(?<![\d-])\d{2,6}(?:-\d{2,8}){2,3}(?![\d-])/g;
 const account = s => ACCOUNT_WORD.test(s) || [...s.matchAll(ACCOUNT_NO)].some(m => m[0].replace(/\D/g, '').length >= 10);
+/* 계좌 줄인지(계획 자료 글도 같은 규칙으로 뺌 — plan/year-model.js sourceForAI). 전화번호 줄은 먼저 뺀 글에 씀 */
+export const accountLine = s => account(String(s == null ? '' : s));
 const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // 아는 이름 뒤에 붙어도 되는 것(조사·호칭) — 낱말 안의 같은 글자(「바다이바다」)는 건드리지 않음
 const AFTER_NAME = '(?=$|[^가-힣]|(?:으로|에게|한테|부터|처럼|께서|이랑|이가|이는|이를|이의|이와|이도|이에|이한테|이처럼|님|씨|군|양|[이가은는을를의에께와과도로랑만]))';

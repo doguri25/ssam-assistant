@@ -47,9 +47,11 @@ const EXCEPT = new Set(('현미경 정지선 고시원 진지한 편하진 심�
   // 흔한 성 글자 + 이름 목록의 두 글자인 낱말 + 로(「임시안으로」「예시안으로」「정동진으로」)
   + '임시안 예시안 백지안 정동진 공문철 '
   // 흔한 성 글자 + 이름 글자 두 글자인 생물·물건·시설 낱말(「송사리, 금붕어」「고사리, 도라지」 — 쉼표로 늘어놓으면 이름 목록으로 보였음)
-  + '송사리 고사리 오소리 소나무 천문대 유리병 손수레').split(' '));
-// 두 글자(성 + 외자)인데 흔한 낱말
-const EXCEPT2 = new Set('이민 고민 주민 국민 도민 정진 전진 공현 차진 안진 오진 강진 노현 지진 추진 홍진 남산 한산 기한 우산 유산 원산 진산 반찬 기혁 신혁 구현 표현 모현 노한 공한 방한 반한 원한 유한 기호 신호 구호 보호 선호 주호 장호 전호'.split(' '));
+  + '송사리 고사리 오소리 소나무 천문대 유리병 손수레 '
+  // 흔한 성 글자 + 이름 글자 두 글자인 교과 낱말(「원주율 반지름 구하기」「오대양 육대주」 — 빈칸으로 이어 쓰면 이름 목록으로 보였음)
+  + '원주율 반지름 오대양 육대주 기후대 용수철 오리온').split(' '));
+// 두 글자(성 + 외자)인데 흔한 낱말(「인솔 교사」「인솔 선생님께」 — 뒤에 호칭이 와도 이름이 아님)
+const EXCEPT2 = new Set('인솔 이민 고민 주민 국민 도민 정진 전진 공현 차진 안진 오진 강진 노현 지진 추진 홍진 남산 한산 기한 우산 유산 원산 진산 반찬 기혁 신혁 구현 표현 모현 노한 공한 방한 반한 원한 유한 기호 신호 구호 보호 선호 주호 장호 전호'.split(' '));
 const DOUBLE = /^(?:남궁|황보|제갈|선우|독고)/;
 
 /* 이름 뒤에 바로 붙는 말: 호칭·가족(김민수네·김민수님) + 조사(「김민준으로」도)·이다 */
@@ -67,6 +69,9 @@ const FAMILY = /^(?:학부모|어머니|어머님|아버지|아버님|부모님|
 const HONOR = /^(?:학생|학부모|어머니|어머님|아버지|아버님|부모님|보호자|엄마|아빠|선생님|선생|쌤|교사|강사|님|씨|군|양)/;
 // 앞 낱말(직책·이름 칸)
 const PREV_CUE = /^(?:담임|부담임|회장|부회장|반장|부반장|이름|성명|학생명|담당|담당자|강사)$/;
+// 직함·맡은 일과 괄호로 붙은 이름(「교무부장(남다율)」「사회자(남다율), 기록(탁보결)」「담임 선생님(남다율)께」「탁보결(교무부장)」) — 괄호를 바로 닫을 때만.
+// 「사회(한국사)」의 사회는 교과라 「사회자」만
+const PAREN_CUE = /^(?:[가-힣]{0,4}부장|교감|교장|교감님|교장님|부?담임|선생님|교사|사회자|진행자|기록자|보고자|작성자|발표자|간사|위원장|부위원장|위원|주무관|실무사|강사|담당|담당자|인솔자|문의|기록|진행|촬영|회장|부회장|반장|부반장|총무|서기)$/;
 // 받침(「민준」의 준)
 const batchim = ch => { const c = ch.charCodeAt(0) - 0xac00; return c >= 0 && c < 11172 && c % 28 !== 0; };
 // 목록 밖 이름을 볼 때 이름으로 보지 않는 끝 글자(조사·낱말 끝: 「오늘은」「정하기」「지도안」「신청서」, 「한국사·조리사」「유창성·진정성」「우수상」)
@@ -87,10 +92,12 @@ const OLD_END = /[이가는을를의에도만와과로한할된던운간친른�
 
 /* 낱말 하나(tok)를 보고 가릴 길이(앞에서부터)를 돌려줌(없으면 0). prev·next: 앞뒤 한글 낱말, before·after: 낱말 앞·뒤 글(「로」 자리 보기).
    memo: 행특 메모(잘못 가려도 덜 아까움 — 을·를·과도, 홀로 쓴 이름도), first: 줄의 첫 낱말 */
-function hit(tok, prev, next, { memo = false, first = false, before = '', after = '' } = {}) {
+function hit(tok, prev, next, { memo = false, first = false, before = '', after = '', parenNext = '' } = {}) {
   // 「3번 남다율」「남다율(3번)」: 번호 바로 옆 이름, 「생일: 남다율」도 사람을 가리킴
   const cue = NEXT_CUE.test(next || '') || PREV_CUE.test(prev || '') || (prev === '번' && /\d\s*번\s*$/.test(before))
-    || (prev === '생일' && /생일\s*[:：]\s*$/.test(before)) || /^\s?[(（]\s*\d{1,2}\s*번\s*[)）]/.test(after);
+    || (prev === '생일' && /생일\s*[:：]\s*$/.test(before)) || /^\s?[(（]\s*\d{1,2}\s*번\s*[)）]/.test(after)
+    // 「교무부장(남다율)」「담임 선생님(남다율 선생님)께」: 직함 바로 뒤 괄호 안 이름, 「탁보결(교무부장)」: 이름 바로 뒤 괄호 안 직함
+    || (PAREN_CUE.test(prev || '') && /[(（]\s*$/.test(before) && /^\s*(?:선생님|님)?\s*[)）]/.test(after)) || PAREN_CUE.test(parenNext || '');
   // 「로·으로(부터)」(s)는 이름 자리일 때만(privacy.js roSpot — 「바꿔·정함·뽑」 앞, 「로부터」는 「연락·받」 앞). 「예정대로」「노란색으로」는 낱말 끝 글자로도 거름(roName).
   // 목록의 이름(g)은 「로 해 줘·로 함」 앞에서도(「담당자를 김민준으로 해 줘」)
   const ro = (s, g = '') => !/^으?로/.test(s) || roSpot(s, before, after, GIVEN.has(g));
@@ -113,7 +120,11 @@ function hit(tok, prev, next, { memo = false, first = false, before = '', after 
       if (GIVEN.has(g) && (!topic || cue) && !verb) return 3;
       // 「로·으로」 이름 자리에서 끝 글자가 낱말 끝과 같은 흔한 이름(「담당자를 김정대로 바꿔 줘」 — privacy roGivenName)
       if (/^으?로/.test(s) && roOk && roGivenName(n)) return 3;
-      if (roOk && !LOOSE_END.test(n) && !(s === '는' && VERB_NEUN.test(n))) {
+      // 「양보해 줌」「설명해 줌」「주도해 나감」「제안해 함께」: 조사 없이 홀로 쓰고 뒤에 낱말이 이어지는 「…해」는 동사(-하여)라 행특 메모(memo)에서도 이름으로 보지 않음.
+      // 앞뒤에 사람을 가리키는 말이 있거나(「김다해 학생」) 뒤에 메모 말이 오거나(「김다해 발표 잘함」) 낱말 하나뿐이면(이름 칸 — bundle.js wholeName) 예전처럼 봄.
+      // 조사가 붙은 「김다해가·김다해를」도 그대로 가림
+      const hae = !s && n[2] === '해' && !cue && !!next && !MEMO_NEXT.test(next);
+      if (roOk && !LOOSE_END.test(n) && !hae && !(s === '는' && VERB_NEUN.test(n))) {
         const syl = SYL.has(g[0]) && SYL.has(g[1]);
         if (syl && (cue || GLUED.test(s) || PERSON.test(s) || (!s && MEMO_NEXT.test(next || '')) || memo)) return 3;
         // 행특 메모: 한 글자가 이름 글자가 아니어도 사람 조사가 붙으면(「박찬울이」) — 흔한 낱말(nameCell)·낱말 끝(「지우개가」)은 빼고
@@ -169,7 +180,9 @@ function personCuts(s, memo) {
     const gapP = k > 0 ? s.slice(toks[k - 1].i + toks[k - 1].w.length, t.i) : '', gapN = k + 1 < toks.length ? s.slice(t.i + t.w.length, toks[k + 1].i) : '';
     const prev = k > 0 && /^[\s:：(（]*$/.test(gapP) ? toks[k - 1].w : '';
     const next = k + 1 < toks.length && /^[\s)）]*$/.test(gapN) ? toks[k + 1].w : '';
-    const len = hit(w, prev, next, { memo, first: k === 0, before: s.slice(0, at), after: s.slice(t.i + t.w.length) });
+    // 이름 바로 뒤 괄호 안 낱말 하나(「탁보결(교무부장)」 — 괄호를 바로 닫을 때만)
+    const parenNext = k + 1 < toks.length && /^\s?[(（]\s*$/.test(gapN) && /^\s*[)）]/.test(s.slice(toks[k + 1].i + toks[k + 1].w.length)) ? toks[k + 1].w : '';
+    const len = hit(w, prev, next, { memo, first: k === 0, before: s.slice(0, at), after: s.slice(t.i + t.w.length), parenNext });
     if (len) cuts.push([at, len]);
   });
   return listCuts(s, cuts);

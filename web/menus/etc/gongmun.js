@@ -11,7 +11,7 @@ import { keepFiles } from '../../core/keep-files.js';
 import { schoolYearOf } from '../../core/calendar.js';
 import { registerInbox } from '../../core/inbox.js';
 import { cleanSheet } from '../evaluate/activity/activity-read.js';
-import { KINDS, gongmunPrompt, normGongmun, dday, ddayText, validDue } from './gongmun-ai.js';
+import { KINDS, gongmunPrompt, normGongmun, dday, ddayText, validDue, firstTitle } from './gongmun-ai.js';
 import { listDocs, putDoc, removeDoc, getDoc, newDocId, MAX_DOCS, MAX_TASKS } from './gongmun-model.js';
 import { putMessageFiles } from './message.js';
 import { putLetterSources } from './letter.js';
@@ -21,7 +21,6 @@ import { trainingLike, listMine, getBoard } from '../training/training-model.js'
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const today = () => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
-const baseName = n => String(n || '').replace(/\.[^.]+$/, '').trim() || '공문';
 const dot = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || '')); return m ? `${+m[1]}. ${+m[2]}. ${+m[3]}.` : ''; };
 /* 화면에만: reading(AI로 읽는 문서 id), adding, showDone, paste(붙여 넣기 칸 글), tadd(공문마다 쓰던 할 일 칸 글) */
 const S = { reading: new Set(), adding: 0, showDone: false, files: new Map(), paste: '', tadd: {} }; // files: 이번에 넣은 원본 파일(쪽지 붙임용, 저장 안 함)
@@ -45,12 +44,12 @@ async function readDoc(id) {
   }
   S.reading.delete(id); refresh();
 }
-/* name이 없으면(붙여 넣은 글) 명단·전화번호 줄을 뺀 글의 첫 줄 */
+/* name이 없으면(붙여 넣은 글) 명단·전화번호 줄을 뺀 글의 첫 줄(제목은 firstTitle — 글 줄은 확장자를 빼지 않음) */
 function addText(name, text) {
   const cl = cleanSheet(text);
   const nm = name || (cl.text.split('\n').map(s => s.trim()).find(Boolean) || '붙여 넣은 공문').slice(0, 60);
   if (listDocs().length >= MAX_DOCS) toast(`공문이 ${MAX_DOCS}개를 넘어 가장 오래된 것이 목록에서 빠져요. 다 한 공문은 지워 주세요.`, 7000);
-  const d = { id: newDocId(), name: nm, title: baseName(nm), text: cl.text, tasks: [], kinds: [], at: Date.now() };
+  const d = { id: newDocId(), name: nm, title: firstTitle(name, nm), text: cl.text, tasks: [], kinds: [], at: Date.now() };
   putDoc(d);
   return { id: d.id, cut: cl.cut || 0 };
 }

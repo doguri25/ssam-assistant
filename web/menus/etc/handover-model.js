@@ -277,6 +277,11 @@ export function normNote(v, names = [], max = 6) {
     .map(x => cleanText(x.replace(/^\s*(?:[-·•*○]|\d{1,2}[.)])\s*/, ''), names).replace(/\s*\n\s*/g, ' ').slice(0, 120))
     .filter(Boolean).slice(0, Math.max(1, max));
 }
+/* [AI로 정리] 답을 「다음 담당자에게」에 넣기: how 'add'면 써 둔 글 아래에, 아니면 AI 줄로 바꿈(lines: normNote 결과) */
+export function joinNote(mine, lines, how = 'replace') {
+  const ai = (lines || []).map(l => `- ${l}`).join('\n'), own = String(mine || '').replace(/\s+$/, '');
+  return how === 'add' && own.trim() ? `${own}\n${ai}` : ai;
+}
 
 /* ---------- 학교 인수인계서 양식(.hwpx) 자리 (순수) ---------- */
 /* readForm(양식).lines → { title, bodyStart, bodyEnd, date, sign: -1, reply: -1 } (줄 번호, 없으면 -1).

@@ -32,7 +32,8 @@ const normItem = x => {
   if (!(isObj(x) && typeof x.id === 'string' && isObj(x.m))) return null;
   const attach = normAttach(x);
   return { id: x.id, at: Number(x.at) || 0, title: String(x.title || ''), kind: String(x.kind || 'etc'), m: x.m, len: LENS.includes(x.len) ? x.len : 'base',
-    attach, attachNames: attach.map(a => a.name), body: String(x.body || '').slice(0, 6000), edited: !!x.edited, again: !!x.again };
+    attach, attachNames: attach.map(a => a.name), body: String(x.body || '').slice(0, 6000), edited: !!x.edited, again: !!x.again,
+    touched: (Array.isArray(x.touched) ? x.touched : []).filter(k => TOUCH.includes(k)) }; // 고친 칸([열기] 뒤 다시 읽어도 그대로)
 };
 export function listMessages() {
   const v = get(LIST, []), l = (Array.isArray(v) ? v : []).map(normItem).filter(Boolean).sort((a, b) => b.at - a.at).slice(0, MAX_MESSAGES);
@@ -45,6 +46,29 @@ export function pushMessage(x) {
   if (!e) return false;
   return set(LIST, [e, ...listMessages().filter(y => y.id !== e.id)].sort((a, b) => b.at - a.at).slice(0, MAX_MESSAGES));
 }
+/* 넣은 파일을 붙임 자리에: 파일이 없는(다시 연·새로 고친) 붙임과 이름이 같으면 그 자리에(filled), 아니면 붙임을 더함(added).
+   attach는 그 자리에서 고침, has(k): k번째 붙임에 파일이 있나 → { slots: [[붙임 번호, 파일]], filled, added } */
+export function placeFiles(attach, has, files, nameOf) {
+  const slots = [], taken = new Set();
+  let filled = 0, added = 0;
+  for (const f of files || []) {
+    const nm = nameOf(f.name), i = attach.findIndex((a, k) => !has(k) && !taken.has(k) && a.name === nm);
+    if (i >= 0) { slots.push([i, f]); taken.add(i); filled++; }
+    else { attach.push({ name: nm, on: true }); slots.push([attach.length - 1, f]); taken.add(attach.length - 1); added++; }
+  }
+  return { slots, filled, added };
+}
+/* AI가 채운(선생님이 고치지 않은) 칸이 있나 — 다시 읽으면 바뀔 칸 */
+export function aiFilled(m, touched = []) {
+  if (!isObj(m)) return false;
+  const t = k => touched.includes(k), w = (m.when || [])[0] || {}, ap = m.apply || {};
+  return !!((m.title && !t('title')) || ((m.when || []).length && (w.date || w.time) && !(t('date') && t('time'))) || (m.place && !t('place')) || (m.target && !t('target'))
+    || (ap.due && !t('due')) || (ap.how && !t('how')) || (m.bring && !t('bring')) || (m.notes && !t('notes')));
+}
+/* 파일을 넣은 뒤 바로 AI로 읽나(r: placeFiles 결과). filled: AI가 채운 칸이 있나(aiFilled), held: 이 쪽지를 쓴 파일·글이 넣기 전에 화면에 다 있었나.
+   AI가 채운 쪽지인데 그 파일·글이 화면에 없으면(새로 고친 뒤·최근 쪽지 [열기] 뒤 — 붙임은 이름만) 읽지 않음: 넣은 파일(신청서 양식 등)만 읽어
+   써 둔 칸·본문을 덮지 않게(앱이 「파일을 다시 넣어 주세요」라고 알려 다시 넣는 붙임도). 같은 화면에서 새 파일을 더 넣으면 다시 읽음(고친 칸은 그대로) */
+export const readsAfterAdd = (r, { filled = false, held = false } = {}) => !filled || !!(held && r && r.added > 0);
 /* 최근 쪽지에서 지우기([삭제]). 붙임 파일(다운로드 폴더)은 건드리지 않음 */
 export const removeMessage = id => set(LIST, listMessages().filter(y => y.id !== id));
 /* 「오늘 할 일」 줄(스펙 2026-11-19-yearend-design §3): 최근 쪽지의 신청·회신 기한이 지났거나(3일까지) 7일 안 — 보낸 쪽지의 회신을 모을 때 */

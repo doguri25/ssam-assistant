@@ -18,7 +18,7 @@ import { introHTML, aiNoteHTML } from '../../core/ui-parts.js';
 import { rvBoxHTML, runPlanReview, onRvClick, markDone, dropOpen, hasOpen, clearState } from './plan-review.js';
 import { reformHTML, registerReform, keepLastForm, dropReform } from './reform.js';
 import { yearOlds, yearHeads, yearAccepts, applyYear, yearRestore } from './reform-model.js';
-import { SECTIONS, TEXT_SECTIONS, yearOutline, draftOutline, textKeys, insertKey, isExtra, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent, normReview, normGuide, normDraft, overlap, guideStatus, insertSentence, planDoc, planText, textForAI, ownerForAI, fitSchedule } from './year-model.js';
+import { SECTIONS, TEXT_SECTIONS, yearOutline, draftOutline, textKeys, insertKey, isExtra, newPlan, listPlans, getPlan, savePlan, deletePlan, currentId, setCurrent, normReview, normGuide, normDraft, overlap, guideStatus, insertSentence, planDoc, planText, textForAI, sourceForAI, ownerForAI, fitSchedule } from './year-model.js';
 
 const STEPS = ['자료 넣기', '작년 평가', '지침 점검', '초안', '일정'];
 const SRC = [
@@ -27,8 +27,8 @@ const SRC = [
   ['guide', '올해 지침·공문', '교육청 지침·공문을 넣거나 붙여넣어 주세요. (선택)']
 ];
 const won = n => Number(n || 0).toLocaleString('ko-KR');
-// AI로 보내는 자료 글: 명단·전화번호 줄과 이름을 거른 뒤, 직함 앞뒤 교직원 이름(「이바다 선생님」「한가람 주무관」)도 ○○○로
-const srcAI = t => textForAI(stripPersonal(t).text);
+// AI로 보내는 자료 글: 명단·전화번호 줄과 이름을 거른 뒤, 직함 앞뒤 교직원 이름(「이바다 선생님」「한가람 주무관」)·맡은 일 쌍점 뒤 이름도 ○○○로, 계좌 줄은 뺌
+const srcAI = t => sourceForAI(stripPersonal(t).text);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 let box = null, curTab = 'year';

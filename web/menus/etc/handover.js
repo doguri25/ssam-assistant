@@ -16,7 +16,7 @@ import { docToLetter } from '../../core/body-table.js';
 import { fileMessage } from '../../core/files.js';
 import { currentYear } from '../../core/years.js';
 import { getSchool } from '../../core/settings.js';
-import { GROUPS, collectHandover, pickData, isOn, buildHandover, handoverText, handoverPrompt, normNote, noteRange, getSaved, saveHandover, dotDate, formRoles, formRolesOk } from './handover-model.js';
+import { GROUPS, collectHandover, pickData, isOn, buildHandover, handoverText, handoverPrompt, normNote, joinNote, noteRange, getSaved, saveHandover, dotDate, formRoles, formRolesOk } from './handover-model.js';
 import { PAGES, fitPages, fitNotice } from './handover-fit.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -232,7 +232,19 @@ function drawAiBtn() {
   const b = box && box.querySelector('#hoAi');
   if (b) { b.disabled = aiBusy; b.textContent = aiLabel(); }
 }
-async function runAi() {
+/* [AI로 정리]: 「다음 담당자에게」에 써 둔 글이 있으면 먼저 물음(바꾸기·아래에 더하기) — AI에는 그 글을 보내지 않아서, 묻지 않고 덮으면
+   선생님만 아는 인계 사항(열쇠 자리·물품 위치·연락할 곳)이 사라지고 되돌릴 수 없음 */
+const SS = () => window.SSAM || {};
+function askAi() {
+  if (aiBusy) return;
+  if (!ai.ready()) { toast('설정 › AI에서 키를 넣어 주세요', 5000); return; }
+  if (!String(st.note || '').trim()) { runAi('replace'); return; }
+  if (!SS().openSheet) { if (confirm('「다음 담당자에게」에 쓰신 글을 AI가 정리한 글로 바꿀까요?')) runAi('replace'); return; }
+  SS().openSheet(`<div id="hoAsk"><h3>써 둔 글을 바꿀까요?</h3><p class="muted" style="margin:0">「다음 담당자에게」에 쓰신 글이 있어요. AI는 위 내용만 보고 정리해요(쓰신 글은 보내지 않아요). AI 글로 바꾸거나 쓰신 글 아래에 더할 수 있어요.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>그만두기</button><button class="btn" type="button" data-ho-ask="add">아래에 더하기</button><button class="btn primary" type="button" data-ho-ask="replace">바꾸기</button></div></div>`,
+  sh => sh.addEventListener('click', e => { const b = e.target.closest('[data-ho-ask]'); if (b) { SS().closeSheet(); runAi(b.dataset.hoAsk); } }));
+}
+async function runAi(how = 'replace') {
   if (aiBusy) return;
   if (!ai.ready()) { toast('설정 › AI에서 키를 넣어 주세요', 5000); return; }
   // 「다음 담당자에게」는 빼고 고른 내용만 보냄(쪽 수로 줄이기 전 것 — 줄인 품의·공문도 보고 챙길 것을 고르게). 이름·전화번호는 모을 때 이미 뺌
@@ -241,7 +253,7 @@ async function runAi() {
   try {
     const v = await ai.generateJSON(handoverPrompt(text, { pages }), { task: 'plan', valid: o => normNote(o).length > 0 });
     // 그새 다른 곳에 갔다 와서 다시 모았으면 그 st의 글로(고른 것은 그대로) — 다시 들어와 고쳐도 옛 글로 덮이지 않게
-    st.note = normNote(v, names, hi).map(l => `- ${l}`).join('\n');
+    st.note = joinNote(st.note, normNote(v, names, hi), how);
     save();
     const ta = box && box.querySelector('#hoNote');
     if (ta) { ta.value = st.note; refresh({ counts: false }); }
@@ -296,7 +308,7 @@ document.addEventListener('click', async e => {
   const b = e.target.closest('[data-ho]');
   if (!b) return;
   const a = b.dataset.ho;
-  if (a === 'ai') runAi();
+  if (a === 'ai') askAi();
   else if (a === 'export') download();
   else if (a === 'pickForm') box.querySelector('#hoFormFile').click();
   else if (a === 'map') { F.mapOpen = !F.mapOpen; F.mapSel = -1; drawForms(); }

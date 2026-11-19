@@ -1,9 +1,12 @@
 /* 학급운영계획 AI 프롬프트 (화면 없음 — 시험에서도 씀). 모든 글은 이름·전화번호 줄을 뺀 뒤 넣음 */
 import { leaves } from './classplan-model.js';
-import { stripNames, maskStaff } from '../../core/privacy.js';
+import { stripNames, maskStaff, maskContacts } from '../../core/privacy.js';
+import { maskPersons } from '../../core/chat-names.js';
 
-// 이름·전화번호 줄을 빼고, 직함 앞뒤 교직원 이름(「이바다 선생님」「강사 박하늘」)도 ○○○로
-const clean = (t, n) => maskStaff(stripNames(String(t || '').slice(0, n)).text).text;
+// 이름·전화번호 줄을 빼고, 직함 앞뒤 교직원 이름(「이바다 선생님」「강사 박하늘」)도 ○○○로.
+// 줄마다 글 속 학생 이름(「| 우유 당번 | 김하늘 |」「김민준은 정서 지원이 필요함」「남다율이 맡음」 — chat-names)과 주민번호·전자 우편도(연간계획 stripPersonal과 같은 넓이).
+// 조사 붙은 이름 가리기(maskJosaNames·makeRedactor)는 쓰지 않음 — 평가계획·진도표의 단원 이름(「옛날과 오늘날의 도구」「진분수와 가분수」)을 ○○○로 가려 평가 표가 틀어짐
+const clean = (t, n) => maskContacts(maskStaff(stripNames(String(t || '').slice(0, n)).text).text.split('\n').map(l => maskPersons(l).text).join('\n'));
 const ids = p => leaves(p.outline).map(x => `${x.id}: ${x.title}`).join('\n');
 
 export function guidePrompt(p) {

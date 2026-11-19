@@ -4,6 +4,7 @@ import { normDate, fmtDay } from '../etc/message-ai.js';
 import { schoolYearOf, yearOfMonth } from '../../core/calendar.js';
 import { attachText } from '../purchase/rules.js';
 import { maskStaff, maskContacts } from '../../core/privacy.js';
+import { maskName } from '../etc/gongmun-ai.js';
 
 export const SOURCE_KINDS = [['plan', '계획서'], ['official', '관련 공문'], ['last', '작년 보고서'], ['etc', '기타']];
 const KIND_IDS = SOURCE_KINDS.map(k => k[0]);
@@ -33,7 +34,8 @@ export function guessSourceKind(name, text, year) {
 const forAI = t => maskStaff(maskContacts(t)).text;
 export function reportPrompt({ sources = [], memo = '', nPhotos = 0, nDocImages = 0, year } = {}) {
   const docs = sources.filter(s => s && String(s.text || '').trim())
-    .map(s => `[${kindLabel(s.kind)}: ${String(s.name || '글').slice(0, 60)}]\n${forAI(String(s.text).slice(0, 6000))}`).join('\n\n');
+    // 파일 이름의 담당자·학생 이름(「…계획(담당 박솔빛).hwp」「…결과보고_한가람.hwp」)도 가림(공문 처리·가정통신문과 같게 gongmun-ai maskName)
+    .map(s => `[${kindLabel(s.kind)}: ${(maskName(s.name) || '글').slice(0, 60)}]\n${forAI(String(s.text).slice(0, 6000))}`).join('\n\n');
   const hasLast = sources.some(s => s && s.kind === 'last' && String(s.text || '').trim());
   return ['[결과 보고]',
     `학교 행사·사업이 끝난 뒤 쓰는 결과 보고의 내용을 뽑고 씁니다. 학년도: ${year || new Date().getFullYear()}.`,
