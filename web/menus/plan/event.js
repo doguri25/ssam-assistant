@@ -31,6 +31,8 @@ const STEPS = ['행사 정보', '구성안', '문서', '설문·결과'];
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const won = n => Number(n || 0).toLocaleString('ko-KR');
 const fmtDay = d => `${+d.slice(5, 7)}월 ${+d.slice(8, 10)}일(${'일월화수목금토'[weekday(d)]})`;
+/* AI로 보내는 행사 칸(행사명·목적·대상·장소·예산): 전화번호·직함 앞뒤 교직원 이름은 ○○○로(「한가람 선생님 정년퇴임 기념식」) */
+const evAI = v => textForAI(String(v == null ? '' : v)).trim();
 const kindName = id => (KINDS.find(k => k[0] === id) || KINDS[3])[1];
 
 let box = null, curTab = null;
@@ -392,7 +394,7 @@ function resultHTML(r) {
 /* ---------- AI: 설문 문항·결과 ---------- */
 function itemsPrompt(e) {
   const target = TARGETS.find(t => t[0] === survey().target)[1];
-  return `[설문 문항]\n학교 행사 만족도 설문 문항을 만들어 주세요.\n\n행사: ${e.name} (${kindName(e.kind)})\n목적: ${e.purpose || '(없음)'}\n대상 학년: ${e.grades}\n설문 대상: ${target}\n`
+  return `[설문 문항]\n학교 행사 만족도 설문 문항을 만들어 주세요.\n\n행사: ${evAI(e.name)} (${kindName(e.kind)})\n목적: ${evAI(e.purpose) || '(없음)'}\n대상 학년: ${evAI(e.grades)}\n설문 대상: ${target}\n`
     + '\n규칙:\n- 5점 척도 문항 4~6개(type "scale") + 서술형 1~2개(type "text")\n'
     + (survey().target === 'student' ? '- 학생이 읽기 쉬운 짧은 말로\n' : '') + '- 한 문항에 하나만 묻기\n\n'
     + '답은 JSON 하나만: {"items":[{"type":"scale","q":"…"},{"type":"text","q":"…"}]}';
@@ -416,7 +418,7 @@ function resultPrompt(e, r) {
     const a = q.answers.slice(0, Math.max(0, budget)); budget -= a.length;
     return `- ${q.q} (서술형 ${q.answers.length}개):\n${a.map(x => '  · ' + x.replace(/\s+/g, ' ').slice(0, 200)).join('\n')}`;
   }).join('\n');
-  return `[설문 결과]\n학교 행사 만족도 설문 결과로 보고서를 써 주세요.\n\n행사: ${e.name} (${kindName(e.kind)}), ${e.date}, ${e.place}\n응답: ${r.n}명\n\n문항별 결과:\n${lines}\n\n`
+  return `[설문 결과]\n학교 행사 만족도 설문 결과로 보고서를 써 주세요.\n\n행사: ${evAI(e.name)} (${kindName(e.kind)}), ${e.date}, ${evAI(e.place)}\n응답: ${r.n}명\n\n문항별 결과:\n${lines}\n\n`
     + '규칙:\n- textSummary: 서술형 답 요약 3~5줄\n- report: 결과 보고서 초안(개요 · 참여 현황 · 문항별 결과 · 서술형 요약 · 잘된 점과 개선할 점), 학교 보고서 문체\n'
     + '- nextMemo: 내년에 고칠 점 3~5줄(「- 」 목록)\n- 결과에 없는 숫자는 지어내지 않음\n\n'
     + '답은 JSON 하나만: {"textSummary":"…","report":"…","nextMemo":"…"}';
@@ -458,7 +460,7 @@ function docsPrompt(e) {
   const o = picked();
   const s = getSchool();
   return `[행사 문서]\n학교 행사 문서를 써 주세요: 계획서, 안전 점검표, 가정통신문${e.outdoor ? ', 우천 시 대체 일정' : ''}.\n\n`
-    + `종류: ${kindName(e.kind)}\n행사명: ${e.name}\n목적: ${e.purpose || '(없음)'}\n대상: ${e.grades}\n날짜: ${e.date}\n장소: ${e.place} (${e.outdoor ? '야외' : '실내'})\n예산: ${e.budget || '(정하지 않음)'}\n학교: ${s.name || '(학교명 없음)'}\n`
+    + `종류: ${kindName(e.kind)}\n행사명: ${evAI(e.name)}\n목적: ${evAI(e.purpose) || '(없음)'}\n대상: ${evAI(e.grades)}\n날짜: ${e.date}\n장소: ${evAI(e.place)} (${e.outdoor ? '야외' : '실내'})\n예산: ${evAI(e.budget) || '(정하지 않음)'}\n학교: ${s.name || '(학교명 없음)'}\n`
     + (o ? `\n고른 구성안(${o.label}): ${o.summary}\n시간표:\n${o.timetable.map(t => `- ${t.time} ${t.activity}${t.place ? ' (' + t.place + ')' : ''}`).join('\n')}\n필요 인력: ${o.staffNeed || '-'}\n예산 내역: ${o.budget.map(b => `${b.name} ${b.amount}원`).join(', ') || '-'}\n` : '')
     + refsPart(e)
     + '\n규칙:\n' + (planFormRule(e) || planOutlineRule(e.refs) || '- plan: 학교 계획서 문체(「가.」「1)」 목록), 개요·운영 방침·세부 운영·안전 대책·평가 순\n')
@@ -568,7 +570,7 @@ function optionsPrompt(e) {
   const s = getSchool();
   const hasLast = !!e.lastSurvey.trim();
   return `[행사 구성안]\n학교 행사 계획을 돕는 도우미예요. 아래 행사의 구성안을 ${hasLast ? '3' : '2'}개 만들어 주세요.\n\n`
-    + `종류: ${kindName(e.kind)}\n행사명: ${e.name}\n목적: ${e.purpose || '(없음)'}\n대상: ${e.grades}\n날짜: ${e.date}\n장소: ${e.place} (${e.outdoor ? '야외' : '실내'})\n예산: ${e.budget || '(정하지 않음)'}\n`
+    + `종류: ${kindName(e.kind)}\n행사명: ${evAI(e.name)}\n목적: ${evAI(e.purpose) || '(없음)'}\n대상: ${evAI(e.grades)}\n날짜: ${e.date}\n장소: ${evAI(e.place)} (${e.outdoor ? '야외' : '실내'})\n예산: ${evAI(e.budget) || '(정하지 않음)'}\n`
     + `학교: ${s.name || '(학교명 없음)'}, 학급 ${s.classes || '-'}개, 학생 ${s.students || '-'}명\n`
     + (hasLast ? `\n작년 설문 결과:\n"""\n${textForAI(stripPersonal(e.lastSurvey).text).slice(0, 8000)}\n"""\n` : '')
     + refsPart(e)

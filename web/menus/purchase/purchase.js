@@ -13,7 +13,7 @@ import { TYPES, emptyForm, emptyItem, itemAmount, cleanItems, sumItems, checkPur
   defaultUnit, quoteNote, withholding, INCOME, meetingItem, budgetHints, ATTACH, basisLine, draftMemo } from './rules.js';
 import { aiRowHTML, pick } from '../../core/ai-roles.js';
 import { reviewJSON, purchaseReviewPrompt, normPurchaseReview, opinionHTML, REVIEW_FAIL } from '../../core/ai-review.js';
-import { readIntake, fillEmpty, replaceForm, mergeItems, vendorsOf, splitByVendor, parseLines, maskNames } from './intake.js';
+import { readIntake, fillEmpty, replaceForm, mergeItems, vendorsOf, splitByVendor, parseLines, maskNames, maskForAI } from './intake.js';
 import { oneshotPrompt, normOneshot, confirmChips, askNeeds, GUESS_KEYS } from './oneshot.js';
 import { pushRecent, newId, listRecent, deleteRecent, listTemplates, saveTemplate, renameTemplate, deleteTemplate, templateForm } from './library.js';
 import { renderBudget, projectSheet, today as dayToday } from './budget.js';
@@ -645,7 +645,7 @@ async function makeDraft({ text = '' } = {}) {
       save();
       keepRecent();
       document.dispatchEvent(new CustomEvent('ssam:purchase-draft', { detail: { form: getForm(), draft: getDraft() } }));
-      runReview(maskNames(draftMemo(mine.form)));
+      runReview(maskForAI(draftMemo(mine.form)));
       if (!String(mine.form.purpose || '').trim()) { msg = '무엇에 쓰는지 목적을 적어 주세요(자세히 고치기 › 목적).'; }
     } else {
       pushRecent({ id: mine.id, at: Date.now(), form: JSON.parse(JSON.stringify(mine.form)), draft: { ...mine.draft } });

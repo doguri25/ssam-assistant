@@ -641,9 +641,16 @@ export const fromDoc = doc => {
   return { mine: !!k && T.listMine().some(x => x.from === k), board: !!k && T.getBoard().courses.some(c => c.from === k) };
 };
 
+const isSheetFile = f => /\.(csv|xlsx?)$/i.test((f && f.name) || '');
 registerInbox('cert', {
-  act: files => (certTarget(files) === 'board' ? `연수 › 연수 현황판에 이수증 ${files.length}개 넣기(이름·연수 맞추기)` : `연수 › 내 필수연수에 이수증 넣기${files.length > 1 ? `(파일 ${files.length}개)` : ''}`),
-  async run(files) { await putCerts(files); return ''; }
+  act: files => (files.length && files.every(isSheetFile) ? '연수 › 연수 현황판에 구글 폼 응답 넣기(이름·연수·이수번호 맞추기)' : certTarget(files) === 'board' ? `연수 › 연수 현황판에 이수증 ${files.length}개 넣기(이름·연수 맞추기)` : `연수 › 내 필수연수에 이수증 넣기${files.length > 1 ? `(파일 ${files.length}개)` : ''}`),
+  async run(files) {
+    // 구글 폼 응답(CSV·엑셀)은 연수 현황판 [구글 폼 응답 넣기]와 같은 길로, 나머지(이수증·ZIP)는 그대로
+    const sheets = files.filter(isSheetFile), rest = files.filter(f => !sheets.includes(f));
+    if (sheets.length) { tab = 'board'; go('training', 'board'); for (const f of sheets) await formFile(f); }
+    if (rest.length) await putCerts(rest);
+    return '';
+  }
 });
 
 onEnter('training', (t, section) => {

@@ -206,6 +206,7 @@ const KW = {
   // 회의록: 「3학년 협의회 회의록 보여 줘」「지난주 회의 내용 다시 정리」의 낱말(남은 글이 짧으면 메모가 아님 — MEMO_MIN)
   minutes: /(?:회의록|협의록)(?:으로|을|를)?|협의회|회의|내용|결과|정리|열어|보여|다시|지난\s*주|이번\s*주|어제|오늘/g
 };
+const VIEW_W = /기한|마감|목록|확인|정리|보기|쓰기|보여|보자|열어|열기|다시|이어서|이어|쓰던|쓴|지난|보낸|받은|밀린|남은|급한|이번\s*주|오늘|어제|거|것|좀/g;
 const MEMO_MIN = 15; // 한 줄 글은 회의록 낱말을 빼고 이만큼 넘게 남아야 메모(줄을 바꿔 쓴 글은 내용이 있으면 메모)
 // 글 앞의 「가정통신문 써 줘」「쪽지:」「공문 처리」+줄바꿈 (뒤에 내용이 이어질 때)
 const LEAD_W = '(?:가정\\s*통신문|안내장|(?:안내\\s*)?쪽지|공문(?:[ \\t]*처리)?|결과\\s*보고(?:서)?|회의록|협의록)';
@@ -225,13 +226,16 @@ export function payloadFor(intent, text) {
     const s = trimTail(body).replace(LEAD, ''), rest = meat(s.replace(KW[intent], ''));
     // 회의록: 짧은 말(「3학년 협의회 회의록 보여 줘」「회의 내용 정리해 줘」)은 회의록 탭만 엶 — 메모로 넣어 AI를 부르지 않게
     if (intent === 'minutes') return { text: rest.length >= (/\n/.test(t) ? 2 : MEMO_MIN) ? s : '' };
-    return { text: rest.length >= 4 ? s : '' };
+    // 한 줄 글: 목록·기한을 보거나 다시 여는 말(「공문 기한 확인」「밀린 공문 정리」「지난 쪽지 다시 보기」「가정통신문 쓰던 거 이어서」)은 넣을 내용이 아님 — 그 탭만 엶
+    const left = /\n/.test(t) ? rest : meat(s.replace(KW[intent], ' ').replace(VIEW_W, ' '));
+    return { text: rest.length >= 4 && left.length >= 2 ? s : '' };
   }
   if (intent === 'translate') return { lang: langOf(t) };
   if (intent === 'multi') return { view: /정성|자기\s*실적/.test(t) ? 'qual' : /정량/.test(t) ? 'quant' : '' };
   if (intent === 'memo' || intent === 'memoView') { const m = parseMemo(t); return m ? { nos: m.nos, body: m.body } : { nos: [], body: '' }; }
   // 한 달 달력: 「다음 달 일정」「지난달 달력」이면 그 달
-  if (intent === 'month') { const m = /(?:^|[^\d])(1[0-2]|[1-9])\s*월/.exec(t); return { text: /다음\s*달/.test(t) ? '다음 달' : /지난\s*달/.test(t) ? '지난달' : '', mon: m ? +m[1] : 0 }; }
+  if (intent === 'month') { const m = /(?:^|[^\d])(1[0-2]|[1-9])\s*월/.exec(t), y = /(20\d{2})\s*년/.exec(t);
+    return { text: /다음\s*달/.test(t) ? '다음 달' : /지난\s*달/.test(t) ? '지난달' : '', mon: m ? +m[1] : 0, ...(y ? { year: +y[1] } : /내년/.test(t) ? { rel: 1 } : /작년|지난\s*해/.test(t) ? { rel: -1 } : /올해|금년/.test(t) ? { rel: 0 } : {}) }; }
   return {};
 }
 
@@ -254,7 +258,7 @@ export function parseMemo(text) {
 }
 const VIEW = /^(?:학생\s*)?(?:행특\s*|관찰\s*|행동\s*특성\s*)?메모\s*(?:좀\s*)?(?:보기|봐|볼래|보자|보여\s*(?:줘|주세요|줄래요?)|확인|알려\s*(?:줘|주세요))?\s*[.?!]*$/;
 // 관찰 메모 끝말(「~함」「~임」「~했어요」): 다른 할 일 낱말이 있어도 메모
-const MEMO_END = /(?:함|임|음|됨|짐|봄|줌|했다|한다|였다|이다|좋다|있다|없다|해요|했어요|어요|아요|이에요|예요|했음|많음)\s*[.!]*$/;
+export const MEMO_END = /(?:함|임|음|됨|짐|봄|줌|했다|한다|였다|이다|좋다|있다|없다|해요|했어요|어요|아요|이에요|예요|했음|많음)\s*[.!]*$/;
 // 번호 뒤에 와도 메모가 아닌 말(「3번 문항」「3번 단원평가」…)
 const NOT_MEMO = /^(?:문항|문제|단원|차시|교시|째|쪽|페이지)/;
 /* 학생 관찰 메모 꼴(「3번 …」, 「3번 문항·단원평가 …」는 아님)이면 { nos, body }, 아니면 null */

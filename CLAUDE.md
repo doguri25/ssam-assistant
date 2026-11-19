@@ -4,7 +4,7 @@
 
 ## 지금 상태 (2026-11-19)
 
-- 최신 릴리즈는 **v0.37.1**(두 번째 버그 찾기 25건). 그 앞 v0.37.0(학년말 마감 도우미, 교내 자율연수, 쪽지 회신 기한·현황판 공유, 버그 25건), v0.36.0(연수 메뉴·이수증 수합, 학급 탭 손보기, 메뉴 사이 연결). main은 그 릴리즈 커밋, 작업 브랜치 `claude/wonderful-johnson-lqb8em`은 그 뒤 선생님 요청(아래 2026-11-19 「1,2 … 6 한달 달력」)이 더 있다(릴리즈 안 함).
+- 최신 릴리즈는 **v0.37.1**(두 번째 버그 찾기 25건). 그 앞 v0.37.0(학년말 마감 도우미, 교내 자율연수, 쪽지 회신 기한·현황판 공유, 버그 25건), v0.36.0(연수 메뉴·이수증 수합, 학급 탭 손보기, 메뉴 사이 연결). main은 그 릴리즈 커밋, 작업 브랜치 `claude/wonderful-johnson-lqb8em`은 그 뒤 선생님 요청(아래 2026-11-19 「1,2 … 6 한달 달력」)과 세 번째 버그 찾기 34건이 더 있다(릴리즈 안 함).
   - 0.34.1: 남은 한계 고침 — 기준표 칸 글은 AI로 갈 때 이름을 ○○○로(`rubric-model.js aiCell`), 「김정대로 바꿔 줘」(privacy `DAERO`·`roGivenName`),
     물건 머리 줄의 이름은 다른 줄에서 사람으로 쓰일 때 배움(privacy `personUse`), 품의 「총 30자루 15,000원」(`tests/unit/fix1117-limits.test.mjs`).
   - 수준별 기준표(루브릭): 설계 `docs/superpowers/specs/2026-11-16-rubric-design.md`, 계획 `docs/superpowers/plans/2026-11-16-rubric.md`.
@@ -73,6 +73,15 @@
      연수 이름 시트·못 맞춘 줄에서 이수번호 넣기, 구글 폼 「이수번호」 칸·만들기 안내, 결과 보고 명단·엑셀 명단표에 이수번호, 붙임 2는 kept가 있을 때만 (`tests/unit/fix1119-asks.test.mjs`).
   6) 한 달 달력: 스펙 `docs/superpowers/specs/2026-11-19-month-calendar-design.md`. `web/menus/home/month-model.js`(칸·그날 할 것)·`month.js`(`gatherMonth`, 시트 `openMonth`, `[data-month-open]`),
      오늘 화면 머리·공문 기한 카드 단추, 채팅 intent `month`(「12월 일정」은 그 학년도 달) (`tests/unit/fix1119-month.test.mjs`, e2e `fix1119-month.mjs`).
+  세 번째 멀티에이전트 버그 찾기(같은 요청의 「멀티에이전트를 돌려서 버그를 찾아내어 수정해줘」, 릴리즈 안 함): 5 영역(새 기능·평가·계획/품의·기타·core) 찾기+검증, 확인된 34건 모두 고침(`tests/unit/fix1119-bugs3.test.mjs`).
+     이름 가리기 `knownRe`(세 글자 넘는 명단 이름은 뒤 글자를 보지 않음)·`LIST_WHO`/`LIST_HEAD`(「미제출(2명):」「미제출 선생님:」「- 」)·`LIST_BARE`(「미제출자 남다율, 탁보결」)·`maskListBody` 항목마다,
+     `cleanSheet(text, { staff })` — 쪽지·공문·가정통신문·결과 보고(기본)는 maskStaff 다음 makeRedactor(조사·맡은 일·괄호·배운 이름), 활동지(`staff: false`)는 직함 뒤 이름을 쌍점 뒤만(`maskStaff colonOnly`),
+     파일 이름 `gongmun-ai maskName`, 인수인계서 `cleanText`(roleNames·maskJosaNames·maskPersons)·`nameTokens`(부서 끝말은 아님), 다면평가 줄글 `multi-ai maskDraft`, 품의 `intake maskForAI`(redactText — maskNames 규칙은 줄을 넘지 않음),
+     행사계획 `event.js evAI`, 행특 메모 `memoNames.hide`·창체 `SSAM.maskAI`(gr-bundle), 채팅 `chat-names listCuts`(쉼표·가운뎃점·「랑·과」로 늘어놓은 이름).
+     이수번호 `codeNorm`(「제주-…」는 그대로)·`certCode` 이름표 줄 먼저·「제…호」는 괄호·지정번호·과정 아님·폼 이수번호 칸 고르기(전화·개인번호 칸 아님)·`mergeBoards fill`. 채점 `score0` 저장·복원,
+     단원평가 결과·평어는 같은 교과에 진짜 평가가 있으면 예시 뺌, 품의 수량 칸 단위(`sheet QTY_CELL`·`intake packCell`)·「전체 N명」·「45,000원 × 2」·포장 단위 BOX/SET/pcs/포대·견적서 아래 줄, 연간계획 합계 줄,
+     채팅 `MEMO_END` 메모 먼저·`VIEW_W` 보기 말은 그 탭만·달력 해(`year`·`rel`)·후보 버튼/AI 할 일의 달·`dayOf` 다음 주/지난주·날짜·내일모레, 체험 중 `refreshAlerts` 안 함,
+     연수 폼 응답 CSV는 `cert`(현황판 formFile), 백업 불러오기는 지금 학년도와 다르면 물음·백업보다 새 보관 자료는 미리 체크 안 함(`parseBackup createdAt`).
 - 메뉴 사이 흐름 점검(2026-11-18 「각 정보와 메뉴가 유기적으로 돌아가는지 확인해줘」, 0.36.0): 채팅 intent `budget`·`idea`·교체/보강/메모 → 오늘 수업·전담 → 진도표,
   「예산 얼마 남았어?」(`budget-model chatAnswer`), 떠 있는 버튼 kind `cert`(이수증 → `training.js putCerts`), 기초학력 수업 날은 `calendar closedDays`(재량휴업일 등 — 방학은 아님) 건너뜀,
   인수인계서에 기초학력(`camp-model handoverRows`)·연수 (`tests/unit/fix1118-flow.test.mjs`, e2e `fix1118-flow.mjs`).
@@ -92,7 +101,7 @@
 
 ## 시험
 
-- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1624개 통과)
+- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1630개 통과)
 - e2e 한 파일: `node tests/e2e/<이름>.mjs`
 - e2e 전체: `node tests/e2e/run-all.mjs` (약 170개 파일, 45~50분). 파일마다 다른 포트를 써서 나눠 돌려도 된다. 전체가 도는 동안에는 작업 폴더를 고치지 말고 `.claude/worktrees/` 아래 worktree에서 일한다(그 안에서는 저장소의 node_modules를 그대로 찾는다).
 

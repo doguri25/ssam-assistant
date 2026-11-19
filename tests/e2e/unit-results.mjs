@@ -152,7 +152,15 @@ await run('unit-results', [
     assert(all.split('\n').length === 6 && all.startsWith('1번\t1번 고친 평어임.'), all.slice(0, 80));
   }],
   ['다듬기: 평가를 골라 둔 뒤 나중에 마친 같은 교과 평가는 체크된 채로', async () => {
-    await page.uncheck(`${V} input[data-pytest="sample-2"]`);
+    // 같은 교과에 진짜 평가가 생기면 「예시로 채우기」 평가는 결과·평어에서 빠짐 — 진짜 평가 둘로 시험
+    await page.evaluate(async () => {
+      const m = await import('./menus/evaluate/unit/unit-model.js');
+      const x = m.getTest('sample-1'); x.id = 'real-a'; x.meta = { ...x.meta, round: 5, date: '2026-10-27', sample: false }; m.saveTest(x);
+    });
+    await page.reload(); await page.waitForTimeout(500); await go();
+    await page.click(`${V} [data-unv="results"]`); await page.click(`${V} [data-rv="pyeongeo"]`);
+    assert(!(await page.$(`${V} input[data-pytest="sample-2"]`)), '진짜 평가가 있는데 예시 평가가 보임');
+    await page.uncheck(`${V} input[data-pytest="real-a"]`);
     await page.waitForTimeout(100);
     await page.evaluate(async () => {
       const m = await import('./menus/evaluate/unit/unit-model.js');
@@ -161,7 +169,7 @@ await run('unit-results', [
     await page.reload(); await page.waitForTimeout(500); await go();
     await page.click(`${V} [data-unv="results"]`); await page.click(`${V} [data-rv="pyeongeo"]`);
     assert(await page.isChecked(`${V} input[data-pytest="later"]`), '새 평가가 빠짐');
-    assert(!(await page.isChecked(`${V} input[data-pytest="sample-2"]`)), '뺀 평가가 돌아옴');
+    assert(!(await page.isChecked(`${V} input[data-pytest="real-a"]`)), '뺀 평가가 돌아옴');
   }],
   ['평가를 빼서 목록에서 사라진 학생의 평어는 다른 칸을 고쳐도 지워지지 않음(다시 넣으면 그대로)', async () => {
     // 7번은 이 평가만 봄(결석 등)

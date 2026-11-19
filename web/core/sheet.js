@@ -114,6 +114,7 @@ export function isTotalName(s) {
   return !!k && (SUM_IN.test(String(s)) || SUM_ALL.test(k) || SUM_ALL.test(k.replace(/(?:은|는|이|가)$/, '')));
 }
 // 열 이름 뒤 괄호(「수량(개)」「수량(EA)」「단가(원)」「금액（원）」)는 빼고 봄 — 「수량(개)」를 못 읽으면 수량이 모두 1이 됐음
+const QTY_CELL = /^\s*(\d[\d,]*(?:\.\d+)?)\s*([가-힣A-Za-z]{1,4})\s*$/;
 const normHead = v => String(v == null ? '' : v).replace(/\s|[(（][^)）]*[)）]/g, '');
 
 /* 머리줄(위 15줄 안, 품명 열 + 단가나 금액 열)을 찾아 품목만 뽑음 */
@@ -128,7 +129,10 @@ export function findItems(rows) {
       const cell = k => (cols[k] == null || !r ? '' : String(r[cols[k]] == null ? '' : r[cols[k]]).trim());
       const name = cell('name');
       if (!name || isTotalName(name)) continue;
-      const q = toNumber(cell('qty'));
+      // 수량·단가·금액·세액·산출 근거 칸이 모두 빈 줄은 품목이 아님(한글·PDF 견적서 표 아래 「위와 같이 견적합니다」·날짜·「○○문구 대표 …(인)」 줄)
+      if (!['qty', 'price', 'amount', 'supply', 'tax', 'basis'].some(k => cell(k) !== '')) continue;
+      // 수량 칸에 단위가 붙은 것(「10자루」「20 권」) — toNumber는 0이 되어 수량이 1로 들어갔음. 단위 열이 없으면 그 단위를 단위 칸에
+      const qc = QTY_CELL.exec(cell('qty')), q = qc ? toNumber(qc[1]) : toNumber(cell('qty')), qUnit = qc ? qc[2] : '';
       const qty = q > 0 ? q : 1;
       let price = cell('price') !== '' ? toNumber(cell('price')) : Math.round(toNumber(cell('amount')) / qty);
       // 세액 칸이 따로 있는 견적서: 단가·공급가액은 부가세 빼고 적은 값 → 단가는 (공급가액 + 세액) ÷ 수량(앱의 단가는 부가세 포함)
@@ -136,7 +140,8 @@ export function findItems(rows) {
         const supply = cols.supply != null && cell('supply') !== '' ? toNumber(cell('supply')) : price * qty;
         price = Math.round((supply + toNumber(cell('tax'))) / qty);
       }
-      out.push({ name, spec: cell('spec'), ...(cols.unit != null ? { unit: cell('unit') } : {}), qty, price, ...(cell('basis') ? { basis: cell('basis') } : {}) });
+      const unit = cols.unit != null ? cell('unit') || qUnit : qUnit;
+      out.push({ name, spec: cell('spec'), ...(cols.unit != null || unit ? { unit } : {}), qty, price, ...(cell('basis') ? { basis: cell('basis') } : {}) });
     }
     return out;
   }

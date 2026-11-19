@@ -42,7 +42,7 @@ const EXCEPT = new Set(('현미경 정지선 고시원 진지한 편하진 심�
   // 흔한 성 글자 + 이름에 쓰는 두 글자인 낱말(「도우미가」「마무리를」「유리창이」「민주주의」)
   + '도우미 마무리 최우수 옥수수 은하수 원주민 이주민 민주주 유리창 우주선 손수건 조리원 지도원 모둠원 정원사 조리사 '
   // 흔한 성 글자 + 이름 목록의 두 글자인 낱말 + 로(「임시안으로」「예시안으로」「정동진으로」)
-  + '임시안 예시안 백지안 정동진').split(' '));
+  + '임시안 예시안 백지안 정동진 공문철').split(' '));
 // 두 글자(성 + 외자)인데 흔한 낱말
 const EXCEPT2 = new Set('이민 고민 주민 국민 도민 정진 전진 공현 차진 안진 오진 강진 노현 지진 추진 홍진 남산 한산 기한 우산 유산 원산 진산 반찬 기혁 신혁 구현 표현 모현 노한 공한 방한 반한 원한 유한 기호 신호 구호 보호 선호 주호 장호 전호'.split(' '));
 const DOUBLE = /^(?:남궁|황보|제갈|선우|독고)/;
@@ -165,7 +165,42 @@ function personCuts(s, memo) {
     const len = hit(w, prev, next, { memo, first: k === 0, before: s.slice(0, at), after: s.slice(t.i + t.w.length) });
     if (len) cuts.push([at, len]);
   });
-  return cuts;
+  return listCuts(s, cuts);
+}
+/* 쉼표·가운뎃점·「와·과·랑·하고」로 늘어놓은 이름(「이바다, 남다율, 탁보결 셋이」「한가람, 남도율 둘이」「남다율·탁보결 둘이」):
+   늘어선 낱말이 모두 성 + 두 글자(○○○ 포함)이고 그중 하나라도 이미 가렸거나 이름 꼴(nameTok)이면 모두 가림. 마지막 낱말은 조사가 붙어도 됨 */
+const LINK = /^(?:와|과|랑|이랑|하고)$/;
+function listCuts(s, cuts) {
+  const cut = new Set(cuts.map(c => c[0]));
+  const toks = [...s.matchAll(/○○○|[가-힣]+/g)].map(m => ({ i: m.index, w: m[0] }));
+  // 낱말 하나: { i, base(3글자), tail(붙은 조사), end }
+  const items = [];
+  for (let k = 0; k < toks.length; k++) {
+    const t = toks[k];
+    if (t.w === MASK) { // 「○○○이랑」: 가린 자리 뒤에 바로 붙은 조사
+      const n = toks[k + 1], tail = n && n.i === t.i + 3 && /^[가-힣]+$/.test(n.w) ? n.w : '';
+      items.push({ i: t.i, base: MASK, tail, end: t.i + 3 + tail.length }); if (tail) k++;
+      continue;
+    }
+    items.push({ i: t.i, base: t.w.slice(0, 3), tail: t.w.slice(3), end: t.i + t.w.length });
+  }
+  const shape = x => x.base === MASK || (x.base.length === 3 && SURNAME.has(x.base[0]) && !EXCEPT.has(x.base) && !/\d/.test(x.base));
+  const strong = x => x.base === MASK || cut.has(x.i) || nameTok(x.base);
+  const runs = []; let run = [];
+  const close = () => { if (run.length >= 2) runs.push(run); run = []; };
+  for (let k = 0; k < items.length; k++) {
+    const x = items[k], gap = k + 1 < items.length ? s.slice(x.end, items[k + 1].i) : '';
+    if (!shape(x) || (x.tail && !SUFFIX.test(x.tail))) { close(); continue; }
+    run.push(x);
+    const joined = !x.tail ? /^\s*[,，·、/]\s*$/.test(gap) : LINK.test(x.tail) && /^\s+$/.test(gap);
+    if (!joined) close();
+  }
+  close();
+  for (const r of runs) {
+    if (!r.some(strong)) continue;
+    for (const x of r) if (x.base !== MASK && !cut.has(x.i)) { cuts.push([x.i, 3]); cut.add(x.i); }
+  }
+  return cuts.sort((a, b) => a[0] - b[0]);
 }
 
 /* 명단 줄인지: 이름(○○○·성 + 이름 글자 두 글자·목록의 이름)만 셋 넘게 늘어선 줄(「김민수 이서연 박지훈」「김다빈, 최윤슬, 조예담」).

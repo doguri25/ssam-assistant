@@ -130,7 +130,10 @@ export function classify({ name = '', text = '', scan = false } = {}) {
   if (lines.slice(0, 20).some(l => /(품\s*명|품\s*목)/.test(l) && /(단\s*가|금\s*액)/.test(l))) add('quote', 4, '품명·단가 칸이 있어요.');
   if (/견적/.test(n)) add('quote', 2, '파일 이름에 「견적」이 있어요.');
 
-  if (/타임스탬프|timestamp/i.test(first)) add('survey', 9, '구글 폼 응답(타임스탬프)이에요.');
+  // 연수 이수 구글 폼 응답(연수 현황판 formGuide: 성명·부서·연수·이수번호)은 행사 설문이 아님 — 연수 현황판 [구글 폼 응답 넣기]로
+  const trainForm = /타임스탬프|timestamp/i.test(first) && /이\s*수\s*번\s*호|이\s*수\s*증|수\s*료\s*증/.test(first) && /성\s*명|이\s*름/.test(first);
+  if (trainForm) add('cert', 20, '연수 이수증 제출 구글 폼 응답이에요. 연수 현황판에서 이름·연수를 맞춰 「제출」로 넣어요.');
+  else if (/타임스탬프|timestamp/i.test(first)) add('survey', 9, '구글 폼 응답(타임스탬프)이에요.');
 
   // 연수 이수증·수료증: 「성 명:」 칸·복사기 파일 이름(scan)이 있어도 학생 문제지가 아님(학생 이름 칸 12점 + 스캔 이름 12점보다 높게)
   // 이수증 본문 말(「위 사람은 … 이수하였음을 증명합니다」)이나 짧은 「이수증」 제목 + 성명 칸일 때만 — 연수 공문(수신·발신·협조…)·연수 계획은 아님

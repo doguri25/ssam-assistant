@@ -138,16 +138,22 @@ export function certHours(text) {
 // 「중앙교육연수원-유초중-직무-2026-12345」「충남-특직-2026-001」 꼴: 하이픈으로 이은 마디(띄어 쓴 「충남 - 특직」도), 끝 「호」는 뺌
 const SEG = '[가-힣A-Za-z0-9]{1,20}';
 const CODE_ANY = new RegExp(`${SEG}(?:\\s*[-–]\\s*${SEG}){1,7}`, 'g');
-export const codeNorm = v => String(v == null ? '' : v).replace(/\s*[-–]\s*/g, '-').replace(/^\s*제\s*/, '').replace(/\s*호\s*$/, '').replace(/\s+/g, ' ').trim().slice(0, 60);
+export const codeNorm = v => String(v == null ? '' : v).replace(/\s*[-–]\s*/g, '-').replace(/^\s*제(?:\s+|(?=\d))/, '').replace(/\s*호\s*$/, '').replace(/\s+/g, ' ').trim().slice(0, 60);
 // 이름표 없이 글 속에서 찾을 때: 마디 셋 넘게·한글/영문 마디·20xx 연도 마디·끝 마디에 숫자(날짜 2026-11-03·전화번호는 아님)
 const strictCode = c => c.split('-').length >= 3 && /[가-힣A-Za-z]/.test(c) && /(?:^|-)20\d{2}(?:-|$)/.test(c) && /\d/.test(c.split('-').pop());
 const CODE_LABEL = /(?:이\s*수\s*(?:증\s*)?번\s*호|증\s*서\s*번\s*호|수\s*료\s*(?:증\s*)?번\s*호|발\s*급\s*번\s*호|연\s*수\s*번\s*호)\s*[:：]?\s*(.+)/;
 /* 이수증 글 → 이수번호. 1) 「이수번호·증서번호·수료번호·발급번호:」 또는 「제 … 호」 옆, 2) 글 속 「기관-구분-연도-번호」 꼴. 없으면 '' */
 export function certCode(text) {
   const t = String(text || '');
-  for (const l of t.split(/\n/)) {
-    const m = CODE_LABEL.exec(l) || /(?:^|[\s(（])제\s*([^호\n]{3,60}?)\s*호(?![가-힣])/.exec(l);
-    if (m) for (const x of m[1].matchAll(CODE_ANY)) { const c = codeNorm(x[0]); if (c.includes('-') && /\d/.test(c)) return c; }
+  const pick = v => { for (const x of v.matchAll(CODE_ANY)) { const c = codeNorm(x[0]); if (c.includes('-') && /\d/.test(c)) return c; } return ''; };
+  const ls = t.split(/\n/);
+  // 1) 이름표(이수번호·증서번호…)가 있는 줄을 먼저 — 위쪽의 「(교육부 지정 제2015-3호)」「(제1-2호 과정)」보다
+  for (const l of ls) { const m = CODE_LABEL.exec(l), c = m && pick(m[1]); if (c) return c; }
+  // 2) 「제 … 호」: 괄호 안·「지정(번호)」 뒤·「과정」 앞은 아님, 「제주-…」처럼 제가 지역 이름 첫 글자인 것은 아님
+  for (const l of ls) for (const m of l.matchAll(/(?:^|\s)제(?:\s+|(?=\d))([^호\n()（）]{3,60}?)\s*호(?![가-힣])/g)) {
+    if (/지정\s*(?:번\s*호)?\s*$/.test(l.slice(0, m.index + (m[0][0] === '제' ? 0 : 1)))) continue;
+    if (/^\s*과정/.test(l.slice(m.index + m[0].length))) continue;
+    const c = pick(m[1]); if (c) return c;
   }
   for (const x of t.matchAll(CODE_ANY)) { const c = codeNorm(x[0]); if (strictCode(c)) return c; }
   return '';
@@ -380,7 +386,9 @@ export function formResponses(rows, b, { cid = '' } = {}) {
   const h = rs[hi], col = re => h.findIndex(c => re.test(c));
   const ni = col(NAME_H), di = col(/^(부서|소속|직위|학년)/), ti = col(/타임스탬프|timestamp|제출\s*(일|시)|날짜/i);
   // 이수번호 칸(「이수번호」「이수증 번호」「증서번호」) — 이수증 파일 대신 받는 칸
-  const ki = col(/번\s*호/);
+  // 이름표가 분명한 칸 먼저 — 앞에 「휴대폰 번호」「나이스 개인번호」「번호(연번)」 칸이 있어도 그 값을 이수번호로 넣지 않게
+  let ki = col(/(?:이\s*수|수\s*료|증\s*서|발\s*급|연\s*수)\s*(?:증\s*)?번\s*호/);
+  if (ki < 0) ki = h.findIndex(c => /번\s*호/.test(c) && !/전화|휴대|핸드폰|연락|개인|사번|교번|학번|연번|^번\s*호$/.test(c));
   const ci = h.findIndex((c, i) => i !== ni && i !== ki && /연수|교육|과정/.test(c) && !/파일|이수증|업로드|첨부|번\s*호/.test(c));
   let fi = h.findIndex((c, i) => i !== ki && /파일|이수증|업로드|첨부/.test(c));
   if (fi < 0) fi = h.findIndex((_, i) => rs.slice(hi + 1).some(r => /^https?:\/\//.test(r[i] || '')));
@@ -393,7 +401,7 @@ export function formResponses(rows, b, { cid = '' } = {}) {
     if (who.length > 1 && di >= 0) who = who.filter(s => s.dept && (r[di] || '').includes(s.dept));
     const course = ci >= 0 ? bestCourse(b.courses, r[ci] || '', { one: true }) : b.courses.find(c => c.id === cid) || (b.courses.length === 1 ? b.courses[0] : null);
     const link = ((fi >= 0 ? r[fi] : '') || '').split(/[,\s]+/).find(x => /^https?:\/\//.test(x)) || '';
-    const date = ti >= 0 ? formDate(r[ti]) : '', code = ki >= 0 ? (certCode(r[ki] || '') || codeNorm(r[ki] || '')) : '';
+    const date = ti >= 0 ? formDate(r[ti]) : '', code = ki >= 0 && !/^\s*0\d{1,2}\s*-?\s*\d{3,4}\s*-?\s*\d{4}\s*$/.test(r[ki] || '') ? (certCode(r[ki] || '') || codeNorm(r[ki] || '')) : '';
     if (who.length === 1 && course) hits.push({ sid: who[0].id, cid: course.id, link, date, code });
     else miss.push({ name, course: course ? course.id : '', link, date, code, sid: who.length === 1 ? who[0].id : '' });
   }
@@ -532,7 +540,10 @@ export function mergeBoards(a, b) {
     const old = markOf(out, c2, s2);
     // 반려가 끼면 나중에 바꾼 쪽(at) — 반려하기 전에 내보낸 파일을 합쳐도 반려가 「제출」로 되돌아가지 않게. 그 밖에는 더 나아간 상태로
     const take = !old || (m.s === 'back' || old.s === 'back' ? (m.at || 0) > (old.at || 0) : RANK_MARK[m.s] > RANK_MARK[old.s]);
-    if (take) (out.marks[c2] = out.marks[c2] || {})[s2] = { ...m, kept: old ? old.kept : false };
+    // 고른 쪽에 없는 이수번호·이수일·시간은 다른 쪽 것으로 채움(이수증 파일을 보관하지 않으니 번호가 증거) — 반려 칸은 그대로
+    const fill = (w, o) => (w.s === 'back' || !o || o.s === 'back' ? w : { ...w, code: w.code || o.code || '', date: w.date || o.date || '', hours: w.hours || o.hours || null });
+    if (take) (out.marks[c2] = out.marks[c2] || {})[s2] = { ...fill(m, old), kept: old ? old.kept : false };
+    else out.marks[c2][s2] = fill(old, m);
   }
   return normBoard(out);
 }

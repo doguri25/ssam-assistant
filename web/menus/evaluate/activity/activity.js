@@ -164,7 +164,7 @@ export function render() {
 }
 
 /* ---------- 1단계: 넣기 ---------- */
-const clean = cleanSheet;
+const clean = t => cleanSheet(t, { staff: false });
 function freePages(pages) { if (pages && pages.length && SS().files) SS().files.freePages(pages); }
 /* 넣은 쪽 나누기: 정답·교사용·빈 쪽은 기준 그림, 학생 쪽은 3단계로. 문서 없이 1~2쪽만 넣으면 그 쪽이 활동지(빈 활동지) */
 export function sortPages(b) {

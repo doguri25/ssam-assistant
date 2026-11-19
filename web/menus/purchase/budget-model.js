@@ -3,6 +3,7 @@
    학년도와 상관없는 요약: budget:alerts(학년도를 바꾼 뒤에도 지난 학년도 사업의 마감 알림을 띄우려고 — years.js GLOBAL). AI는 쓰지 않음 */
 import { get, set } from '../../core/store.js';
 import { sumItems } from './rules.js';
+const DEMO_YEAR = 9999; // core/years.js DEMO_YEAR
 
 const P = 'budget:projects', L = 'budget:ledger', ALERTS = 'budget:alerts', MIG = 'budget:migrated';
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
@@ -141,6 +142,9 @@ export function briefLines({ projects = [], ledger = [], year, today, others = [
 }
 /* 이 학년도 사업의 요약을 budget:alerts에 고쳐 씀(다른 학년도 것은 마감 전만 남김) */
 export function refreshAlerts(year, today) {
+  // 3분 둘러보기 중(체험용 학년도)에는 고치지 않음 — 체험 자료로 진짜 학년도 요약을 덮지 않게(체험 중 currentYear는 오늘이 든 학년도)
+  const y = get('years', null);
+  if (isObj(y) && y.current === DEMO_YEAR) return;
   const ledger = listLedger();
   const mine = listProjects().map(p => ({ year, id: p.id, name: p.name, ...totals(p, ledger), due: dueOf(p, year) }));
   const v = get(ALERTS, []), keep = (Array.isArray(v) ? v : []).filter(a => isObj(a) && a.year !== year && isDay(a.due) && (!isDay(today) || a.due >= today));

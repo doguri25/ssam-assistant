@@ -134,7 +134,8 @@ export function parseBackup(text) {
     if (!/^\d{4}$/.test(y) || !isObj(s) || !Object.values(s).every(v => typeof v === 'string')) bad();
     years[y] = Object.fromEntries(Object.entries(s).filter(([k]) => isYearKey(k)));
   }
-  return { current: Number.isInteger(o.current) ? o.current : null, years };
+  const at = Date.parse(o.createdAt);
+  return { current: Number.isInteger(o.current) ? o.current : null, years, createdAt: Number.isFinite(at) ? at : null };
 }
 
 /* 학년도 옮기기: 저장 멈춤 → 지금 학년도를 보관함에 → 학년도 키를 비우고 가려는 학년도 자료를 씀 → 학년도 표시.

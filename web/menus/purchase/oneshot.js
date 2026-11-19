@@ -1,6 +1,6 @@
 /* 품의 「한 칸 → 바로 초안」(스펙 2026-11-02 3장): 한 번에 초안 프롬프트·답 다듬기, 확인할 것 칩, 빠진 것 묻기. 화면 없이 돌아감(시험) */
 import { TYPES, draftMemo, findPersonal, cleanItems, toNumber, plainOfficial, shortIntro } from './rules.js';
-import { hasContact, maskNames } from './intake.js';
+import { hasContact, maskForAI } from './intake.js';
 
 /* 첫 문장 예시(2026-11-17 선생님: 한두 줄의 한 문장) — 지어낸 사업 이름 */
 const INTRO_EX = { goods: '과학 탐구 동아리 운영 물품을 구매하고자 합니다.', lecturer: '진로 체험 특강 강사 수당을 지급하고자 합니다.',
@@ -20,11 +20,11 @@ export function oneshotPrompt(form, text = '', { askType = false, today = '' } =
   const f = form || {}, type = TYPE_IDS.includes(f.type) ? f.type : 'goods';
   const empty = GUESS_KEYS.filter(k => blank(f[k]));
   // 주민번호·계좌 줄과 전화번호·이메일 줄은 보내지 않음(넣기 칸에서 읽을 때와 같음)
-  const said = type === 'lecturer' ? '' : maskNames(String(text || '').split(/\r?\n/).filter(l => !findPersonal(l) && !hasContact(l)).join('\n')).trim().slice(0, 4000);
+  const said = type === 'lecturer' ? '' : maskForAI(String(text || '').split(/\r?\n/).filter(l => !findPersonal(l) && !hasContact(l)).join('\n')).trim().slice(0, 4000);
   return ['[품의 초안]',
     '학교 행정 문서(에듀파인 품의)를 돕는 도우미예요. 아래 메모로 품의의 제목과 품의 사유 첫 문장을 써 주세요.',
     // 품목 이름에 든 「김철수 강사」 같은 이름도 가림(종류를 고르지 않은 강사 품의)
-    '', maskNames(draftMemo(f)).trim(),
+    '', maskForAI(draftMemo(f)).trim(),
     ...(said ? ['', '[선생님이 넣은 글]', said] : []),
     ...(dayLine(today) ? ['', dayLine(today)] : []),
     '', '규칙:',

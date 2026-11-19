@@ -6,6 +6,7 @@ import { getSchool } from '../../core/settings.js';
 import { maskContacts, maskStaff, staffName, nameCell, MASK } from '../../core/privacy.js';
 import { normRv } from './plan-rv.js';
 import { parseOutline } from './classplan-model.js';
+import { isTotalName } from '../../core/sheet.js';
 
 const LIST_KEY = 'yearplans', CUR_KEY = 'yearplan:current';
 
@@ -144,7 +145,8 @@ export function normDraft(v) {
     const m = date ? +date.slice(5, 7) : Number.isInteger(+s.month) && +s.month >= 1 && +s.month <= 12 ? +s.month : null;
     return { title: str(s.title).trim(), date, month: m };
   });
-  d.budget = (Array.isArray(v.budget) ? v.budget : []).filter(b => isObj(b) && str(b.name).trim()).map(b => ({ name: str(b.name).trim(), amount: num(b.amount), note: str(b.note).trim() }));
+  // AI가 넣은 「합계」「총계」 줄은 품목이 아님(앱이 합계 줄을 따로 붙임 — 그대로 두면 합계가 두 배). 행사계획 normOptions와 같게
+  d.budget = (Array.isArray(v.budget) ? v.budget : []).filter(b => isObj(b) && str(b.name).trim() && !isTotalName(str(b.name))).map(b => ({ name: str(b.name).trim(), amount: num(b.amount), note: str(b.note).trim() }));
   // 작년(기존) 계획서 목차(없으면 빈 목록 — 기본 차례). 덧붙임 칸 글은 목차에 있는 것만
   const seen = new Set();
   d.outline = [];

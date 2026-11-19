@@ -3230,11 +3230,14 @@ function hkMemoRows(text) {
 }
 // AI로 보내는 메모: 예전에 붙여넣은 「김민수⇥메모」의 이름 칸, 「이름: 김민수」는 뺌
 const hkMemoOut = s => (MEMO_NAMES() ? MEMO_NAMES().forAI(s.memo) : String(s.memo || '').trim());
+// AI로 보내는 글: 메모 글 속 다른 학생 이름도 ○○○로(화면 글·근거 조각 label은 그대로)
+const hkHide = t => (MEMO_NAMES() && MEMO_NAMES().hide ? MEMO_NAMES().hide(t) : t);
+const hkMemoAI = s => hkHide(hkMemoOut(s));
 
 /* ---------- 근거가 보이는 평어 (core/evidence.js가 window.SSAM.evidence로 줌, 스펙 2026-11-13 §5) ---------- */
 const EV = () => (window.SSAM && window.SSAM.evidence) || null;
 // 행특 근거: 이름 칸을 뺀 메모(hkMemoOut)를 줄·쉼표로 나눈 조각 m1, m2 …
-const hkEvList = s => (EV() ? EV().memoEvidence(hkMemoOut(s)) : []);
+const hkEvList = s => (EV() ? EV().memoEvidence(hkMemoOut(s)).map(x => { const a = hkHide(x.label); return a !== x.label ? { ...x, ai: a } : x; }) : []);
 // AI 답의 JSON(없거나 깨졌으면 null — 예전처럼 한 줄에 글 하나인 답)
 function hkJSON(text) {
   const t = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
@@ -3357,7 +3360,7 @@ function hkPrompt(s, count, others, list) {
     `아래 교사 메모를 바탕으로 ${grade}학생의 행동특성 및 종합의견을 ${count}가지 써 주세요.`,
     ``,
     `[교사 메모]`,
-    hkMemoOut(s),
+    hkMemoAI(s),
     ``,
     ...(ev ? [`${ev.evidencePrompt(list || [])}`, `(근거 목록은 위 메모를 줄·쉼표로 나눈 조각입니다.)`, ``] : []),
     `[분량] 글 하나는 공백을 포함해 ${t.tlo}~${t.thi}자로 씁니다.${byteNote}`,
@@ -3391,7 +3394,7 @@ function hkFixPrompt(s, text, dir, list) {
     how,
     `${hkEndRule()} ${pronounRule()} 줄바꿈 없는 한 문단으로 씁니다. ${ev.MEMO_RULE || ev.EVIDENCE_RULE}`,
     ``,
-    `[교사 메모]`, hkMemoOut(s), ``, ev.evidencePrompt(list || []), ``, `[고칠 글]`, text,
+    `[교사 메모]`, hkMemoAI(s), ``, ev.evidencePrompt(list || []), ``, `[고칠 글]`, text,
     ``, `[출력 형식] JSON 하나만 출력합니다. 고친 글의 문장을 sentences에 차례대로 나눠 담습니다.`, `{"results":[{"sentences":[{"t":"문장","src":["m1"]}]}]}`
   ].join('\n');
   return [
@@ -3399,7 +3402,7 @@ function hkFixPrompt(s, text, dir, list) {
     how,
     `${hkEndRule()} ${pronounRule()} 줄바꿈 없는 한 문단으로, 고친 글만 출력합니다.`,
     ``,
-    `[교사 메모]`, hkMemoOut(s), ``, `[고칠 글]`, text
+    `[교사 메모]`, hkMemoAI(s), ``, `[고칠 글]`, text
   ].join('\n');
 }
 function hkClean(line) {
@@ -3905,7 +3908,7 @@ const GRStore = {
       ...(GR.aiUse ? { aiUse: { at: +GR.aiUse.at || 0, sent: +GR.aiUse.sent || 0, cached: +GR.aiUse.cached || 0, out: +GR.aiUse.out || 0 } } : {}),
       // 채점에서 뺀 학생도 번호 자리를 지키도록 저장 (나이스에 차례로 붙여넣을 때 칸이 밀리지 않게)
       students: GR.students.map(s => ({
-        id: s.id, no: s.no, n: s.pages.length, skip: s.skip ? 1 : 0, score: s.score ?? null, level: s.level || null, manual: s.manual ? 1 : 0,
+        id: s.id, no: s.no, n: s.pages.length, skip: s.skip ? 1 : 0, score: s.score ?? null, score0: s.score0 ?? s.score ?? null, level: s.level || null, manual: s.manual ? 1 : 0,
         summary: s.summary || '', evidence: s.evidence || [], strengths: s.strengths || '', improve: s.improve || '',
         unreadable: s.unreadable ? 1 : 0, text: s.text || '', d: s.d ? 1 : 0, stale: s.stale ? 1 : 0,
         ...(s.trv ? { trv: s.trv } : {}), ...(s.trvd ? { trvd: 1 } : {}), ...(s.rv ? { rv: s.rv } : {}), ...(s.ev && s.text ? { ev: s.ev } : {}),
@@ -4342,7 +4345,7 @@ function grCalibPrompt(list) {
       : `관찰 내용을 서로 비교해 점수를 일관되게 다시 매겨 주세요. 더 잘한 학생이 더 높은 점수, 비슷한 학생은 비슷한 점수가 되게 하고, 90점 이상 최상·70~89 상·40~69 중·39 이하 하의 기준은 그대로 지킵니다.`,
     ``, `[평가 정보]`, grTaskText(), R ? `\n${R.gradeBlock(GR.rubric)}` : '', grCritText() ? `\n[채점 기준]\n${grCritText()}` : '',
     ``, `[학생별 결과]`,
-    ...list.map(s => `- ${s.no}번 | ${s.score0}점${rbOf(s)} | ${s.summary} | 근거: ${(s.evidence || []).join(' / ')} | 보완: ${s.improve || '-'}`),
+    ...list.map(s => `- ${s.no}번 | ${s.score0 ?? s.score}점${rbOf(s)} | ${s.summary} | 근거: ${(s.evidence || []).join(' / ')} | 보완: ${s.improve || '-'}`),
     ``, `[출력] 모든 학생을 빠짐없이 담은 JSON 배열 하나만 출력합니다. 예: [{"no": 1, "score": 85}]`
   ].filter(x => x !== '').join('\n');
 }
@@ -4640,8 +4643,8 @@ async function grCalibrate(signal) {
     // 기준표로 채점했으면 학생마다 기준 점수 −4~+4 안으로(요소별 수준은 그대로)
     for (const s of list) { const v = m.get(s.no); if (Number.isFinite(v)) { s.score = grClampScore(v, s.rbBase); hit++; } }
     GR.calibrated = hit >= list.length * 0.8;
-    if (!GR.calibrated) list.forEach(s => { s.score = s.score0; });
-  } catch (e) { list.forEach(s => { s.score = s.score0; }); }
+    if (!GR.calibrated) list.forEach(s => { s.score = s.score0 ?? s.score; });
+  } catch (e) { list.forEach(s => { s.score = s.score0 ?? s.score; }); }
   finally { GR.loading = ''; }
 }
 async function grAfterGrading() {
@@ -5404,7 +5407,7 @@ async function grOpenHistory(id) {
     // 예전 기록의 '~할 수 있음.' 끝맺음 고치기
     const text = s.text ? fixEnding(s.text) : s.text;
     if (text !== s.text) fixed++;
-    return { ...s, text, pages: [], skip: !!s.skip, status: s.score == null ? 'idle' : 'done', manual: !!s.manual, stale: !!s.stale, d: s.d ? 1 : 0 };
+    return { ...s, score0: s.score0 ?? s.score ?? null, text, pages: [], skip: !!s.skip, status: s.score == null ? 'idle' : 'done', manual: !!s.manual, stale: !!s.stale, d: s.d ? 1 : 0 };
   });
   // 0.18.3 전 기록: 「채점에서 빼기」한 쪽이 스캔 차례 번호를 그대로 가져 다른 학생과 겹치면 번호 없음(0번)으로 (나이스 칸이 밀리지 않게)
   const taken = new Set(GR.students.filter(s => !s.skip && s.no > 0).map(s => s.no));
@@ -5919,13 +5922,16 @@ const CCStore = {
 
 /* ---------- 프롬프트 ---------- */
 // 학년·영역·동아리·활동
+// AI로 보내는 창체 글: 활동 이름·내용 속 사람 이름(강사·교직원)은 ○○○로(화면·저장 글·ccSig는 그대로)
+const ccAI = t => { const f = window.SSAM && window.SSAM.maskAI; return f ? f(t) : String(t == null ? '' : t); };
 function ccHead(k, act) {
-  const club = k === 'club' ? (ccArea('club').club || '').trim() : '';
+  const club = k === 'club' ? ccAI((ccArea('club').club || '').trim()) : '';
+  const name = ccAI((act.name || '').trim()), desc = ccAI((act.desc || '').trim());
   return [
     `[학년] ${CHE.grade}학년`,
     `[영역] ${ccInfo(k).name}`,
     club ? `[동아리] ${club}` : null,
-    `[활동] ${(act.name || '').trim() || '(이름 없음)'}${(act.desc || '').trim() ? ` — ${act.desc.trim()}` : ''}`
+    `[활동] ${name || '(이름 없음)'}${desc ? ` — ${desc}` : ''}`
   ];
 }
 function ccPrompt(k, act, n, avoid) {
@@ -6111,7 +6117,7 @@ async function ccReviewAll() {
       const A = ccArea(a.k);
       for (const act of A.acts) {
         const items = classNos().map(no => { const it = A.items[no], p = it && it.parts && it.parts[act.id]; return p && wrote.has(p) && !(it && it.d) ? { o: p, f: 't' } : null; }).filter(Boolean);
-        const r = await reviewSentences('cc', `[${a.name}] ${act.name || ''}${act.desc ? ' — ' + act.desc : ''}`, items, ctl.signal);
+        const r = await reviewSentences('cc', ccAI(`[${a.name}] ${act.name || ''}${act.desc ? ' — ' + act.desc : ''}`), items, ctl.signal);
         if (ctl.signal.aborted) return;
         if (r === 'fail') { CHE.rvErr = 1; return; }
         if (r === 'ok') delete CHE.rvErr;

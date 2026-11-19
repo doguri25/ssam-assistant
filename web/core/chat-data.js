@@ -25,8 +25,20 @@ const NOT = /어떻게(?!\s*(?:돼|되))|어떡|방법|하는\s*법|요령|양�
 const DAYW = [['오늘', 0], ['내일', 1], ['모레', 2], ['글피', 3]];
 const WEEK = [['일요일', 0], ['월요일', 1], ['화요일', 2], ['수요일', 3], ['목요일', 4], ['금요일', 5], ['토요일', 6]];
 function dayOf(t, today) {
+  // 날짜(「11월 24일」「12/1」「12. 1.」): 해는 오늘이 든 학년도(3~12월은 그해, 1·2월은 다음 해)
+  const dm = /(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t) || /(?<![\d.])(\d{1,2})\s*[./]\s*(\d{1,2})(?![\d])(?!\s*교시)/.exec(t);
+  if (dm && +dm[1] >= 1 && +dm[1] <= 12 && +dm[2] >= 1 && +dm[2] <= 31) {
+    const ty = +today.slice(0, 4), tm = +today.slice(5, 7), sy = tm <= 2 ? ty - 1 : ty, y = +dm[1] <= 2 ? sy + 1 : sy;
+    const d = `${y}-${String(+dm[1]).padStart(2, '0')}-${String(+dm[2]).padStart(2, '0')}`;
+    if (fromD(toD(d)) === d) return d;
+  }
+  if (/내일\s*모레/.test(t)) return addDays(today, 2);
   for (const [w, n] of DAYW) if (t.includes(w)) return addDays(today, n);
-  for (const [w, n] of WEEK) if (t.includes(w) || t.includes(w.slice(0, 1) + '욜')) return addDays(today, (n - wday(today) + 7) % 7);
+  const next = /다음\s*주/.test(t), last = /지난\s*주|저번\s*주/.test(t), mon = addDays(today, -((wday(today) + 6) % 7)); // 이번 주 월요일
+  for (const [w, n] of WEEK) if (t.includes(w) || t.includes(w.slice(0, 1) + '욜')) {
+    if (next || last) return addDays(mon, (n + 6) % 7 + (next ? 7 : -7));
+    return addDays(today, (n - wday(today) + 7) % 7);
+  }
   return today;
 }
 const subjectOf = (t, extra = []) => [...extra, ...SUBJECTS].find(s => s && t.includes(s)) || '';

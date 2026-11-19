@@ -1,6 +1,8 @@
 /* 평가지 채점(기존 화면 evaluate.js)의 「한꺼번에 넣기」: 칸 그리기와 나누기·확인 카드를 붙여 줌 (활동지 스펙 3.2) */
 import { readBundle, openBundleCard, needsCard, bundleBoxHTML, onBundle, bundleMsg, maskNameFields, memoRows, memoForAI } from '../../core/bundle.js';
 import { toast } from '../../core/ui.js';
+import { maskPersons } from '../../core/chat-names.js';
+import { maskContacts, maskStaff } from '../../core/privacy.js';
 import { keepFiles } from '../../core/keep-files.js';
 import '../../core/eval-refs.js';
 // 근거가 보이는 평어(평가지 채점 평어·행동특성): evaluate.js가 window.SSAM.evidence로 씀
@@ -11,9 +13,11 @@ SS().bundleBoxHTML = bundleBoxHTML;
 // 설정 칸을 다시 그려도 「한꺼번에 넣기」 파일 칸은 그대로(evaluate.js가 씀)
 SS().keepFiles = keepFiles;
 // 행특 메모 한꺼번에 넣기·AI로 보내는 메모의 이름 칸 빼기(evaluate.js가 씀)
-SS().memoNames = { rows: memoRows, forAI: memoForAI };
+SS().memoNames = { rows: memoRows, forAI: memoForAI, hide: s => maskContacts(maskPersons(String(s || '')).text) };
 // [정답표 파일]로 넣은 한글 정답표 글도 한꺼번에 넣기처럼 이름 칸(「이름: 김민수」)만 가림(evaluate.js가 씀)
 SS().maskNames = maskNameFields;
+// AI로 보내는 선생님 글(창체 활동 등): 사람 이름·교직원 이름(명단 포함)·연락처를 ○○○로
+SS().maskAI = s => maskContacts(maskStaff(maskPersons(String(s == null ? '' : s)).text).text);
 onBundle('gr', async files => {
   if (!SS().gr) return;
   bundleMsg('gr', '읽는 중…');

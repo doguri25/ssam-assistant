@@ -1,6 +1,15 @@
 /* 기타 › 공문 처리 (스펙 2026-11-04 5장): 공문 글 → AI 한 번 → 제목·발신·문서번호·날짜·제출 기한·요약·할 일·넘길 곳.
    기한 차례·D-n·달력 일정·오늘 수업 띠 규칙. 화면 없이 돌아감(시험) */
 import { normDate, schoolDate } from './message-ai.js';
+import { cleanSheet } from '../evaluate/activity/activity-read.js';
+import { nameCell } from '../../core/privacy.js';
+/* 넣은 파일 이름도 본문처럼 이름을 가려 AI로(「계획(담당 박솔빛).hwp」「동의서_김하늘.hwp」) — 「_」「-」는 띄어 읽음 */
+// 「_」로 이은 마디가 통째로 이름 모양이면(「연수 안내_이바다」 — 파일 이름 끝에 흔히 붙이는 담당자·학생 이름) 가림(파일 이름이라 지나치게 가려도 글은 그대로)
+export const maskName = n => {
+  const s = String(n || ''), ext = (/\.[A-Za-z0-9]{2,5}$/.exec(s) || [''])[0];
+  const stem = cleanSheet(s.slice(0, s.length - ext.length).split(/_+/).map(x => (nameCell(x.trim()) ? '○○○' : x)).join(' ')).text.replace(/\s+/g, ' ').trim();
+  return stem ? stem + ext : '';
+};
 
 export const KINDS = [['message', '쪽지'], ['letter', '가정통신문'], ['purchase', '품의'], ['report', '결과 보고']];
 const KIND_IDS = KINDS.map(k => k[0]);
@@ -19,7 +28,7 @@ export function gongmunPrompt({ name = '', text = '', today = '', year } = {}) {
     '- kinds: 이어서 쓸 만한 것 — "message"(선생님들께 쪽지 안내), "letter"(보호자 가정통신문), "purchase"(물품 구입·예산 품의), "report"(결과 보고). 맞는 것만',
     '날짜는 연도가 없으면 오늘 이후 가장 가까운 그 날로 채우세요. 학생 이름·전화번호는 쓰지 마세요.',
     '{"title":"…","from":"…","no":"…","date":"2026-11-02","due":"2026-11-20","dueNote":"…","summary":"…","tasks":[{"text":"…","due":""}],"kinds":["message"]}',
-    `[공문: ${String(name || '공문').slice(0, 80)}]`, String(text || '').slice(0, MAX_TEXT)].join('\n');
+    `[공문: ${(maskName(name) || '공문').slice(0, 80)}]`, String(text || '').slice(0, MAX_TEXT)].join('\n');
 }
 
 /* 기한 칸 값: 2000~2100년의 맞는 날만(키보드로 연도를 고치는 중간 값 「0002-…」은 버림) */

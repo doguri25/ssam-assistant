@@ -6,9 +6,10 @@ import { readQuote } from './quote.js';
 import { findItems, isTotalName, totalKey } from '../../core/sheet.js';
 import { readText } from '../../core/files.js';
 import { nameCell, staffName, MASK, maskContacts } from '../../core/privacy.js';
+import { redactText } from '../../core/redact.js';
 
 // 세는 말: 없는 말(「체육복 30벌」「간식 420인분」)은 수량 1로 읽혀 합계가 크게 줄었음. 「회·일·단」은 날짜·차례(「제3회」「12일」)와 헷갈려 넣지 않음
-const UNITS = '박스|상자|개|권|자루|세트|장|통|묶음|팩|병|봉|봉지|EA|ea|Ea|명|인분|시간|차시|식|건|매|롤|켤레|벌|쌍|대|부|kg|g|L|ml|m|판|타|다스|캔|포|입|갑|곽|송이|다발|그루|마리|포기|줄|잔';
+const UNITS = '박스|상자|개|권|자루|세트|장|통|묶음|팩|병|봉|봉지|EA|ea|Ea|명|인분|시간|차시|식|건|매|롤|켤레|벌|쌍|대|부|kg|g|L|ml|m|판|타|다스|캔|포|입|갑|곽|송이|다발|그루|마리|포기|줄|잔|BOX|Box|box|SET|Set|set|PCS|Pcs|pcs|포대|덩이';
 const QTY = new RegExp(`(\\d{1,3}(?:,\\d{3})+|\\d+(?:\\.\\d+)?)\\s*(${UNITS})(?![가-힣A-Za-z])`, 'g');
 const blank = v => String(v == null ? '' : v).trim() === '';
 const money = (n, man) => Math.round(Number(String(n).replace(/,/g, '')) * (man ? 10000 : 1));
@@ -92,17 +93,25 @@ function parseLine(raw) {
   if (!s) return null;
   let price = null, total = null;
   // 「볼펜 총 30자루 15,000원」: 수량 앞 「총」은 모두 합한 수량(총액이 아님) — 그 줄에 금액이 하나면 그 금액이 총액(단가 = 금액 ÷ 수량)
+  // 「간식 전체 420명 2,500원」의 「전체」는 수량을 꾸미는 말(총액도, 모두 합한 수량도 아님 — 2,500원은 단가)이라 빼기만 함
   const all = new RegExp(`(?:^|\\s)총\\s*(?=(?:\\d{1,3}(?:,\\d{3})+|\\d+(?:\\.\\d+)?)\\s*(?:${UNITS})(?![가-힣A-Za-z]))`).exec(s);
   if (all) s = `${s.slice(0, all.index)} ${s.slice(all.index + all[0].length)}`;
-  const tot = /(?:총|합계|전체)\s*(?:금액)?\s*:?\s*([\d,]+(?:\.\d+)?)\s*(만)?\s*원?/.exec(s);
+  s = s.replace(new RegExp(`(^|\\s)전체\\s*(?=(?:\\d{1,3}(?:,\\d{3})+|\\d+(?:\\.\\d+)?)\\s*(?:${UNITS})(?![가-힣A-Za-z]))`), '$1');
+  // 총액 뒤에 세는 말(「합계 420명」)이 오면 총액이 아님
+  const tot = new RegExp(`(?:총|합계|전체)\\s*(?:금액)?\\s*:?\\s*([\\d,]+(?:\\.\\d+)?)(?![\\d,.]|\\s*(?:${UNITS})(?![가-힣A-Za-z]))\\s*(만)?\\s*원?`).exec(s);
   if (tot) { total = money(tot[1], tot[2]); s = s.replace(tot[0], ' '); }
-  let amounts = null;
+  let amounts = null, times0 = 0;
   // 총액이 있어도 같이 적은 단가(「개당 1,200원 총 12,000원」)는 품명에서 뺌(단가는 총액 ÷ 수량)
   if (total != null) for (const m of [...s.matchAll(WON)]) s = s.replace(m[0], ' ');
   if (total == null) {
     const wons = [...s.matchAll(WON)];
     const times = /[×xX*]\s*([\d,]+(?:\.\d+)?)\s*(만)?\s*원?/.exec(s);
     if (wons.length) {
+      // 「현수막 45,000원 × 2」「현수막 2 × 45,000원」: 세는 말 없이 금액에 바로 곱한 수(금액 바로 뒤·앞만 — 「30x40」「30 x 40」 같은 규격은 아님)
+      const ta = /(원)\s*[×xX*✕]\s*(\d[\d,]*(?:\.\d+)?)(?![\d,.]|\s*[가-힣A-Za-z%])/.exec(s)
+        || /(?:^|\s)(\d[\d,]*(?:\.\d+)?)\s*[×xX*✕]\s*(?=\d[\d,]*(?:\.\d+)?\s*(?:만\s*)?원)/.exec(s);
+      if (ta && toNumber(ta[2] || ta[1]) > 0) { times0 = toNumber(ta[2] || ta[1]); s = s.slice(0, ta.index) + (ta[2] ? '원 ' : ' ') + s.slice(ta.index + ta[0].length); }
+      const wons = [...s.matchAll(WON)];
       amounts = wons.map(m => money(m[1], m[2] || m[3]));
       price = amounts[amounts.length - 1];
       for (const m of wons) s = s.replace(m[0], ' ');
@@ -117,6 +126,7 @@ function parseLine(raw) {
     if (pack.length) spec = qs.filter(m => MEASURE.test(m[2])).map(m => m[0].replace(/\s+/g, '')).join(' ');
     for (const m of [...qs].reverse()) if (m === q || (pack.length && MEASURE.test(m[2]))) s = s.slice(0, m.index) + ' ' + s.slice(m.index + m[0].length);
   }
+  if (!q && times0) qty = times0;
   if (price == null && total == null) {
     const bare = /(?:^|\s)([\d,]{2,})\s*$/.exec(s);
     if (bare) { price = money(bare[1]); s = s.slice(0, bare.index); }
@@ -188,14 +198,18 @@ export function parseLines(text) {
 /* 엑셀·한글 표에서 복사한 칸(탭으로 나뉜 글): 머리줄이 있으면 그 열대로, 없으면 칸 모양으로(글 = 품명·규격, 단위, 수 = 수량·단가·금액) */
 const UNIT_CELL = new RegExp(`^(${UNITS})$`);
 const NUM_CELL = /^[₩￦\\\s]*\d[\d,]*(?:\.\d+)?\s*원?$/;
+// 수에 포장 단위가 붙은 칸(「10묶음」「8개」 — 규격 단위 500ml·80g은 규격): 그 칸이 수량, 남은 수 칸은 단가(·금액)
+const QTY_UNIT_CELL = new RegExp(`^(\\d[\\d,]*(?:\\.\\d+)?)\\s*(${UNITS})$`);
+const packCell = c => { const m = QTY_UNIT_CELL.exec(c); return m && !MEASURE.test(m[2]) ? m : null; };
 function rowItem(cells) {
-  const at = cells.findIndex(c => c && !NUM_CELL.test(c) && !UNIT_CELL.test(c));
+  const at = cells.findIndex(c => c && !NUM_CELL.test(c) && !UNIT_CELL.test(c) && !packCell(c));
   if (at < 0) return null;
   const rest = cells.slice(at + 1).filter(Boolean);
-  const name = cells[at], texts = rest.filter(c => !NUM_CELL.test(c) && !UNIT_CELL.test(c));
-  const unit = rest.find(c => UNIT_CELL.test(c)) || '', nums = rest.filter(c => NUM_CELL.test(c)).map(toNumber);
+  const qc = rest.map(packCell).find(Boolean);
+  const name = cells[at], texts = rest.filter(c => !NUM_CELL.test(c) && !UNIT_CELL.test(c) && !packCell(c));
+  const unit = rest.find(c => UNIT_CELL.test(c)) || (qc ? qc[2] : ''), nums = rest.filter(c => NUM_CELL.test(c)).map(toNumber);
   if (!nums.length) return null;
-  const [qty, price] = nums.length >= 2 ? [nums[0], nums[1]] : [1, nums[0]];
+  const [qty, price] = qc ? [toNumber(qc[1]), nums[0]] : nums.length >= 2 ? [nums[0], nums[1]] : [1, nums[0]];
   return { ...emptyItem(), name, spec: texts[0] || '', unit, qty: String(qty > 0 ? qty : 1), price: String(Math.round(price)) };
 }
 export function tableItems(text) {
@@ -330,14 +344,14 @@ export function splitByVendor(form) {
   return vs.map((v, i) => ({ ...form, items: form.items.filter(it => (vendorOf(it) || (i === 0 ? v : '')) === v && !emptyRow(it)) }));
 }
 
-/* AI로 보내는 글의 사람 이름: 「김철수 강사」「이영희 선생님」 → 「○○○ 강사」, 「강사 김철수」「외부강사: 박하늘」 → 「강사 ○○○」.
+/* AI로 보내는 글의 사람 이름(줄을 넘지 않음 — 「… 학생\n한라봉 2박스」의 품목은 아님): 「김철수 강사」「이영희 선생님」 → 「○○○ 강사」, 「강사 김철수」「외부강사: 박하늘」 → 「강사 ○○○」.
    이름 모양(흔한 성 + 세 글자, 두 글자 성 + 두 글자)만 가림 — 「담임교사」「체육 강사님」은 그대로 */
-const ROLE_AFTER = /(^|[^가-힣])([가-힣]{3,4})(\s*)(강사님|강사|선생님|선생|교수님|교수|교사|님|씨)(?=[^가-힣]|$|께|이|가|은|는|을|를|의|과|와)/g;
-const ROLE_BEFORE = /(강사님?|선생님|교수님?|교사)(\s*[:：]\s*|\s+)([가-힣]{3,4})(?![가-힣])/g;
+const ROLE_AFTER = /(^|[^가-힣])([가-힣]{3,4})([ \t]*)(강사님|강사|선생님|선생|교수님|교수|교사|님|씨)(?=[^가-힣]|$|께|이|가|은|는|을|를|의|과|와)/g;
+const ROLE_BEFORE = /(강사님?|선생님|교수님?|교사)([ \t]*[:：][ \t]*|[ \t]+)([가-힣]{3,4})(?![가-힣])/g;
 /* 학생·보호자 이름도: 「김하늘 학생」「한가람 학생의」「이바다 어머니」「학생 이바다」 → ○○○ (학생 이름은 AI로 보내지 않음).
    「성실한·신청한 학생」 같은 꾸미는 말, 「학생 인솔비」 같은 「~비·~회·~생」 낱말은 이름이 아님(core/privacy.js의 홀로 쓴 이름 규칙과 같게) */
-const KIN_AFTER = /(^|[^가-힣○])([가-힣]{2,4})(\s*)(학생|학부모|어머니|어머님|아버지|아버님|부모님|보호자)(?=$|[^가-힣]|[은는이가을를과와의에도께랑만한님])/g;
-const KIN_BEFORE = /((?:학생|학부모|보호자)(?:\s*[:：]\s*|\s+))([가-힣]{3,4})(?![가-힣])/g;
+const KIN_AFTER = /(^|[^가-힣○])([가-힣]{2,4})([ \t]*)(학생|학부모|어머니|어머님|아버지|아버님|부모님|보호자)(?=$|[^가-힣]|[은는이가을를과와의에도께랑만한님])/g;
+const KIN_BEFORE = /((?:학생|학부모|보호자)(?:[ \t]*[:：][ \t]*|[ \t]+))([가-힣]{3,4})(?![가-힣])/g;
 const NOT_NAME_END = /[도감력화회권별제법실부생들표단방작비장품물집책판함증점식터반란이가는을를의에만와과로한할된던운간친른막움님기상왕년자]$/;
 // 성씨 글자로 시작하지만 이름이 아닌 낱말(「유치원 학부모」「학생 한마당」「이번주 학생」 — 「~원」은 김지원 같은 이름이 있어 끝 글자로 거르지 않음)
 const KIN_WORD = new Set(['유치원', '한마당', '인원수', '문화원', '이번주', '이번달', '지난주', '지난달', '정원외', '장학금', '마스크', '안전모', '전학년', '한학기', '기숙사', '도서관']);
@@ -349,6 +363,9 @@ export const maskNames = t => String(t || '')
   .replace(ROLE_BEFORE, (m, role, sp, n) => (nameCell(n) ? `${role}${sp}${MASK}` : m))
   .replace(KIN_AFTER, (m, pre, n, sp, who) => (kinName(n) ? `${pre}${MASK}${sp || ' '}${who}` : m))
   .replace(KIN_BEFORE, (m, pre, n) => (kinName(n) ? `${pre}${MASK}` : m));
+/* AI로 가는 품의 글: maskNames(직함·학생 옆 이름) 다음 core/redact.js 가리개(쉼표·가운뎃점으로 이은 이름, 「수상자: …」 목록, 맡은 일 말 앞 이름, 명단 줄 빼기)를 한 번 더.
+   자리 표시는 ○○○로(답을 되돌리지 않음) */
+export const maskForAI = t => redactText(maskNames(t)).text.replace(/〔이름\d+〕|\{\{\d+\}\}/g, MASK);
 
 /* 넣기: { text } | { file } → { items(배송비 줄 포함), fields, by: 'rule'|'table'|'ai', missed }
    noAI: 강사 수당 품의 — 글은 앱 규칙으로만 읽고, 그림·글 없는 PDF는 읽지 않음(강사 이름이 AI로 가지 않게) */
@@ -390,7 +407,7 @@ export async function readIntake({ text, file, noAI = false } = {}) {
   const r = parseLines(safe);
   if (r.missed.length && !noAI && ai.ready()) {
     // 전화번호·이메일은 그 자리만 가려 보냄(업체 담당·문의 줄의 다른 글은 남김 — 초안 AI와 같게 연락처는 보내지 않음)
-    try { return withHead({ ...(await aiRead('text', { text: maskContacts(maskNames(safe)) })), personal }); }
+    try { return withHead({ ...(await aiRead('text', { text: maskContacts(maskForAI(safe)) })), personal }); }
     catch (e) { if (!r.items.length) throw e; }
   }
   return withHead({ ...r, by: 'rule', personal });

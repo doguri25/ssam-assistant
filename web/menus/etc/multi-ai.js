@@ -2,7 +2,8 @@
    AI로 가는 글에는 선생님 이름·학교 이름을 넣지 않음(maskFor: 내 정보의 학교·성명, 「○○초등학교」 꼴, 사람 이름 모양(maskPersons), 전화번호·전자 우편).
    AI는 규칙이 못 할 때만: 정량 기준을 규칙으로 못 읽었거나 사진·스캔일 때, 근거자료 제목·번호·날짜를 규칙으로 다 못 찾았을 때, 줄글 나누기 */
 import { maskPersons } from '../../core/chat-names.js';
-import { maskContacts } from '../../core/privacy.js';
+import { maskContacts, peopleNames } from '../../core/privacy.js';
+import { makeRedactor } from '../../core/redact.js';
 import { normCriteria, allItems } from './multi-quant.js';
 import { normQualCriteria, normReport, refreshMissing } from './multi-qual.js';
 
@@ -28,6 +29,14 @@ export function maskFor(text, info = {}) {
   s = s.replace(/(성\s*명|이\s*름\s*[:：])\s*[:：]?\s*(?:[가-힣]\s?){2,4}(?=\s|$|서명|\(|,|\/|\|)/g, '$1 ○○○ ');
   s = s.replace(/【\s*[^】\n]{0,20}?(?:학교|초|중|고)\s*】/g, '【○○학교】').replace(/[가-힣]{2,12}(?:초등학교|중학교|고등학교)/g, '○○학교');
   return maskContacts(maskPersons(s).text);
+}
+
+/* 선생님이 쓴 줄글(자기실적평가서 줄글)의 학생·교직원 이름: maskFor에 더해 회의록·문서 다듬기 가리개(core/redact.js — 직함 앞뒤·조사·괄호 안 목록·맡은 일 쌍점 뒤·다른 줄에서 알게 된 이름)로 ○○○.
+   가리개가 보내지 않는 명단 줄은 빼지 않고(한 일이 사라지지 않게) 그 줄의 이름 모양 낱말만 ○○○ */
+export function maskDraft(text, info = {}) {
+  const ls = maskFor(text, info).split('\n'), rd = makeRedactor(), out = rd.lines(ls);
+  return out.map((x, k) => (x ? x.text.replace(/〔\s*이름\s*\d+\s*〕/g, '○○○').replace(/\{\{\s*(\d+)\s*\}\}/g, (m, n) => rd.secrets[+n - 1] ?? '')
+    : [...new Set([...peopleNames(ls[k]), ...rd.names])].filter(n => /^[가-힣]{2,4}$/.test(n)).sort((a, b) => b.length - a.length).reduce((t, n) => t.split(n).join('○○○'), ls[k]))).join('\n');
 }
 
 /* 정량 기준 글의 첫 표만(「총 계」 뒤 안내·확인 칸까지, 이어지는 작성 예시는 뺌) */
@@ -112,7 +121,7 @@ export function qualPrompt({ parsed, draft = '', facts = {}, basics = {} } = {},
     '', '[기초 자료 칸] (앱이 아는 값, 모르면 빈칸)', ...p.basics.map(b => m(`- ${b}: ${maskFor(tidy(basics[b]), info)}`)),
     ...(known.length ? ['', '[정량평가에서 아는 수]', ...known] : []),
     '', '[자기실적 평가 영역과 칸] key(영역): 칸', ...p.sections.map(s => m(`- ${s.key}(${s.name}): ${s.parts.join(', ')}`)),
-    '', '[선생님 줄글]', maskFor(draft, info).slice(0, 6000) || '(없음)',
+    '', '[선생님 줄글]', maskDraft(draft, info).slice(0, 6000) || '(없음)',
     '',
     '규칙:',
     '- 줄글과 위에 적힌 사실만 씁니다. 지어내지 않습니다. 횟수·건수·시간은 글이나 위 수에 있는 것만 씁니다.',

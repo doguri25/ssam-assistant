@@ -14,7 +14,7 @@ import { go, MENUS } from './shell.js';
 import * as ai from './ai.js';
 import { maskContacts } from './privacy.js';
 import { weekday } from './calendar.js';
-import { routeText, payloadFor, isSure, INTENT_IDS, intentLabel, LANGS, langLabel, parseMemo, maskMemo, memoLine, appendMemo, nosText, safeText, handoffText, policyAsk, TOKTOK_NOTE, WRITE_IDS } from './chat-route.js';
+import { routeText, payloadFor, isSure, INTENT_IDS, intentLabel, LANGS, langLabel, parseMemo, maskMemo, memoLine, appendMemo, nosText, safeText, handoffText, policyAsk, TOKTOK_NOTE, WRITE_IDS, MEMO_END } from './chat-route.js';
 import { assistPrompt, parseAssist, replyHTML, mentionedNos, planActions, offlineWay } from './chat-assist.js';
 import { offlineAnswer } from './chat-knowledge.js';
 import { dataQuestion, answerFor } from './chat-data.js';
@@ -172,7 +172,7 @@ async function onClick(e) {
     if (!c) return;
     const src = (mem.get(m.src) || {}).text || ((findMsg(m.src) || {}).text) || '';
     // 「잘 모르겠어요」 후보는 그 메뉴로만. 회의록은 가리기 전 글만(이 창에 남은 것 — 가린 ○○○를 회의록에 넣지 않게, 없으면 그 탭만 엶)
-    const p = c.nav ? {} : c.intent === 'minutes' ? payloadFor('minutes', (mem.get(m.src) || {}).raw || '') : payloadFor(c.intent, src);
+    const p = c.nav ? (c.intent === 'month' ? payloadFor('month', src) : {}) : c.intent === 'minutes' ? payloadFor('minutes', (mem.get(m.src) || {}).raw || '') : payloadFor(c.intent, src);
     if (c.lang) p.lang = c.lang;
     push({ who: 'me', text: c.label });
     await run(c.intent, p);
@@ -221,11 +221,13 @@ export async function send(text) {
   const me = push({ who: 'me', text: shown.length > 1000 ? shown.slice(0, 1000) + '…' : shown });
   mem.set(me.id, { text: said, raw });
   // 「이 화면에서 뭐 해?」: 채팅 창 뒤 화면(메뉴 › 탭·단계·화면 설명·다음 할 일)으로 AI 없이(스펙 2026-11-14 §3)
-  if (screenQuestion(said)) { say(screenAnswer(readScreen({ nav: get('nav', null), menus: MENUS })), { md: true, src: me.id }); return; }
+  // 「3번 … 알려 줌」「… 발표함」처럼 관찰 메모 끝말로 끝나는 「n번 …」은 메모(화면 질문·앱 자료 답보다 먼저 — 「12번 성적 알려줘」는 그대로 자료 답)
+  const memoNow = isSure(r) && r.intent === 'memo' && MEMO_END.test(String((r.payload || {}).body || ''));
+  if (!memoNow && screenQuestion(said)) { say(screenAnswer(readScreen({ nav: get('nav', null), menus: MENUS })), { md: true, src: me.id }); return; }
   // 앱 자료로 답할 수 있는 묻는 글(단원평가 평균·학생 점수·도달·진도·시간표·출석률·공문 기한)은 AI 없이 바로(스펙 2026-11-14 §1)
   const dq = dataQuestion(said, { today: today(), subjects: subjectNames() });
   // 다만 쓰는 일이 분명하면(「남은 예산으로 색종이 구입 품의 부탁해」) 그 일로 — 넘길 글을 잃지 않게
-  if (dq && !(isSure(r) && WRITE_IDS.includes(r.intent))) { await answerData(dq, me); return; }
+  if (dq && !memoNow && !(isSure(r) && WRITE_IDS.includes(r.intent))) { await answerData(dq, me); return; }
   if (isSure(r)) {
     // 관찰 메모는 이름을 가리기 전 글로 넘김(메모에 넣을 때 가리고 가린 수를 알림 — 전화번호만 먼저 가림)
     const memo = r.intent === 'memo' && parseMemo(maskContacts(raw));
@@ -338,7 +340,10 @@ async function run(intent, p = {}) {
     const raw = String((p && p.text) || ''), m = await import('../menus/home/month-model.js'), now = m.monthOf(today());
     // 「12월 일정」: 그 학년도의 그 달(3~12월은 학년도 해, 1·2월은 다음 해)
     let ym = /다음\s*달/.test(raw) ? m.shiftMonth(now, 1) : /지난\s*달/.test(raw) ? m.shiftMonth(now, -1) : now;
-    if (p && p.mon >= 1 && p.mon <= 12) { const y = (await import('./years.js')).currentYear(today()); ym = `${p.mon <= 2 ? y + 1 : y}-${String(p.mon).padStart(2, '0')}`; }
+    if (p && p.mon >= 1 && p.mon <= 12) { const mm = String(p.mon).padStart(2, '0'), cal = +today().slice(0, 4);
+      // 「2027년 3월」「내년 3월」은 그 해, 해를 말하지 않으면 학년도의 그 달
+      if (p.year) ym = `${p.year}-${mm}`; else if (typeof p.rel === 'number') ym = `${cal + p.rel}-${mm}`;
+      else { const y = (await import('./years.js')).currentYear(today()); ym = `${p.mon <= 2 ? y + 1 : y}-${mm}`; } }
     (await import('../menus/home/month.js')).openMonth(ym);
     say('한 달 달력을 열었어요. 날짜를 누르면 그날 일정·기한을, 줄을 누르면 그 메뉴로 가요.');
     afterGo(); return;

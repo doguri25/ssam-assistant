@@ -25,7 +25,9 @@ import { gapHTML } from './unit-gap-card.js'; // 「도달하지 못한 학생�
 /* rv: 'table'(결과 한 화면) | 'pyeongeo'(교과 평어로 넘기기), stuNo: 누적을 펼친 학생(없으면 null) */
 const R = { rv: 'table', subject: '', term: 0, stuNo: null, pySubject: null, pyRun: null };
 const pct = r => `${Math.round(r * 100)}%`;
-const doneTests = () => listTests().filter(s => s.done);
+// 마친 평가. 「예시로 채우기」 평가는 같은 교과의 진짜 평가가 있으면 뺌 — 예시 점수가 진짜 학생의 평균·수준(교과 평어)에 섞이지 않게
+// (한눈에 eval-board·결손 unit-gap처럼 진짜 학생 셈에서 예시를 뺌. 진짜 평가가 없는 교과의 예시는 그대로 보여 줌)
+const doneTests = () => { const l = listTests().filter(s => s.done), real = new Set(l.filter(s => !s.sample).map(s => s.subject || '')); return l.filter(s => !s.sample || !real.has(s.subject || '')); };
 const loaded = list => loadTests(list);
 const inView = () => visible() && U.view === 'results';
 const fileName = s => s.replace(/[\\/:*?"<>|]/g, '_');

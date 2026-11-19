@@ -10,7 +10,7 @@ import { parseRoster } from '../../core/roster.js';
 import { saveFile } from '../../core/ui.js';
 import { keepFiles } from '../../core/keep-files.js';
 import { getYears, snapshot, carryOver, makeBackup, parseBackup, prepYear, demoOf, isDemoYear, DEMO_WAIT } from '../../core/years.js';
-import { switchYear, switchError, getArchive, safeLS } from '../../core/year-switch.js';
+import { switchYear, moveYear, switchError, getArchive, safeLS } from '../../core/year-switch.js';
 import { FULL_MSG, usage, get as sget, set as sset } from '../../core/store.js';
 import { getInboxSettings, setInboxSettings, registerInbox } from '../../core/inbox.js';
 import { TASKS, getRoles, setDefaultReview, resetRoles, rowText, aiOptions, aiValue, aiFromValue, providerEnv } from '../../core/ai-roles.js';
@@ -373,10 +373,14 @@ async function restoreFile(file) {
   // 지금 학년도에 자료가 있으면 미리 체크하지 않음 (더 새로운 지금 자료를 실수로 덮어쓰지 않게)
   const liveEmpty = !Object.keys(snapshot(safeLS())).length;
   if (!years.length) { toast('백업 파일에 학년도 자료가 없어요', 5000); return; }
+  // 보관함 자료가 이 백업보다 뒤에 보관된 학년도는 미리 체크하지 않음(백업 뒤에 고친 자료를 예전 백업으로 덮지 않게)
+  let arch = yrList;
+  if (!arch) { try { arch = await getArchive().list(); } catch (e) { arch = []; } }
+  const kept = y => (arch || []).find(x => x.year === y), newer = y => { const a = kept(y); return !!(a && r.createdAt && a.savedAt > r.createdAt); };
   SSAM().openSheet(`<h3>백업 파일에서 불러올 학년도</h3>
     <p class="muted" style="margin:0">「${esc(file.name)}」</p>
-    <ul class="yr-pick">${years.map(y => `<li><label><input type="checkbox" data-ry="${y}"${y !== cur || liveEmpty ? ' checked' : ''}> <b>${y}학년도</b>
-      <span class="muted">${y === cur ? '지금 자료를 파일 내용으로 바꿔요 — 파일보다 새로 쓴 자료는 사라져요' : (yrList || []).some(x => x.year === y) ? '보관함의 자료를 바꿔요' : '보관함에 넣어요'}</span></label></li>`).join('')}</ul>
+    <ul class="yr-pick">${years.map(y => `<li><label><input type="checkbox" data-ry="${y}"${(y !== cur && !newer(y)) || (y === cur && liveEmpty) ? ' checked' : ''}> <b>${y}학년도</b>
+      <span class="muted">${y === cur ? '지금 자료를 파일 내용으로 바꿔요 — 파일보다 새로 쓴 자료는 사라져요' : newer(y) ? '보관함 자료가 이 백업보다 새로워요 — 바꾸면 백업 뒤에 고친 자료가 사라져요' : kept(y) ? '보관함의 자료를 바꿔요' : '보관함에 넣어요'}</span></label></li>`).join('')}</ul>
     ${sheetBtns('yrRestoreOk', '불러오기')}`,
   onOk('yrRestoreOk', async () => {
     const pick = [...document.querySelectorAll('#sheetRoot [data-ry]')].filter(c => c.checked).map(c => +c.dataset.ry);
@@ -384,6 +388,22 @@ async function restoreFile(file) {
     SSAM().closeSheet();
     try { for (const y of pick) if (y !== cur) await getArchive().put(y, r.years[y]); }
     catch (e) { toast('보관함에 넣지 못했어요', 6000); return; }
+    // 백업 파일의 지금 학년도가 이 앱과 다르고 그것도 골랐으면(새 컴퓨터로 옮길 때 등) 지금 학년도를 바꾸기 전에 어느 학년도로 열지 물음
+    if (pick.includes(cur) && r.current && r.current !== cur && pick.includes(r.current)) {
+      SSAM().openSheet(`<h3>${r.current}학년도로 열까요?</h3><p class="muted" style="margin:0">백업 파일의 지금 학년도는 ${r.current}학년도예요. 이 앱은 ${cur}학년도예요. ${cur}학년도 자료도 파일 내용으로 바꾸고 보관함에 남겨요.</p>${keyNote()}
+        <div class="row" style="justify-content:flex-end"><button class="btn" type="button" id="yrStayCur">${cur}학년도로 열기</button><button class="btn primary" type="button" id="yrGoOk">${r.current}학년도로 열기</button></div>`, sh => {
+        sh.querySelector('#yrStayCur').addEventListener('click', () => { SSAM().closeSheet(); go(cur, r.years[cur]); });
+        sh.querySelector('#yrGoOk').addEventListener('click', async () => {
+          SSAM().closeSheet();
+          if (blocked()) return;
+          // 지금 학년도를 파일 내용으로 바꾼 뒤(다시 열지 않음) 그 학년도를 보관함에 넣고 백업의 지금 학년도로
+          const a = await moveYear(cur, r.years[cur]);
+          if (!a.ok) { toast(switchError(a.code), 7000); return; }
+          go(r.current);
+        });
+      });
+      return;
+    }
     if (pick.includes(cur)) { go(cur, r.years[cur]); return; }
     toast(`${pick.join(', ')}학년도를 보관함에 넣었어요`);
     loadYears();

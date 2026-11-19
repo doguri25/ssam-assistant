@@ -5,7 +5,7 @@
 import { get, set } from '../../core/store.js';
 import { isDate, listEvents } from '../../core/calendar.js';
 import { currentYear } from '../../core/years.js';
-import { stripNames, nameCell, looksLikeName, maskStaff, staffName, MASK } from '../../core/privacy.js';
+import { stripNames, nameCell, looksLikeName, maskStaff, staffName, maskJosaNames, roleNames, MASK } from '../../core/privacy.js';
 import { listPlans } from '../plan/year-model.js';
 import { listEventPlans } from '../plan/event-model.js';
 import { listRecent } from '../purchase/library.js';
@@ -54,8 +54,10 @@ export function nameTokens(v) {
   const s = String(v == null ? '' : v).trim();
   if (!s) return [];
   const out = new Set();
-  if (/^[가-힣]{2,5}$/.test(s)) out.add(s);
-  for (const w of s.split(/[\s,·/()]+/)) if (/^[가-힣]{2,4}$/.test(w) && (nameCell(w) || looksLikeName(w))) out.add(w);
+  // 부서·직함만 적은 칸(「독서교육부」「정보부」「교무부장」 — 연간계획 담당자 칸 예시가 「독서교육부 ○○○」)은 사람 이름이 아님
+  const dept = w => /(?:[부실과팀반]|부장)$/.test(w);
+  if (/^[가-힣]{2,5}$/.test(s) && !dept(s)) out.add(s);
+  for (const w of s.split(/[\s,·/()]+/)) if (/^[가-힣]{2,4}$/.test(w) && !dept(w) && (nameCell(w) || looksLikeName(w))) out.add(w);
   return [...out];
 }
 
@@ -80,6 +82,9 @@ export function cleanText(v, names = []) {
     .replace(/(?:문의|연락처|전화|휴대폰|☎|tel|e-?mail|이메일)?\s*[:：]?\s*\u0000/gi, '')
     .replace(/\(\s*[,，·]?\s*\)/g, '').replace(/[,，·]\s*(?=[)\n]|$)/g, '').replace(/\(\s*[,，]\s*/g, '(').replace(/^\s*[,，·]\s*/gm, '');
   s = maskStaff(s).text;
+  // 조사가 붙은 이름(「이바다에게 받기」「한가람과 협의」)·흔한 이름(「발표자 박솔빛」「김하늘(교무부장)」)·맡은 일 쌍점 뒤(「사회: 한가람, 기록: 박솔빛」)
+  for (const n of roleNames(s)) s = s.replace(new RegExp(`(?<![가-힣])${n}(?![가-힣])`, 'g'), MASK);
+  s = maskPersons(maskJosaNames(s).text).text;
   s = stripNames(s).text;
   return s.replace(/[ \t]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }

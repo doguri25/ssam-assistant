@@ -6,6 +6,7 @@ import { relText } from '../plan/report-ai.js';
 import { findRoles, swapDate, DATE, isSign, isDateLine, replyCells } from '../../core/hwpx-form.js';
 export { replyCells };
 import { cleanSheet } from '../evaluate/activity/activity-read.js';
+import { maskName } from './gongmun-ai.js';
 
 const PHONE = /0\d{1,2}[-.\s)]?\d{3,4}[-.\s]?\d{4}/g;
 const EMAIL = /[\w.+-]+@[\w-]+\.[\w.]+/g;
@@ -80,7 +81,7 @@ export function plainLetterDoc(plain, letter) {
 }
 
 export function letterPrompt({ sources = [], memo = '', sample = '', today = '', year } = {}) {
-  const docs = sources.filter(s => s && String(s.text || '').trim()).map(s => `[공문·계획: ${String(s.name || '글').slice(0, 60)}]\n${String(s.text).slice(0, 6000)}`).join('\n\n');
+  const docs = sources.filter(s => s && String(s.text || '').trim()).map(s => `[공문·계획: ${(maskName(s.name) || '글').slice(0, 60)}]\n${String(s.text).slice(0, 6000)}`).join('\n\n');
   return ['[가정통신문]',
     `학교에서 보호자(학부모)께 보내는 가정통신문을 씁니다. 오늘: ${today || ''}, 학년도: ${year || ''}.`,
     '- title: 가정통신문 제목(예: 2026학년도 가을 현장체험학습 안내). 「가정통신문」이라는 말은 빼도 됩니다.',
