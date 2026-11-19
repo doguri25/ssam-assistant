@@ -78,7 +78,7 @@ export function makeRedactor() {
     keep.forEach((f, k) => { const one = stLines.length === keep.length ? stLines[k] : stripNames(f.p.s).text; f.out = mask(f.p.s, one); if (f.out == null) f.p = null; });
     flat.forEach(f => (f.list || []).forEach(nameNo)); // 번호는 보내는 줄의 이름 다음
     // 맡은 일 말 앞의 이름 모양 낱말(「사전 교육(이바다 인솔)」) — 흔한 이름 목록에 없어도 배워 보내는 줄에서도 가림(번호는 그 다음)
-    keep.forEach(f => { if (f.p) roleNames(f.p.s).forEach(w => roles.add(w)); });
+    keep.forEach(f => { if (f.p) roleNames(f.p.s, [...f.p.s.matchAll(/[가-힣]{3}/g)].map(x => x[0]).filter(w => names.includes(w))).forEach(w => roles.add(w)); });
     return { flat, n: texts.length };
   }
   function emit({ flat, n }) {
@@ -87,6 +87,9 @@ export function makeRedactor() {
     for (const w of roles) if (!withJosa(w)) nameNo(w);
     const res = Array.from({ length: n }, () => []);
     const dead = new Set(flat.filter(f => !f.p).map(f => f.i));
+    // 아는 이름(다른 줄·맡은 일 말로 배운 이름)에 쉼표로 이어진 이름(「후보: 〔이름1〕, 남다율, 이바다」)도 — 목록 규칙을 자리 표시에 한 번 더
+    const tie = t => { const [x, k] = maskList(t); if (!k) return t; const m = new RegExp(`^${x.split(MASK).map(reEsc).join('([가-힣]{3,4})')}$`, 's').exec(t); if (!m) return t; let i = 0; return x.replace(new RegExp(MASK, 'g'), () => `〔이름${nameNo(m[++i])}〕`); };
+    flat.forEach(f => { if (!dead.has(f.i) && !f.p.blank) f.out = tie(known(f.out)); });
     flat.forEach(f => { if (!dead.has(f.i)) res[f.i].push(f.p.blank ? f.p.s : known(f.out)); });
     return res.map((ls, i) => (dead.has(i) ? null : { text: ls.join('\n') }));
   }

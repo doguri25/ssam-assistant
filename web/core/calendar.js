@@ -60,13 +60,15 @@ export function setEvents(source, items) {
 export const removeEvents = source => setEvents(source, []);
 
 /* 학교가 문을 닫는 날(재량휴업일·개교기념일·휴업일·휴교): 설정 › 학교 정보에서 그런 이름으로 넣은 날과 학사일정의 그런 이름 일정.
-   방학은 아님(방학 중 기초학력 캠프), 「… 계획 제출」 같은 일·공문 기한은 아님. 기초학력 수업 날을 셀 때 공휴일처럼 건너뜀 → 날짜 Set */
+   방학은 아님(방학 중 기초학력 캠프 — 「겨울방학(휴업일)」「학년말 휴업일」처럼 휴업일이라 적은 방학·한 주 넘는 기간도), 「… 계획 제출」 같은 일·공문 기한은 아님.
+   기초학력 수업 날을 셀 때 공휴일처럼 건너뜀 → 날짜 Set */
 const CLOSED_TITLE = /재량\s*휴업|개교\s*기념일|휴업일|휴교/;
 const NOT_CLOSED = /제출|신청|조사|계획|보고|회신|안내|협의|회의|연수|공문|\[/;
 export function closedDays() {
   const out = new Set(), sc = get('school', null);
   for (const b of (sc && Array.isArray(sc.breaks) ? sc.breaks : [])) {
-    if (!b || !isDate(b.from) || !isDate(b.to) || b.from > b.to || !CLOSED_TITLE.test(String(b.label || ''))) continue;
+    const label = String((b && b.label) || '');
+    if (!b || !isDate(b.from) || !isDate(b.to) || b.from > b.to || !CLOSED_TITLE.test(label) || /방학/.test(label) || b.to > addDays(b.from, 6)) continue;
     for (let d = b.from, i = 0; d <= b.to && i < 60; d = addDays(d, 1), i++) out.add(d);
   }
   for (const e of listEvents()) if (e.source !== 'gongmun' && CLOSED_TITLE.test(e.title) && !NOT_CLOSED.test(e.title)) out.add(e.date);

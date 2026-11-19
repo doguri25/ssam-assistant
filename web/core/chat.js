@@ -14,7 +14,7 @@ import { go, MENUS } from './shell.js';
 import * as ai from './ai.js';
 import { maskContacts } from './privacy.js';
 import { weekday } from './calendar.js';
-import { routeText, payloadFor, isSure, INTENT_IDS, intentLabel, LANGS, langLabel, parseMemo, maskMemo, memoLine, appendMemo, nosText, safeText, handoffText, policyAsk, TOKTOK_NOTE } from './chat-route.js';
+import { routeText, payloadFor, isSure, INTENT_IDS, intentLabel, LANGS, langLabel, parseMemo, maskMemo, memoLine, appendMemo, nosText, safeText, handoffText, policyAsk, TOKTOK_NOTE, WRITE_IDS } from './chat-route.js';
 import { assistPrompt, parseAssist, replyHTML, mentionedNos, planActions, offlineWay } from './chat-assist.js';
 import { offlineAnswer } from './chat-knowledge.js';
 import { dataQuestion, answerFor } from './chat-data.js';
@@ -224,7 +224,8 @@ export async function send(text) {
   if (screenQuestion(said)) { say(screenAnswer(readScreen({ nav: get('nav', null), menus: MENUS })), { md: true, src: me.id }); return; }
   // 앱 자료로 답할 수 있는 묻는 글(단원평가 평균·학생 점수·도달·진도·시간표·출석률·공문 기한)은 AI 없이 바로(스펙 2026-11-14 §1)
   const dq = dataQuestion(said, { today: today(), subjects: subjectNames() });
-  if (dq) { await answerData(dq, me); return; }
+  // 다만 쓰는 일이 분명하면(「남은 예산으로 색종이 구입 품의 부탁해」) 그 일로 — 넘길 글을 잃지 않게
+  if (dq && !(isSure(r) && WRITE_IDS.includes(r.intent))) { await answerData(dq, me); return; }
   if (isSure(r)) {
     // 관찰 메모는 이름을 가리기 전 글로 넘김(메모에 넣을 때 가리고 가린 수를 알림 — 전화번호만 먼저 가림)
     const memo = r.intent === 'memo' && parseMemo(maskContacts(raw));

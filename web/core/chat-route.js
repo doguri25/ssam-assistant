@@ -136,8 +136,16 @@ function scoreOf(t, o = {}) {
   if (lang && (/번역/.test(t) || LANG_CUE.test(t))) scores.translate = 5;
   // 다면평가 낱말은 글감일 때가 많음: 쪽지·가정통신문·단원평가·평어·결과 보고서 같은 글 넣는 일이 분명하면 그 일(「다면평가 위원회 안내 쪽지」)
   if (scores.multi && ['message', 'letter', 'unit', 'pyeongeo', 'report', 'gr', 'gongmun', 'purchase'].some(id => (scores[id] || 0) >= 3)) scores.multi = 1;
+  // 붙여 넣은 여러 줄 글(공문·회의 메모)의 보강·교체·전담 낱말은 글감 — 오늘 수업·진도표는 예전 규칙(「오늘 수업」「진도표·시수」)으로만
+  if (o.paste) {
+    if (scores.today) { if (/오늘\s*(?:수업|시간표)/.test(t)) scores.today = 3.5; else delete scores.today; }
+    if (scores.progress) { if (/진도표|시수/.test(t)) scores.progress = 3; else if (/진도/.test(t)) scores.progress = 2; else delete scores.progress; }
+  }
   // 화면으로 가기만 하는 일(예산·연수·학년말·수업 아이디어·오늘 수업·진도표)은 글을 쓰는 일(쪽지·가정통신문·공문·보고서·품의·회의록·행사)이 분명하면 물러남 — 넘길 글을 잃지 않게
-  if (['message', 'letter', 'gongmun', 'report', 'purchase', 'minutes', 'event'].some(id => (scores[id] || 0) >= 2.5)) for (const id of ['budget', 'training', 'yearend', 'idea', 'today', 'progress']) if (scores[id] && scores[id] < 4) scores[id] = 1;
+  const NAV_IDS = ['budget', 'training', 'yearend', 'idea', 'today', 'progress'];
+  if (['message', 'letter', 'gongmun', 'report', 'purchase', 'minutes', 'event'].some(id => (scores[id] || 0) >= 2.5)) for (const id of NAV_IDS) if (scores[id] && scores[id] < 4) scores[id] = 1;
+  // 다른 메뉴 일(인수인계서·주간학습안내·연간계획·기재 점검·평어·채점·기초학력·다면평가…)이 분명해도 물러남(「인수인계서에 연수 현황 넣어 줘」)
+  if (['handover', 'weekly', 'year', 'classplan', 'check', 'pyeongeo', 'hk', 'cc', 'gr', 'unit', 'activity', 'camp', 'multi'].some(id => (scores[id] || 0) >= 2.5)) for (const id of NAV_IDS) if (scores[id] && scores[id] < 4) scores[id] = 1;
   // 붙여 넣은 여러 줄 글도 화면 가기로 보내지 않음(글이 사라짐)
   if (o.paste) for (const id of ['budget', 'training', 'yearend', 'idea']) if (scores[id]) scores[id] = Math.min(scores[id], 1);
   return scores;
@@ -303,7 +311,7 @@ export const isSure = r => !!(r && r.intent && r.confidence >= 0.6);
 
 /* ---------- 묻는 글 ---------- */
 // 글 넣는 일(분명하면 부탁 꼬리가 있을 때 묻는 낱말이 있어도 명령)
-const WRITE_IDS = ['purchase', 'message', 'letter', 'gongmun', 'report', 'minutes'];
+export const WRITE_IDS = ['purchase', 'message', 'letter', 'gongmun', 'report', 'minutes'];
 // 어떻게·왜·뭐·무슨·차이·뜻: 묻는 말(명령 꼬리가 있어도)
 export const HOW = /어떻게|어떡|무엇|뭐(?:야|예요|에요|지|가|를|부터|해야|하면|라고|\s*(?:있|써|해|하|넣|골라|고르))|뭔가요|뭔지|무슨|왜(?=\s|[?？요죠지냐]|$)|차이(?:가|는|점|를)?|뜻이|의미가|설명해/;
 // 「~하는 법·방법·순서·요령」: 묻는 말(「신청하는 방법 안내 가정통신문」처럼 뒤에 「안내」가 오면 넣을 내용)

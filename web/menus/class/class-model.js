@@ -98,6 +98,10 @@ export function normSubject(v) {
     ...(isDate(v.since) ? { since: v.since } : {}),
     // posAt: 진도 자리(offset)를 마지막으로 정한 날(다음 차시 고르기·진도표대로 맞추기·가져오기) — 주간학습안내가 체크하지 않은 날을 셀 때의 시작
     ...(isDate(v.posAt) ? { posAt: v.posAt } : {}),
+    // posDone: 진도 자리를 정할 때 그날 앞 「완료」 수 — 그 뒤에 체크한 그 앞 날 칸은 시수에만 셈(진도는 offset이 이미 담음)
+    ...(Number.isInteger(v.posDone) && v.posDone >= 0 ? { posDone: v.posDone } : {}),
+    // h0At: 「체크 전 실시」(hours0)가 담은 마지막 날(가져올 때 계획 진도에 맞춤) — 그날까지 체크하지 않은 칸은 「체크하지 않은 날」에 안 넣음
+    ...(isDate(v.h0At) ? { h0At: v.h0At } : {}),
     offset, hours0: h0Of({ hours0: v.hours0, offset }),
     // prevHours0: 다음 학기 진도표로 바꾸기 전 학기의 「체크 전 실시」(연간 실시에 더함)
     ...(Number.isInteger(v.prevHours0) && v.prevHours0 > 0 ? { prevHours0: v.prevHours0 } : {}),
@@ -299,6 +303,13 @@ function records(ctx, sub, { all = false } = {}) {
   }
   return out;
 }
+/* 진도에 세는 「완료」 수(pred에 맞는 기록만): 진도 자리를 정한 교과(posDone)는 그날 앞 완료를 그때 수로 고정하고 그날부터의 기록만 더함.
+   진도 자리를 정한 날 앞의 칸(지난 날 화면)·예전 자료(posDone 없음)는 모든 기록으로 */
+function doneCount(ctx, sub, pred = () => true, at = '') {
+  const rs = records(ctx, sub).filter(r => r.status === 'done' && pred(r));
+  if (sub.posDone == null || !sub.posAt || (at && at < sub.posAt)) return rs.length;
+  return sub.posDone + rs.filter(r => r.date >= sub.posAt).length;
+}
 const recAt = (ctx, date, period) => (ctx.log && ctx.log[date] && ctx.log[date][period]) || null;
 const statusAt = (ctx, date, period) => { const r = date <= ctx.today && recAt(ctx, date, period); return (r && r.status) || null; };
 const logged = (ctx, date, period) => !!statusAt(ctx, date, period);
@@ -317,7 +328,7 @@ export function assumeFrom(ctx, sub) {
 /* 그 시간의 차시 순번(0부터): 보정값 + 앞선 「완료」 수 + 오늘부터 그 시간 전까지 기록 없는 이 교과 시간 수(매시간 한 차시로 예상).
    ctx.assume(주간학습안내): 체크하지 않은 지난 칸도 한 차시로 셈(오늘 수업·시수에는 쓰지 않음) */
 export function lessonAt(ctx, sub, date, period) {
-  let n = sub.offset + records(ctx, sub).filter(r => r.status === 'done' && before(r.date, r.period, date, period)).length;
+  let n = sub.offset + doneCount(ctx, sub, r => before(r.date, r.period, date, period), date);
   if (ctx.assume) {
     const from = assumeFrom(ctx, sub);
     for (let d = from, i = 0; d && d < ctx.today && d <= date && i <= 400; d = addDays(d, 1), i++) {
@@ -414,7 +425,11 @@ export function hours(ctx, sub) {
 export const yearHours = (ctx, sub) => hours(ctx, sub).done + (sub.prevHours0 || 0) + (sub.since ? records(ctx, sub, { all: true }).filter(r => r.date < sub.since && r.status !== 'skip').length : 0);
 
 /* 다음에 할 차시를 n(1부터)으로: 기록·실시 시수는 두고 진도 자리(offset)만 */
-export const setNext = (ctx, sub, n) => ({ ...sub, hours0: h0Of(sub), offset: n - 1 - records(ctx, sub).filter(r => r.status === 'done').length, posAt: ctx.today });
+// posDone: 오늘 앞 완료 수(그 뒤에 그 앞 날을 체크하면 시수만 늘고 진도는 그대로) — 오늘 기록은 offset에서 빼고 doneCount가 다시 더함
+export const setNext = (ctx, sub, n) => {
+  const rs = records(ctx, sub).filter(r => r.status === 'done'), posDone = rs.filter(r => r.date < ctx.today).length;
+  return { ...sub, hours0: h0Of(sub), offset: n - 1 - rs.length, posAt: ctx.today, posDone };
+};
 
 /* ---------- 진도표 없는 교과(시수만) ---------- */
 const ORDER = ['국어', '수학', '사회', '과학', '영어', '음악', '미술', '체육', '도덕', '실과', '창체'];
@@ -479,7 +494,7 @@ function slotsSoFar(ctx, sub, from) {
 export function progressOf(ctx, sub) {
   const h = hours(ctx, sub);
   const plan = h.plan;
-  const actual = Math.min(plan, Math.max(0, sub.offset + records(ctx, sub).filter(r => r.status === 'done').length));
+  const actual = Math.min(plan, Math.max(0, sub.offset + doneCount(ctx, sub)));
   const mode = sub.lessons.some(l => l.from || l.week != null) ? 'week' : 'slot';
   let expected = 0, started;
   if (mode === 'week') {
@@ -501,7 +516,8 @@ export const summary = ctx => ctx.subjects.map(s => progressOf(ctx, s));
 /* 진도표대로라면 지금 할 차시를 다음 차시로 */
 export const alignToPlan = (ctx, sub) => setNext(ctx, sub, progressOf(ctx, sub).expected + 1);
 /* 새로 넣은 진도표: 계획 진도에 맞추고, 그만큼을 처음 실시로(가져올 때 한 번) */
-const seat = (ctx, sub) => { const a = alignToPlan(ctx, sub); return { ...a, hours0: Math.max(0, a.offset) }; };
+// h0At: 체크 전 실시가 오늘까지의 빈 칸을 담음 — 그 앞 체크하지 않은 날은 「체크하지 않은 날」에 안 넣음(leftPeriods)
+const seat = (ctx, sub) => { const a = alignToPlan(ctx, sub); return { ...a, hours0: Math.max(0, a.offset), h0At: ctx.today }; };
 /* 있는 교과를 새 진도표로 바꿀 때 기준일(since): 새 진도표의 첫날 앞에 이 교과 체크 기록이 있으면(다음 학기 진도표) 그 첫날.
    첫날이 지금 기준일보다 앞이면(앞 학기 진도표로 되돌림) 기준일을 없앰(''), 그 밖에는 그대로(null).
    날짜가 없는 진도표(주만 있음·직접 씀)는 앞 진도표를 모두 마쳤고 차시가 거의 다르면(다음 학기 진도표) 오늘.
@@ -519,8 +535,13 @@ export function termStart(ctx, old, lessons) {
     for (const l of list) { const t = String(l.title || '').trim(); left.set(t, (left.get(t) || 0) + 1); }
     const kept = old.lessons.filter(l => { const n = left.get(l.title) || 0; if (n) left.set(l.title, n - 1); return n > 0; }).length;
     // 앞 진도표를 마침: 실시 시수가 계획에 닿았거나, 진도 자리(「다음 차시」·진도표대로 맞추기)가 끝까지 감(체크 전 실시는 그대로라 시수만으로는 모자랄 수 있음)
-    const at = old.offset + records(ctx, old).filter(r => r.status === 'done').length;
-    return h.plan > 0 && (h.done >= h.plan || at >= h.plan) && same * 2 < list.length && kept * 2 < old.lessons.length ? ctx.today : null;
+    const at = old.offset + doneCount(ctx, old);
+    if (!(h.plan > 0 && (h.done >= h.plan || at >= h.plan) && same * 2 < list.length && kept * 2 < old.lessons.length)) return null;
+    // 오늘 체크한 칸이 있어야 앞 진도표를 마친 것이면(오늘 앞 학기 마지막 차시를 함) 기준일은 내일 — 오늘 기록이 새 진도표 1차시로 세지 않게.
+    // 오늘 앞에 이미 마쳤으면 오늘 기록은 새 학기 수업(「끝」이 보이는 동안 함)이라 오늘부터
+    const early = r => r.date < ctx.today;
+    const doneBefore = h0Of(old) + records(ctx, old).filter(r => r.status !== 'skip' && early(r)).length, atBefore = old.offset + doneCount(ctx, old, early);
+    return doneBefore >= h.plan || atBefore >= h.plan ? ctx.today : addDays(ctx.today, 1);
   }
   const first = dates.sort()[0], back = !!old.since && first < old.since, base = back ? { ...old, since: '' } : old;
   const had = new Set(old.lessons.map(l => l.from).filter(Boolean)), early = records(ctx, base).some(r => r.date < first);
@@ -537,7 +558,9 @@ export function replaceLessons(old, lessons, fields = {}) {
   const since = termStart(makeCtx(), old, lessons);
   // 앞 학기의 「체크 전 실시」는 prevHours0로 남김(연간 실시 yearHours에 더함)
   if (since) { const neu = saveSubject({ ...old, ...fields, since, start: since, offset: 0, hours0: 0, prevHours0: (old.prevHours0 || 0) + h0Of(old), lessons }); return neu && saveSubject(seat(makeCtx(), neu)); }
-  return saveSubject({ ...old, ...(since === '' ? { since: '' } : {}), ...fields, lessons });
+  // 기준일을 없애면(1·2학기를 합친 진도표) 앞 학기 기록도 진도에 셈 — 고정한 완료 수(posDone)는 버림
+  if (since === '') { const { posDone, ...rest } = old; return saveSubject({ ...rest, since: '', ...fields, lessons }); }
+  return saveSubject({ ...old, ...fields, lessons });
 }
 /* 새 교과 넣기(진도표 파일·AI로 뽑기·직접 쓰기): 계획 진도에 맞춤. fields: 이름·차시 목록·총 시수. 저장하지 못하면 null.
    지운 교과를 같은 이름으로 다시 넣어 체크 기록이 남아 있으면: 다음 학기 진도표면 그 첫날(termStart) 앞 기록은 세지 않고,
@@ -549,7 +572,8 @@ export function addSubject(fields) {
   if (!left.length) return saveSubject(seat(ctx, neu));
   const since = termStart(ctx, { ...neu, lessons: [] }, neu.lessons);
   const s = since ? { ...neu, since, start: since } : { ...neu, start: left[0] < neu.start ? left[0] : neu.start };
-  return saveSubject(records(ctx, s).length ? s : seat(ctx, s));
+  // 기록대로 이어가는 교과도 진도 자리를 정한 날을 시작 전날로 — 주간학습안내가 시작일부터 체크하지 않은 칸을 이어 셈(assumeFrom)
+  return saveSubject(records(ctx, s).length ? (isDate(s.start) ? { ...s, posAt: addDays(s.start, -1) } : s) : seat(ctx, s));
 }
 /* 진도표에서 고른 교과 넣기: 있는 교과는 차시 목록만 바꾸고(replaceLessons), 새 교과는 addSubject. 하나라도 저장하지 못하면 false */
 export function importSubjects(picked) {
@@ -568,12 +592,23 @@ export function leftPeriods(ctx, d) {
     if (logged(ctx, d, s.period)) return false;
     const f = findSubject(ctx.subjects, s.subject);
     // 진도 자리를 정한 날까지(그 자리가 앞 칸을 이미 담음)·교과를 넣기 전 날은 세지 않음(주간학습안내 assumeFrom과 같게)
-    return !!f && f.lessons.length > 0 && !(f.since && d < f.since) && !(f.posAt && d <= f.posAt) && !(isDate(f.start) && d < f.start);
+    // 진도 자리만 정한 날(다음 차시·진도표대로 맞추기, posDone 있음)은 시수가 그 앞 칸을 담지 않으므로 남김 — 체크하면 시수만 늘고 진도는 그대로
+    if (!f) return false;
+    const covered = f.h0At || (f.posDone == null ? f.posAt : '');
+    return f.lessons.length > 0 && !(f.since && d < f.since) && !(covered && d <= covered) && !(isDate(f.start) && d < f.start);
   }).map(s => s.period);
 }
 /* 체크하지 않은 날: 처음 체크한 날부터, 오늘 앞 수업일 n일 안에서 진도표 있는 교과 수업 가운데 체크하지 않은 교시가 있는 날(오래된 순, 반만 체크한 날도).
    다음 학기 진도표로 바꾼 교과(since)는 그 앞 날을 세지 않음(체크해도 그 진도표에 세지 않는 날) */
 export const missingDays = (ctx, n = 10) => missingList(ctx, n).map(x => x.date);
+/* 그 가운데 주간학습안내가 진도표대로 했다고 보고 이어 센 날(남은 교시의 교과가 그날부터 셈 — assumeFrom) */
+export function assumedList(ctx, n = 20) {
+  return missingList(ctx, n).filter(x => slotsOn(ctx, x.date).some(s => {
+    if (!x.periods.includes(s.period)) return false;
+    const f = findSubject(ctx.subjects, s.subject), from = f ? assumeFrom(ctx, f) : '';
+    return !!from && x.date >= from;
+  }));
+}
 /* 같은 날들을 [{ date, periods: 남은 교시, part: 그날 체크한 칸이 있음 }]으로 */
 export function missingList(ctx, n = 10) {
   const first = Object.keys(ctx.log).filter(d => d < ctx.today && Object.values(ctx.log[d]).some(r => r.status)).sort()[0];

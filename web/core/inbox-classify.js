@@ -57,7 +57,8 @@ export function classify({ name = '', text = '', scan = false } = {}) {
   if (scan) {
     if (keyName(n)) return { kind: 'unit-key', why: '파일 이름에 「정답」·「모범 답안」이 있어요. 사진 답안은 AI가 읽어요.', alts: ['unit-scan'] };
     if (/견적/.test(n)) return { kind: 'quote', why: '파일 이름에 「견적」이 있어요.', alts: ['unit-scan'] };
-    if (/이수증|수료증/.test(n)) return { kind: 'cert', why: '파일 이름에 「이수증」이 있어요.', alts: ['unit-scan'] };
+    // 이수증은 늘 물어봄(「이수증 제출 안내」 공문 사진일 수도 — 바로 실행이어도 연수 상태를 말없이 바꾸지 않게)
+    if (/이수증|수료증/.test(n)) return { kind: 'cert', why: '파일 이름에 「이수증」이 있어요.', alts: ['unit-scan'], ask: true };
     return { kind: 'unit-scan', why: '글자가 없는 사진·스캔이에요.', alts: ['unit-key', 'quote'] };
   }
   const t = String(text || '').slice(0, 30000), lines = t.split('\n'), head = lines.slice(0, 15).join('\n'), first = (lines.find(l => l.trim()) || '').replace(/^﻿/, '');
@@ -133,8 +134,9 @@ export function classify({ name = '', text = '', scan = false } = {}) {
 
   // 연수 이수증·수료증: 「성 명:」 칸·복사기 파일 이름(scan)이 있어도 학생 문제지가 아님(학생 이름 칸 12점 + 스캔 이름 12점보다 높게)
   // 이수증 본문 말(「위 사람은 … 이수하였음을 증명합니다」)이나 짧은 「이수증」 제목 + 성명 칸일 때만 — 연수 공문(수신·발신·협조…)·연수 계획은 아님
-  const certBody = /위\s*(?:사람|분)은|이수하였음을|수료하였음을|증명합니다|수료하였기에/.test(t)
-    || (lines.slice(0, 5).some(l => /^\s*(?:이\s*수\s*증|수\s*료\s*증)(?:\s*\(.*\))?\s*$/.test(l)) && /(?:성\s*명|이\s*름)\s*[:：]/.test(t));
+  // 본문 말: 「위(의) 사람은」「상기인은」「이수하였기에·수료하였으므로」「증명합니다·수여합니다」, 제목 줄: 「연수 이수증」「[이수증]」「수료증서」
+  const certBody = /위(?:의)?\s*(?:사람|분|교원)은|상기\s*(?:인|자|사람)은|(?:이수|수료)하였(?:음을|기에|으므로)|증명합니다|수여합니다|수여함/.test(t)
+    || (lines.slice(0, 5).some(l => /^\s*[\[［(【]?\s*(?:[가-힣]{0,6}\s*)?(?:이\s*수\s*증|수\s*료\s*증)(?:서)?\s*[\]］)】]?(?:\s*\(.*\))?\s*$/.test(l)) && /(?:성\s*명|이\s*름)\s*[:：]/.test(t));
   const docSigns = [/수\s*신/, /발\s*신/, /경\s*유/, /협조하여\s*주시기/, /붙\s*임/].filter(re => re.test(t)).length >= 2 || YEAR_PARTS.filter(re => re.test(t)).length >= 2 || /(운영|추진|연간)\s*계획/.test(head);
   if (certBody && !docSigns && /이\s*수\s*증|수\s*료\s*증/.test(head) && /이\s*수|수\s*료/.test(t) && /연수|교육|과정/.test(t)) add('cert', 30, '연수 이수증이에요. 연수 메뉴에서 이수를 기록해요(AI로 보내지 않아요).');
   else if (/이수증|수료증/.test(n)) add('cert', 4, '파일 이름에 「이수증」이 있어요.');

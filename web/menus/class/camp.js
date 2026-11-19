@@ -474,9 +474,11 @@ const MERGE_NOTE = '합치면 그날 교과·지도 내용·교시 수를 한 �
 function doMerge(id) {
   const x = M.getCamp(id);
   if (!x) return;
-  const n = M.sameDateCount(x), y = M.mergeSameDate(x);
-  if (save(y)) { render(); toast(`같은 날 줄을 합쳐 ${n}일을 하루 한 줄로 만들었어요. 지도 내용을 확인해 주세요.`, 7000); }
+  const long = M.longMergeDates(x).length, n = M.sameDateCount(x) - long, y = M.mergeSameDate(x);
+  if (save(y)) { render(); toast(`${n ? `같은 날 줄을 합쳐 ${n}일을 하루 한 줄로 만들었어요. 지도 내용을 확인해 주세요.` : ''}${longNote(long)}`, 8000); }
 }
+// 합치면 지도 내용이 1000자를 넘는 날은 잘리지 않게 그대로 둠
+const longNote = k => (k ? ` 지도 내용이 길어(1000자 넘음) 합치지 않은 날이 ${k}일 있어요 — 그날은 줄을 그대로 뒀어요.` : '');
 function askMerge(c) {
   const n = M.sameDateCount(c);
   if (!n) return;
@@ -487,7 +489,7 @@ function setUnit(c, unit) {
   if (!c || c.unit === unit || !M.UNITS.some(([k]) => k === unit)) return;
   const n = unit === 'day' ? M.sameDateCount(c) : 0;
   // 합치기는 바꾸기 전 단위로 셈(교시마다 줄 하나 = 한 교시), 지도 시간은 단위를 바꿔도 그대로(withUnit)
-  const apply = merge => { const x = M.getCamp(c.id); if (!x) return; if (save(M.withUnit(merge ? M.mergeSameDate(x) : x, unit))) { render(); if (merge) toast(`날마다 출석으로 바꾸고 같은 날 줄 ${n}일을 하루 한 줄로 합쳤어요.`, 7000); } };
+  const apply = merge => { const x = M.getCamp(c.id); if (!x) return; const long = merge ? M.longMergeDates(x).length : 0; if (save(M.withUnit(merge ? M.mergeSameDate(x) : x, unit))) { render(); if (merge) toast(`날마다 출석으로 ${n - long ? `바꾸고 같은 날 줄 ${n - long}일을 하루 한 줄로 합쳤어요.` : '바꿨어요.'}${longNote(long)}`, 8000); } };
   if (!n) { apply(false); return; }
   ask('같은 날 줄을 합칠까요?', `날마다 출석은 하루 한 줄이에요. 같은 날 수업 줄이 여러 개인 날이 ${n}일 있어요. ${MERGE_NOTE} 합치지 않아도 출석은 날짜마다 한 칸으로 체크해요.`,
     [['keep', '합치지 않고 바꾸기'], ['merge', '합쳐서 바꾸기', true]], m => apply(m === 'merge'));
@@ -723,7 +725,8 @@ function applyByCount(id, r) {
   let specs = r.specs;
   if (day) {
     const by = new Map();
-    for (const s of specs) { const g = by.get(s.date); if (g) { g.end = s.end; g.periods++; if (s.subject && !g.subject.split('·').includes(s.subject)) g.subject += `·${s.subject}`; } else by.set(s.date, { ...s, periods: 1 }); }
+    // 한 날 차시가 하나면 교시 수는 비움(시각으로 셈 — 09:00~12:40은 5), 둘 넘게 합치면 그 수
+    for (const s of specs) { const g = by.get(s.date); if (g) { g.end = s.end; g.periods = (g.periods || 1) + 1; if (s.subject && !g.subject.split('·').includes(s.subject)) g.subject += `·${s.subject}`; } else by.set(s.date, { ...s, periods: null }); }
     specs = [...by.values()];
   }
   const fresh = list => list.map(s => M.newSession(s));

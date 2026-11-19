@@ -385,7 +385,7 @@ function inNoticeSheet(cid) {
     sh.querySelector('#trInNoticeCopy').addEventListener('click', () => { copyText(sh.querySelector('#trInNoticeText').value); toast('안내 쪽지를 복사했어요'); });
     // 쪽지 작성은 AI로 읽음 — 강사·교직원 이름은 가려 보냄(쪽지 칸에는 강사 칸이 없어 잃는 것 없음)
     sh.querySelector('#trInNoticeMsg').addEventListener('click', async () => {
-      const v = T.maskForAI(sh.querySelector('#trInNoticeText').value, [c.inhouse && c.inhouse.lecturer, ...T.getBoard().staff.map(s => s.name)]);
+      const v = T.maskForAI(sh.querySelector('#trInNoticeText').value, [...T.lecturerNames(c.inhouse && c.inhouse.lecturer), ...T.getBoard().staff.map(s => s.name)]);
       SS().closeSheet(); toast('강사·교직원 이름은 가려서 쪽지 작성으로 보냈어요. 쪽지에 직접 넣어 주세요.', 5000);
       try { (await import('../etc/message.js')).putMessageFiles([], { text: v }); } catch (e) { go('etc', 'message'); }
     });
@@ -425,12 +425,22 @@ async function formFile(f) {
   if (probe.noName) { toast('응답에서 「이름·성명」 칸을 찾지 못했어요'); return; }
   const apply = cid => {
     const r = T.formResponses(rows, T.getBoard(), { cid });
-    let cur = T.getBoard();
-    for (const h of r.hits) { const old = T.markOf(cur, h.cid, h.sid); cur = T.setMark(cur, h.cid, h.sid, old && old.s === 'ok' ? 'ok' : 'sent', { file: '구글 폼', link: h.link, date: h.date || (old && old.date) || '', note: '' }); }
-    if (!putBoard(cur)) return;
+    let cur = T.getBoard(), put = 0, same = 0;
+    // 한 사람이 여러 번 낸 응답은 마지막 것만(응답 시트는 시각 차례)
+    const last = new Map();
+    for (const h of r.hits) { const k = `${h.cid}|${h.sid}`, p = last.get(k); if (!p || (h.date || '') >= (p.date || '')) last.set(k, h); }
+    for (const h of last.values()) {
+      const old = T.markOf(cur, h.cid, h.sid);
+      // 누적 응답 시트를 다시 넣을 때 이미 넣은 응답(같은 파일 주소)은 그대로 — 반려·확인·메모·이수일이 되돌아가지 않게(다시 낸 응답은 새 주소)
+      if (old && (old.link || '') === (h.link || '') && (h.link || old.file === '구글 폼')) { same++; continue; }
+      // 이수증에서 읽은 이수일·넣어 둔 파일은 그대로(폼 시각은 이수일이 아님), 반려한 칸은 새 응답 날짜로
+      cur = T.setMark(cur, h.cid, h.sid, old && old.s === 'ok' ? 'ok' : 'sent', { file: old && old.kept ? old.file : '구글 폼', link: h.link, date: (old && old.s !== 'back' && old.date) || h.date || '', note: '' });
+      put++;
+    }
+    if (put && !putBoard(cur)) return;
     for (const m of r.miss) boardPend.push({ name: m.name, sid: m.sid, cid: m.course, link: m.link, date: m.date, form: true });
     render();
-    toast(`구글 폼 응답 ${r.hits.length}명을 「제출」로 넣었어요${r.miss.length ? ` · ${r.miss.length}명은 골라 주세요` : ''}`, 5000);
+    toast(`구글 폼 응답 ${put}명을 「제출」로 넣었어요${same ? ` · ${same}명은 이미 넣은 응답이라 그대로 뒀어요` : ''}${r.miss.length ? ` · ${r.miss.length}명은 골라 주세요` : ''}`, 5000);
   };
   if (probe.courseCol || b.courses.length === 1) { apply(''); return; }
   SS().openSheet(`<div id="trFormSheet"><h3>어느 연수 응답인가요?</h3><p class="muted" style="margin:0">응답에 연수 이름 칸이 없어요. 이 응답이 어느 연수 이수증인지 골라 주세요.</p>

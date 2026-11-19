@@ -13,7 +13,8 @@ const COMMON = new Set(['이야기', '우리반', '우리말', '우리들', '도
   '최우선', '지정석', '이번주', '지난주', '성희롱', '예정순', '기재용', '소재용', '정동진', '최종안', '조정안', '기본안', '정부안', '수정안', '개선안', '계획안',
   '전염병', '연장전', '주관식', '방학중', '오전중', '오후중', '진행중', '공사중', '기간중', '최대치', '최소치', '최고치', '최저치', '연필심', '이월분', '원단위',
   '우체국', '진주성', '공산성', '연수원', '유치원', '변경안', '신설안', '명령조', '경어조', '구어조', '문어조', '기본조', '강약조', '홍보지', '정보지', '안내지',
-  '이번호', '지난호', '소규모', '민원인', '지역민', '장마철', '소재지', '주소지']);
+  '이번호', '지난호', '소규모', '민원인', '지역민', '장마철', '소재지', '주소지',
+  '강낭콩', '봉선화', '반대편', '육성회', '마무리', '금요일', '공휴일', '기념일', '서술형']);
 // 전화번호: 0으로 시작하는 국번(앞에 숫자가 붙지 않음) — 「1200000 1150000」「3000 4000 5000」 같은 금액·숫자 줄은 아님
 const PHONE = /(?<!\d)\(?0\d{1,2}\)?[-.\s)]{0,2}\d{3,4}[-.\s]?\d{4}/;
 
@@ -138,19 +139,21 @@ const BULLET = /^\s*(?:[-–—·•○◦▪■□*※>]+|\(?\d{1,2}[.)]|[가-�
    머리 말 없는 목록(「김하늘, 이바다, 한가람」「1. 김하늘 2. 이바다 …」)·상 이름(「최우수상: …」)·「6-1: …」은 배움 */
 /* 물건 머리 줄(「준비물: 도시락, 이바다, …」)의 이름 모양 낱말이 다른 줄에서 사람으로 쓰이는지(「이바다 기록 담당」「박솔빛은 사진 촬영」) — 그때만 이름으로 배움 */
 // 바로 뒤 사람·맡은 일 말(「이바다 기록 담당」「박솔빛 학생」), 또는 주어(은·는·이·가) 뒤 같은 마디의 맡은 일 말(「이바다는 김치전 담당」 — 이때 「김치전 담당」의 김치전은 사람 아님)
-const ROLE_NEXT = '학생|선생님|님|씨|군|양|반장|회장|부장|대표|모둠장|도우미|기록|촬영|발표|사회|인솔|결석|지각|조퇴|발언|제안';
+const ROLE_NEXT = '학생|선생님|(?:님|씨|군|양)(?=$|[^가-힣]|[은는이가을를의께도만과와랑])|반장|회장|부장|대표|모둠장|도우미|기록|촬영|발표|사회|인솔|결석|지각|조퇴|발언|제안';
 const ROLE_LATER = '담당|맡|기록|촬영|발표|사회|인솔';
 export const personUse = (w, text) => new RegExp(`(?<![가-힣])${w}(?:\\s*(?:${ROLE_NEXT})|(?:은|는|이|가)\\s*[^.,;\\n]{0,12}?(?:${ROLE_LATER}))`).test(String(text || ''));
 /* 맡은 일 말 앞의 세 글자 이름 모양 낱말(「사전 교육(이바다 인솔)」「박솔빛 기록 담당」) — 흔한 이름 목록에 없어도 사람으로 봄(지나치게 가리는 것이 새는 것보다 나음) */
 // 사람 이름 모양(「연설문·소감문·모둠별·원어민·정보부」 같은 낱말은 아님 — -별, 가운데가 이름에 드문 -문·-서·-지…)
-const roleWord = w => cellName(w) && personWord(w) && !/별$/.test(w) && (!/[서지구형하리일효문]$/.test(w) || NAME_MID.test(w[1]));
-const ROLE_COLON = /(?:사회|기록|촬영|발표|진행|도우미|심판|반주|인솔|인솔자|사진|사서)\s*[:：]\s*([가-힣]{3}(?:\s*[,，·、]\s*[가-힣]{3})*)(?![가-힣])|사서\s+([가-힣]{3})(?![가-힣])/g;
-export const roleNames = text => {
+const roleWord = w => cellName(w) && personWord(w) && !/별$/.test(w) && (!(/[서지구형하리일효문이]$/.test(w) || NOUN_END.test(w)) || NAME_MID.test(w[1]));
+// 맡은 일 머리 쌍점 뒤(「사회: 이규리」「기록: 박해리」「촬영: 김샛별」) — 이름 자리라서 끝 글자 규칙을 넓게(낱말 끝 -문·-별만 빼고, 한별·샛별·은별은 이름)
+const colonWord = w => cellName(w) && personWord(w) && (!/[문별]$/.test(w) || /[한샛은새하]별$/.test(w) || (/문$/.test(w) && NAME_MID.test(w[1])));
+const ROLE_COLON = /(?:사회자?|기록자?|촬영|발표자?|진행자?|도우미|심판|반주|인솔|인솔자|사진|사서|후보자?)\s*[:：]\s*([가-힣]{3}(?:\s*[,，·、]\s*[가-힣]{3}(?![가-힣]|\s*[:：]))*)(?![가-힣])|사서\s+([가-힣]{3})(?![가-힣])/g;
+export const roleNames = (text, known = []) => {
   const t = String(text || ''), out = new Set([...new Set(words(t))].filter(w => roleWord(w) && personUse(w, t)));
   // 맡은 일 머리 뒤(「사회: 탁보결, 기록: 남다율」「도우미: 박솔빛, 이바다」「사서 탁보결」)
-  for (const m of t.matchAll(ROLE_COLON)) for (const x of (m[1] || m[2] || '').split(/[,，·、]/).map(y => y.trim())) if (roleWord(x)) out.add(x);
+  for (const m of t.matchAll(ROLE_COLON)) for (const x of (m[1] || m[2] || '').split(/[,，·、]/).map(y => y.trim())) if (colonWord(x)) out.add(x);
   // 맡은 일 말 앞 이름에 쉼표로 이어진 이름(「(이바다, 남다율 인솔)」)
-  for (const w of [...out]) for (const m of t.matchAll(new RegExp(`((?:[가-힣]{3}\\s*[,，·、]\\s*)+)${w}(?![가-힣])`, 'g'))) for (const x of m[1].split(/[,，·、]/).map(y => y.trim())) if (roleWord(x)) out.add(x);
+  for (const w of new Set([...out, ...[...new Set(words(t))].filter(w => cellName(w) && personUse(w, t)), ...known])) for (const m of t.matchAll(new RegExp(`((?:[가-힣]{3}\\s*[,，·、]\\s*)+)${w}(?![가-힣])`, 'g'))) for (const x of m[1].split(/[,，·、]/).map(y => y.trim())) if (roleWord(x)) out.add(x);
   return [...out];
 };
 /* weak: 물건 머리 마디의 이름 모양 낱말을 담을 배열(부르는 쪽이 personUse로 다른 줄에서 확인한 것만 배움) */
@@ -186,7 +189,7 @@ export function peopleNames(line, { weak = null } = {}) {
 }
 /* 쉼표·가운뎃점으로 이은 목록의 한 항목: 이름 + 「(사정)」이나 「-맡은 일」, 다음 쉼표·줄 끝까지 */
 // 괄호 안 목록(「(인솔: ○○○, 이바다)」「회장(○○○, 이바다)」)도: 앞 「(」·뒤 「)」를 항목 끝으로 봄
-const ITEM = /(^|[\s:：(（]|[,，·、]\s*)(○○○|[가-힣]{3,4})(\s*(?:[(（][^)）\n]*[)）]|[-–]\s*[^,，·、\n]*))?\s*(?=[,，·、)）]|$)/g;
+const ITEM = /(^|[\s:：(（]|[,，·、]\s*)(○○○|〔이름\d+〕|[가-힣]{3,4})(\s*(?:[(（][^)）\n]*[)）]|[-–]\s*[^,，·、\n]*))?\s*(?=[,，·、)）]|$)/g;
 // 맡은 일 목록 머리(「1인 1역:」「역할:」「당번:」)
 const DUTY = /(1인\s*1역|역할|당번)\s*[:：]/;
 /* 가린 이름에 이어진 이름(「관심 학생: ○○○(정서 불안), 최하은(교우 관계)」「회장 ○○○, 이서연」)과
@@ -202,8 +205,8 @@ export function maskList(line) {
   }
   const hits = [], duty = DUTY.test(line);
   for (const run of runs) {
-    const tied = run.some(m => m[2] === MASK);
-    for (const m of run) if (m[2] !== MASK && plainOk(m[2]) && (tied || (duty && /^\s*[-–]/.test(m[3] || '')))) hits.push([m.index + m[1].length, m[2].length]);
+    const tied = run.some(m => m[2] === MASK || m[2][0] === '〔');
+    for (const m of run) if (m[2] !== MASK && m[2][0] !== '〔' && plainOk(m[2]) && (tied || (duty && /^\s*[-–]/.test(m[3] || '')))) hits.push([m.index + m[1].length, m[2].length]);
   }
   let out = line;
   for (const [at, len] of hits.reverse()) out = out.slice(0, at) + MASK + out.slice(at + len);
@@ -260,13 +263,16 @@ export const staffName = n => (n.length === 3 ? cellName(n) && !STAFF_WORD.has(n
   : n.length === 2 && SURNAME.has(n[0]) && !TWO_WORD.has(n) && !TITLE.has(n));
 /* 「김솔께」「이나래에게」 → [이름, 조사] (세 글자 이름부터) */
 const staffJosa = (w, before = '', after = '') => { for (const k of [3, 2]) { if (w.length < k) continue; const n = w.slice(0, k), j = w.slice(k); if (josaOk(n, j, before, after) && staffName(n)) return [n, j]; } return null; };
+// 「인솔:」 뒤 — 사람 무리 말(남교사·전학년·정규직은 personWord가 뺌, 정담임·우천시는 목록)은 이름이 아님. 두 글자는 줄 끝·쉼표·괄호·「선생님」 앞만(「인솔: 이동 시」는 아님)
+const INSOL_GROUP = new Set(['정담임', '부담임', '전담임', '우천시', '이동시', '각반별']);
+const insolName = (n, after) => (n.length === 3 ? personWord(n) && !INSOL_GROUP.has(n) : /^\s*(?:$|[,，)）]|선생님|교사)/.test(after));
 /* 직함 앞뒤의 교직원 이름만 ○○○로(그 밖의 글은 그대로 — 가린 자리를 되돌릴 수 있게 바꾸기만 함) → { text, masked } */
 export function maskStaff(text) {
   let masked = 0;
   const s = String(text == null ? '' : text)
     .replace(STAFF_AFTER, (m, pre, n, sp, who) => (staffName(n) && !(n.length === 2 && who === '님') ? (masked++, pre + MASK + sp + who) : m))
-    .replace(STAFF_BEFORE, (m, pre, w, off, str) => { const r = staffJosa(w, str.slice(0, off + pre.length), str.slice(off + m.length)); return r ? (masked++, pre + MASK + r[1]) : m; })
-    .replace(INSOL_SPACE, (m, pre, w) => (plainOk(w) && staffName(w) && !(TWO_WORD.has(w.slice(0, 2)) && /[은는이가을를]$/.test(w)) ? (masked++, pre + MASK) : m));
+    .replace(STAFF_BEFORE, (m, pre, w, off, str) => { const r = staffJosa(w, str.slice(0, off + pre.length), str.slice(off + m.length)); return r && (!/^인솔/.test(pre) || insolName(w.slice(0, w.length - r[1].length), str.slice(off + m.length))) ? (masked++, pre + MASK + r[1]) : m; })
+    .replace(INSOL_SPACE, (m, pre, w) => (plainOk(w) && staffName(w) && personWord(w) && !INSOL_GROUP.has(w) && !(TWO_WORD.has(w.slice(0, 2)) && /[은는이가을를]$/.test(w)) ? (masked++, pre + MASK) : m));
   return { text: s, masked };
 }
 

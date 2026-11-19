@@ -137,7 +137,7 @@ export function buildSessions(spec, camp) {
     if (camp.unit === 'day') {
       const uniq = [...new Set(daySubs)];
       const parts = uniq.map(s => { const t = take(s); return t && uniq.length > 1 && s ? `${s}: ${t}` : t; }).filter(Boolean);
-      out.push(newSession({ date: d, start: spec.slots[0].start, end: spec.slots[spec.slots.length - 1].end, subject: uniq.filter(Boolean).join('·'), content: parts.join(' / '), periods: spec.slots.length }));
+      out.push(newSession({ date: d, start: spec.slots[0].start, end: spec.slots[spec.slots.length - 1].end, subject: uniq.filter(Boolean).join('·'), content: parts.join(' / '), periods: spec.slots.length > 1 ? spec.slots.length : null /* 한 덩어리 시간은 시각으로 셈(09:00~12:40 → 5) */ }));
     } else spec.slots.forEach((sl, i) => out.push(newSession({ date: d, start: sl.start, end: sl.end, subject: daySubs[i], content: take(daySubs[i]) })));
   }
   const sessions = out.slice(0, 300);

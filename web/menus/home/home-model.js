@@ -4,7 +4,7 @@ import { isDate, weekday } from '../../core/calendar.js';
 import { unitPos } from '../class/class-model.js';
 import { dueSoon } from '../etc/gongmun-ai.js';
 import { dueTodos } from '../etc/minutes-ai.js';
-import { sessionsOn, nextMark, setMark, fmtTime } from '../class/camp-model.js';
+import { sessionsOn, nextMark, setMark, fmtTime, shownName, dayMarkOf } from '../class/camp-model.js';
 import { totalScore, missingItems } from '../etc/multi-quant.js';
 import { missingCount } from '../etc/multi-qual.js';
 import { EMPTY } from '../../core/briefing.js';
@@ -95,10 +95,11 @@ const stateOf = (camp, ss, sid) => {
   const ms = ss.map(s => (camp.att[s.id] && camp.att[s.id][sid]) || '');
   return ms.every(m => m === ms[0]) ? ms[0] : 'mixed';
 };
-/* 학생마다 그날 수업 모두의 표시: O(모두 출석) · X(모두 결석) · ''(체크 안 함) · mixed(섞임) */
+/* 학생마다 그날 수업 모두의 표시: O(모두 출석) · X(모두 결석) · ''(체크 안 함) · mixed(섞임).
+   이름 없는 학생(「도달하지 못한 학생」에서 넣음)은 기초학력 화면처럼 「3-2 5번」 */
 export function dayMarks(camp, date) {
   const ss = sessionsOn(camp, date);
-  return camp.students.map(st => ({ id: st.id, name: st.name || '이름 없는 학생', mark: ss.length ? stateOf(camp, ss, st.id) : '' }));
+  return camp.students.map(st => ({ id: st.id, name: shownName(st, '이름 없는 학생'), mark: ss.length ? stateOf(camp, ss, st.id) : '' }));
 }
 /* 학생 버튼: 그날 수업 모두 ○ → / → 빈칸 → ○ (섞여 있으면 ○부터) */
 export function cycleDay(camp, date, sid) {
@@ -112,7 +113,9 @@ export function campCard(camp, date) {
   const ss = sessionsOn(camp, date), students = dayMarks(camp, date);
   const a = ss[0], b = ss[ss.length - 1];
   const time = a && a.start ? fmtTime({ start: a.start, end: (b && (b.end || b.start)) || '' }) : '';
-  return { id: camp.id, name: camp.name || '이름 없는 프로그램', count: ss.length, time, students, left: students.filter(s => s.mark !== 'O' && s.mark !== 'X').length };
+  // 덜 체크한 학생: 오늘 빈 칸이 남은 학생(○·/가 섞여도 다 체크했으면 셈하지 않음 — 기초학력 화면 remainingOn과 같게)
+  const blank = sid => (camp.unit === 'day' ? !dayMarkOf(camp, date, sid) : ss.some(x => !(camp.att[x.id] && camp.att[x.id][sid])));
+  return { id: camp.id, name: camp.name || '이름 없는 프로그램', count: ss.length, time, students, left: students.filter(s => blank(s.id)).length };
 }
 
 /* ---------- 이어서 하기 ---------- */

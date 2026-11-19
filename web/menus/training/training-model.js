@@ -3,7 +3,7 @@
    저장(학년도 자료): training:mine(내 필수연수 줄), training:board(연수 현황판 — 담당 선생님의 명단·연수·제출 상태) */
 import { get, set } from '../../core/store.js';
 import { setEvents } from '../../core/calendar.js';
-import { maskStaff } from '../../core/privacy.js';
+import { maskStaff, looksLikeName } from '../../core/privacy.js';
 
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const str = (v, n) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n);
@@ -103,16 +103,24 @@ function datesIn(text) {
 export function certDate(text, today = '') {
   const lines = String(text || '').split(/\n/), ok = d => !today || d <= today; // 앞날(교육 기간 끝·발급 예정)은 이수일이 아님
   const pick = re => { for (const l of lines) { if (!re.test(l)) continue; const ds = datesIn(l).map(x => x.iso).filter(ok); if (ds.length) return ds[ds.length - 1]; } return ''; };
-  // 1) 「이수일·수료일(자)」 이름표(띄어 쓴 「이 수 일」도), 2) 기간(끝 날), 3) 발급·발행 줄을 뺀 글 속 마지막 날짜
+  // 1) 「이수일·수료일(자)」 이름표(띄어 쓴 「이 수 일」도), 2) 끝난 기간의 끝 날, 3) 발급·발행·기간 줄을 뺀 글 속 마지막 날짜,
+  // 4) 발급·발행 날짜, 5) 끝나지 않은 기간(「2026. 3. 1. ~ 2026. 12. 31.」 같은 1년 학습 기간)의 첫날 — 그 첫날은 이수일보다 나중 말이 없을 때만
   const a = pick(/이\s*수\s*일\s*자?|수\s*료\s*일\s*자?/);
   if (a) return a;
-  const b = pick(/(?:교\s*육|연\s*수|학\s*습)?\s*기\s*간/);
-  if (b) return b;
-  const all = lines.filter(l => !/발\s*급|발\s*행/.test(l)).flatMap(l => datesIn(l).map(x => x.iso)).filter(ok);
+  const PERIOD = /(?:교\s*육|연\s*수|학\s*습)?\s*기\s*간/, ISSUE = /발\s*급|발\s*행/, iso = l => datesIn(l).map(x => x.iso);
+  let start = '';
+  for (const l of lines) {
+    if (!PERIOD.test(l)) continue;
+    const ds = iso(l);
+    if (!ds.length) continue;
+    if (ok(ds[ds.length - 1])) return ds[ds.length - 1];
+    if (!start) start = ds.find(ok) || '';
+  }
+  const all = lines.filter(l => !ISSUE.test(l) && !PERIOD.test(l)).flatMap(iso).filter(ok);
   if (all.length) return all[all.length - 1];
-  // 4) 발급일만 있으면 그 날(오늘보다는 이수일에 가까움)
-  const iss = lines.flatMap(l => datesIn(l).map(x => x.iso)).filter(ok);
-  return iss.length ? iss[iss.length - 1] : '';
+  // 발급일만 있으면 그 날(오늘보다는 이수일에 가까움)
+  const iss = lines.filter(l => ISSUE.test(l)).flatMap(iso).filter(ok);
+  return iss.length ? iss[iss.length - 1] : start;
 }
 /* 이수 시간: 「n시간」(없으면 「n차시」). 없으면 null */
 export function certHours(text) {
@@ -245,20 +253,28 @@ export function statsTsv(b, cids = null) {
 }
 
 /* 명단 붙여 넣기: 한 줄에 한 명(「이름 ⇥ 부서」·「이름, 부서」·「이름  부서」), 머리 줄(이름·성명)은 뺌 → [{ name, dept }] */
+// 명단 머리 칸(이름·성명·성함·교직원명, 표에서 붙여 넣은 「성 명」「이 름」도) — 붙여넣기·파일·구글 폼 모두 이것 하나로
+const STAFF_H = /^(이\s*름|성\s*명|성\s*함|교직원명)$/;
+// 띄어쓰기로 나눈 줄의 이름 낱말: 성으로 시작하는 2~4자(교감·체육·보건은 아님), 맡은 일·과목 말(전담·국어·연구원…)과 부서·직위 끝말은 아님(김지원·최예원은 이름)
+const ROLE_TOK = /^(?:전담|조리|조리원|조리사|도서|정보|진로|국어|연구|연구원|원어민|방과후|수석|교감|담임|유아|기간제|강사|주무|서무|방송|당직|특수|돌봄|보건|영양|상담|사서|행정|교무|교사|교장|부장)$/;
+const nameTok = t => looksLikeName(t) && !ROLE_TOK.test(t) && !/(?:부|실|과|반|년|장|사|관|무|교사|선생님?|님|팀|전담|담임)$/.test(t);
 export function parseStaff(text) {
   // 머리 줄(「연번 ⇥ 부서 ⇥ 성명」)이 있는 엑셀 붙여넣기는 칸 이름대로(성명 칸이 첫 칸이 아니어도)
   const rows = String(text || '').split(/\r?\n/).filter(l => l.trim()).map(l => l.split('\t'));
-  if (rows.some(r => r.length > 1 && r.some(c => /^\s*(이름|성명|성함|교직원명)\s*$/.test(c)))) return staffFromRows(rows);
+  if (rows.some(r => r.length > 1 && r.some(c => STAFF_H.test(c.trim())))) return staffFromRows(rows);
+  return parseStaffLines(text);
+}
+/* 머리 칸 없는 줄 읽기(staffFromRows가 머리 줄을 못 찾을 때도 — parseStaff를 다시 부르지 않음) */
+function parseStaffLines(text) {
   const out = [];
   for (const raw of String(text || '').split(/\r?\n/)) {
     const l = raw.trim().replace(/^\d+\s*[.)]\s*/, ''); // 「1. 한가람」의 번호
     if (!l) continue;
     let cells = (l.includes('\t') ? l.split('\t') : l.includes(',') ? l.split(',') : l.split(/\s{2,}/)).map(c => c.trim()).filter(Boolean);
-    if (!cells.length || cells.some(c => /^(이름|성명|성함|교직원명|성\s*명)$/.test(c))) continue;
+    if (!cells.length || cells.some(c => STAFF_H.test(c))) continue;
     // 띄어쓰기 하나로만 나눈 줄(「김하늘 교무부 부장」「김하늘 이바다 한가람」): 모두 이름 모양이면 여러 사람, 아니면 첫 낱말이 이름·나머지는 부서
     if (cells.length === 1 && /\s/.test(cells[0]) && /[가-힣]/.test(cells[0])) {
       const toks = cells[0].split(/\s+/);
-      const nameTok = t => /^[가-힣]{2,4}$/.test(t) && !/(?:부|실|과|반|년|장|사|관|무|임|교사|선생님?|님|팀|원)$/.test(t);
       if (toks.length >= 2 && toks.every(nameTok)) { toks.forEach(n => out.push({ name: cleanName(n), dept: '' })); continue; }
       if (/^[가-힣]{2,5}$/.test(toks[0])) cells = [toks[0], toks.slice(1).join(' ')];
     }
@@ -272,9 +288,9 @@ export function parseStaff(text) {
 /* 명단 파일(엑셀·CSV) 표 → [{ name, dept }]: 「이름·성명」 열, 「부서·소속·직위·직급·담당·교과」 열. 머리 줄이 없으면 첫 열 */
 export function staffFromRows(rows) {
   const rs = (rows || []).map(r => (r || []).map(c => String(c == null ? '' : c).trim()));
-  const hi = rs.findIndex(r => r.some(c => /^(이름|성명|교직원명|성\s*명)$/.test(c)));
-  if (hi < 0) return parseStaff(rs.map(r => r.join('\t')).join('\n'));
-  const h = rs[hi], ni = h.findIndex(c => /^(이름|성명|성함|교직원명|성\s*명)$/.test(c));
+  const hi = rs.findIndex(r => r.some(c => STAFF_H.test(c)));
+  if (hi < 0) return parseStaffLines(rs.map(r => r.join('\t')).join('\n'));
+  const h = rs[hi], ni = h.findIndex(c => STAFF_H.test(c));
   const dis = h.map((c, i) => (/^(부서|소속|직위|직급|직종|담당|교과|업무)$/.test(c) ? i : -1)).filter(i => i >= 0), ki = h.findIndex(c => /^(구분|직군)$/.test(c));
   // 구분 칸: 교원·교사 → 교원, 직원·행정직·일반직 → 직원, 공무직·교육공무직 → 공무직
   const kindCell = v => (/공무직/.test(v) ? '공무직' : /교원|교사|교감|교장/.test(v) ? '교원' : /직원|행정|일반직|지방공무원/.test(v) ? '직원' : '');
@@ -335,7 +351,7 @@ export function boardCsv(b) {
 }
 
 /* ---------- 수합: 구글 폼 응답·묶음·결과 보고 ---------- */
-const NAME_H = /^(이름|성명|성함|교직원명|성\s*명)$/;
+const NAME_H = STAFF_H;
 /* 구글 폼 날짜(「2026. 11. 2 오후 3:15:00」「2026/11/02 15:15:00」「2026-11-02」) → ISO, 아니면 '' */
 const formDate = v => { const m = /(20\d{2})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})/.exec(String(v || '')); return m && +m[2] >= 1 && +m[2] <= 12 && +m[3] >= 1 && +m[3] <= 31 ? `${m[1]}-${pad(+m[2])}-${pad(+m[3])}` : ''; };
 /* 설문 응답 표 → { hits: [{ sid, cid, link, date }], miss: [{ name, course, link, date, sid }] }. cid: 연수 열이 없을 때의 연수(고른 것) */
@@ -457,6 +473,9 @@ export function inhouseReportDoc(b, cid, { summary = '', year, school = '' } = {
 }
 
 /* AI로 가는 글(쪽지 작성에 넘김)에서 사람 이름 가리기: 넘긴 이름(강사·명단)은 ○○○, 「강사:」 줄, 직함 앞뒤 이름(maskStaff) */
+/* 강사 칸(「새싹대학교 교수 탁보결」「탁보결 외 1명」)의 이름 모양 낱말 — 칸 전체와 함께 가림(연수 제목 속 「탁보결 교수 초청」도). 직함·소속 말은 뺌 */
+const LECT_TITLE = /^(?:교수|부교수|경위|경감|경사|경장|순경|박사|강사|장학사|장학관|연구사|연구관|변호사|소장|센터장|팀장|원장|관장|대표|회장|이사|위원|위원장|명예교수)$/;
+export const lecturerNames = l => { const s = String(l || '').trim(); return s ? [s, ...s.split(/[\s,，·、()（）\[\]［］/]+/).map(t => t.replace(/(?:님|씨|외)$/, '')).filter(t => looksLikeName(t) && !LECT_TITLE.test(t))] : []; };
 export function maskForAI(text, names = []) {
   let t = String(text || '');
   for (const n of [...new Set((names || []).map(x => String(x || '').trim()).filter(x => x.length >= 2))].sort((a, b) => b.length - a.length)) t = t.split(n).join('○○○');
@@ -492,7 +511,9 @@ export function mergeBoards(a, b) {
     const c2 = cMap.get(cid), s2 = sMap.get(sid);
     if (!c2 || !s2) continue;
     const old = markOf(out, c2, s2);
-    if (!old || RANK_MARK[m.s] > RANK_MARK[old.s]) (out.marks[c2] = out.marks[c2] || {})[s2] = { ...m, kept: old ? old.kept : false };
+    // 반려가 끼면 나중에 바꾼 쪽(at) — 반려하기 전에 내보낸 파일을 합쳐도 반려가 「제출」로 되돌아가지 않게. 그 밖에는 더 나아간 상태로
+    const take = !old || (m.s === 'back' || old.s === 'back' ? (m.at || 0) > (old.at || 0) : RANK_MARK[m.s] > RANK_MARK[old.s]);
+    if (take) (out.marks[c2] = out.marks[c2] || {})[s2] = { ...m, kept: old ? old.kept : false };
   }
   return normBoard(out);
 }

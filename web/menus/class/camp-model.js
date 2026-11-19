@@ -187,19 +187,22 @@ export const campDates = camp => [...new Set(camp.sessions.map(s => s.date).filt
 export const sameDateCount = camp => { const n = {}; for (const s of camp.sessions) if (s.date) n[s.date] = (n[s.date] || 0) + 1; return Object.values(n).filter(k => k > 1).length; };
 /* 같은 날 줄을 한 줄로(날마다로 바꿀 때): 첫 시작~끝 줄 끝, 교과 묶음, 지도 내용은 「교과: 내용 / …」, 교시 수는 더함.
    출석은 그날 학생마다 ○가 하나라도 있으면 ○, /만 있으면 /. 남는 줄은 그날 첫 줄(id 그대로), 줄 차례는 그대로 */
+const sameDays = camp => { const by = new Map(); for (const s of camp.sessions) if (s.date) { if (!by.has(s.date)) by.set(s.date, []); by.get(s.date).push(s); } return by; };
+const joinedContent = list => { const subs = new Set(list.map(x => x.subject).filter(Boolean)), many = subs.size > 1;
+  return list.map(x => (x.content.trim() && many && x.subject ? `${x.subject}: ${x.content.trim()}` : x.content.trim())).filter(Boolean).filter((t, i, a) => a.indexOf(t) === i).join(' / '); };
+/* 합치면 지도 내용이 1000자(newSession 한도)를 넘는 날 — 잘리지 않게 합치지 않고 그대로 둠(mergeSameDate), 부르는 쪽이 알림 */
+export const longMergeDates = camp => [...sameDays(camp)].filter(([, g]) => g.length > 1 && joinedContent(sortSessions(g)).length > 1000).map(([d]) => d);
 export function mergeSameDate(camp) {
-  const by = new Map();
-  for (const s of camp.sessions) if (s.date) { if (!by.has(s.date)) by.set(s.date, []); by.get(s.date).push(s); }
+  const by = sameDays(camp), long = new Set(longMergeDates(camp));
   const att = { ...camp.att }, out = [];
   for (const s of camp.sessions) {
-    if (!s.date) { out.push(s); continue; }
+    if (!s.date || long.has(s.date)) { out.push(s); continue; }
     const g = by.get(s.date);
     if (!g) continue; // 이미 합친 날
     by.delete(s.date);
     if (g.length === 1) { out.push(s); continue; }
     const list = sortSessions(g), first = list[0];
-    const subs = [...new Set(list.map(x => x.subject).filter(Boolean))], many = subs.length > 1;
-    const content = list.map(x => (x.content.trim() && many && x.subject ? `${x.subject}: ${x.content.trim()}` : x.content.trim())).filter(Boolean).filter((t, i, a) => a.indexOf(t) === i).join(' / ');
+    const subs = [...new Set(list.map(x => x.subject).filter(Boolean))], content = joinedContent(list);
     const row = {};
     for (const st of camp.students) { const m = dayMarkOf(camp, s.date, st.id); if (m) row[st.id] = m; }
     for (const x of list) delete att[x.id];

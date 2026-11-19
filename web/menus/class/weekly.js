@@ -8,7 +8,7 @@ import { toast, copyText } from '../../core/ui.js';
 import { exportButton, exportDoc } from '../../core/doc-export.js';
 import { listEvents, addDays } from '../../core/calendar.js';
 import {
-  makeCtx, getInfo, getWeekly, saveWeekly, weekView, missingList, defaultWeek, weeklyTitle, weekCell, weeklyDoc, weekPeriods, normNotes, NOTE_ROWS, fmtDay, today, migrateWeeklyEvents, hasTimetable } from './class-model.js';
+  makeCtx, getInfo, getWeekly, saveWeekly, weekView, missingList, assumedList, defaultWeek, weeklyTitle, weekCell, weeklyDoc, weekPeriods, normNotes, NOTE_ROWS, fmtDay, today, migrateWeeklyEvents, hasTimetable } from './class-model.js';
 import { askSample } from './setup.js';
 import { getSchool } from '../../core/settings.js';
 import { notesPrompt, notesToFill, autoEvents as eventsOn, AI_KEYS } from './weekly-ai.js';
@@ -108,9 +108,12 @@ function render() {
 }
 
 /* 체크하지 않은 지난 날 알림(주간학습안내는 그날도 진도표대로 했다고 보고 셈) */
+// 이어 센 날(assumedList)만 「이어 셌어요」 — 진도 자리가 이미 담은 날·예전 교과의 날은 체크하라고만
 function assumeHTML(ctx) {
-  const n = missingList(ctx, 20).length;
-  return n ? `<p class="muted cls-w-assume">체크하지 않은 날 ${n}일은 진도표대로 했다고 보고 차시를 이어 셌어요. <button class="btn text tiny" type="button" data-w="today">오늘 수업에서 체크</button></p>` : '';
+  const n = assumedList(ctx, 20).length, all = n ? 0 : missingList(ctx, 20).length;
+  const btn = '<button class="btn text tiny" type="button" data-w="today">오늘 수업에서 체크</button>';
+  if (n) return `<p class="muted cls-w-assume">체크하지 않은 날 ${n}일은 진도표대로 했다고 보고 차시를 이어 셌어요. ${btn}</p>`;
+  return all ? `<p class="muted cls-w-assume">체크하지 않은 날이 ${all}일 있어요. 체크하면 차시가 맞아요. ${btn}</p>` : '';
 }
 
 /* ---------- AI 알림 (지시·채우기 규칙은 weekly-ai.js — 이름·전화번호는 가려 보내고 답은 되돌림, 수업 없는 날은 채우지 않음) ---------- */

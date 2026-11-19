@@ -29,9 +29,11 @@ export function yearendRows(d = {}, done = new Set()) {
     !(d.evals || []).length ? '평가가 없어요' : ev.length ? `마치지 않은 평가 ${ev.length}개${ev.some(x => x.pending) ? ` · 선생님 차례 ${ev.reduce((n, x) => n + (x.pending || 0), 0)}곳` : ''} — ${ev.slice(0, 2).map(x => `「${x.title}」`).join(', ')}${ev.length > 2 ? ' 등' : ''}` : '모든 평가를 마쳤어요', { to: 'board' }));
   // 4. 진도·시수
   const subs = (d.progress || []).filter(p => p && p.plan > 0);
-  const left = subs.reduce((n, p) => n + Math.max(0, p.plan - p.actual), 0), behind = subs.filter(p => p.diff < 0);
-  out.push(row('progress', !subs.length ? 'none' : left ? 'todo' : 'done',
-    !subs.length ? '진도표가 없어요' : left ? `남은 시수 ${left}시간${behind.length ? ` · 진도가 뒤처진 교과 ${behind.map(p => `${p.name}(${p.diff})`).slice(0, 4).join(', ')}` : ''}` : '계획 시수를 모두 마쳤어요', { to: 'progress' }));
+  // 남은 시수는 진도표·시수 화면과 같은 수(계획 − 실시: 체크 전 실시 + 체크 기록) — 진도 자리(actual)와 따로. left가 없는 예전 자료는 진도 자리로
+  const left = subs.reduce((n, p) => n + (p.left != null ? Math.max(0, p.left) : Math.max(0, p.plan - p.actual)), 0), behind = subs.filter(p => p.diff < 0);
+  const behindText = behind.length ? `진도가 뒤처진 교과 ${behind.map(p => `${p.name}(${p.diff})`).slice(0, 4).join(', ')}` : '';
+  out.push(row('progress', !subs.length ? 'none' : left || behind.length ? 'todo' : 'done',
+    !subs.length ? '진도표가 없어요' : left ? `남은 시수 ${left}시간${behindText ? ` · ${behindText}` : ''}` : behindText || '계획 시수를 모두 마쳤어요', { to: 'progress' }));
   // 5. 기초학력 문서
   const camps = d.camps || [];
   const notReady = camps.map(c => ({ name: c.name, left: (c.docs || []).filter(x => x.state !== 'ready') })).filter(c => c.left.length);

@@ -50,14 +50,18 @@ export const removeMessage = id => set(LIST, listMessages().filter(y => y.id !==
 /* 「오늘 할 일」 줄(스펙 2026-11-19-yearend-design §3): 최근 쪽지의 신청·회신 기한이 지났거나(3일까지) 7일 안 — 보낸 쪽지의 회신을 모을 때 */
 const dayNo = d => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d || '')); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 864e5 : null; };
 export function deadlineLines(list, today) {
-  const t = dayNo(today), out = [];
+  const t = dayNo(today), out = [], seen = new Set();
   if (t == null) return out;
   for (const x of list || []) {
     const due = x && x.m && x.m.apply && x.m.apply.due, d = dayNo(due);
     if (d == null) continue;
     const n = Math.round(d - t);
     if (n < -3 || n > 7) continue;
-    out.push({ n, text: `쪽지 「${String(x.title || '안내').replace(/^\[[^\]]*\]\s*/, '')}」 신청·회신 마감`, when: n === 0 ? '오늘' : n > 0 ? `D-${n}` : `${-n}일 지남`, hot: n <= 1, route: { to: 'message' } });
+    // [다시 안내]로 다시 보낸 같은 쪽지(같은 제목·같은 마감)는 한 줄 — 목록은 새것부터라 다시 안내한 쪽이 남음
+    const title = String(x.title || '안내').replace(/^\[[^\]]*\]\s*/, ''), key = `${title}|${due}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ n, text: `쪽지 「${title}」 신청·회신 마감`, when: n === 0 ? '오늘' : n > 0 ? `D-${n}` : `${-n}일 지남`, hot: n <= 1, route: { to: 'message' } });
   }
   return out.sort((a, b) => a.n - b.n).map(({ n, ...r }) => r);
 }

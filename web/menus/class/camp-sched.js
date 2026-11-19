@@ -49,7 +49,7 @@ export function applyDates(camp, specs) {
   const list = Array.isArray(specs) ? specs : [], n = Math.min(camp.sessions.length, list.length);
   const marked = id => !!camp.att[id] && Object.keys(camp.att[id]).length > 0;
   const moved = camp.sessions.slice(0, n).filter((s, i) => s.date !== list[i].date && marked(s.id)).map(s => s.id);
-  const sessions = camp.sessions.map((s, i) => (i < n ? { ...s, date: list[i].date, start: list[i].start, end: list[i].end, subject: s.subject || list[i].subject || '', periods: list[i].periods || null /* 새 시각·단위로 다시 셈(예전 교시 수가 남지 않게) */ } : s));
+  const sessions = camp.sessions.map((s, i) => (i < n ? { ...s, date: list[i].date, start: list[i].start, end: list[i].end, subject: s.subject || list[i].subject || '', periods: list[i].periods || (s.start === list[i].start && s.end === list[i].end ? s.periods : null) /* 시각이 바뀌면 새 시각으로 다시 셈(예전 교시 수가 남지 않게), 같으면 그대로 */ } : s));
   const extra = list.slice(n).map(s => newSession(s));
   return { camp: { ...camp, sessions: [...sessions, ...extra] }, moved, added: extra.length, kept: Math.max(0, camp.sessions.length - list.length) };
 }
