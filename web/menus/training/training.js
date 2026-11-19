@@ -9,6 +9,10 @@ import { readTable } from '../../core/sheet.js';
 import { currentYear } from '../../core/years.js';
 import * as T from './training-model.js';
 import { registerInbox } from '../../core/inbox.js';
+import { forms, MAX_FORM } from '../../core/form-store.js';
+import { zipStore, unzip } from '../../core/zip.js';
+import { exportButton, exportDoc } from '../../core/doc-export.js';
+import { getSchool } from '../../core/settings.js';
 
 const SS = () => window.SSAM;
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -17,6 +21,7 @@ export const today = () => { const d = new Date(); return `${d.getFullYear()}-${
 const md = d => (T.isDate(d) ? `${+d.slice(5, 7)}. ${+d.slice(8, 10)}.` : '');
 const FULL = '저장 공간이 모자라 저장하지 못했어요. 설정 › 백업에서 지난 자료를 내려받고 정리해 주세요.';
 const CERT_ACCEPT = '.pdf,.hwp,.hwpx,.docx,.txt,image/*';
+const BOARD_ACCEPT = CERT_ACCEPT + ',.zip';
 const READABLE = /\.(pdf|hwpx?|docx|txt)$/i;
 let box = null, tab = 'mine';
 // 못 맞춘 이수증(파일 이름·읽은 이수일·시간): 내 필수연수 / 현황판
@@ -128,26 +133,38 @@ function boardHTML(b, t) {
     const s = T.courseStats(b, c.id);
     return `<div class="yp-card tr-course" data-tr-course="${esc(c.id)}"><div class="tr-c-head"><b>${esc(c.title)}</b>${c.due ? ` <span class="muted">기한 ${md(c.due)}</span> ${ddHTML(c.due, t)}` : ''}</div>
       <div class="tr-bar" aria-hidden="true"><i style="width:${s.rate}%"></i></div>
-      <p class="tr-c-num">제출·확인 ${s.sent + s.ok}/${s.total}명 (${s.rate}%) · 미제출 ${s.none}명${s.back ? ` · 반려 ${s.back}명` : ''}</p>
+      <p class="tr-c-num">제출·확인 ${s.sent + s.ok}/${s.total}명 (${s.rate}%) · 미제출 ${s.none}명${s.back ? ` · 반려 ${s.back}명` : ''}${c.target.length ? ` <span class="muted">· 대상 ${esc(T.targetLabel(c))}</span>` : ''}</p>
       <div class="row"><button class="btn text tiny" type="button" data-tr="course" data-id="${esc(c.id)}">자세히</button><button class="btn text tiny" type="button" data-tr="nudge" data-id="${esc(c.id)}">독려 쪽지</button></div></div>`;
   }).join('');
   const th = b.courses.map(c => `<th scope="col"><button class="btn text tiny tr-th" type="button" data-tr="course" data-id="${esc(c.id)}">${esc(c.title)}</button></th>`).join('');
-  const rows = b.staff.map(s => `<tr><th scope="row">${esc(s.name)}</th><td class="muted">${esc(s.dept)}</td>${b.courses.map(c => {
-    const m = T.markOf(b, c.id, s.id);
-    return `<td><button class="tr-cell${cellCls(m)}" type="button" data-tr-cell="${esc(c.id)}|${esc(s.id)}" aria-label="${esc(s.name)} ${esc(c.title)} ${T.markLabel(m && m.s)}"${m && m.file ? ` title="${esc(m.file)}"` : ''}>${T.markLabel(m && m.s)}</button></td>`;
+  const rows = b.staff.map(s => `<tr><th scope="row">${esc(s.name)}</th><td class="muted">${esc(s.kind)}</td><td class="muted">${esc(s.dept)}</td>${b.courses.map(c => {
+    if (!T.inTarget(c, s)) return '<td class="tr-na" title="대상 아님">—</td>';
+    const m = T.markOf(b, c.id, s.id), tip = m ? [m.file, m.date ? `${md(m.date)} 이수` : '', m.link ? '구글 폼' : '', m.kept ? '파일 보관' : ''].filter(Boolean).join(' · ') : '';
+    return `<td><button class="tr-cell${cellCls(m)}" type="button" data-tr-cell="${esc(c.id)}|${esc(s.id)}" aria-label="${esc(s.name)} ${esc(c.title)} ${T.markLabel(m && m.s)}"${tip ? ` title="${esc(tip)}"` : ''}>${T.markLabel(m && m.s)}${m && m.kept ? '<span class="tr-clip" aria-hidden="true">📎</span>' : ''}</button></td>`;
   }).join('')}</tr>`).join('');
   return `${b.courses.length ? `<div class="tr-courses">${courses}</div>` : ''}
     ${boardPendHTML(b)}
-    ${b.courses.length ? `<div class="tr-tbl-wrap"><table class="tr-table"><thead><tr><th scope="col">이름</th><th scope="col">부서</th>${th}</tr></thead><tbody>${rows}</tbody></table></div>
-      <p class="muted tr-legend">칸을 누르면 미제출 → 제출 → 확인 → 미제출. 반려는 연수 이름을 눌러 골라요.</p>`
+    ${b.courses.length ? `<div class="tr-tbl-wrap"><table class="tr-table"><thead><tr><th scope="col">이름</th><th scope="col">구분</th><th scope="col">부서</th>${th}</tr></thead><tbody>${rows}</tbody></table></div>
+      <p class="muted tr-legend">칸을 누르면 미제출 → 제출 → 확인 → 미제출(종이로 받은 것도 칸을 눌러요). 반려는 연수 이름을 눌러 골라요. 📎는 이 기기에 보관한 이수증, 「—」는 대상이 아닌 사람이에요.</p>
+      ${finishHTML(b)}`
     : '<div class="yp-card"><p style="margin:0">[+ 연수 더하기]로 챙길 연수를 넣어 주세요. 공문 처리에서 연수 공문의 [연수 현황판에 넣기]로도 넣을 수 있어요.</p></div>'}`;
 }
+/* 수합 마무리: 고른 연수로 결과 보고·교육청 실적 표·이수증 묶음·엑셀 명단표 */
+function finishHTML(b) {
+  const kept = Object.values(b.marks || {}).reduce((n, row) => n + Object.values(row).filter(m => m.kept).length, 0);
+  return `<div class="yp-card tr-finish"><h3>수합 마무리</h3>
+    <div class="tr-fin-pick">${b.courses.map(c => `<label class="chk"><input type="checkbox" data-tr-fin value="${esc(c.id)}" checked> ${esc(c.title)}</label>`).join('')}</div>
+    <div class="row tr-fin-act"><button class="btn primary" type="button" data-tr="report">결과 보고 만들기</button><button class="btn" type="button" data-tr="stats">교육청 실적 표 복사</button>
+      <button class="btn" type="button" data-tr="zip">이수증 묶음(ZIP)</button><button class="btn" type="button" data-tr="csv">엑셀 명단표</button></div>
+    <p class="muted tr-fin-note">이수증 ${kept}개를 이 기기에 보관하고 있어요(백업 파일에는 들어가지 않아요). 결과 보고·명단표에는 이름이 들어가 AI로 보내지 않고 이 컴퓨터에서만 만들어요.</p></div>`;
+}
+const finCids = () => [...box.querySelectorAll('[data-tr-fin]:checked')].map(x => x.value);
 function boardPendHTML(b) {
   if (!boardPend.length) return '';
   const so = b.staff.map(s => `<option value="${esc(s.id)}">${esc(s.name)}${s.dept ? ` (${esc(s.dept)})` : ''}</option>`).join('');
   const co = b.courses.map(c => `<option value="${esc(c.id)}">${esc(c.title)}</option>`).join('');
-  return `<div class="yp-card tr-pend"><h3>못 맞춘 이수증 ${boardPend.length}개 — 누구의 어느 연수인지 골라 주세요</h3><ul class="tr-pend-list">${boardPend.map((p, i) => `<li>
-    <span class="tr-file">${esc(p.name)}</span>
+  return `<div class="yp-card tr-pend"><h3>못 맞춘 이수증·응답 ${boardPend.length}개 — 누구의 어느 연수인지 골라 주세요</h3><ul class="tr-pend-list">${boardPend.map((p, i) => `<li>
+    <span class="tr-file">${esc(p.name)}${p.form ? ' <span class="muted">(구글 폼 응답)</span>' : ''}</span>
     <select class="field" data-tr-psid="${i}" aria-label="${esc(p.name)} 사람"><option value="">사람</option>${so.replace(`value="${esc(p.sid || '')}"`, `value="${esc(p.sid || '')}" selected`)}</select>
     <select class="field" data-tr-pcid="${i}" aria-label="${esc(p.name)} 연수"><option value="">연수</option>${co.replace(`value="${esc(p.cid || '')}"`, `value="${esc(p.cid || '')}" selected`)}</select>
     <button class="btn tiny primary" type="button" data-tr="bpPut" data-i="${i}">넣기</button><button class="btn text tiny" type="button" data-tr="bpDrop" data-i="${i}">버리기</button></li>`).join('')}</ul></div>`;
@@ -155,22 +172,53 @@ function boardPendHTML(b) {
 function renderBoard() {
   const t = today(), b = T.getBoard(), y = currentYear(t);
   const head = `<div class="m-head m-head-row"><div><h2>연수 현황판 <span class="muted">(${y}학년도)</span></h2>
-    ${introHTML('training-board', '연수 담당 선생님이 교직원 이수증 제출을 한눈에 챙겨요. 이수증 파일을 한꺼번에 끌어 놓으면 파일 이름·이수증 글에서 이름과 연수를 찾아 「제출」로 체크해요. 명단과 이수증은 이 컴퓨터에만 두고 AI로 보내지 않아요.')}</div>
+    ${introHTML('training-board', '연수 담당 선생님이 교직원 이수증을 수합해요. 메신저로 받은 이수증(구글 드라이브 ZIP도)을 한꺼번에 끌어 놓으면 파일 이름·이수증 글에서 이름과 연수를 찾아 「제출」로 체크하고, 구글 폼은 응답 엑셀·CSV를 넣어요. 종이는 칸을 눌러요. 다 모으면 아래 「수합 마무리」에서 결과 보고·교육청 실적 표·이수증 묶음·엑셀 명단표를 만들어요. 명단과 이수증은 이 컴퓨터에만 두고 AI로 보내지 않아요.')}</div>
     <div class="m-head-act"><button class="btn" type="button" data-tr="staff">명단 ${b.staff.length ? `고치기 (${b.staff.length}명)` : '넣기'}</button><button class="btn" type="button" data-tr="addCourse">+ 연수 더하기</button>
-      ${b.staff.length && b.courses.length ? `<button class="btn" type="button" data-tr="csv">엑셀 내려받기</button>
+      ${b.staff.length && b.courses.length ? `<button class="btn" type="button" data-tr="form" data-drop-pick>구글 폼 응답 넣기</button>
       <button class="btn primary" type="button" data-tr="bcerts" data-drop-pick${busy ? ' disabled' : ''}>${busy ? '<span class="spin"></span>읽는 중…' : '이수증 한꺼번에 넣기'}</button>` : ''}
-      <input type="file" id="trBoardFiles" hidden multiple accept="${CERT_ACCEPT}"><input type="file" id="trStaffFile" hidden accept=".xlsx,.csv"></div></div>`;
+      <input type="file" id="trBoardFiles" hidden multiple accept="${BOARD_ACCEPT}"><input type="file" id="trStaffFile" hidden accept=".xlsx,.csv"><input type="file" id="trFormFile" hidden accept=".xlsx,.csv"></div></div>`;
   box.innerHTML = `<div class="m-page tr-page">${head}${b.staff.length ? boardHTML(b, t) : `<div class="empty"><h3>먼저 교직원 명단을 넣어 주세요</h3>
     <p>한 줄에 한 명씩 붙여 넣거나(엑셀에서 「이름·부서」 두 칸을 복사해도 돼요) 명단 엑셀 파일을 넣어요. 명단은 이 컴퓨터에만 두고 AI로 보내지 않아요.</p>
     <div class="row" style="justify-content:center"><button class="btn primary" type="button" data-tr="staff">명단 넣기</button></div></div>`}</div>`;
 }
 const putBoard = b => { if (!T.saveBoard(b)) { toast(FULL, 6000); return false; } return true; };
+
+/* ---------- 이수증 파일 보관(이 기기 IndexedDB — 백업 파일에는 들어가지 않음, 5MB까지) ---------- */
+const fileStore = () => forms('training');
+const yearNow = () => currentYear(today());
+async function keepFile(cid, sid, f) {
+  if (!f || !f.bytes || !f.bytes.length || f.bytes.length > MAX_FORM) return false;
+  try { await (await fileStore()).put({ id: T.fileKey(yearNow(), cid, sid), name: f.name, bytes: f.bytes, savedAt: Date.now() }); return true; } catch (e) { return false; }
+}
+async function dropFiles(pairs) {
+  try { const st = await fileStore(); for (const [cid, sid] of pairs) await st.del(T.fileKey(yearNow(), cid, sid)).catch(() => {}); } catch (e) {}
+}
+/* 넣은 파일들 → [{ name, bytes, file }]: ZIP(구글 드라이브 폴더 내려받기 등)은 풀어서 파일마다(폴더 이름은 빼고) */
+async function expand(files) {
+  const out = [];
+  for (const f of files) {
+    let u8;
+    try { u8 = new Uint8Array(await f.arrayBuffer()); } catch (e) { continue; }
+    if (/\.zip$/i.test(f.name)) {
+      try {
+        for (const [n, bytes] of await unzip(u8)) {
+          const name = n.split('/').pop();
+          if (!name || name.startsWith('.') || /^__MACOSX/.test(n)) continue;
+          out.push({ name, bytes, file: new File([bytes], name) });
+        }
+      } catch (e) { toast(`「${f.name}」을 풀지 못했어요`); }
+    } else out.push({ name: f.name, bytes: u8, file: f });
+  }
+  return out;
+}
 function staffSheet() {
   const b = T.getBoard();
   SS().openSheet(`<div id="trStaffSheet"><h3>교직원 명단</h3><p class="muted" style="margin:0">한 줄에 한 명 — 「이름 ⇥ 부서」(엑셀 두 칸 복사)나 「이름, 부서」도 돼요. 같은 이름·부서는 한 번만 넣어요.</p>
     <textarea class="field" id="trStaffText" rows="6" placeholder="김하늘&#9;교무부&#10;이바다&#9;3학년"></textarea>
     <div class="row"><button class="btn" type="button" id="trStaffPick" data-drop-pick>명단 파일 넣기(엑셀·CSV)</button><span class="grow"></span><button class="btn primary" type="button" id="trStaffAdd">더하기</button></div>
-    ${b.staff.length ? `<h4 style="margin:6px 0 0">지금 명단 ${b.staff.length}명</h4><ul class="tr-staff">${b.staff.map(s => `<li>${esc(s.name)}${s.dept ? ` <span class="muted">${esc(s.dept)}</span>` : ''}<button class="icon-btn tiny" type="button" data-tr-rmstaff="${esc(s.id)}" aria-label="${esc(s.name)} 빼기">×</button></li>`).join('')}</ul>` : ''}
+    ${b.staff.length ? `<h4 style="margin:6px 0 0">지금 명단 ${b.staff.length}명 <span class="muted">— 구분(교원·직원·공무직)은 부서로 짐작했어요. 다르면 고쳐 주세요(교육청 실적 표에 써요).</span></h4><ul class="tr-staff">${b.staff.map(s => `<li><span>${esc(s.name)}${s.dept ? ` <span class="muted">${esc(s.dept)}</span>` : ''}</span>
+      <select class="field tiny" data-tr-kind="${esc(s.id)}" aria-label="${esc(s.name)} 구분">${[['', '구분 없음'], ...T.KINDS.map(k => [k, k])].map(([v, l]) => `<option value="${v}"${s.kind === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
+      <button class="icon-btn tiny" type="button" data-tr-rmstaff="${esc(s.id)}" aria-label="${esc(s.name)} 빼기">×</button></li>`).join('')}</ul>` : ''}
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>닫기</button></div></div>`, sh => {
     sh.querySelector('#trStaffAdd').addEventListener('click', () => {
       const list = T.parseStaff(sh.querySelector('#trStaffText').value);
@@ -178,6 +226,12 @@ function staffSheet() {
       addStaff(list);
     });
     sh.querySelector('#trStaffPick').addEventListener('click', () => { const f = box && box.querySelector('#trStaffFile'); if (f) f.click(); });
+    sh.addEventListener('change', e => {
+      const k = e.target.closest('[data-tr-kind]');
+      if (!k) return;
+      const cur = T.getBoard();
+      if (putBoard({ ...cur, staff: cur.staff.map(x => (x.id === k.dataset.trKind ? { ...x, kind: k.value } : x)) })) render();
+    });
     sh.addEventListener('click', e => {
       const r = e.target.closest('[data-tr-rmstaff]');
       if (!r) return;
@@ -185,7 +239,8 @@ function staffSheet() {
       if (!s) return;
       const has = cur.courses.some(c => T.markOf(cur, c.id, s.id));
       if (has && !confirm(`${s.name} 선생님의 제출 기록도 지워져요. 뺄까요?`)) return;
-      putBoard({ ...cur, staff: cur.staff.filter(x => x.id !== s.id) }); SS().closeSheet(); render(); staffSheet();
+      if (putBoard({ ...cur, staff: cur.staff.filter(x => x.id !== s.id) })) dropFiles(cur.courses.map(c => [c.id, s.id]));
+      SS().closeSheet(); render(); staffSheet();
     });
   });
 }
@@ -196,18 +251,22 @@ function addStaff(list) {
   render();
   toast(m.added ? `교직원 ${m.added}명을 넣었어요` : '이미 있는 이름이에요');
 }
+/* 연수 대상: 아무것도 고르지 않으면 전 교직원 */
+const targetHTML = cur => `<fieldset class="tr-target"><legend class="lab">대상 <span class="muted">(고르지 않으면 전 교직원)</span></legend>${T.KINDS.map(k => `<label class="chk"><input type="checkbox" data-tr-tg value="${k}"${cur.includes(k) ? ' checked' : ''}> ${k}</label>`).join('')}</fieldset>`;
+const targetOf = sh => [...sh.querySelectorAll('[data-tr-tg]:checked')].map(x => x.value);
 function courseAddSheet() {
   const have = new Set(T.getBoard().courses.map(c => T.titleKey(c.title)));
   const opts = T.DEFAULTS.filter(n => !have.has(T.titleKey(n))).map(n => `<option value="${esc(n)}">`).join('');
   SS().openSheet(`<div id="trCourseAdd"><h3>연수 더하기</h3>
     <label class="yp-f"><span class="lab">연수 이름</span><input class="field" id="trCTitle" list="trCDefaults" autocomplete="off" placeholder="예) 성희롱·성폭력 예방교육"><datalist id="trCDefaults">${opts}</datalist></label>
     <label class="yp-f"><span class="lab">제출 기한</span><input class="field" id="trCDue" type="date"></label>
+    ${targetHTML([])}
     <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="trCOk">더하기</button></div></div>`, sh => {
     sh.querySelector('#trCOk').addEventListener('click', () => {
       const title = sh.querySelector('#trCTitle').value.trim();
       if (!title) { toast('연수 이름을 넣어 주세요'); return; }
       const b = T.getBoard();
-      if (putBoard({ ...b, courses: [...b.courses, { id: T.newId('tc'), title, due: sh.querySelector('#trCDue').value }] })) { SS().closeSheet(); render(); }
+      if (putBoard({ ...b, courses: [...b.courses, { id: T.newId('tc'), title, due: sh.querySelector('#trCDue').value, target: targetOf(sh) }] })) { SS().closeSheet(); render(); }
     });
   });
 }
@@ -218,7 +277,8 @@ function courseSheet(cid) {
   SS().openSheet(`<div id="trCourseSheet"><h3>${esc(c.title)}</h3>
     <div class="row tr-two"><label class="yp-f"><span class="lab">연수 이름</span><input class="field" id="trCsTitle" value="${esc(c.title)}" autocomplete="off"></label>
       <label class="yp-f"><span class="lab">제출 기한</span><input class="field" id="trCsDue" type="date" value="${esc(c.due)}"></label></div>
-    <ul class="tr-cs-list">${b.staff.map(s => { const m = T.markOf(b, cid, s.id); return `<li><span>${esc(s.name)}${s.dept ? ` <span class="muted">${esc(s.dept)}</span>` : ''}</span>
+    ${targetHTML(c.target)}
+    <ul class="tr-cs-list">${T.targetStaff(b, c).map(s => { const m = T.markOf(b, cid, s.id); return `<li><span>${esc(s.name)}${s.dept ? ` <span class="muted">${esc(s.dept)}</span>` : ''}</span>
       <select class="field" data-tr-cs="${esc(s.id)}" aria-label="${esc(s.name)} 상태">${opt(m && m.s)}</select>
       <input class="field tr-cs-note" data-tr-csn="${esc(s.id)}" value="${esc((m && m.note) || '')}" placeholder="반려 사유" aria-label="${esc(s.name)} 반려 사유"${m && m.s === 'back' ? '' : ' hidden'}>
       ${m && m.file ? `<span class="muted tr-file">${esc(m.file)}</span>` : ''}</li>`; }).join('')}</ul>
@@ -235,18 +295,22 @@ function courseSheet(cid) {
     sh.querySelector('#trCsDel').addEventListener('click', () => {
       if (!confirm(`「${c.title}」 연수와 그 제출 기록을 지울까요?`)) return;
       const cur = T.getBoard(), marks = { ...cur.marks }; delete marks[cid];
-      if (putBoard({ ...cur, courses: cur.courses.filter(x => x.id !== cid), marks })) { SS().closeSheet(); render(); }
+      if (putBoard({ ...cur, courses: cur.courses.filter(x => x.id !== cid), marks })) { dropFiles(cur.staff.map(s => [cid, s.id])); SS().closeSheet(); render(); }
     });
     sh.querySelector('#trCsOk').addEventListener('click', () => {
       const title = sh.querySelector('#trCsTitle').value.trim();
       if (!title) { toast('연수 이름을 넣어 주세요'); return; }
       let cur = T.getBoard();
-      cur = { ...cur, courses: cur.courses.map(x => (x.id === cid ? { ...x, title, due: sh.querySelector('#trCsDue').value } : x)) };
+      cur = { ...cur, courses: cur.courses.map(x => (x.id === cid ? { ...x, title, due: sh.querySelector('#trCsDue').value, target: targetOf(sh) } : x)) };
+      const gone = [];
       sh.querySelectorAll('[data-tr-cs]').forEach(s => {
         const sid = s.dataset.trCs, old = T.markOf(cur, cid, sid), note = (sh.querySelector(`[data-tr-csn="${CSS.escape(sid)}"]`) || {}).value || '';
-        if ((old && old.s) !== (s.value || undefined) || (s.value === 'back' && note !== ((old && old.note) || ''))) cur = T.setMark(cur, cid, sid, s.value, s.value === 'back' ? { note } : {});
+        if ((old && old.s) !== (s.value || undefined) || (s.value === 'back' && note !== ((old && old.note) || ''))) {
+          cur = T.setMark(cur, cid, sid, s.value, s.value === 'back' ? { note } : {});
+          if (!s.value) gone.push([cid, sid]);
+        }
       });
-      if (putBoard(cur)) { SS().closeSheet(); render(); }
+      if (putBoard(cur)) { if (gone.length) dropFiles(gone); SS().closeSheet(); render(); }
     });
   });
 }
@@ -266,19 +330,20 @@ function nudgeSheet(cid) {
   });
 }
 /* 이수증 한꺼번에: 사람·연수를 찾아 「제출」, 못 맞춘 것은 고르게 */
+async function putBoardCert(cid, sid, f, { date = '', hours = null } = {}) {
+  const kept = await keepFile(cid, sid, f), b = T.getBoard(), old = T.markOf(b, cid, sid);
+  return putBoard(T.setMark(b, cid, sid, old && old.s === 'ok' ? 'ok' : 'sent', { file: f.name, note: '', date: date || (old && old.date) || '', hours: hours || (old && old.hours) || null, kept: kept || !!(old && old.kept) }));
+}
 async function addBoardCerts(files) {
   busy = true; render();
   let put = 0;
   try {
-    for (const f of files) {
-      const text = await certText(f);
-      let b = T.getBoard();
-      const r = T.matchFile({ name: f.name, text }, b);
-      if (r.sid && r.cid) {
-        const old = T.markOf(b, r.cid, r.sid);
-        b = T.setMark(b, r.cid, r.sid, old && old.s === 'ok' ? 'ok' : 'sent', { file: f.name, note: '' });
-        if (putBoard(b)) put++;
-      } else boardPend.push({ name: f.name, sid: r.sid, cid: r.cid });
+    for (const f of await expand(files)) {
+      const text = await certText(f.file);
+      const r = T.matchFile({ name: f.name, text }, T.getBoard());
+      const extra = { date: text ? T.certDate(text) : '', hours: text ? T.certHours(text) : null };
+      if (r.sid && r.cid) { if (await putBoardCert(r.cid, r.sid, f, extra)) put++; }
+      else boardPend.push({ name: f.name, sid: r.sid, cid: r.cid, bytes: f.bytes, ...extra });
     }
   } finally { busy = false; }
   render();
@@ -293,18 +358,77 @@ async function staffFile(f) {
   } catch (e) { toast('명단 파일을 읽지 못했어요. 엑셀(.xlsx)이나 CSV로 넣어 주세요.'); }
 }
 
+/* 구글 폼 응답(CSV·엑셀): 이름·연수·파일 주소·날짜로 「제출」. 연수 열이 없고 연수가 여럿이면 어느 연수인지 물음 */
+async function formFile(f) {
+  let rows;
+  try { rows = await readTable(f.name, new Uint8Array(await f.arrayBuffer())); } catch (e) { toast('응답 파일을 읽지 못했어요. 구글 폼 응답을 엑셀(.xlsx)이나 CSV로 내려받아 넣어 주세요.'); return; }
+  const b = T.getBoard(), probe = T.formResponses(rows, b);
+  if (probe.noName) { toast('응답에서 「이름·성명」 칸을 찾지 못했어요'); return; }
+  const apply = cid => {
+    const r = T.formResponses(rows, T.getBoard(), { cid });
+    let cur = T.getBoard();
+    for (const h of r.hits) { const old = T.markOf(cur, h.cid, h.sid); cur = T.setMark(cur, h.cid, h.sid, old && old.s === 'ok' ? 'ok' : 'sent', { file: '구글 폼', link: h.link, date: h.date || (old && old.date) || '', note: '' }); }
+    if (!putBoard(cur)) return;
+    for (const m of r.miss) boardPend.push({ name: m.name, sid: m.sid, cid: m.course, link: m.link, date: m.date, form: true });
+    render();
+    toast(`구글 폼 응답 ${r.hits.length}명을 「제출」로 넣었어요${r.miss.length ? ` · ${r.miss.length}명은 골라 주세요` : ''}`, 5000);
+  };
+  if (probe.courseCol || b.courses.length === 1) { apply(''); return; }
+  SS().openSheet(`<div id="trFormSheet"><h3>어느 연수 응답인가요?</h3><p class="muted" style="margin:0">응답에 연수 이름 칸이 없어요. 이 응답이 어느 연수 이수증인지 골라 주세요.</p>
+    <select class="field" id="trFormCourse">${b.courses.map(c => `<option value="${esc(c.id)}">${esc(c.title)}</option>`).join('')}</select>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button><button class="btn primary" type="button" id="trFormOk">넣기</button></div></div>`,
+  sh => sh.querySelector('#trFormOk').addEventListener('click', () => { const v = sh.querySelector('#trFormCourse').value; SS().closeSheet(); apply(v); }));
+}
+/* 결과 보고(내부결재 본문): 제목·관련을 고쳐 한글·워드·PDF로. 관련 기본값은 연수를 넣은 공문 */
+async function reportSheet(cids) {
+  const b = T.getBoard(), y = yearNow();
+  let related = '';
+  const from = b.courses.filter(c => cids.includes(c.id)).map(c => c.from).find(f => /^gongmun:/.test(f || ''));
+  if (from) { try { const G = await import('../etc/gongmun-model.js'); related = T.relatedOf(G.getDoc(from.slice('gongmun:'.length))); } catch (e) { related = ''; } }
+  SS().openSheet(`<div id="trReport"><h3>결과 보고 만들기</h3><p class="muted" style="margin:0">내부결재 본문(이수 현황 표·미이수·붙임)과 붙임 1. 이수 현황 명단을 한 문서로 만들어요. 이름이 들어가 AI로 보내지 않아요.</p>
+    <label class="yp-f"><span class="lab">제목</span><input class="field" id="trRepTitle" value="${esc(T.reportTitle(b, cids, y))}" autocomplete="off"></label>
+    <label class="yp-f"><span class="lab">관련 <span class="muted">(비우면 관련 없이)</span></span><input class="field" id="trRepRel" value="${esc(related)}" autocomplete="off" placeholder="예) ○○교육지원청 교육지원과-1234(2026. 11. 2.) 「법정의무교육 이수 안내」"></label>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>닫기</button>${exportButton('id="trRepGo"', { cls: 'primary' })}</div></div>`, sh => {
+    sh.querySelector('#trRepGo').addEventListener('click', async () => {
+      const title = sh.querySelector('#trRepTitle').value.trim();
+      const doc = T.reportDoc(T.getBoard(), { cids, title, related: sh.querySelector('#trRepRel').value.trim(), year: y, school: getSchool().name });
+      try { const msg = await exportDoc(doc, doc.title); if (msg) toast(msg, 5000); } catch (e) { toast('문서를 만들지 못했어요'); }
+    });
+  });
+}
+/* 이수증 묶음(ZIP): 이 기기에 보관한 이수증을 「연수명/연수명_이름(부서)」로 + 이수 현황.csv */
+async function saveBundle(cids) {
+  const b = T.getBoard(), y = yearNow(), files = new Map();
+  try {
+    const st = await fileStore();
+    for (const c of b.courses.filter(x => cids.includes(x.id))) for (const s of T.targetStaff(b, c)) {
+      const m = T.markOf(b, c.id, s.id);
+      if (!m || !m.kept) continue;
+      const f = await st.get(T.fileKey(y, c.id, s.id));
+      if (f && f.bytes) files.set(T.fileKey(y, c.id, s.id), f);
+    }
+  } catch (e) {}
+  const entries = T.bundleEntries(b, files, { year: y, cids });
+  const n = entries.length - 1;
+  try {
+    const name = await saveFile(`연수 이수증 묶음(${today()}).zip`, zipStore(entries), 'application/zip');
+    toast(`${n ? `이수증 ${n}개와 ` : ''}이수 현황표를 묶어 저장했어요: ${name}`, 5000);
+  } catch (e) { toast('저장하지 못했어요'); }
+}
+
 /* ---------- 그리기·누르기 ---------- */
 function render() {
   if (!box) return;
   keepFiles(box, () => (tab === 'board' ? renderBoard() : renderMine()));
 }
 const inPage = e => box && box.isConnected && box.contains(e.target) && !!box.querySelector('.tr-page');
-document.addEventListener('click', e => {
+document.addEventListener('click', async e => {
   if (!inPage(e)) return;
   const cell = e.target.closest('[data-tr-cell]');
   if (cell) {
-    const [cid, sid] = cell.dataset.trCell.split('|'), b = T.getBoard(), m = T.markOf(b, cid, sid);
-    if (putBoard(T.setMark(b, cid, sid, T.nextMark(m && m.s)))) render();
+    const [cid, sid] = cell.dataset.trCell.split('|'), b = T.getBoard(), m = T.markOf(b, cid, sid), next = T.nextMark(m && m.s);
+    // 미제출로 돌리면 보관한 이수증도 지움
+    if (putBoard(T.setMark(b, cid, sid, next, next === 'sent' && !m ? { file: '' } : {}))) { if (!next && m && m.kept) dropFiles([[cid, sid]]); render(); }
     return;
   }
   const btn = e.target.closest('[data-tr]');
@@ -338,6 +462,14 @@ document.addEventListener('click', e => {
   else if (a === 'course') courseSheet(id);
   else if (a === 'nudge') nudgeSheet(id);
   else if (a === 'bcerts') { const f = box.querySelector('#trBoardFiles'); if (f) f.click(); }
+  else if (a === 'form') { const f = box.querySelector('#trFormFile'); if (f) f.click(); }
+  else if (a === 'report') { const c = finCids(); if (!c.length) { toast('연수를 골라 주세요'); return; } reportSheet(c); }
+  else if (a === 'stats') {
+    const c = finCids();
+    if (!c.length) { toast('연수를 골라 주세요'); return; }
+    copyText(T.statsTsv(T.getBoard(), c)); toast('구분별 실적 표를 복사했어요. 공문 양식의 표나 엑셀에 붙여 넣으세요.', 5000);
+  }
+  else if (a === 'zip') { const c = finCids(); if (!c.length) { toast('연수를 골라 주세요'); return; } saveBundle(c); }
   else if (a === 'csv') saveFile(`연수 현황(${today()}).csv`, new TextEncoder().encode(T.boardCsv(T.getBoard())), 'text/csv').then(n => toast(`저장했어요: ${n}`)).catch(() => toast('저장하지 못했어요'));
   else if (a === 'bpPut' || a === 'bpDrop') {
     const i = +btn.dataset.i, p = boardPend[i];
@@ -345,7 +477,8 @@ document.addEventListener('click', e => {
     if (a === 'bpPut') {
       const sid = (box.querySelector(`[data-tr-psid="${i}"]`) || {}).value, cid = (box.querySelector(`[data-tr-pcid="${i}"]`) || {}).value;
       if (!sid || !cid) { toast('사람과 연수를 골라 주세요'); return; }
-      if (!putBoard(T.setMark(T.getBoard(), cid, sid, 'sent', { file: p.name }))) return;
+      if (p.form) { if (!putBoard(T.setMark(T.getBoard(), cid, sid, 'sent', { file: '구글 폼', link: p.link, date: p.date }))) return; }
+      else if (!await putBoardCert(cid, sid, { name: p.name, bytes: p.bytes }, p)) return;
     }
     boardPend.splice(i, 1); render();
   }
@@ -358,6 +491,7 @@ document.addEventListener('change', e => {
     if (fs.length) addMineCerts(fs, only);
   } else if (el.id === 'trBoardFiles') { const fs = [...el.files]; el.value = ''; if (fs.length) addBoardCerts(fs); }
   else if (el.id === 'trStaffFile') { const f = el.files[0]; el.value = ''; if (f) staffFile(f); }
+  else if (el.id === 'trFormFile') { const f = el.files[0]; el.value = ''; if (f) formFile(f); }
 });
 
 /* 떠 있는 버튼(inbox 'cert'): 이수증 여러 장이고 현황판에 명단이 있으면 현황판에 한꺼번에, 아니면 내 필수연수에 */

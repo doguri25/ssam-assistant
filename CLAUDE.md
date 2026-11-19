@@ -43,6 +43,10 @@
   화면 `training.js`(공문 처리 [내 필수연수에 넣기]는 `addFromGongmun`), 학사일정 출처 `training`(브리핑 학사일정 줄·인수인계서·학부모 안내에서는 뺌 — 주간학습안내 `forParents`는 `event:`·직접 넣은 일정만),
   오늘 할 일 `briefLines → briefing({ trainings })`, 채팅 intent `training`·`dataQuestion` kind `training`, 인수인계서 `handover-model` trainings, 새 학년도 `years.js carryTraining`
   (`tests/unit/fix1118-training.test.mjs`, e2e `fix1118-training.mjs`).
+  - 연수 수합(2026-11-19 「연수 수합도 해야 하는데 가능할까?」 — 결과물 넷 다·받기는 메신저·구글 폼·종이): 스펙 §4. 구분 `guessKind`(교원·직원·공무직)·연수 대상 `target`(`inTarget`),
+    칸에 이수일·시간·링크·`kept`, 이수증 파일은 IndexedDB `forms('training')`(열쇠 `fileKey` 학년도|연수|사람 — 백업 안 됨, 미제출로 돌리거나 사람·연수를 지우면 지움),
+    ZIP 풀어 넣기 `training.js expand`, 구글 폼 `formResponses`, 수합 마무리 `reportDoc`(결과 보고)·`statsTsv`(실적 표)·`bundleEntries`(묶음 ZIP)·`boardCsv`
+    (단위 `fix1118-training.test.mjs` 끝 3개, e2e `fix1119-training-collect.mjs`).
 - 메뉴 사이 흐름 점검(2026-11-18 「각 정보와 메뉴가 유기적으로 돌아가는지 확인해줘」, 릴리즈 전): 채팅 intent `budget`·`idea`·교체/보강/메모 → 오늘 수업·전담 → 진도표,
   「예산 얼마 남았어?」(`budget-model chatAnswer`), 떠 있는 버튼 kind `cert`(이수증 → `training.js putCerts`), 기초학력 수업 날은 `calendar closedDays`(재량휴업일 등 — 방학은 아님) 건너뜀,
   인수인계서에 기초학력(`camp-model handoverRows`)·연수 (`tests/unit/fix1118-flow.test.mjs`, e2e `fix1118-flow.mjs`).
@@ -62,7 +66,7 @@
 
 ## 시험
 
-- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1593개 통과)
+- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1596개 통과)
 - e2e 한 파일: `node tests/e2e/<이름>.mjs`
 - e2e 전체: `node tests/e2e/run-all.mjs` (약 170개 파일, 45~50분). 파일마다 다른 포트를 써서 나눠 돌려도 된다. 전체가 도는 동안에는 작업 폴더를 고치지 말고 `.claude/worktrees/` 아래 worktree에서 일한다(그 안에서는 저장소의 node_modules를 그대로 찾는다).
 

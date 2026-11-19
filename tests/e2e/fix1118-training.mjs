@@ -151,7 +151,7 @@ await run('fix1118-training', [
   ['엑셀 내려받기·독려 쪽지(이름 없음)', async () => {
     const [dl] = await Promise.all([page.waitForEvent('download'), page.click(`${V} [data-tr="csv"]`)]);
     const body = readFileSync(await dl.path()).toString('utf8');
-    assert(body.includes('이름,부서,성희롱·성폭력 예방교육(기한 2026-11-20),청렴교육') && body.includes('박솔빛,,반려(다른 연수 이수증)') && body.includes('이수율,,50%,50%'), JSON.stringify(body));
+    assert(body.includes('이름,구분,부서,성희롱·성폭력 예방교육(기한 2026-11-20),청렴교육') && body.includes('박솔빛,,,반려(다른 연수 이수증)') && body.includes('이수율,,,50%,50%') && body.includes('한가람,직원,행정실'), JSON.stringify(body));
     const c1 = (await board()).courses[0].id;
     await page.click(`${V} [data-tr-course="${c1}"] [data-tr="nudge"]`);
     const txt = await page.inputValue('#trNudgeText');

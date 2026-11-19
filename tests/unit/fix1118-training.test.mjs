@@ -56,10 +56,10 @@ test('현황판: 명단 읽기·더하기·칸 바꾸기·이수율', () => {
   assert.equal(m.added, 1); assert.equal(m.staff.length, 2);
   let b = T.normBoard({ staff: [{ id: 's1', name: '김하늘' }, { id: 's2', name: '이바다' }, { id: 's3', name: '한가람' }, { id: 's4', name: '박솔빛' }],
     courses: [{ id: 'c1', title: '성희롱·성폭력 예방교육', due: '2026-11-30' }], marks: { c1: { s1: { s: 'ok' }, s9: { s: 'sent' }, s2: { s: 'zz' } }, cX: { s1: { s: 'ok' } } } });
-  assert.deepEqual(b.marks, { c1: { s1: { s: 'ok', file: '', note: '', at: 0 } } }, '없는 사람·연수·상태는 버림');
+  assert.deepEqual(b.marks, { c1: { s1: { s: 'ok', file: '', note: '', at: 0, date: '', hours: null, link: '', kept: false } } }, '없는 사람·연수·상태는 버림');
   b = T.setMark(b, 'c1', 's2', 'sent', { file: '이바다.pdf' });
   b = T.setMark(b, 'c1', 's3', 'back', { note: '다른 연수 이수증' });
-  assert.deepEqual(T.courseStats(b, 'c1'), { total: 4, sent: 1, ok: 1, back: 1, none: 1, rate: 50 });
+  assert.deepEqual(T.courseStats(b, 'c1'), { total: 4, sent: 1, ok: 1, back: 1, none: 1, done: 2, rate: 50 });
   assert.deepEqual(T.missingStaff(b, 'c1').map(s => s.name), ['한가람', '박솔빛']);
   assert.deepEqual(['', 'sent', 'ok', 'back'].map(T.nextMark), ['sent', 'ok', '', '']);
   b = T.setMark(b, 'c1', 's2', '');
@@ -83,8 +83,8 @@ test('현황판: 엑셀·독려 쪽지·오늘 할 일·인수인계서·채팅 
   let b = T.normBoard({ staff: [{ id: 's1', name: '김하늘', dept: '교무부' }, { id: 's2', name: '이바다' }], courses: [{ id: 'c1', title: '청렴교육, 부패방지', due: '2026-11-20' }] });
   b = T.setMark(b, 'c1', 's1', 'back', { note: '흐림' });
   const csv = T.boardCsv(b);
-  assert.ok(csv.startsWith('﻿이름,부서,"청렴교육, 부패방지(기한 2026-11-20)"'), csv);
-  assert.ok(csv.includes('김하늘,교무부,반려(흐림)') && csv.includes('이수율,,0%'), csv);
+  assert.ok(csv.startsWith('\uFEFF이름,구분,부서,"청렴교육, 부패방지(기한 2026-11-20)"'), csv);
+  assert.ok(csv.includes('김하늘,교원,교무부,반려(흐림)') && csv.includes('이수율,,,0%') && csv.includes('[구분별 실적]'), csv);
   const n = T.nudgeText(b.courses[0]);
   assert.ok(n.startsWith('[제출 안내] 청렴교육, 부패방지 이수증 제출 안내') && n.includes('□ 기한: 2026. 11. 20.(금)까지') && !n.includes('김하늘'), n);
   const mine = [T.normItem({ title: '개인정보보호 교육', due: '2026-11-25' }), T.normItem({ title: '먼 연수', due: '2026-12-31' }), T.normItem({ title: '끝난 연수', due: '2026-11-19', status: 'done' })];
@@ -119,5 +119,78 @@ test('다른 메뉴와 잇기: 오늘 할 일·학사일정·학부모 안내·�
   const out = carryOver({ 'training:mine': JSON.stringify([{ id: 'a', title: '청렴교육', status: 'ok', due: '2026-11-20' }]),
     'training:board': JSON.stringify({ staff: [{ id: 's1', name: '김하늘' }], courses: [{ id: 'c1', title: '청렴교육', due: '2026-11-20' }], marks: { c1: { s1: { s: 'ok' } } } }) }, 2027);
   assert.deepEqual(JSON.parse(out['training:mine']), [{ id: 'a', title: '청렴교육', where: '', status: 'todo' }]);
-  assert.deepEqual(JSON.parse(out['training:board']), { staff: [{ id: 's1', name: '김하늘', dept: '' }], courses: [{ id: 'c1', title: '청렴교육' }], marks: {} });
+  assert.deepEqual(JSON.parse(out['training:board']), { staff: [{ id: 's1', name: '김하늘', dept: '', kind: '' }], courses: [{ id: 'c1', title: '청렴교육', target: [] }], marks: {} });
+});
+
+/* ---------- 연수 수합(2026-11-19) ---------- */
+const sample = () => T.normBoard({
+  staff: [{ id: 's1', name: '김하늘', dept: '3학년 담임' }, { id: 's2', name: '이바다', dept: '보건교사' }, { id: 's3', name: '한가람', dept: '행정실 주무관' },
+    { id: 's4', name: '박솔빛', dept: '교무실무사' }, { id: 's5', name: '김하늘', dept: '돌봄전담사' }],
+  courses: [{ id: 'c1', title: '성희롱·성폭력 예방교육', due: '2026-11-20', from: 'gongmun:g1' }, { id: 'c2', title: '학교폭력 예방교육', target: ['교원'] }]
+});
+
+test('수합: 구분 짐작·연수 대상·구분별 실적', () => {
+  assert.deepEqual(['3학년 담임', '보건교사', '영양교사', '행정실 주무관', '교무실무사', '돌봄전담사', '조리실무원', '교감', '6-2', '사서', ''].map(T.guessKind),
+    ['교원', '교원', '교원', '직원', '공무직', '공무직', '공무직', '교원', '교원', '공무직', '']);
+  let b = sample();
+  assert.deepEqual(b.staff.map(s => s.kind), ['교원', '교원', '직원', '공무직', '공무직']);
+  assert.equal(T.normBoard({ staff: [{ id: 'x', name: '김하늘', dept: '3학년', kind: '' }] }).staff[0].kind, '', '「구분 없음」으로 고른 것은 그대로');
+  const c2 = b.courses[1];
+  assert.ok(T.inTarget(c2, b.staff[0]) && !T.inTarget(c2, b.staff[2]));
+  b = T.setMark(b, 'c2', 's1', 'ok', { date: '2026-11-02' });
+  assert.deepEqual(T.courseStats(b, 'c2'), { total: 2, sent: 0, ok: 1, back: 0, none: 1, done: 1, rate: 50 }, '대상(교원)만 셈');
+  assert.deepEqual(T.missingStaff(b, 'c2').map(s => s.id), ['s2']);
+  b = T.setMark(b, 'c1', 's1', 'sent'); b = T.setMark(b, 'c1', 's3', 'ok'); b = T.setMark(b, 'c1', 's4', 'back', { note: '흐림' });
+  assert.deepEqual(T.kindRows(b, 'c1'), [{ kind: '교원', total: 2, done: 1, rate: 50 }, { kind: '직원', total: 1, done: 1, rate: 100 }, { kind: '공무직', total: 2, done: 0, rate: 0 }, { kind: '계', total: 5, done: 2, rate: 40 }]);
+  assert.equal(T.statsTsv(b, ['c2']), '연수\t구분\t대상\t이수\t미이수\t이수율\n학교폭력 예방교육\t교원\t2\t1\t1\t50%\n학교폭력 예방교육\t계\t2\t1\t1\t50%');
+  assert.equal(T.cellText(b, c2, b.staff[2]), '—');
+  assert.equal(T.cellText(b, c2, b.staff[0], { report: true }), '이수(11. 2.)');
+  assert.equal(T.cellText(b, b.courses[0], b.staff[3], { report: true }), '반려(흐림)');
+  assert.equal(T.cellText(b, b.courses[0], b.staff[4], { report: true }), '미이수');
+});
+
+test('수합: 구글 폼 응답 넣기(이름·연수·파일 주소·날짜)', () => {
+  const b = sample();
+  const rows = [['타임스탬프', '성함', '부서', '연수 이름', '이수증 파일 올리기'],
+    ['2026. 11. 2 오후 3:15:00', '이바다', '보건교사', '성희롱 예방교육', 'https://drive.google.com/open?id=abc'],
+    ['2026/11/03 09:00:00', '김하늘', '돌봄전담사', '성희롱·성폭력', 'https://drive.google.com/open?id=def'],
+    ['2026/11/03 10:00:00', '김하늘', '', '학교폭력', ''],
+    ['2026/11/04 10:00:00', '최누리', '3학년', '학교폭력', ''],
+    ['', '', '', '', '']];
+  const r = T.formResponses(rows, b);
+  assert.deepEqual(r.hits, [{ sid: 's2', cid: 'c1', link: 'https://drive.google.com/open?id=abc', date: '2026-11-02' }, { sid: 's5', cid: 'c1', link: 'https://drive.google.com/open?id=def', date: '2026-11-03' }]);
+  assert.deepEqual(r.miss.map(x => [x.name, x.course, x.sid]), [['김하늘', 'c2', ''], ['최누리', 'c2', '']], '같은 이름(부서 없음)·명단에 없는 사람은 고르기');
+  // 연수 열이 없으면 고른 연수
+  const r2 = T.formResponses([['성명', '파일'], ['한가람', 'https://drive.google.com/x']], b, { cid: 'c1' });
+  assert.deepEqual(r2.hits, [{ sid: 's3', cid: 'c1', link: 'https://drive.google.com/x', date: '' }]);
+  assert.equal(T.formResponses([['a', 'b']], b).noName, true);
+  assert.ok(r.courseCol && !r2.courseCol, '연수 열이 있는지(없으면 화면이 어느 연수인지 물음)');
+});
+
+test('수합: 이수증 묶음(ZIP 항목)·결과 보고 문서', () => {
+  let b = sample();
+  b = T.setMark(b, 'c1', 's1', 'ok', { date: '2026-11-02' }); b = T.setMark(b, 'c1', 's2', 'sent'); b = T.setMark(b, 'c1', 's3', 'sent');
+  const files = new Map([[T.fileKey(2026, 'c1', 's1'), { name: 'scan01.PDF', bytes: new Uint8Array([1, 2]) }], [T.fileKey(2026, 'c1', 's2'), { name: '이바다.jpg', bytes: new Uint8Array([3]) }]]);
+  const e = T.bundleEntries(b, files, { year: 2026, cids: ['c1'] });
+  assert.deepEqual(e.slice(0, 2).map(x => x.name), ['성희롱·성폭력 예방교육/성희롱·성폭력 예방교육_김하늘(3학년 담임).pdf', '성희롱·성폭력 예방교육/성희롱·성폭력 예방교육_이바다(보건교사).jpg']);
+  const csv = e[2].data;
+  assert.equal(e[2].name, '이수 현황.csv');
+  assert.ok(csv.includes('성희롱·성폭력 예방교육,한가람,직원,행정실 주무관,제출,,종이·링크') && csv.includes(',박솔빛,공무직,교무실무사,미제출,,'), csv);
+  assert.equal(T.relatedOf({ from: '○○교육지원청', no: '교육지원과-1234', date: '2026-11-02', title: '2026년 법정의무교육 이수 안내' }), '○○교육지원청 교육지원과-1234(2026. 11. 2.) 「2026년 법정의무교육 이수 안내」');
+  const doc = T.reportDoc(b, { cids: ['c1', 'c2'], related: 'A-1(2026. 11. 2.) 「안내」', year: 2026, school: '새싹초등학교' });
+  assert.equal(doc.title, '2026학년도 성희롱·성폭력 예방교육 등 법정의무교육 이수 결과 보고');
+  const txt = doc.blocks.filter(x => x.type === 'p').map(x => x.text);
+  assert.deepEqual(txt.slice(0, 4), ['1. 관련: A-1(2026. 11. 2.) 「안내」', '2. 위 호와 관련하여 새싹초등학교 교직원의 법정의무교육 이수 결과를 다음과 같이 보고합니다.',
+    '  가. 연수명: 성희롱·성폭력 예방교육, 학교폭력 예방교육', '  나. 대상: 교직원 5명(교원 2명, 직원 1명, 공무직 2명)']);
+  assert.ok(txt.includes('  마. 미이수: 성희롱·성폭력 예방교육 2명, 학교폭력 예방교육 2명 — 개별 안내 후 이수하도록 함'), txt.join('\n'));
+  assert.ok(txt.includes('      2. 이수증 3부.  끝.'), txt.join('\n'));
+  const tbl = doc.blocks.filter(x => x.type === 'table');
+  assert.deepEqual(tbl[0].rows[1], ['성희롱·성폭력 예방교육', '5명', '3명', '2명', '60%']);
+  assert.deepEqual(tbl[2].rows[1], ['1', '김하늘', '교원', '3학년 담임', '이수(11. 2.)', '미이수']);
+  assert.deepEqual(tbl[2].rows[3], ['3', '한가람', '직원', '행정실 주무관', '이수', '대상 아님']);
+  // 연수 하나·관련 없음
+  const one = T.reportDoc(b, { cids: ['c2'], year: 2026 });
+  assert.equal(one.title, '2026학년도 학교폭력 예방교육 이수 결과 보고');
+  assert.ok(one.blocks[0].text.startsWith('1. 본교 교직원의 학교폭력 예방교육 이수 결과') && one.blocks.some(x => x.text === '  나. 대상: 교원 2명'), JSON.stringify(one.blocks.slice(0, 3)));
+  assert.ok(one.blocks.some(x => x.text === '붙임  1. 연수별 이수 현황 명단 1부.  끝.'), '이수증이 없으면 붙임 2 없음');
 });

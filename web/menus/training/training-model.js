@@ -158,22 +158,43 @@ export const nextMark = s => (s === 'sent' ? 'ok' : s === 'ok' || s === 'back' ?
 // 이름 뒤 호칭(「김하늘 선생님」)은 뺌
 const cleanName = n => str(n, 30).replace(/\s*(?:선생님|선생|교사|님|주무관|실무사)$/, '').trim();
 
+/* 구분(교육청 실적 칸): 교원·직원·공무직. 명단의 부서·직위 글로 짐작(「보건교사·영양교사·사서교사」는 교원, 「교무실무사·돌봄전담사·조리」는 공무직), 모르면 '' */
+export const KINDS = ['교원', '직원', '공무직'];
+export function guessKind(dept) {
+  const d = String(dept || '');
+  if (/교사|교감|교장/.test(d)) return '교원';
+  if (/공무직|실무사|실무원|조리|돌봄|전담사|배움터|당직|미화|청소|영양사|사서(?!교사)|시설/.test(d)) return '공무직';
+  if (/행정|주무관|실장/.test(d)) return '직원';
+  if (/담임|학년|교과|전담|부장|수석|보건|상담|교무|연구|특수|기간제|\d\s*-\s*\d|\d\s*반/.test(d)) return '교원';
+  return '';
+}
+// 저장한 구분(''은 「구분 없음」으로 고른 것)이 있으면 그것, 없으면 짐작
+const kindOf = (k, dept) => (KINDS.includes(k) ? k : k === '' ? '' : guessKind(dept));
+
 export function normBoard(v) {
   const o = isObj(v) ? v : {};
-  const staff = (Array.isArray(o.staff) ? o.staff : []).filter(isObj).map(s => ({ id: typeof s.id === 'string' && s.id ? s.id.slice(0, 40) : newId('st'), name: cleanName(s.name), dept: str(s.dept, 30) }))
+  const staff = (Array.isArray(o.staff) ? o.staff : []).filter(isObj).map(s => ({ id: typeof s.id === 'string' && s.id ? s.id.slice(0, 40) : newId('st'), name: cleanName(s.name), dept: str(s.dept, 30),
+    kind: kindOf(s.kind, s.dept) }))
     .filter(s => s.name).slice(0, 300);
+  // target: 연수 대상 구분(비면 전 교직원)
   const courses = (Array.isArray(o.courses) ? o.courses : []).filter(isObj).map(c => ({ id: typeof c.id === 'string' && c.id ? c.id.slice(0, 40) : newId('tc'), title: str(c.title, 100),
-    due: isDate(c.due) ? c.due : '', from: str(c.from, 60) })).filter(c => c.title).slice(0, 40);
+    due: isDate(c.due) ? c.due : '', from: str(c.from, 60), target: (Array.isArray(c.target) ? c.target : []).filter(k => KINDS.includes(k)) })).filter(c => c.title).slice(0, 40);
   const sid = new Set(staff.map(s => s.id)), cid = new Set(courses.map(c => c.id)), marks = {};
   for (const [c, row] of Object.entries(isObj(o.marks) ? o.marks : {})) {
     if (!cid.has(c) || !isObj(row)) continue;
     for (const [s, m] of Object.entries(row)) {
       if (!sid.has(s) || !isObj(m) || !MK.includes(m.s)) continue;
-      (marks[c] = marks[c] || {})[s] = { s: m.s, file: str(m.file, 120), note: str(m.note, 200), at: Number(m.at) || 0 };
+      // date·hours: 이수증 글에서 읽은 이수일·시간, link: 구글 폼 파일 주소, kept: 이 기기에 파일을 보관함
+      (marks[c] = marks[c] || {})[s] = { s: m.s, file: str(m.file, 120), note: str(m.note, 200), at: Number(m.at) || 0, date: isDate(m.date) ? m.date : '', hours: num(m.hours),
+        link: /^https?:\/\//.test(String(m.link || '')) ? String(m.link).slice(0, 300) : '', kept: !!m.kept };
     }
   }
   return { staff, courses, marks };
 }
+/* 그 연수의 대상인지(대상을 고르지 않았으면 모두) */
+export const inTarget = (c, s) => !!c && !!s && (!(c.target || []).length || c.target.includes(s.kind));
+export const targetStaff = (b, c) => (b.staff || []).filter(s => inTarget(c, s));
+export const targetLabel = c => ((c && c.target && c.target.length) ? c.target.join('·') : '전 교직원');
 export const getBoard = () => normBoard(get('training:board', null));
 export const saveBoard = b => set('training:board', normBoard(b));
 export const markOf = (b, cid, sid) => ((b.marks || {})[cid] || {})[sid] || null;
@@ -184,14 +205,30 @@ export function setMark(b, cid, sid, s, extra = {}) {
   marks[cid] = row;
   return { ...b, marks };
 }
-/* 연수마다: 전체·제출·확인·반려·미제출·이수율(제출+확인) */
-export function courseStats(b, cid) {
-  const row = (b.marks || {})[cid] || {}, total = (b.staff || []).length;
-  const n = s => (b.staff || []).filter(x => (row[x.id] || {}).s === s).length;
+/* 연수마다(대상만): 전체·제출·확인·반려·미제출·이수율(제출+확인). only: 이 사람들 가운데서만(구분별) */
+export function courseStats(b, cid, only = null) {
+  const c = (b.courses || []).find(x => x.id === cid), row = (b.marks || {})[cid] || {};
+  const who = targetStaff(b, c || {}).filter(s => !only || only(s)), total = who.length;
+  const n = s => who.filter(x => (row[x.id] || {}).s === s).length;
   const sent = n('sent'), ok = n('ok'), back = n('back');
-  return { total, sent, ok, back, none: total - sent - ok - back, rate: total ? Math.round(((sent + ok) / total) * 100) : 0 };
+  return { total, sent, ok, back, none: total - sent - ok - back, done: sent + ok, rate: total ? Math.round(((sent + ok) / total) * 100) : 0 };
 }
-export const missingStaff = (b, cid) => (b.staff || []).filter(s => { const m = markOf(b, cid, s.id); return !m || m.s === 'back'; });
+export const missingStaff = (b, cid) => { const c = (b.courses || []).find(x => x.id === cid); return targetStaff(b, c || {}).filter(s => { const m = markOf(b, cid, s.id); return !m || m.s === 'back'; }); };
+/* 구분별 실적: [{ kind, total, done, rate }] — 그 연수 대상이 있는 구분만(구분 없는 사람은 「구분 없음」), 끝에 계 */
+export function kindRows(b, cid) {
+  const c = (b.courses || []).find(x => x.id === cid), who = targetStaff(b, c || {});
+  const ks = [...KINDS, ''].filter(k => who.some(s => s.kind === k));
+  const rows = ks.map(k => { const st = courseStats(b, cid, s => s.kind === k); return { kind: k || '구분 없음', total: st.total, done: st.done, rate: st.rate }; });
+  const all = courseStats(b, cid);
+  return [...rows, { kind: '계', total: all.total, done: all.done, rate: all.rate }];
+}
+/* 교육청 실적 표(한글·엑셀 표에 붙여 넣는 탭 글): 연수 | 구분 | 대상 | 이수 | 미이수 | 이수율 */
+export function statsTsv(b, cids = null) {
+  const cs = (b.courses || []).filter(c => !cids || cids.includes(c.id));
+  const lines = [['연수', '구분', '대상', '이수', '미이수', '이수율'].join('\t')];
+  for (const c of cs) for (const r of kindRows(b, c.id)) lines.push([c.title, r.kind, r.total, r.done, r.total - r.done, `${r.rate}%`].join('\t'));
+  return lines.join('\n');
+}
 
 /* 명단 붙여 넣기: 한 줄에 한 명(「이름 ⇥ 부서」·「이름, 부서」·「이름  부서」), 머리 줄(이름·성명)은 뺌 → [{ name, dept }] */
 export function parseStaff(text) {
@@ -225,7 +262,7 @@ export function mergeStaff(staff, list) {
   for (const s of list || []) {
     const k = s.name + '|' + (s.dept || '');
     if (!s.name || have.has(k)) continue;
-    have.add(k); out.push({ id: newId('st'), name: s.name, dept: s.dept || '' }); added++;
+    have.add(k); out.push({ id: newId('st'), name: s.name, dept: s.dept || '', kind: KINDS.includes(s.kind) ? s.kind : guessKind(s.dept) }); added++;
   }
   return { staff: out, added };
 }
@@ -249,13 +286,121 @@ export function matchFile({ name = '', text = '' } = {}, b) {
   return { sid: Array.isArray(w) && w.length === 1 ? w[0].id : null, cid: course ? course.id : null, many: w === 'many' };
 }
 
-/* 엑셀(CSV): 이름, 부서, 연수…, 맨 아래 이수율 */
+/* 칸 글(명단표·결과 보고 명단): 대상 아님·미제출·반려(사유)·제출/확인(이수일) */
+const mdot = d => (isDate(d) ? `${+d.slice(5, 7)}. ${+d.slice(8, 10)}.` : '');
+export function cellText(b, c, s, { report = false } = {}) {
+  if (!inTarget(c, s)) return report ? '대상 아님' : '—';
+  const m = markOf(b, c.id, s.id);
+  if (!m) return report ? '미이수' : '';
+  if (m.s === 'back') return `반려${m.note ? `(${m.note})` : ''}`;
+  const lab = report ? '이수' : markLabel(m.s);
+  return m.date ? `${lab}(${mdot(m.date)})` : lab;
+}
+/* 엑셀(CSV): 이름, 구분, 부서, 연수…, 맨 아래 이수율, 그 아래 구분별 실적 */
 const csvCell = v => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 export function boardCsv(b) {
-  const head = ['이름', '부서', ...b.courses.map(c => c.title + (c.due ? `(기한 ${c.due})` : ''))];
-  const rows = b.staff.map(s => [s.name, s.dept, ...b.courses.map(c => { const m = markOf(b, c.id, s.id); return m ? markLabel(m.s) + (m.s === 'back' && m.note ? `(${m.note})` : '') : ''; })]);
-  const rate = ['이수율', '', ...b.courses.map(c => `${courseStats(b, c.id).rate}%`)];
-  return '﻿' + [head, ...rows, rate].map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
+  const head = ['이름', '구분', '부서', ...b.courses.map(c => c.title + (c.due ? `(기한 ${c.due})` : ''))];
+  const rows = b.staff.map(s => [s.name, s.kind, s.dept, ...b.courses.map(c => cellText(b, c, s))]);
+  const rate = ['이수율', '', '', ...b.courses.map(c => `${courseStats(b, c.id).rate}%`)];
+  const kinds = statsTsv(b).split('\n').map(l => l.split('\t'));
+  return '\uFEFF' + [head, ...rows, rate, [], ['[구분별 실적]'], ...kinds].map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
+}
+
+/* ---------- 수합: 구글 폼 응답·묶음·결과 보고 ---------- */
+const NAME_H = /^(이름|성명|성함|교직원명|성\s*명)$/;
+/* 구글 폼 날짜(「2026. 11. 2 오후 3:15:00」「2026/11/02 15:15:00」「2026-11-02」) → ISO, 아니면 '' */
+const formDate = v => { const m = /(20\d{2})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})/.exec(String(v || '')); return m && +m[2] >= 1 && +m[2] <= 12 && +m[3] >= 1 && +m[3] <= 31 ? `${m[1]}-${pad(+m[2])}-${pad(+m[3])}` : ''; };
+/* 설문 응답 표 → { hits: [{ sid, cid, link, date }], miss: [{ name, course, link, date, sid }] }. cid: 연수 열이 없을 때의 연수(고른 것) */
+export function formResponses(rows, b, { cid = '' } = {}) {
+  const rs = (rows || []).map(r => (r || []).map(c => String(c == null ? '' : c).trim()));
+  const hi = rs.findIndex(r => r.some(c => NAME_H.test(c)));
+  if (hi < 0) return { hits: [], miss: [], noName: true };
+  const h = rs[hi], col = re => h.findIndex(c => re.test(c));
+  const ni = col(NAME_H), di = col(/^(부서|소속|직위|학년)/), ti = col(/타임스탬프|timestamp|제출\s*(일|시)|날짜/i);
+  const ci = h.findIndex((c, i) => i !== ni && /연수|교육|과정/.test(c) && !/파일|이수증|업로드|첨부/.test(c));
+  let fi = col(/파일|이수증|업로드|첨부/);
+  if (fi < 0) fi = h.findIndex((_, i) => rs.slice(hi + 1).some(r => /^https?:\/\//.test(r[i] || '')));
+  const hits = [], miss = [];
+  for (const r of rs.slice(hi + 1)) {
+    const name = cleanName(r[ni] || '');
+    if (!name) continue;
+    const key = name.replace(/\s+/g, '');
+    let who = b.staff.filter(s => s.name.replace(/\s+/g, '') === key);
+    if (who.length > 1 && di >= 0) who = who.filter(s => s.dept && (r[di] || '').includes(s.dept));
+    const course = ci >= 0 ? bestCourse(b.courses, r[ci] || '', { one: true }) : b.courses.find(c => c.id === cid) || (b.courses.length === 1 ? b.courses[0] : null);
+    const link = ((fi >= 0 ? r[fi] : '') || '').split(/[,\s]+/).find(x => /^https?:\/\//.test(x)) || '';
+    const date = ti >= 0 ? formDate(r[ti]) : '';
+    if (who.length === 1 && course) hits.push({ sid: who[0].id, cid: course.id, link, date });
+    else miss.push({ name, course: course ? course.id : '', link, date, sid: who.length === 1 ? who[0].id : '' });
+  }
+  return { hits, miss, courseCol: ci >= 0 };
+}
+/* 파일 이름에 못 쓰는 글자 빼기 */
+const safe = t => String(t || '').replace(/[\\/:*?"<>|\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || '이름 없음';
+/* 이 기기 보관 열쇠(학년도마다) */
+export const fileKey = (year, cid, sid) => `${year}|${cid}|${sid}`;
+/* 묶음 안 파일 이름: 연수명/연수명_이름(부서).확장자 */
+export function bundleName(c, s, file) {
+  const ext = (/\.([a-z0-9]{1,5})$/i.exec(String(file || '')) || [, 'pdf'])[1].toLowerCase();
+  return `${safe(c.title)}/${safe(c.title)}_${safe(s.name)}${s.dept ? `(${safe(s.dept)})` : ''}.${ext}`;
+}
+/* 묶음(ZIP) 항목: files Map(fileKey → { name, bytes }) → [{ name, data }] + 「이수 현황.csv」(파일 없는 제출은 「종이·링크」) */
+export function bundleEntries(b, files, { year, cids = null } = {}) {
+  const out = [], used = new Set();
+  const cs = b.courses.filter(c => !cids || cids.includes(c.id));
+  const rows = [['연수', '이름', '구분', '부서', '상태', '이수일', '파일']];
+  for (const c of cs) for (const s of targetStaff(b, c)) {
+    const m = markOf(b, c.id, s.id);
+    if (!m || m.s === 'back') { rows.push([c.title, s.name, s.kind, s.dept, m ? '반려' : '미제출', '', '']); continue; }
+    const f = files && files.get(fileKey(year, c.id, s.id));
+    let name = '';
+    if (f && f.bytes) {
+      name = bundleName(c, s, f.name);
+      for (let i = 2; used.has(name); i++) name = name.replace(/(?: \(\d+\))?(\.[a-z0-9]+)$/i, ` (${i})$1`);
+      used.add(name); out.push({ name, data: f.bytes });
+    }
+    rows.push([c.title, s.name, s.kind, s.dept, markLabel(m.s), m.date || '', name ? name.split('/').pop() : m.link ? `링크 ${m.link}` : '종이·링크']);
+  }
+  out.push({ name: '이수 현황.csv', data: '\uFEFF' + rows.map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n' });
+  return out;
+}
+/* 공문 → 결과 보고 「관련」 줄: 「발신 문서번호(2026. 11. 2.) 「제목」」 */
+export function relatedOf(doc) {
+  if (!doc) return '';
+  const date = isDate(doc.date) ? `${doc.date.slice(0, 4)}. ${+doc.date.slice(5, 7)}. ${+doc.date.slice(8, 10)}.` : '';
+  return [doc.from, doc.no ? `${doc.no}${date ? `(${date})` : ''}` : date ? `(${date})` : '', doc.title ? `「${doc.title}」` : ''].filter(Boolean).join(' ');
+}
+/* 결과 보고 기본 제목 */
+export const reportTitle = (b, cids, year) => {
+  const cs = b.courses.filter(c => cids.includes(c.id));
+  return `${year}학년도 ${cs.length === 1 ? cs[0].title : `${(cs[0] || {}).title || '연수'} 등 법정의무교육`} 이수 결과 보고`;
+};
+/* 내부결재 결과 보고 문서 { title, blocks }(한글·워드·PDF 내보내기). 사람 이름이 든 문서라 AI로 보내지 않음 */
+export function reportDoc(b, { cids, title = '', related = '', year, school = '' } = {}) {
+  const cs = b.courses.filter(c => cids.includes(c.id));
+  const who = b.staff.filter(s => cs.some(c => inTarget(c, s)));
+  const count = list => KINDS.map(k => [k, list.filter(s => s.kind === k).length]).filter(([, n]) => n);
+  const kinds = count(who), blocks = [], P = text => blocks.push({ type: 'p', text });
+  let n = 1;
+  if (related) P(`${n++}. 관련: ${related}`);
+  P(`${n}. ${related ? '위 호와 관련하여 ' : ''}${school ? `${school} ` : '본교 '}교직원의 ${cs.length === 1 ? cs[0].title : '법정의무교육'} 이수 결과를 다음과 같이 보고합니다.`);
+  P(`  가. 연수명: ${cs.map(c => c.title).join(', ')}`);
+  P(`  나. 대상: ${cs.length === 1 && cs[0].target.length ? cs[0].target.join('·') : '교직원'} ${who.length}명${kinds.length > 1 ? `(${kinds.map(([k, x]) => `${k} ${x}명`).join(', ')})` : ''}`);
+  P('  다. 이수 현황');
+  blocks.push({ type: 'table', head: true, rows: [['연수', '대상', '이수', '미이수', '이수율'], ...cs.map(c => { const st = courseStats(b, c.id); return [c.title, `${st.total}명`, `${st.done}명`, `${st.total - st.done}명`, `${st.rate}%`]; })] });
+  const multi = cs.some(c => kindRows(b, c.id).length > 2);
+  if (multi) {
+    P('  라. 구분별 이수 현황');
+    blocks.push({ type: 'table', head: true, rows: [['연수', '구분', '대상', '이수', '이수율'], ...cs.flatMap(c => kindRows(b, c.id).map(r => [c.title, r.kind, `${r.total}명`, `${r.done}명`, `${r.rate}%`]))] });
+  }
+  const left = cs.map(c => [c, missingStaff(b, c.id).length]).filter(([, x]) => x);
+  P(`  ${multi ? '마' : '라'}. 미이수: ${left.length ? `${left.map(([c, x]) => (cs.length > 1 ? `${c.title} ${x}명` : `${x}명`)).join(', ')} — 개별 안내 후 이수하도록 함` : '없음'}`);
+  const certs = cs.reduce((t, c) => t + courseStats(b, c.id).done, 0);
+  P(`붙임  1. 연수별 이수 현황 명단 1부.${certs ? '' : '  끝.'}`);
+  if (certs) P(`      2. 이수증 ${certs}부.  끝.`);
+  blocks.push({ type: 'break' }, { type: 'h', text: '붙임 1. 연수별 이수 현황 명단' },
+    { type: 'table', head: true, rows: [['연번', '이름', '구분', '부서', ...cs.map(c => c.title)], ...who.map((s, i) => [String(i + 1), s.name, s.kind, s.dept, ...cs.map(c => cellText(b, c, s, { report: true }))])] });
+  return { title: title || reportTitle(b, cids, year), blocks };
 }
 /* 독려 쪽지 글(이름 없음, AI 없이) */
 export function nudgeText(course) {
@@ -299,6 +444,6 @@ export function carry(mineRaw, boardRaw) {
   const mine = (Array.isArray(mineRaw) ? mineRaw : []).map(normItem).filter(Boolean);
   if (mine.length) out['training:mine'] = mine.map(x => ({ id: x.id, title: x.title, where: x.where, status: 'todo' }));
   const b = normBoard(boardRaw);
-  if (b.staff.length || b.courses.length) out['training:board'] = { staff: b.staff, courses: b.courses.map(c => ({ id: c.id, title: c.title })), marks: {} };
+  if (b.staff.length || b.courses.length) out['training:board'] = { staff: b.staff, courses: b.courses.map(c => ({ id: c.id, title: c.title, target: c.target })), marks: {} };
   return out;
 }
