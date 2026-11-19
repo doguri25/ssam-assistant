@@ -151,6 +151,7 @@ export function render() {
           <textarea class="field" id="msgBody" rows="18">${esc(x.body)}</textarea></div>
         <div id="msgResync">${x.edited ? '<p class="muted pc-resync">본문을 고쳤어요 <button class="btn text tiny" type="button" data-msg="resync">칸으로 다시 맞추기</button></p>' : ''}</div>
         <div class="row"><button class="btn primary" type="button" data-msg="copyAll">복사</button></div>
+        <div id="msgTrain">${trainHTML(x)}</div>
         <label class="yp-f"><span class="lab">보내는 사람(문의)</span><input class="field" id="msgSender" value="${esc(getSender())}" placeholder="예) 교무부 ○○○(내선 123)" autocomplete="off"></label>
         <p class="muted" style="margin:0">한 번 적어 두면 늘 끝에 붙어요.</p>
       </section>
@@ -159,6 +160,9 @@ export function render() {
   keepFiles(box, () => { box.innerHTML = html; }); // 파일 고르기 창이 열린 채 다시 그려도 고른 파일이 들어가게(core/keep-files.js)
   document.dispatchEvent(new CustomEvent('ssam:message-render', { detail: { box } }));
 }
+/* 연수 안내 쪽지 → 연수 현황판에 그 연수 넣기(연수 담당이 안내하고 이수증을 모을 때 — 스펙 2026-11-18-training-design §3) */
+const trainHTML = x => (x.m && x.m.kind === 'training' && String(x.m.title || '').trim()
+  ? `<p class="muted msg-train">연수 안내 쪽지예요. 이수증을 모으려면 <button class="btn text tiny" type="button" data-msg="train">연수 현황판에 넣기</button></p>` : '');
 /* 본문·제목만 다시 넣기(본문 칸에 초점이 있어도 손으로 고치기 전이면 덮음 — 눌러 두기만 한 칸이 빈 채로 남지 않게) */
 function refreshOut() {
   if (!box) return;
@@ -166,6 +170,7 @@ function refreshOut() {
   if (b && (document.activeElement !== b || !x.edited)) b.value = x.body;
   if (rs) rs.innerHTML = x.edited ? '<p class="muted pc-resync">본문을 고쳤어요 <button class="btn text tiny" type="button" data-msg="resync">칸으로 다시 맞추기</button></p>' : '';
   if (at && !at.contains(document.activeElement)) at.outerHTML = attachHTML(x);
+  const tr = box.querySelector('#msgTrain'); if (tr) tr.innerHTML = trainHTML(x);
 }
 
 /* AI 읽기 앞뒤(값이 바뀜): 쓰는 칸이 있으면 다시 그리지 않고 단추·칸 값·본문·최근 쪽지만 고침. 초점이 든 칸은 선생님이 고친 칸이면 덮지 않음(한글 입력이 끊기지 않게),
@@ -302,6 +307,7 @@ document.addEventListener('click', e => {
   else if (a === 'read') readAll();
   else if (a === 'new') { switchDraft(blankDraft()); M.files = []; M.paste = ''; clearDraft(); render(); }
   else if (a === 'resync') { compose(true); persist(); render(); }
+  else if (a === 'train') { const x = cur(); import('../training/training.js').then(t => t.addCourseFrom({ title: x.m.title, due: (x.m.apply || {}).due || '', from: `message:${x.id}` })); }
   else if (a === 'copyFiles' && T()) copyFiles();
   else if (a === 'copyPath' && T()) copyPath();
   else if (a === 'openDir' && T()) openDir();

@@ -52,6 +52,8 @@ export const keyName = name => /정답|해설|교사용|(모범|예시)\s*답안
 /* { name, text, scan } → { kind, why, alts, ask? } — ask: 이름 칸 하나로만 학생 답안이라고 본 글 파일(바로 실행이어도 카드로 물어봄) */
 export function classify({ name = '', text = '', scan = false } = {}) {
   const n = String(name || '');
+  // 압축 파일: 받는 곳은 연수 이수증 묶음(구글 드라이브 폴더 내려받기)뿐 — 맞는지 물음
+  if (/\.zip$/i.test(n)) return { kind: 'cert', why: '압축 파일이에요. 이수증 묶음이면 연수 현황판에서 풀어 이름·연수를 맞춰요.', alts: [], ask: true };
   if (scan) {
     if (keyName(n)) return { kind: 'unit-key', why: '파일 이름에 「정답」·「모범 답안」이 있어요. 사진 답안은 AI가 읽어요.', alts: ['unit-scan'] };
     if (/견적/.test(n)) return { kind: 'quote', why: '파일 이름에 「견적」이 있어요.', alts: ['unit-scan'] };

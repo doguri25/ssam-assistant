@@ -194,3 +194,16 @@ test('수합: 이수증 묶음(ZIP 항목)·결과 보고 문서', () => {
   assert.ok(one.blocks[0].text.startsWith('1. 본교 교직원의 학교폭력 예방교육 이수 결과') && one.blocks.some(x => x.text === '  나. 대상: 교원 2명'), JSON.stringify(one.blocks.slice(0, 3)));
   assert.ok(one.blocks.some(x => x.text === '붙임  1. 연수별 이수 현황 명단 1부.  끝.'), '이수증이 없으면 붙임 2 없음');
 });
+
+test('수합 더하기: 사람별 미제출 글·구글 폼 만들기 안내·쌤 버튼 ZIP', async () => {
+  let b = sample();
+  b = T.setMark(b, 'c1', 's1', 'ok'); b = T.setMark(b, 'c1', 's2', 'back', { note: '흐림' }); b = T.setMark(b, 'c2', 's2', 'sent');
+  assert.deepEqual(T.missingByPerson(b).map(x => [x.s.id, x.courses.map(c => c.id)]), [['s1', ['c2']], ['s2', ['c1']], ['s3', ['c1']], ['s4', ['c1']], ['s5', ['c1']]]);
+  assert.equal(T.personalText(b, ['c1']).split('\n').slice(0, 2).join('\n'), '이바다 선생님(보건교사): 성희롱·성폭력 예방교육(반려 — 흐림)\n한가람 선생님(행정실 주무관): 성희롱·성폭력 예방교육(11. 20.까지)');
+  const g = T.formGuide(b, 2026);
+  assert.ok(g.includes('성명 (단답형, 필수)') && g.includes('연수 (객관식, 필수): 성희롱·성폭력 예방교육 / 학교폭력 예방교육') && g.includes('(파일 응답)'), g);
+  assert.ok(!T.formGuide(T.normBoard({ courses: [{ id: 'x', title: '청렴교육' }] }), 2026).includes('객관식'), '연수가 하나면 연수 질문 없음');
+  const { classify } = await import('../../web/core/inbox-classify.js');
+  const z = classify({ name: 'drive-download-20261119.zip', text: '' });
+  assert.equal(z.kind, 'cert'); assert.equal(z.ask, true);
+});

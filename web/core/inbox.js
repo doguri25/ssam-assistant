@@ -73,6 +73,7 @@ async function pump() {
 const isImage = f => /^image\//.test(f.type || '') || /\.(png|jpe?g|webp|bmp|gif|heic)$/i.test(f.name || '');
 async function readOne(file) {
   if (isImage(file)) return { file, text: '', scan: true };
+  if (/\.zip$/i.test(file.name || '')) return { file, text: '', scan: false }; // 압축 파일(이수증 묶음) — 이름으로만
   try { return { file, text: await readText(file), scan: false }; } catch (e) {
     if (e && e.code === 'PDF_NO_TEXT') return { file, text: '', scan: true };
     return { file, error: fileMessage(e && e.code) };

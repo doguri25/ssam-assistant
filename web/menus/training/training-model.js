@@ -364,6 +364,30 @@ export function bundleEntries(b, files, { year, cids = null } = {}) {
   out.push({ name: '이수 현황.csv', data: '\uFEFF' + rows.map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n' });
   return out;
 }
+/* 사람별 미제출(개별 안내): 고른 연수 가운데 그 사람이 아직 내지 않은(반려 포함) 연수 → [{ s, courses }] */
+export function missingByPerson(b, cids = null) {
+  const cs = b.courses.filter(c => !cids || cids.includes(c.id));
+  return b.staff.map(s => ({ s, courses: cs.filter(c => inTarget(c, s) && (() => { const m = markOf(b, c.id, s.id); return !m || m.s === 'back'; })()) })).filter(x => x.courses.length);
+}
+/* 개별 안내 글(이 컴퓨터 안에서 복사만): 「김하늘 선생님: 성희롱·성폭력 예방교육(11. 27.까지), 학교폭력 예방교육(반려 — 흐림)」 */
+export function personalText(b, cids = null) {
+  return missingByPerson(b, cids).map(({ s, courses }) => `${s.name} 선생님${s.dept ? `(${s.dept})` : ''}: ${courses.map(c => {
+    const m = markOf(b, c.id, s.id);
+    return `${c.title}${m && m.s === 'back' ? `(반려${m.note ? ` — ${m.note}` : ''})` : c.due ? `(${mdot(c.due)}까지)` : ''}`;
+  }).join(', ')}`).join('\n');
+}
+/* 구글 폼 만들기 안내(현황판 연수 이름 그대로 — 응답을 넣을 때 맞추기 쉽게) */
+export function formGuide(b, year) {
+  const cs = b.courses.map(c => c.title);
+  return [`[이수증 제출 구글 폼 만들기]`, `1. 구글 폼 새로 만들기 — 제목 예) ${year}학년도 법정의무교육 이수증 제출`, '2. 질문',
+    '  - 성명 (단답형, 필수) ← 쌤비서가 이 칸으로 명단과 맞춰요',
+    '  - 부서 (단답형) ← 같은 이름이 있을 때 가려요',
+    ...(cs.length > 1 ? [`  - 연수 (객관식, 필수): ${cs.join(' / ')}`] : []),
+    '  - 이수증 (파일 업로드, 필수 — PDF·이미지)',
+    '3. 응답 탭 › 스프레드시트에 연결 › 파일 › 다운로드 › CSV(또는 엑셀) → 연수 현황판 [구글 폼 응답 넣기]',
+    '4. 이수증 파일: 구글 드라이브의 「(파일 응답)」 폴더를 오른쪽 클릭 › 다운로드(ZIP) → [이수증 한꺼번에 넣기]',
+    '   (구글 폼은 파일 이름 끝에 「- 응답자 이름」을 붙여 저장해서 이름으로 맞춰요)'].join('\n');
+}
 /* 공문 → 결과 보고 「관련」 줄: 「발신 문서번호(2026. 11. 2.) 「제목」」 */
 export function relatedOf(doc) {
   if (!doc) return '';
