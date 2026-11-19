@@ -4,7 +4,7 @@
 
 ## 지금 상태 (2026-11-19)
 
-- 최신 릴리즈는 **v0.36.0**(연수 메뉴·이수증 수합, 학급 탭 손보기, 메뉴 사이 연결). main은 그 릴리즈 커밋, 작업 브랜치 `claude/wonderful-johnson-lqb8em`은 그 뒤 안내 커밋만 더 있다.
+- 최신 릴리즈는 **v0.37.0**(학년말 마감 도우미, 교내 자율연수, 쪽지 회신 기한·현황판 공유, 버그 25건). 그 앞 v0.36.0(연수 메뉴·이수증 수합, 학급 탭 손보기, 메뉴 사이 연결). main은 그 릴리즈 커밋, 작업 브랜치 `claude/wonderful-johnson-lqb8em`은 그 뒤 안내 커밋만 더 있다.
   - 0.34.1: 남은 한계 고침 — 기준표 칸 글은 AI로 갈 때 이름을 ○○○로(`rubric-model.js aiCell`), 「김정대로 바꿔 줘」(privacy `DAERO`·`roGivenName`),
     물건 머리 줄의 이름은 다른 줄에서 사람으로 쓰일 때 배움(privacy `personUse`), 품의 「총 30자루 15,000원」(`tests/unit/fix1117-limits.test.mjs`).
   - 수준별 기준표(루브릭): 설계 `docs/superpowers/specs/2026-11-16-rubric-design.md`, 계획 `docs/superpowers/plans/2026-11-16-rubric.md`.
@@ -49,11 +49,11 @@
     (단위 `fix1118-training.test.mjs` 끝 3개, e2e `fix1119-training-collect.mjs`).
   - 수합 더하기(2026-11-19 「더 구현할 방법이 있다면 추가해 줘」): 쪽지 작성 연수 안내 → `training.js addCourseFrom`(공문 처리 [연수 현황판에 넣기]도), `personalText`(사람별 미제출),
     `formGuide`(구글 폼 만들기 안내), 「쌤」 버튼 .zip → kind `cert`(ask) → 현황판 `expand` (e2e `fix1119-training-more.mjs`).
-- 학년말 마감·교내 자율연수·작게 손볼 것(2026-11-19 「1,6 그리고 작게 손볼것을 추가하고 멀티에이전트로 버그를 찾아 수정하고 빌드 배포해줘」, 릴리즈 전): 스펙 `docs/superpowers/specs/2026-11-19-yearend-design.md`.
+- 학년말 마감·교내 자율연수·작게 손볼 것(2026-11-19 「1,6 그리고 작게 손볼것을 추가하고 멀티에이전트로 버그를 찾아 수정하고 빌드 배포해줘」, 0.37.0): 스펙 `docs/superpowers/specs/2026-11-19-yearend-design.md`.
   학년말 마감 `web/menus/home/yearend-model.js`(줄 규칙)·`yearend.js`(모으기 `gatherYearend`, 시트 `openYearend`, `[data-ye-open]`, 저장 `yearend:done`), 기재 점검 요약 `check.js checkSummary`,
   오늘 화면 카드(12~2월)·설정 › 학년도·채팅 intent `yearend`. 교내 연수 `course.inhouse`·`inhouseNotice`·`signSheetDoc`·`allPresent`·`inhouseReportDoc`, 현황판 공유 `exportBoard`·`parseBoardFile`·`mergeBoards`,
   쪽지 회신 기한 `message-model deadlineLines → briefing({ messages })` (`tests/unit/fix1119-yearend.test.mjs`, e2e `fix1119-yearend.mjs`).
-- 0.36.0 뒤 멀티에이전트 버그 찾기(2026-11-19): 5 영역 찾기 + 영역마다 검증, 확인된 26건(겹친 1건) 모두 고침(`tests/unit/fix1119-bugs.test.mjs`).
+- 0.36.0 뒤 멀티에이전트 버그 찾기(2026-11-19, 0.37.0): 5 영역 찾기 + 영역마다 검증, 확인된 26건(겹친 1건) 모두 고침(`tests/unit/fix1119-bugs.test.mjs`).
   이름 가리기 `roleNames`(맡은 일 머리 뒤·쉼표로 이은 이름, -문·-별 낱말은 아님)·`ITEM`(괄호 안 목록)·「인솔」은 쌍점 뒤·띄어 쓴 이름만, 주간학습안내 자리 표시 옮긴 답은 버림,
   진도 `assumeFrom`은 posAt 없으면 세지 않음·`leftPeriods`는 posAt·start 앞 빼기·메모만 칸은 교체 아님·판마다 교시 수 `periodsOn`·`termStart` 진도 자리 끝·`prevHours0`,
   기초학력 AI 일정 closedDays·날짜 넣기 periods·합치기 1000자, 연수 `maskForAI`·`certDate(text, today)`·`certHours` 분·띄어 쓴 명단·직위/구분 칸·칸 지울 때 물음·CP949 ZIP 이름(`core/zip.js`),
