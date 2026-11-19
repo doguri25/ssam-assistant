@@ -2,9 +2,9 @@
 
 교사용 학교 업무 AI 비서. `web/`은 빌드 없는 ES 모듈 정적 웹앱이고, `src-tauri/`가 Windows 앱으로 감싼다. 웹판은 GitHub Pages(`web/` 폴더만 배포).
 
-## 지금 상태 (2026-11-17)
+## 지금 상태 (2026-11-19)
 
-- 최신 릴리즈는 **v0.35.0**. main과 작업 브랜치 `claude/wonderful-johnson-lqb8em`이 같은 커밋에 있다.
+- 최신 릴리즈는 **v0.36.0**(연수 메뉴·이수증 수합, 학급 탭 손보기, 메뉴 사이 연결). main은 그 릴리즈 커밋, 작업 브랜치 `claude/wonderful-johnson-lqb8em`은 그 뒤 안내 커밋만 더 있다.
   - 0.34.1: 남은 한계 고침 — 기준표 칸 글은 AI로 갈 때 이름을 ○○○로(`rubric-model.js aiCell`), 「김정대로 바꿔 줘」(privacy `DAERO`·`roGivenName`),
     물건 머리 줄의 이름은 다른 줄에서 사람으로 쓰일 때 배움(privacy `personUse`), 품의 「총 30자루 15,000원」(`tests/unit/fix1117-limits.test.mjs`).
   - 수준별 기준표(루브릭): 설계 `docs/superpowers/specs/2026-11-16-rubric-design.md`, 계획 `docs/superpowers/plans/2026-11-16-rubric.md`.
@@ -32,14 +32,14 @@
   - 0.33.2 몫(릴리즈하지 않고 0.34.0에 합침): 미뤄 둔 작은 문제 2개, 0.31.1 뒤 버그 찾기 23개 중 22개(`tests/unit/fix1116-*.test.mjs`).
 - 이름 가리기 원칙(2026-11-16 선생님과 정함): 이름이 새는 것이 낱말을 지나치게 가리는 것보다 나쁨. 고칠 때마다 원래 코드와 견줘 새로 새는 이름이 없는지 확인.
   남은 한계: 흔한 이름 목록에 없는 이름이 「준비물:」 같은 물건 머리 줄에만 나오고 다른 줄에서 사람으로 쓰이지 않으면 배우지 않음(그 줄은 보내지 않음).
-- 학급 손보기(2026-11-18, 릴리즈 전): 스펙 `docs/superpowers/specs/2026-11-18-class-fix-design.md` A·B·C 34건 모두.
+- 학급 손보기(2026-11-18, 0.36.0): 스펙 `docs/superpowers/specs/2026-11-18-class-fix-design.md` A·B·C 34건 모두.
   - 오늘 수업·진도표(A): 시간표 판(`versions`), `hours0`(체크 전 실시)·`offset`(진도 자리)·`posAt`(진도 자리 정한 날), 재량휴업일 등은 `dayOff`, 시수만 교과·전담(`class:extra`), 교체·메모, 공문 띠는 `home-model dueBand`
     (`tests/unit/fix1118-class-today.test.mjs`, e2e `fix1118-class-today.mjs`).
   - 주간학습안내(B): AI 지시·채우기 `weekly-ai.js`(이름 가림·수업 없는 날 건너뜀·학부모께 공문/연간계획 일정 뺌), 고친 칸 표시·[다시 채우기] 물음, `announce`(알려 드립니다),
     체크하지 않은 지난 칸도 진도표대로(`lessonAt` ctx.assume — 주간학습안내만), 이름 가리기에 맡은 일 말 앞 이름(`privacy roleNames`)·「인솔:」 뒤
     (`tests/unit/fix1118-class-weekly.test.mjs`, e2e `fix1118-class-weekly.mjs`).
   - 기초학력(C): `tests/unit/fix1118-camp.test.mjs`, e2e `fix1118-camp.mjs`.
-- 연수 메뉴(2026-11-18, 릴리즈 전): 스펙 `docs/superpowers/specs/2026-11-18-training-design.md`. 규칙·저장 `web/menus/training/training-model.js`(`training:mine`·`training:board`, AI 안 부름),
+- 연수 메뉴(2026-11-18, 0.36.0): 스펙 `docs/superpowers/specs/2026-11-18-training-design.md`. 규칙·저장 `web/menus/training/training-model.js`(`training:mine`·`training:board`, AI 안 부름),
   화면 `training.js`(공문 처리 [내 필수연수에 넣기]는 `addFromGongmun`), 학사일정 출처 `training`(브리핑 학사일정 줄·인수인계서·학부모 안내에서는 뺌 — 주간학습안내 `forParents`는 `event:`·직접 넣은 일정만),
   오늘 할 일 `briefLines → briefing({ trainings })`, 채팅 intent `training`·`dataQuestion` kind `training`, 인수인계서 `handover-model` trainings, 새 학년도 `years.js carryTraining`
   (`tests/unit/fix1118-training.test.mjs`, e2e `fix1118-training.mjs`).
@@ -49,7 +49,7 @@
     (단위 `fix1118-training.test.mjs` 끝 3개, e2e `fix1119-training-collect.mjs`).
   - 수합 더하기(2026-11-19 「더 구현할 방법이 있다면 추가해 줘」): 쪽지 작성 연수 안내 → `training.js addCourseFrom`(공문 처리 [연수 현황판에 넣기]도), `personalText`(사람별 미제출),
     `formGuide`(구글 폼 만들기 안내), 「쌤」 버튼 .zip → kind `cert`(ask) → 현황판 `expand` (e2e `fix1119-training-more.mjs`).
-- 메뉴 사이 흐름 점검(2026-11-18 「각 정보와 메뉴가 유기적으로 돌아가는지 확인해줘」, 릴리즈 전): 채팅 intent `budget`·`idea`·교체/보강/메모 → 오늘 수업·전담 → 진도표,
+- 메뉴 사이 흐름 점검(2026-11-18 「각 정보와 메뉴가 유기적으로 돌아가는지 확인해줘」, 0.36.0): 채팅 intent `budget`·`idea`·교체/보강/메모 → 오늘 수업·전담 → 진도표,
   「예산 얼마 남았어?」(`budget-model chatAnswer`), 떠 있는 버튼 kind `cert`(이수증 → `training.js putCerts`), 기초학력 수업 날은 `calendar closedDays`(재량휴업일 등 — 방학은 아님) 건너뜀,
   인수인계서에 기초학력(`camp-model handoverRows`)·연수 (`tests/unit/fix1118-flow.test.mjs`, e2e `fix1118-flow.mjs`).
 
