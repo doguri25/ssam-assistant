@@ -34,6 +34,8 @@ const draft = () => page.evaluate(() => JSON.parse(localStorage.getItem('ssam:ms
 const recentIds = () => page.evaluate(() => (JSON.parse(localStorage.getItem('ssam:msg:list')) || []).map(x => x.id));
 const recentTitles = () => page.$$eval(`${M} #msgRecent li b`, l => l.map(b => b.textContent));
 
+// AI가 읽은 공문 기한(2026-11-20)이 「D-n」으로 보이게 시계를 고정(그날이 오늘이면 「오늘」로 보여 실패하던 것 — 2026-11-20 전체 시험)
+await page.clock.setFixedTime(new Date('2026-11-05T10:00:00'));
 await page.goto(url);
 await page.waitForTimeout(400);
 // 읽지 않은 공문 둘(첫째·둘째)과 글을 읽지 못한 스캔 공문
