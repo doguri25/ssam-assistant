@@ -1,0 +1,32 @@
+MIT License
+
+Copyright (c) 2026 한국형-AI 기반 교사개발자 연수 3기 4조 (doguri25)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+다른 라이선스를 따르는 것 (이 저장소에 함께 들어 있지만 MIT가 아님)
+
+- web/vendor/pdfjs/ — pdf.js, Apache License 2.0 (web/vendor/pdfjs/LICENSE)
+- web/fonts/pretendard/ — Pretendard, SIL Open Font License 1.1 (web/fonts/pretendard/LICENSE.txt)
+- web/fonts/suit/ — SUIT, SIL Open Font License 1.1 (web/fonts/suit/LICENSE.txt)
+- Windows 앱에 들어가는 Rust 라이브러리 — 각자의 라이선스 (web/licenses/THIRD-PARTY-NOTICES.txt)
+
+본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를 참고하여 개발하였습니다.

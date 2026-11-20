@@ -68,3 +68,5 @@ details[open] > .ai-log-sum .ai-log-mark::before{content:'▾'}
 .ai-log-thumbs:empty{display:none}
 .ai-log-thumbs img{display:block;width:160px;max-width:100%;height:auto;border:1px solid var(--line);border-radius:var(--r-s);background:#fff}
 .ai-log-thumbs .ai-log-imgs{flex-basis:100%}
+.lic-list{margin:0;padding-left:18px;display:grid;gap:4px;font-size:14px}
+.lic-text{max-height:360px;font-size:12px}

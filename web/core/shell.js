@@ -20,7 +20,7 @@ export const MENUS = [
   { id: 'class', label: '학급', tabs: [['today', '오늘 수업'], ['progress', '진도표·시수'], ['weekly', '주간학습안내'], ['camp', '기초학력']] },
   { id: 'purchase', label: '품의', tabs: [['new', '새 품의'], ['budget', '예산'], ['templates', '저장한 템플릿'], ['recent', '최근 작성']] },
   { id: 'etc', label: '문서·소통', tabs: [['message', '쪽지 작성'], ['letter', '가정통신문'], ['gongmun', '공문 처리'], ['minutes', '회의록'], ['docedit', '문서 다듬기'], ['handover', '인수인계서'], ['multi', '다면평가']] },
-  { id: 'settings', label: '설정', tabs: [['roster', '학급 명단'], ['ai', 'AI'], ['screen', '화면'], ['school', '학교 정보'], ['years', '학년도'], ['purchase', '품의 기준']] }
+  { id: 'settings', label: '설정', tabs: [['roster', '학급 명단'], ['ai', 'AI'], ['screen', '화면'], ['school', '학교 정보'], ['years', '학년도'], ['purchase', '품의 기준'], ['about', '정보']] }
 ].map(m => ({ ...m, icon: m.id, tabs: m.tabs.map(([id, label, fold]) => (fold ? { id, label, fold } : { id, label })) }));
 
 const NAV_KEY = 'ssam:nav'; // 마지막 메뉴·탭(채팅 도우미가 「보고 있는 화면」으로 읽음). 켤 때는 쓰지 않음 — 늘 「오늘」

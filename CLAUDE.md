@@ -2,9 +2,13 @@
 
 교사용 학교 업무 AI 비서. `web/`은 빌드 없는 ES 모듈 정적 웹앱이고, `src-tauri/`가 Windows 앱으로 감싼다. 웹판은 GitHub Pages(`web/` 폴더만 배포).
 
-## 지금 상태 (2026-11-19)
+## 지금 상태 (2026-11-20)
 
-- 최신 릴리즈는 **v0.38.1**(여섯 번째 버그 찾기 23건). 그 앞 v0.38.0(한 달 달력·이수증은 이수번호만·교직원 이름 가리기·오늘 화면 출석 물음, 세 번째~다섯 번째 버그 찾기 94건), v0.37.1(두 번째 버그 찾기 25건), v0.37.0(학년말 마감 도우미, 교내 자율연수, 쪽지 회신 기한·현황판 공유, 버그 25건). main과 작업 브랜치 `claude/wonderful-johnson-lqb8em`은 그 릴리즈 커밋.
+- 최신 릴리즈는 **v0.38.2**(라이선스·출처 고지 — MIT `LICENSE`, 설정 › 정보 탭, 한컴 HWP 공개 문서 출처 문구, `web/licenses/THIRD-PARTY-NOTICES.txt`). 그 앞 v0.38.1(여섯 번째 버그 찾기 23건), v0.38.0(한 달 달력·이수증은 이수번호만·교직원 이름 가리기·오늘 화면 출석 물음, 세 번째~다섯 번째 버그 찾기 94건), v0.37.1(두 번째 버그 찾기 25건), v0.37.0(학년말 마감 도우미, 교내 자율연수, 쪽지 회신 기한·현황판 공유, 버그 25건). main과 작업 브랜치 `claude/wonderful-johnson-lqb8em`은 그 릴리즈 커밋.
+  - 0.38.2 라이선스(2026-11-20 저작권 점검 뒤 「고쳐야 할 것 보완하면 좋을 것 수정해서 커밋 릴리즈해줘」): 저장소 `LICENSE`(MIT, 저작권자 「한국형-AI 기반 교사개발자 연수 3기 4조 (doguri25)」 — tauri.conf copyright와 같게, MIT가 아닌 pdf.js·글꼴·Rust 라이브러리는 따로 밝힘),
+    한컴 출처 문구 「본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를 참고하여 개발하였습니다.」(LICENSE·README·설정 › 정보 `settings.js HANCOM_NOTE`·고지 파일·「쌤」 안내 `license`),
+    설정 탭 `about`(정보 — 버전·라이선스 전문·공개 소프트웨어, 전문은 누를 때 `web/licenses/*.txt`를 fetch), `scripts/third-party-notices.mjs`(cargo metadata Windows 대상·dev 뺌, 라이선스 파일 없으면 같은 저장소·같은 라이선스 글 → 표준 글)
+    (`tests/unit/fix1120-license.test.mjs` — 고지 목록이 Cargo.lock과 맞는지 봄, e2e `fix1120-about.mjs`).
   - 0.34.1: 남은 한계 고침 — 기준표 칸 글은 AI로 갈 때 이름을 ○○○로(`rubric-model.js aiCell`), 「김정대로 바꿔 줘」(privacy `DAERO`·`roGivenName`),
     물건 머리 줄의 이름은 다른 줄에서 사람으로 쓰일 때 배움(privacy `personUse`), 품의 「총 30자루 15,000원」(`tests/unit/fix1117-limits.test.mjs`).
   - 수준별 기준표(루브릭): 설계 `docs/superpowers/specs/2026-11-16-rubric-design.md`, 계획 `docs/superpowers/plans/2026-11-16-rubric.md`.
@@ -119,12 +123,13 @@
 
 ## 시험
 
-- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1707개 통과)
+- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1712개 통과)
 - e2e 한 파일: `node tests/e2e/<이름>.mjs`
 - e2e 전체: `node tests/e2e/run-all.mjs` (약 170개 파일, 45~50분). 파일마다 다른 포트를 써서 나눠 돌려도 된다. 전체가 도는 동안에는 작업 폴더를 고치지 말고 `.claude/worktrees/` 아래 worktree에서 일한다(그 안에서는 저장소의 node_modules를 그대로 찾는다).
 
 ## 릴리즈 하는 법
 
+0. `src-tauri/Cargo.lock`(라이브러리)이 바뀌었으면 `node scripts/third-party-notices.mjs`로 고지(`web/licenses/`)를 다시 만든다(`LICENSE`를 고쳤을 때도 — 앱 안 사본).
 1. 버전 올리기: `package.json`(3줄), `package-lock.json`(3·9줄), `src-tauri/Cargo.toml`(3줄), `src-tauri/Cargo.lock`(`name = "ssam"` 다음 줄), `tests/unit/release-config.test.mjs`(3곳, 정규식 안의 `0\.33\.1` 꼴 포함).
 2. `.github/RELEASE_NOTES.md`: `<!-- whats-new -->` 표시 사이에 새 내용을 넣고, 앞 버전 내용은 그 아래 `#### X에서 바뀐 점`으로 옮긴다.
 3. 작업 브랜치에 커밋·푸시하고 main을 fast-forward 한다.

@@ -236,8 +236,40 @@ const VIEWS = {
         <input class="field" id="meetCap" type="number" min="1" step="1000" value="${getMeetCap()}"></label>
       <p class="muted">지금: ${won(getMeetCap())}원 · 교육청·학교마다 달라요(대체로 3만~4만 원). 행정실에 확인해 주세요.</p>
       ${capMsg ? `<p class="set-msg err" role="alert">${esc(capMsg)}</p>` : ''}
-      <div class="row"><button class="btn primary" type="button" data-set="saveMeetCap">저장</button></div>`))
+      <div class="row"><button class="btn primary" type="button" data-set="saveMeetCap">저장</button></div>`)),
+  about: () => {
+    if (!appVer && window.__TAURI__ && window.__TAURI__.core) window.__TAURI__.core.invoke('app_version').then(v => { appVer = String(v || ''); if (curTab === 'about') again(); }).catch(() => {});
+    return page('정보', '쌤비서의 버전과 라이선스, 함께 쓴 공개 소프트웨어예요.',
+      card('쌤비서', `<p class="set-big">쌤비서${appVer ? ' ' + esc(appVer) : ''}</p>
+        <p class="muted">교사용 학교 업무 AI 비서 · © 2026 한국형-AI 기반 교사개발자 연수 3기 4조 · <a href="${REPO_URL}" target="_blank" rel="noopener">소스 코드(GitHub)</a></p>`)
+      + card('라이선스', `<p style="margin:0">쌤비서는 <b>MIT 라이선스</b>로 공개해요. 저작권 표시와 라이선스 글을 함께 남기면 누구나 고쳐 쓰고 나눌 수 있어요.</p>
+        <div class="row">${licBtn('license', '라이선스 전문')}</div>${licBox('license', '라이선스 전문')}`)
+      + card('출처 표시', `<p style="margin:0">${esc(HANCOM_NOTE)}</p>`)
+      + card('함께 쓴 공개 소프트웨어', `<ul class="lic-list">${OSS.map(([n, l, w]) => `<li><b>${esc(n)}</b> — ${esc(l)} <span class="muted">· ${esc(w)}</span></li>`).join('')}</ul>
+        <div class="row">${licBtn('notices', '고지 전체')}</div>${licBox('notices', '공개 소프트웨어 고지')}`));
+  }
 };
+/* 정보 탭: 라이선스 전문·고지는 누를 때 불러옴(web/licenses — scripts/third-party-notices.mjs가 만듦, 저장소 LICENSE 사본 포함) */
+export const HANCOM_NOTE = '본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를 참고하여 개발하였습니다.';
+const REPO_URL = 'https://github.com/doguri25/ssam-assistant';
+const OSS = [['pdf.js 3.11.174', 'Apache-2.0', 'PDF 읽기'], ['Pretendard 1.3.9', 'SIL OFL 1.1', '앱에 넣은 글꼴'], ['SUIT 2.0.5', 'SIL OFL 1.1', '앱에 넣은 글꼴'],
+  ['Google Fonts 글꼴', 'SIL OFL 1.1 · Roboto Mono는 Apache-2.0', '본고딕·나눔고딕·고운돋움·고운바탕 등, 인터넷에서 불러 씀'], ['Tauri 2와 Rust 라이브러리', 'MIT·Apache-2.0 등', 'Windows 앱']];
+const LIC_FILE = { license: 'licenses/LICENSE.txt', notices: 'licenses/THIRD-PARTY-NOTICES.txt' };
+let appVer = '';
+const licOpen = {}; // { license|notices: 글 } — 펼친 것만
+const licBtn = (k, what) => `<button class="btn" type="button" data-set="lic" data-k="${k}" aria-expanded="${licOpen[k] != null}">${what} ${licOpen[k] != null ? '접기' : '보기'}</button>`;
+const licBox = (k, what) => (licOpen[k] == null ? '' : `<pre class="ai-log-text lic-text" tabindex="0" aria-label="${what}">${esc(licOpen[k])}</pre>`);
+async function toggleLic(k) {
+  if (!LIC_FILE[k]) return;
+  if (licOpen[k] != null) { delete licOpen[k]; again(); return; }
+  licOpen[k] = '불러오는 중…'; again();
+  let t;
+  try { const r = await fetch(LIC_FILE[k]); if (!r.ok) throw new Error(String(r.status)); t = await r.text(); }
+  catch (e) { t = `파일을 불러오지 못했어요. 저장소의 LICENSE와 web/licenses 폴더에서 볼 수 있어요(${REPO_URL}).`; }
+  if (licOpen[k] == null) return; // 그사이 접음
+  licOpen[k] = t;
+  if (curTab === 'about') again();
+}
 
 let curTab = 'roster';
 function render(tab, section) {
@@ -451,7 +483,8 @@ document.addEventListener('click', e => {
   const b = e.target.closest('[data-set]');
   if (b) {
     const a = b.dataset.set;
-    if (a === 'openAi') { aiMsg = null; SSAM().ai.openSettings(); }
+    if (a === 'lic') toggleLic(b.dataset.k);
+    else if (a === 'openAi') { aiMsg = null; SSAM().ai.openSettings(); }
     else if (a === 'testAi') testAi();
     else if (a === 'aiLogClear') { aiLog.clear(); logOpen.clear(); patchLog(); const c = box.querySelector('#setAiLog'); if (c) c.focus(); toast('AI로 보낸 글을 비웠어요'); }
     else if (a === 'resetRoles') { const ok = resetRoles(); again(); toast(ok ? '업무별 AI를 기본으로 되돌렸어요' : FULL_MSG, ok ? undefined : 8000); }
