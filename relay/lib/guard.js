@@ -1,12 +1,13 @@
 /* 쌤비서 시험용 업스테이지 중계 — 공통 검사 (Vercel 함수, 키는 환경 변수 UPSTAGE_TEST_KEY에만).
    마음극장(doguri25/social) 학급 서버의 「이후의 이야기」 AI 채점도 같이 씀 (선생님이 키를 넣지 않았을 때).
    마음빛이음 연구회 홈페이지(maeumbit.vercel.app)의 사회정서교육 챗봇도 같이 씀.
+   선생님이 등록한 https://megayr4zclo6n5ft.jitda.io 에서도 씀(2026-11-21).
    기한: 2027-03-31 23:59:59 한국 시각까지. 하루 횟수: 접속 주소마다(TEST_DAILY_PER_IP, 기본 400)와 전체(TEST_DAILY_TOTAL, 기본 3000).
    횟수는 Upstash Redis(UPSTASH_REDIS_REST_URL·TOKEN)가 있으면 거기서 정확히, 없으면 함수 인스턴스 메모리로 대강.
    요청 글·그림은 저장하지도 기록하지도 않음 */
 export const UNTIL = Date.UTC(2027, 2, 31, 14, 59, 59);
 export const UNTIL_TEXT = '2027-03-31';
-const ORIGINS = ['https://doguri25.github.io', 'http://tauri.localhost', 'https://tauri.localhost', 'tauri://localhost', 'https://social-ruddy-gamma.vercel.app', 'https://maeumbit.vercel.app']; // 끝 둘: 마음극장 학급 서버, 마음빛이음 연구회 홈페이지
+const ORIGINS = ['https://doguri25.github.io', 'http://tauri.localhost', 'https://tauri.localhost', 'tauri://localhost', 'https://social-ruddy-gamma.vercel.app', 'https://maeumbit.vercel.app', 'https://megayr4zclo6n5ft.jitda.io']; // 뒤 셋: 마음극장 학급 서버, 마음빛이음 연구회 홈페이지, 선생님이 등록한 jitda.io 사이트(2026-11-21)
 export const allowedOrigin = o => typeof o === 'string' && ORIGINS.includes(o);
 
 export function corsHeaders(origin) {
