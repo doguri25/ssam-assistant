@@ -1,6 +1,6 @@
 [package]
 name = "ssam"
-version = "0.38.2"
+version = "0.38.3"
 description = "쌤비서"
 authors = ["doguri25"]
 license = "MIT"
