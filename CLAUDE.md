@@ -4,7 +4,7 @@
 
 ## 지금 상태 (2026-11-21)
 
-- 최신 릴리즈는 **v0.38.3**(시험용 업스테이지 중계 허용 주소에 짓다 사이트 `https://megayr4zclo6n5ft.jitda.io` 추가 — `relay/lib/guard.js` ORIGINS, Vercel `ssam-relay`에 파일 배포, 앱 기능은 0.38.2와 같음). 그 앞 v0.38.2(라이선스·출처 고지 — MIT `LICENSE`, 설정 › 정보 탭, 한컴 HWP 공개 문서 출처 문구, `web/licenses/THIRD-PARTY-NOTICES.txt`). 그 앞 v0.38.1(여섯 번째 버그 찾기 23건), v0.38.0(한 달 달력·이수증은 이수번호만·교직원 이름 가리기·오늘 화면 출석 물음, 세 번째~다섯 번째 버그 찾기 94건), v0.37.1(두 번째 버그 찾기 25건), v0.37.0(학년말 마감 도우미, 교내 자율연수, 쪽지 회신 기한·현황판 공유, 버그 25건). main과 작업 브랜치 `claude/wonderful-johnson-lqb8em`은 그 릴리즈 커밋.
+- 최신 릴리즈는 **v0.39.0**(학급 — 다른 선생님 변경분 옮겨 넣기: [완료] 앞 교시도 함께·묻기 스위치, 주간학습안내 칸 단원, 다음 차시 학습 주제 — 아래 「학급 다른 선생님 변경분」). 그 앞 v0.38.3(시험용 업스테이지 중계 허용 주소에 짓다 사이트 `https://megayr4zclo6n5ft.jitda.io` 추가 — `relay/lib/guard.js` ORIGINS, Vercel `ssam-relay`에 파일 배포, 앱 기능은 0.38.2와 같음). 그 앞 v0.38.2(라이선스·출처 고지 — MIT `LICENSE`, 설정 › 정보 탭, 한컴 HWP 공개 문서 출처 문구, `web/licenses/THIRD-PARTY-NOTICES.txt`). 그 앞 v0.38.1(여섯 번째 버그 찾기 23건), v0.38.0(한 달 달력·이수증은 이수번호만·교직원 이름 가리기·오늘 화면 출석 물음, 세 번째~다섯 번째 버그 찾기 94건), v0.37.1(두 번째 버그 찾기 25건), v0.37.0(학년말 마감 도우미, 교내 자율연수, 쪽지 회신 기한·현황판 공유, 버그 25건). main과 작업 브랜치 `claude/wonderful-johnson-lqb8em`은 그 릴리즈 커밋.
   - 0.38.2 라이선스(2026-11-20 저작권 점검 뒤 「고쳐야 할 것 보완하면 좋을 것 수정해서 커밋 릴리즈해줘」): 저장소 `LICENSE`(MIT, 저작권자 「한국형-AI 기반 교사개발자 연수 3기 4조 (doguri25)」 — tauri.conf copyright와 같게, MIT가 아닌 pdf.js·글꼴·Rust 라이브러리는 따로 밝힘),
     한컴 출처 문구 「본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를 참고하여 개발하였습니다.」(LICENSE·README·설정 › 정보 `settings.js HANCOM_NOTE`·고지 파일·「쌤」 안내 `license`),
     설정 탭 `about`(정보 — 버전·라이선스 전문·공개 소프트웨어, 전문은 누를 때 `web/licenses/*.txt`를 fetch), `scripts/third-party-notices.mjs`(cargo metadata Windows 대상·dev 뺌, 라이선스 파일 없으면 같은 저장소·같은 라이선스 글 → 표준 글)
@@ -34,7 +34,7 @@
     알림은 `brief-data.js gather → briefing({ budgets })`, 인수인계서는 장부(`handover-model.js budgetRows` 5칸)
     (스펙 `docs/superpowers/specs/2026-11-18-budget-design.md`, `tests/unit/fix1118-budget.test.mjs`, e2e `fix1118-budget.mjs`).
   - 0.33.2 몫(릴리즈하지 않고 0.34.0에 합침): 미뤄 둔 작은 문제 2개, 0.31.1 뒤 버그 찾기 23개 중 22개(`tests/unit/fix1116-*.test.mjs`).
-- 학급 다른 선생님 변경분(2026-11-21 「다른 선생님이 학급 메뉴를 구현하셨어 … 지금 올린 기능이 구현 가능하게 빌드해줘. 새 기능 포함해서」, 릴리즈 전): 받은 파일은 11/4~11/5 판이라 덮어쓰지 않고(덮으면 교체·메모·시수만·이름 가리기 등이 사라짐) 바뀐 곳만 옮겨 넣음.
+- 학급 다른 선생님 변경분(2026-11-21 「다른 선생님이 학급 메뉴를 구현하셨어 … 지금 올린 기능이 구현 가능하게 빌드해줘. 새 기능 포함해서」, 0.39.0): 받은 파일은 11/4~11/5 판이라 덮어쓰지 않고(덮으면 교체·메모·시수만·이름 가리기 등이 사라짐) 바뀐 곳만 옮겨 넣음.
   ❶ 주간학습안내 칸 「교과 · 단원 · 학습 주제 (쪽수)」(`class-model cellText` — AI 알림 지시도 칸 글 그대로), ❸ 진도표·시수 「다음 차시」는 학습 주제 + 작은 글씨 단원·n/N차시(`nextLessonOf`, `progress.js nextCell`)·준비 화면 고른 다음 차시 상자(`setup.js nextBoxHTML`, 목록을 바꾸면 상자만 바꿈),
   ❷ 오늘 수업 [완료]: 같은 날 앞 교시의 같은 교과(체크 안 한 칸)도 함께 완료할지 물음(`prevSame`·`markWith` — 앞 교시 기록에 `by: 누른 교시`), 누른 칸 [완료]를 다시 누르면 같이 해제(`groupOf`·`unmarkWith`), 누른 칸을 따로 고치면 묶음이 풂(`editRec`),
      선생님 요청 「묻기 묻지 않기 토글 스위치」 — 같은 교과가 두 시간 넘는 날 아래 「앞 교시도 함께 완료할지 묻기」(`class:askPrev`, years.js GLOBAL, 처음은 켬)·묻는 창 「다음부터 묻지 않기」. 받은 미리보기 HTML은 넣지 않음

@@ -1,6 +1,6 @@
 {
   "name": "ssam-assistant",
-  "version": "0.38.3",
+  "version": "0.39.0",
   "license": "MIT",
   "private": true,
   "type": "module",
