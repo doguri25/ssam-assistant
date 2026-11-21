@@ -267,7 +267,8 @@ test('주간학습안내 문서', () => {
   assert.equal(weeklyTitle({ grade: null, room: null }), '주간학습안내');
   const c = ctxOf();
   const days = weekView({ ...c, today: '2026-10-01' }, '2026-10-05');
-  assert.equal(cellText(days[1].slots[0]), '국어 · ' + days[1].slots[0].lesson.title);
+  // 2026-11-21: 교과 · 단원 · 학습 주제(단원이 있을 때)
+  assert.equal(cellText(days[1].slots[0]), '국어 · ' + (days[1].slots[0].lesson.unit ? days[1].slots[0].lesson.unit + ' · ' : '') + days[1].slots[0].lesson.title);
   assert.equal(cellText({ subject: '영어', lesson: null }), '영어');
   const w = { title: '3학년 2반 주간학습안내', cells: { '1-1': '국어 · 고친 글' }, notes: { 0: { events: '', prep: '', homework: '', notice: '', safety: '' }, 1: { events: '현장체험학습', prep: '도시락', homework: '', notice: '', safety: '' }, 2: {}, 3: {}, 4: {} } };
   const doc = weeklyDoc(days, w);

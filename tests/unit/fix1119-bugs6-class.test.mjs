@@ -35,7 +35,7 @@ test('[0] 체크 없이 쓴 1학기 교과에 2학기 진도표(1학기 날짜 �
       assert.deepEqual([p.done, p.left, p.diff, p.next], [2, 83, 0, 3], placed);
       // 주간학습안내(체크하지 않은 지난 칸도 진도표대로)도 2학기 차시
       const wk = C.weekView({ ...ctx, assume: true }, '2026-08-31');
-      assert.equal(C.weekCell(wk, { cells: {} }, 0, 1), '국어 · 2학기 6차시', placed);
+      assert.equal(C.weekCell(wk, { cells: {} }, 0, 1), '국어 · 2학기 · 2학기 6차시', placed); // 교과 · 단원 · 학습 주제
       assert.equal(C.yearHours(ctx, neu), 2 + first.hours0, '연간 실시에 1학기 체크 전 실시를 더함');
     }
   } finally { mock.timers.reset(); }

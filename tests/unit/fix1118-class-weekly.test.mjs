@@ -14,10 +14,10 @@ const days = [
   day('2026-11-20', [])
 ];
 
-test('칸 글에 교과서 쪽수', () => {
-  assert.equal(cellText(days[0].slots[0]), '국어 · 이야기 이어 쓰기 (120~121쪽)');
-  assert.equal(cellText(days[1].slots[0]), '국어 · 이야기 (교과서 30쪽)');
-  assert.equal(cellText(days[0].slots[1]), '수학 · 분수');
+test('칸 글에 교과서 쪽수(2026-11-21부터 단원도 — 교과 · 단원 · 학습 주제 (쪽수))', () => {
+  assert.equal(cellText(days[0].slots[0]), '국어 · 4. 이야기 · 이야기 이어 쓰기 (120~121쪽)');
+  assert.equal(cellText(days[1].slots[0]), '국어 · 4. 이야기 · 이야기 (교과서 30쪽)');
+  assert.equal(cellText(days[0].slots[1]), '수학 · 4. 이야기 · 분수');
   assert.equal(cellText(days[3].slots[0]), '영어');
 });
 
@@ -56,7 +56,7 @@ test('AI 알림 지시: 화면 칸 그대로·비고, 이름·전화번호는 �
   const { prompt, back } = notesPrompt(days, notes, { cellAt, periods: 2 });
   for (const n of ['한가람', '김하늘', '박솔빛', '이바다', '010-1234-5678']) assert.ok(!prompt.includes(n), `${n} 남음:\n${prompt}`);
   assert.ok(prompt.includes('현장체험학습') && prompt.includes('수학 비고 색종이 준비') && prompt.includes('수요일(11/18): 수업 없음(개교기념일)'), prompt);
-  assert.ok(prompt.includes('1교시 국어 · 이야기 이어 쓰기 (120~121쪽)'), prompt);
+  assert.ok(prompt.includes('1교시 국어 · 4. 이야기 · 이야기 이어 쓰기 (120~121쪽)'), prompt);
   const tok = (prompt.match(/〔이름\d+〕/) || [])[0];
   assert.ok(tok, '자리 표시');
   assert.ok(!back(`${tok} 생일 축하`).includes('〔'), back(`${tok} 생일 축하`));

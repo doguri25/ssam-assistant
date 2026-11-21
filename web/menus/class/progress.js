@@ -2,7 +2,7 @@
    진도표 없는 교과는 「시수만」 줄(실시, 계획은 준비에서 적음), 전담은 「전담」. 시간표·진도표가 있으면 준비는 접어 두고 맨 위 [시간표·진도표 고치기] */
 import { onEnter } from '../../core/shell.js';
 import { toast } from '../../core/ui.js';
-import { makeCtx, summary, extraSummary, areaHours, yearHours, alignToPlan, saveSubject, listSubjects, progressOf, hasTimetable } from './class-model.js';
+import { makeCtx, summary, extraSummary, areaHours, yearHours, alignToPlan, saveSubject, listSubjects, progressOf, hasTimetable, nextLessonOf } from './class-model.js';
 import { introHTML } from '../../core/ui-parts.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -19,6 +19,14 @@ function diffHTML(r) {
   if (r.diff < 0) return `<b class="cls-behind">−${-r.diff}</b>${fix}`;
   return '<b>0</b> <span class="muted">맞음</span>';
 }
+/* 다음 차시: 학습 주제, 아래 작은 글씨로 단원 · 단원 안 차시(2026-11-21 다른 선생님 변경분). 다 마치면 「끝」 */
+function nextCell(r) {
+  if (r.next > r.plan) return '<span class="end-mark">끝</span>';
+  const nx = nextLessonOf(r.sub, r.next);
+  if (!nx) return `${r.next}차시`;
+  const info = `${nx.unit ? `${nx.unit} · ` : ''}${nx.n}/${nx.of}차시`;
+  return `<span class="next-cell" title="${esc(`${nx.title} — ${info}`)}">${esc(nx.title)}<small>${esc(info)}</small></span>`;
+}
 function rowHTML(ctx, r) {
   const year = r.sub.since ? `<span class="muted cls-year">연간 ${yearHours(ctx, r.sub)}</span>` : '';
   return `<tr>
@@ -27,7 +35,7 @@ function rowHTML(ctx, r) {
     <td class="num">${bar(r.done, r.plan)}${r.done}${year}</td>
     <td class="num">${r.left}</td>
     <td>${diffHTML(r)}</td>
-    <td>${r.next > r.plan ? '끝' : `${r.next}차시`}</td>
+    <td>${nextCell(r)}</td>
     <td class="muted">${r.mode === 'week' ? '진도표 주' : '시간표'}</td>
   </tr>`;
 }

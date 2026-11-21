@@ -79,7 +79,9 @@ await run('fix1118-class-today', [
     await page.selectOption(sel, '3');
     await page.waitForTimeout(120);
     assert(await cell('수학', 1) === done, `수학 실시 ${done} → ${await cell('수학', 1)}`);
-    assert(await cell('수학', 4) === '3차시', '다음 차시 ' + await cell('수학', 4));
+    // 2026-11-21부터 「다음 차시」 칸은 학습 주제 + 작은 글씨 단원·단원 안 차시
+    const l3 = (await stored('class:subjects')).find(s => s.id === 'smp-ma').lessons[2];
+    assert((await cell('수학', 4)).startsWith(l3.title) && /\d+\/\d+차시$/.test(await cell('수학', 4)), '다음 차시 ' + await cell('수학', 4));
     await row('수학').locator('[data-align]').click();
     await page.waitForTimeout(120);
     assert((await row('수학').textContent()).includes('맞음'), '맞추기: ' + await row('수학').textContent());

@@ -15,7 +15,7 @@ import { redactText } from '../../core/redact.js';
 import { normName, periodStart, lessonYear, parseJindo, parseTimetable, jindoYear } from './class-import.js';
 import {
   getInfo, setInfo, getTimetable, setTimetable, listSubjects, saveSubject, removeSubject, setSubjects, resetRecords,
-  makeCtx, progressOf, setNext, today, normLessons, normTimetableAI, hasTimetable, importSubjects, termStart, replaceLessons, addSubject,
+  nextLessonOf, makeCtx, progressOf, setNext, today, normLessons, normTimetableAI, hasTimetable, importSubjects, termStart, replaceLessons, addSubject,
   editCell, replaceTimetable, hasPastRecords, getLog, unitPos, extraSummary, setExtra, clearExtra
 } from './class-model.js';
 import { sampleData } from './class-sample.js';
@@ -72,12 +72,19 @@ function nextHTML(s, p) {
   const opts = s.lessons.map((l, i) => { const u = unitPos(s, i); return `<option value="${i + 1}"${p.next === i + 1 ? ' selected' : ''}>${esc(l.unit ? `${l.unit} ` : '')}${u.n}/${u.of}차시 · ${esc(l.title)}</option>`; }).join('');
   return `<label class="cls-next-l">다음 차시 <select class="field cls-next" data-next="${esc(s.id)}">${opts}<option value="${s.lessons.length + 1}"${p.next > s.lessons.length ? ' selected' : ''}>끝(모두 마침)</option></select></label>`;
 }
+/* 고른 다음 차시를 한눈에(2026-11-21 다른 선생님 변경분): 단원 · 학습 주제 · 단원 안 차시 — 길면 말줄임, 마우스를 올리거나 초점이 가면 다 보임 */
+function nextBoxHTML(s, next) {
+  const nx = nextLessonOf(s, next);
+  if (!nx) return '';
+  const full = `${nx.unit ? `${nx.unit} ` : ''}${nx.title} · ${nx.n}/${nx.of}차시`;
+  return `<div class="next-lesson" tabindex="0" title="${esc(full)}" data-next-box="${esc(s.id)}">${nx.unit ? `<span class="nl-unit">${esc(nx.unit)}</span> ` : ''}${esc(nx.title)} <span class="nl-no">· ${nx.n}/${nx.of}차시</span></div>`;
+}
 function subHTML(ctx, s) {
   const p = progressOf(ctx, s);
   const more = s.total != null && s.total !== s.lessons.length ? ` · 파일에는 ${s.total}시간` : '';
   return `<li class="cls-sub" data-sub="${esc(s.id)}">
     <b>${esc(s.name)}</b><span class="muted">${s.lessons.length}차시${more}</span>
-    ${nextHTML(s, p)}
+    ${nextHTML(s, p)}${nextBoxHTML(s, p.next)}
     <label title="이 앱에서 체크하기 전에 이미 한 시간이에요(다음 차시를 고쳐도 그대로)">체크 전 실시 <input type="number" class="field num" data-h0="${esc(s.id)}" min="0" max="999" value="${s.hours0}"></label>
     ${s.lessons.some(l => l.from) ? '' : `<label title="${p.mode === 'week' ? '진도표 1주(가장 작은 주)가 시작한 날' : '이 날부터 시간표대로 진도를 셈해요'}">${p.mode === 'week' ? '1주 시작일' : '시작일'} <input type="date" class="field" data-start="${esc(s.id)}" value="${esc(s.start)}"></label>`}
     <span class="grow"></span>
@@ -439,7 +446,11 @@ function onChange(el) {
     if (!s) return;
     const n = Math.min(s.lessons.length + 1, Math.max(1, Math.round(+el.value) || 1));
     el.value = n;
-    saved(!!saveSubject(setNext(makeCtx(), s, n)));
+    const neu = saveSubject(setNext(makeCtx(), s, n));
+    saved(!!neu);
+    // 다음 차시 상자만 바꿈(목록을 다시 그리지 않음 — 'setup'에서 온 알림은 이 화면이 다시 그리지 않음)
+    const li = el.closest('li'), old = li && li.querySelector('[data-next-box]'), html = nextBoxHTML(neu || s, n);
+    if (old) old.outerHTML = html || ''; else if (li && html) el.closest('label').insertAdjacentHTML('afterend', html);
     changed('setup');
   } else if (el.id === 'clsTtFile' || el.id === 'clsJindoFile') {
     const f = el.files[0]; el.value = '';

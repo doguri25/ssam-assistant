@@ -1,12 +1,15 @@
 /* 학급 › 오늘 수업: 그날 교시별 교과·차시를 보이고 [완료 / 일부 진행 / 못 함]을 체크 (스펙 4.1, 3.3, 2026-11-18 class-fix A).
    진도표 없는 교과도 체크(시수만), 전담은 체크하지 않음. 앞날은 체크할 수 없음(교과 바꾸기·메모는 미리 됨).
-   하루 한꺼번에([남은 칸 모두 완료]·[이 날 모두 못 함]), 교시마다 [교과 바꾸기](교체·보강 — 그날 기록에만)·[메모](다음 시간 줄에 「지난 시간」) */
+   하루 한꺼번에([남은 칸 모두 완료]·[이 날 모두 못 함]), 교시마다 [교과 바꾸기](교체·보강 — 그날 기록에만)·[메모](다음 시간 줄에 「지난 시간」).
+   [완료]를 누를 때 같은 날 앞 교시의 같은 교과를 체크하지 않았으면 함께 완료할지 물음(2026-11-21 다른 선생님 변경분 — 「앞 교시도 함께 묻기」 스위치로 끔),
+   함께 완료한 칸은 누른 칸의 [완료]를 다시 누르면 같이 해제 */
 import { onEnter, go } from '../../core/shell.js';
 import { toast } from '../../core/ui.js';
 import { listEvents, addDays, isDate, DUE_ONLY } from '../../core/calendar.js';
 import { normName } from './class-import.js';
 import {
-  makeCtx, dayView, setMark, setSwap, setMemo, markDay, dayMarks, canMark, missingList, fmtDay, fmtShort, today, unitPos, hasTimetable, extraNames
+  makeCtx, dayView, setMark, setSwap, setMemo, markDay, dayMarks, canMark, missingList, fmtDay, fmtShort, today, unitPos, hasTimetable, extraNames,
+  sameSubject, prevSame, markWith, groupOf, unmarkWith, getAskPrev, setAskPrev
 } from './class-model.js';
 import { askSample } from './setup.js';
 import { introHTML } from '../../core/ui-parts.js';
@@ -53,11 +56,15 @@ function dayActsHTML(ctx, v, withEvents) {
   if (!v.slots.length) return '';
   if (!canMark(ctx, date)) return '<p class="muted cls-note cls-ahead-note">앞날은 체크할 수 없어요. 교과 바꾸기·메모는 미리 할 수 있어요.</p>';
   const m = dayMarks(ctx, date);
-  if (!m.left && !m.marked) return '';
   const left = m.left ? '<button class="btn text" type="button" data-day="done">남은 칸 모두 완료</button>' : '';
-  const skip = withEvents ? '' : '<button class="btn text" type="button" data-day="skip">이 날 모두 못 함</button>';
-  return left || skip ? `<div class="cls-day-acts">${left}${skip}</div>` : '';
+  const skip = withEvents || !(m.left || m.marked) ? '' : '<button class="btn text" type="button" data-day="skip">이 날 모두 못 함</button>';
+  const sw = repeats(v) ? askSwitchHTML() : '';
+  return left || skip || sw ? `<div class="cls-day-acts">${sw}${left}${skip}</div>` : '';
 }
+/* 그날 같은 교과가 두 시간 넘게 있는지(전담 빼고) — 「앞 교시도 함께 묻기」 스위치는 그런 날에만 보임 */
+const repeats = v => v.slots.some((s, i) => s.kind !== 'staff' && v.slots.slice(0, i).some(t => t.kind !== 'staff' && sameSubject(t.subject, s.subject)));
+const askSwitchHTML = () => `<label class="cls-switch" title="[완료]를 누를 때 같은 날 앞 교시의 같은 교과를 체크하지 않았으면 함께 완료할지 물어요">
+  <input type="checkbox" role="switch" data-ask-prev${getAskPrev() ? ' checked' : ''}><span class="cls-switch-t">앞 교시도 함께 완료할지 묻기</span></label>`;
 function listHTML(ctx) {
   const v = dayView(ctx, date);
   if (v.off) return `<div class="yp-card cls-off"><b>${esc(v.off)}</b><span class="muted">수업이 없는 날이에요.</span></div>`;
@@ -146,6 +153,28 @@ function dayAll(status) {
   }
   apply('left');
 }
+/* [완료]: 같은 날 앞 교시의 같은 교과를 체크하지 않았으면 함께 완료할지 물음(스위치를 켰을 때). 「다음부터 묻지 않기」는 스위치를 끔 */
+function askPrev(slot, prev) {
+  const at = date, p = slot.period, list = prev.join('·');
+  S().openSheet(`<h3>${esc(fmtShort(at))} ${p}교시 ${esc(slot.subject)} 완료</h3>
+    <p class="muted" style="margin:0">같은 날 앞의 ${esc(slot.subject)} ${list}교시를 아직 체크하지 않았어요. 함께 완료할까요?</p>
+    <label class="cls-check"><input type="checkbox" id="clsAskOff"> 다음부터 묻지 않기 <span class="muted">(오늘 수업 화면의 스위치로 다시 켤 수 있어요)</span></label>
+    <div class="row" style="justify-content:flex-end"><button class="btn" type="button" data-close>취소</button>
+      <button class="btn" type="button" id="clsDoneOnly">${p}교시만 완료</button><button class="btn primary" type="button" id="clsDoneWith">${list}교시도 함께 완료</button></div>`,
+  sh => {
+    const done = withPrev => {
+      if (sh.querySelector('#clsAskOff').checked && saved(setAskPrev(false))) toast('이제 묻지 않고 그 칸만 완료해요');
+      S().closeSheet();
+      const ctx = makeCtx(), more = withPrev ? prevSame(ctx, at, p) : [];
+      if (!saved(more.length ? markWith(ctx, at, p, more) : setMark(at, p, slot.subject, 'done'))) return;
+      if (at === date && visible()) redrawLessons();
+      changed();
+      if (more.length) toast(`${more.join('·')}교시와 ${p}교시를 「완료」로 체크했어요. ${p}교시 [완료]를 다시 누르면 함께 해제돼요`, 5000);
+    };
+    sh.querySelector('#clsDoneOnly').addEventListener('click', () => done(false));
+    sh.querySelector('#clsDoneWith').addEventListener('click', () => done(true));
+  });
+}
 /* 교과 바꾸기(교체·보강): 그날 그 교시 기록에만, 시간표는 그대로 */
 function openSwap(p) {
   const s = slotAt(p);
@@ -206,6 +235,10 @@ document.addEventListener('change', e => {
   if (!box || !box.contains(e.target) || !visible()) return;
   if (e.target.id === 'clsDate') setDate(e.target.value);
   else if (e.target.dataset.memo) saveMemo(e.target);
+  else if (e.target.matches('[data-ask-prev]')) {
+    if (!saved(setAskPrev(e.target.checked))) { e.target.checked = !e.target.checked; return; }
+    toast(e.target.checked ? '[완료]를 누를 때 앞 교시도 함께 완료할지 물어요' : '묻지 않고 누른 칸만 완료해요');
+  }
 });
 document.addEventListener('keydown', e => {
   const el = e.target;
@@ -222,6 +255,15 @@ document.addEventListener('click', e => {
     const slot = dayView(ctx, date).slots.find(s => s.period === p);
     if (!slot || slot.kind === 'staff') return;
     const next = slot.status === m.dataset.mark ? null : m.dataset.mark;
+    // 함께 완료한 칸이 있는 [완료]를 다시 누르면 같이 해제
+    const group = next === null && m.dataset.mark === 'done' ? groupOf(ctx, date, p) : [];
+    if (group.length) {
+      if (!saved(unmarkWith(ctx, date, p))) return;
+      redrawLessons(); changed();
+      toast(`함께 완료한 ${group.join('·')}교시도 체크를 지웠어요`);
+      return;
+    }
+    if (next === 'done' && getAskPrev()) { const prev = prevSame(ctx, date, p); if (prev.length) { askPrev(slot, prev); return; } }
     if (!saved(setMark(date, p, slot.subject, next))) return;
     redrawLessons();
     changed();

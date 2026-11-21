@@ -19,6 +19,10 @@
 .cls-ahead{color:var(--ok)}
 .cls-behind{color:var(--err)}
 .cls-tag{margin-left:6px;font-size:12px;padding:2px 8px;border-radius:999px;background:var(--surface2);color:var(--ink3);font-weight:500}
+/* 다음 차시 칸: 학습 주제 + 작은 글씨 단원·차시, 다 마치면 「끝」(2026-11-21 다른 선생님 변경분) */
+.cls-sum .next-cell{display:block;max-width:220px;white-space:normal;overflow-wrap:anywhere;color:var(--accent);font-weight:600;line-height:1.35}
+.cls-sum .next-cell small{display:block;color:var(--ink3);font-weight:400;font-size:11.5px;margin-top:2px}
+.cls-sum .end-mark{color:var(--ok);font-weight:700}
 /* 시간표 */
 .cls-tt{border-collapse:collapse;width:100%;min-width:420px}
 .cls-tt th{font-size:13px;color:var(--ink3);font-weight:600;padding:4px}
@@ -35,6 +39,12 @@
 .cls-next-l{flex-wrap:wrap;white-space:nowrap;min-width:0;max-width:100%}
 .cls-sub .cls-next-l .cls-next{flex:1 1 200px;min-width:0;max-width:340px;text-overflow:ellipsis}
 .cls-check input{width:18px;height:18px}
+/* 준비 화면 교과 칸: 고른 다음 차시 상자 — 길면 말줄임, 마우스를 올리거나 초점이 가면 다 보임 */
+.next-lesson{display:block;flex:1 1 100%;max-width:360px;box-sizing:border-box;margin:0;padding:6px 10px;background:var(--accent-soft);border-radius:7px;font-size:13.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.5}
+.next-lesson:hover,.next-lesson:focus{white-space:normal;overflow:visible;text-overflow:clip;max-width:100%}
+.next-lesson:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.next-lesson .nl-unit{color:var(--ink3);font-size:12.5px}
+.next-lesson .nl-no{color:var(--ink2);font-variant-numeric:tabular-nums;font-size:12px}
 .cls-xlist{display:flex;flex-direction:column;gap:2px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
 .cls-xlist h4{margin:0;font:700 14.5px/1.4 var(--f-display);display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}
 .cls-xlist h4 .muted{font:400 13px/1.4 var(--f-body, inherit)}
@@ -92,7 +102,15 @@
 .cls-l-tools{flex-basis:100%;display:flex;flex-wrap:wrap;gap:2px 4px;margin-left:-8px}
 .cls-l-tools .btn{min-height:30px;padding:2px 8px;font-size:13px;color:var(--ink3)}
 .cls-lesson[data-kind="staff"] .cls-l-s{color:var(--ink3)}
-.cls-day-acts{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px 8px}
+.cls-day-acts{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:4px 8px}
+/* 「앞 교시도 함께 완료할지 묻기」 스위치(같은 교과가 두 시간 넘는 날) */
+.cls-switch{display:inline-flex;align-items:center;gap:8px;margin-right:auto;min-height:36px;font-size:13.5px;color:var(--ink2);cursor:pointer}
+.cls-switch input{appearance:none;-webkit-appearance:none;flex:none;width:36px;height:20px;margin:0;border-radius:999px;background:var(--line);position:relative;cursor:pointer;transition:background .15s}
+.cls-switch input::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+.cls-switch input:checked{background:var(--accent)}
+.cls-switch input:checked::after{transform:translateX(16px)}
+.cls-switch input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.cls-switch input,.cls-switch input::after{transition:none}}
 .cls-events .btn{padding:4px 12px;min-height:32px}
 #clsEvents:empty{display:none}
 .cls-ahead-note{text-align:right}

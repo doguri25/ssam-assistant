@@ -147,9 +147,11 @@ export function resetRecords() {
 
 /* 체크 기록: { 날짜: { 교시: { subject, status, memo?, swap? } } }. status '' = 체크하지 않음(메모나 교체만 있는 칸),
    memo = 수업 메모, swap = 그날만 다른 교과로 바꿈(교체·보강) */
+/* by: [완료]를 누를 때 「앞 교시도 함께 완료」로 같이 체크한 칸이면 누른 교시(1~7) — 그 칸을 다시 해제하면 같이 해제(unmarkWith), 완료일 때만 */
 const cleanRec = r => {
   const status = STATUS.includes(r.status) ? r.status : '', memo = str(r.memo).trim().slice(0, 200), swap = r.swap === true;
-  return status || memo || swap ? { subject: r.subject, status, ...(memo ? { memo } : {}), ...(swap ? { swap } : {}) } : null;
+  const by = status === 'done' ? intIn(r.by, 1, 7) : null;
+  return status || memo || swap ? { subject: r.subject, status, ...(memo ? { memo } : {}), ...(swap ? { swap } : {}), ...(by ? { by } : {}) } : null;
 };
 export function getLog() {
   const v = get('class:log', {});
@@ -167,21 +169,23 @@ export function getLog() {
   }
   return out;
 }
-/* 한 칸 기록 바꾸기: fn(지금 기록 또는 null) → 새 기록(빈 칸이면 지움) */
+/* 한 칸 기록 바꾸기: fn(지금 기록 또는 null) → 새 기록(빈 칸이면 지움).
+   그 칸이 완료가 아니게 되면 그 칸을 누를 때 함께 완료한 앞 교시는 묶음에서 빠짐(체크는 그대로 — by만 지움) */
 function editRec(date, period, fn) {
   const log = getLog();
   const day = { ...(log[date] || {}) };
   const r = fn(day[period] || null);
   const c = r && cleanRec(r);
   if (c) day[period] = c; else delete day[period];
+  if (!c || c.status !== 'done') for (const [p, x] of Object.entries(day)) if (x.by === +period) day[p] = cleanRec({ ...x, by: null });
   if (Object.keys(day).length) log[date] = day; else delete log[date];
   return set('class:log', log);
 }
 /* 그 칸의 기록을 이어 쓸 수 있는지: 같은 교과, 또는 메모만 적은 칸(적을 때의 시간표 교과로 저장돼 있어도 화면은 지금 시간표 교과로 보여 줌 — slotsOn) */
 const sameRec = (r, subject) => !!r && (r.subject === subject || (!r.status && !r.swap));
-/* status가 null이면 그 시간 체크를 지움(메모·교체는 남김) */
+/* status가 null이면 그 시간 체크를 지움(메모·교체는 남김). 따로 체크하면 「함께 완료」 묶음에서 빠짐(by) */
 export const setMark = (date, period, subject, status) =>
-  editRec(date, period, r => (sameRec(r, subject) ? { ...r, subject, status: status || '' } : { subject, status: status || '' }));
+  editRec(date, period, r => (sameRec(r, subject) ? { ...r, subject, status: status || '', by: null } : { subject, status: status || '' }));
 /* 그날 그 교시만 다른 교과로(교체·보강, 시간표는 그대로). planned: 시간표의 교과(시간표에 없는 교시는 '') — 같으면 교체를 지움.
    교과가 바뀌면 체크는 지움(다른 교과의 차시라서), 메모는 남김. 이름이 비면 false */
 export function setSwap(date, period, subject, planned) {
@@ -395,13 +399,52 @@ export function markDay(ctx, date, status, only = 'left') {
   for (const s of dayView(ctx, date).slots) {
     if (s.kind === 'staff' || s.status === status || (only === 'left' && s.status)) continue;
     const r = day[s.period];
-    day[s.period] = cleanRec({ ...(sameRec(r, s.subject) ? r : {}), subject: s.subject, status });
+    day[s.period] = cleanRec({ ...(sameRec(r, s.subject) ? r : {}), subject: s.subject, status, by: null });
     n++;
   }
   if (!n) return 0;
   log[date] = day;
   return set('class:log', log) ? n : -1;
 }
+
+/* ---------- [완료] 앞 교시도 함께 (2026-11-21 다른 선생님 변경분 — 묻기/묻지 않기 스위치) ---------- */
+/* 같은 날 앞 교시의 같은 교과 가운데 체크하지 않은 칸(전담·앞날은 빼고). 국어 1·2·3교시처럼 이어진 수업에서 3교시만 누를 때 */
+export function prevSame(ctx, date, period) {
+  if (!canMark(ctx, date)) return [];
+  const slots = dayView(ctx, date).slots, me = slots.find(s => s.period === period);
+  if (!me || me.kind === 'staff') return [];
+  return slots.filter(s => s.period < period && s.kind !== 'staff' && !s.status && sameSubject(s.subject, me.subject)).map(s => s.period);
+}
+/* 누른 교시와 앞 교시(periods)를 한 번에 완료 — 앞 교시는 by: 누른 교시. 저장하지 못하거나 앞날이면 false */
+export function markWith(ctx, date, period, periods) {
+  if (!canMark(ctx, date)) return false;
+  const slots = dayView(ctx, date).slots, me = slots.find(s => s.period === period);
+  if (!me || me.kind === 'staff') return false;
+  const log = getLog(), day = { ...(log[date] || {}) };
+  const put = (s, by) => { const r = day[s.period]; day[s.period] = cleanRec({ ...(sameRec(r, s.subject) ? r : {}), subject: s.subject, status: 'done', by }); };
+  for (const p of periods) { const s = slots.find(x => x.period === p); if (s && s.kind !== 'staff' && p < period) put(s, period); }
+  put(me, null);
+  log[date] = day;
+  return set('class:log', log);
+}
+/* 그 교시를 누를 때 함께 완료한 앞 교시(그 뒤 따로 고친 칸은 빠짐) */
+export const groupOf = (ctx, date, period) => Object.entries((ctx.log || {})[date] || {})
+  .filter(([, r]) => r.by === period && r.status === 'done').map(([p]) => +p).sort((a, b) => a - b);
+/* 누른 교시의 완료와, 함께 완료한 앞 교시를 같이 해제(메모·교체는 남김). 저장하지 못하면 false */
+export function unmarkWith(ctx, date, period) {
+  const log = getLog(), day = { ...(log[date] || {}) };
+  for (const p of [...groupOf(ctx, date, period), period]) {
+    const r = day[p];
+    if (!r) continue;
+    const c = cleanRec({ ...r, status: '', by: null });
+    if (c) day[p] = c; else delete day[p];
+  }
+  if (Object.keys(day).length) log[date] = day; else delete log[date];
+  return set('class:log', log);
+}
+/* 묻기/묻지 않기: 처음은 묻기. 이 기기에 기억(학년도와 상관없음 — years.js GLOBAL) */
+export const getAskPrev = () => get('class:askPrev', true) !== false;
+export const setAskPrev = on => set('class:askPrev', !!on);
 
 /* 단원 안 몇 번째 차시인지: 진도표의 차시 칸, 없으면 같은 단원이 이어지는 줄에서 셈 */
 export function unitPos(sub, i) {
@@ -412,6 +455,13 @@ export function unitPos(sub, i) {
   while (a > 0 && sub.lessons[a - 1].unit === l.unit) a--;
   while (b < sub.lessons.length - 1 && sub.lessons[b + 1].unit === l.unit) b++;
   return { n: i - a + 1, of: b - a + 1 };
+}
+/* 다음 차시(next — 1부터)의 단원·학습 주제·단원 안 차시. 다 마쳤으면 null (진도표·시수 표, 준비 화면 교과 칸) */
+export function nextLessonOf(sub, next) {
+  const i = next - 1, l = sub && Number.isInteger(i) && i >= 0 ? sub.lessons[i] : null;
+  if (!l) return null;
+  const pos = unitPos(sub, i);
+  return { unit: l.unit || '', title: l.title, n: pos.n, of: pos.of };
 }
 
 /* 보이는 교시(periods) 안에 수업이 하나라도 있으면 시간표가 있는 것 (숨긴 교시의 글은 세지 않음) */
@@ -658,7 +708,12 @@ export const normNotes = v => [0, 1, 2, 3, 4].map(d => normWeekly({ notes: { 0: 
 export const weeklyTitle = info => (info && info.grade && info.room ? `${info.grade}학년 ${info.room}반 주간학습안내` : '주간학습안내');
 // 교과서 쪽수가 있으면 「(120~121쪽)」(학부모께 가는 주간학습안내 — 오늘 수업과 같은 꼴)
 const pagesOf = p => { const t = String(p || '').trim(); return !t ? '' : /^[\d\s~,.-]+$/.test(t) ? `${t}쪽` : t; };
-export const cellText = slot => (slot.lesson ? `${slot.subject} · ${slot.lesson.title}${pagesOf(slot.lesson.pages) ? ` (${pagesOf(slot.lesson.pages)})` : ''}` : slot.subject);
+/* 칸 글: 교과 · 단원 · 학습 주제 (쪽수) — 단원·쪽수는 있을 때만(2026-11-21 다른 선생님 변경분). AI 알림 지시도 이 칸 글을 그대로 씀(weekly-ai notesPrompt) */
+export const cellText = slot => {
+  if (!slot.lesson) return slot.subject;
+  const unit = String(slot.lesson.unit || '').trim(), pg = pagesOf(slot.lesson.pages);
+  return `${slot.subject} · ${unit ? `${unit} · ` : ''}${slot.lesson.title}${pg ? ` (${pg})` : ''}`;
+};
 const WD = '월화수목금';
 const md = d => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
 const NOTE_ROWS = [['events', '학사일정'], ['prep', '준비물'], ['homework', '과제'], ['notice', '안내장'], ['safety', '안전']];

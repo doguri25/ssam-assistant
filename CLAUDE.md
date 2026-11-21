@@ -34,6 +34,11 @@
     알림은 `brief-data.js gather → briefing({ budgets })`, 인수인계서는 장부(`handover-model.js budgetRows` 5칸)
     (스펙 `docs/superpowers/specs/2026-11-18-budget-design.md`, `tests/unit/fix1118-budget.test.mjs`, e2e `fix1118-budget.mjs`).
   - 0.33.2 몫(릴리즈하지 않고 0.34.0에 합침): 미뤄 둔 작은 문제 2개, 0.31.1 뒤 버그 찾기 23개 중 22개(`tests/unit/fix1116-*.test.mjs`).
+- 학급 다른 선생님 변경분(2026-11-21 「다른 선생님이 학급 메뉴를 구현하셨어 … 지금 올린 기능이 구현 가능하게 빌드해줘. 새 기능 포함해서」, 릴리즈 전): 받은 파일은 11/4~11/5 판이라 덮어쓰지 않고(덮으면 교체·메모·시수만·이름 가리기 등이 사라짐) 바뀐 곳만 옮겨 넣음.
+  ❶ 주간학습안내 칸 「교과 · 단원 · 학습 주제 (쪽수)」(`class-model cellText` — AI 알림 지시도 칸 글 그대로), ❸ 진도표·시수 「다음 차시」는 학습 주제 + 작은 글씨 단원·n/N차시(`nextLessonOf`, `progress.js nextCell`)·준비 화면 고른 다음 차시 상자(`setup.js nextBoxHTML`, 목록을 바꾸면 상자만 바꿈),
+  ❷ 오늘 수업 [완료]: 같은 날 앞 교시의 같은 교과(체크 안 한 칸)도 함께 완료할지 물음(`prevSame`·`markWith` — 앞 교시 기록에 `by: 누른 교시`), 누른 칸 [완료]를 다시 누르면 같이 해제(`groupOf`·`unmarkWith`), 누른 칸을 따로 고치면 묶음이 풂(`editRec`),
+     선생님 요청 「묻기 묻지 않기 토글 스위치」 — 같은 교과가 두 시간 넘는 날 아래 「앞 교시도 함께 완료할지 묻기」(`class:askPrev`, years.js GLOBAL, 처음은 켬)·묻는 창 「다음부터 묻지 않기」. 받은 미리보기 HTML은 넣지 않음
+  (`tests/unit/fix1121-class-merge.test.mjs`, e2e `fix1121-class-merge.mjs`).
 - 이름 가리기 원칙(2026-11-16 선생님과 정함): 이름이 새는 것이 낱말을 지나치게 가리는 것보다 나쁨. 고칠 때마다 원래 코드와 견줘 새로 새는 이름이 없는지 확인.
   남은 한계: 흔한 이름 목록에 없는 이름이 「준비물:」 같은 물건 머리 줄에만 나오고 다른 줄에서 사람으로 쓰이지 않으면 배우지 않음(그 줄은 보내지 않음).
 - 학급 손보기(2026-11-18, 0.36.0): 스펙 `docs/superpowers/specs/2026-11-18-class-fix-design.md` A·B·C 34건 모두.
@@ -123,7 +128,7 @@
 
 ## 시험
 
-- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1712개 통과)
+- 단위 시험: `node --test tests/unit/*.test.mjs` (지금 1720개 통과)
 - e2e 한 파일: `node tests/e2e/<이름>.mjs`
 - e2e 전체: `node tests/e2e/run-all.mjs` (약 170개 파일, 45~50분). 파일마다 다른 포트를 써서 나눠 돌려도 된다. 전체가 도는 동안에는 작업 폴더를 고치지 말고 `.claude/worktrees/` 아래 worktree에서 일한다(그 안에서는 저장소의 node_modules를 그대로 찾는다).
 
